@@ -20,7 +20,9 @@
         "start_line",
         "end_line",
         "signature",
-        "evidence_id"
+        "evidence_id",
+        "stable_key",
+        "body_hash"
       ],
       "properties": {
         "id": {
@@ -79,6 +81,18 @@
         "evidence_id": {
           "type": "string",
           "pattern": "^ev_[0-9a-z]+$"
+        },
+        "stable_key": {
+          "type": "string",
+          "description": "path#qualified_name#kind, as this snapshot stores it."
+        },
+        "body_hash": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{64}$",
+          "description": "SHA-256 of the declaration text with line endings, common indentation, trailing whitespace and the symbol's own name normalised (a module: its file text); null when the span is no more than the name, or the snapshot was sealed before hashes existed."
         }
       }
     }

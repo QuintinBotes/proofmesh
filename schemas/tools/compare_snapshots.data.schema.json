@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "tools/compare_snapshots.data.schema.json",
   "title": "compare_snapshots data",
-  "description": "What changed between two sealed snapshots of one repository, matched by qualified name and kind for symbols and by path for files.",
+  "description": "What changed between two sealed snapshots of one repository, matched by qualified name and kind for symbols, then a removed and an added symbol of equal kind and body hash paired as moved or renamed, and by path for files.",
   "type": "object",
   "additionalProperties": false,
   "required": ["base", "head", "symbols", "relationships", "files"],
@@ -10,12 +10,14 @@
     "base": { "$ref": "#/$defs/side" },
     "head": { "$ref": "#/$defs/side" },
     "symbols": {
-      "type": "object", "additionalProperties": false, "required": ["added", "removed", "changed", "counts"],
+      "type": "object", "additionalProperties": false, "required": ["added", "removed", "changed", "paired", "ambiguous", "counts"],
       "properties": {
-        "counts": { "type": "object", "additionalProperties": false, "required": ["added", "removed", "changed"], "properties": { "added": { "type": "integer" }, "removed": { "type": "integer" }, "changed": { "type": "integer" } } },
+        "counts": { "type": "object", "additionalProperties": false, "required": ["added", "removed", "changed", "paired", "ambiguous", "too_small"], "properties": { "added": { "type": "integer" }, "removed": { "type": "integer" }, "changed": { "type": "integer" }, "paired": { "type": "integer" }, "ambiguous": { "type": "integer" }, "too_small": { "type": "integer", "description": "Matches of one removed with one or more added symbols below the minimum token count: not paired, not listed as ambiguous, still removed and added." } } },
         "added": { "type": "array", "items": { "$ref": "#/$defs/symbol" } },
         "removed": { "type": "array", "items": { "$ref": "#/$defs/symbol" } },
-        "changed": { "type": "array", "items": { "allOf": [{ "$ref": "#/$defs/symbol" }, { "type": "object", "required": ["what"], "properties": { "what": { "type": "array", "items": { "enum": ["signature", "range", "path"] } } } }] } }
+        "changed": { "type": "array", "items": { "allOf": [{ "$ref": "#/$defs/symbol" }, { "type": "object", "required": ["what"], "properties": { "what": { "type": "array", "items": { "enum": ["signature", "range", "path", "body"] } }, "base_id": { "type": "string" }, "base_stable_key": { "type": "string" }, "base_body_hash": { "type": ["string", "null"] } } }] } },
+        "paired": { "type": "array", "description": "One removed and one added symbol of the same kind and body hash. The change is moved (the file differs), renamed (the name differs) or moved_renamed.", "items": { "type": "object", "additionalProperties": false, "required": ["change", "kind", "body_hash", "base", "head"], "properties": { "change": { "enum": ["moved", "renamed", "moved_renamed"] }, "kind": { "type": "string" }, "body_hash": { "type": "string" }, "base": { "$ref": "#/$defs/symbol" }, "head": { "$ref": "#/$defs/symbol" } } } },
+        "ambiguous": { "type": "array", "description": "Removed and added symbols of one kind and body hash that are not one on each side: candidates, never a guess. They stay in removed and added.", "items": { "type": "object", "additionalProperties": false, "required": ["kind", "body_hash", "removed", "added"], "properties": { "kind": { "type": "string" }, "body_hash": { "type": "string" }, "removed": { "type": "array", "items": { "$ref": "#/$defs/symbol" } }, "added": { "type": "array", "items": { "$ref": "#/$defs/symbol" } } } } }
       }
     },
     "relationships": {
@@ -35,6 +37,6 @@
   },
   "$defs": {
     "side": { "type": "object", "additionalProperties": false, "required": ["snapshot_id", "published_at", "symbols", "relationships", "unresolved"], "properties": { "snapshot_id": { "type": "string" }, "published_at": { "type": "string" }, "symbols": { "type": "integer" }, "relationships": { "type": "integer" }, "unresolved": { "type": "integer" } } },
-    "symbol": { "type": "object", "additionalProperties": true, "required": ["qualified_name", "kind", "path"], "properties": { "qualified_name": { "type": "string" }, "kind": { "type": "string" }, "path": { "type": "string" } } }
+    "symbol": { "type": "object", "additionalProperties": true, "required": ["id", "qualified_name", "kind", "path", "stable_key", "body_hash"], "properties": { "id": { "type": "string" }, "stable_key": { "type": "string" }, "body_tokens": { "type": ["integer", "null"] }, "body_hash": { "type": ["string", "null"], "description": "Null when the span is no more than the name, or the snapshot was sealed before hashes existed." }, "qualified_name": { "type": "string" }, "kind": { "type": "string" }, "path": { "type": "string" } } }
   }
 }

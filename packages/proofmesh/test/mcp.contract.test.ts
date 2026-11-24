@@ -82,7 +82,7 @@ describe('AC22 MCP tool contracts', () => {
 
   it('FR100 over MCP a symbol is named by name and path in place of its id, and the tools describe the lean envelope', async () => {
     const r = await client.callTool({ name: 'get_symbol', arguments: { symbol_id: { name: 'handleInvoice', path: 'packages/api/src/handler.ts' } } }) as { content: Array<{ text: string }> }
-    expect(r.content[0]!.text.split('\n').slice(1)).toEqual([expect.stringMatching(/^handleInvoice packages\/api\/src\/handler\.ts:\d+ function$/)])
+    expect(r.content[0]!.text.split('\n').slice(1)).toEqual([expect.stringMatching(/^handleInvoice packages\/api\/src\/handler\.ts:\d+ function stable_key=\S+ body_hash=[0-9a-f]{64}$/)])
     const { tools } = await client.listTools()
     for (const t of tools.filter((x) => LEAN.has(x.name))) expect(JSON.stringify(t.inputSchema), t.name).toContain('lean, the default over MCP')
     expect(client.getInstructions()).toContain('answer in lean text')

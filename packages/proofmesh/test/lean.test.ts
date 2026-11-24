@@ -74,7 +74,7 @@ describe('FR095 FR096 FR097 FR098 lean answers on fixtures/tests-reach: a header
   })
 
   it('FR095 get_symbol, find_tests and an ID given as name and path answer lean too', () => {
-    expect(lean(d, 'get_symbol', { symbol_id: core() }).split('\n').slice(1)).toEqual(['core src/core.ts:1 function'])
+    expect(lean(d, 'get_symbol', { symbol_id: core() }).split('\n').slice(1)).toEqual([expect.stringMatching(/^core src\/core\.ts:1 function stable_key="src\/core\.ts#src\/core:core#function" body_hash=[0-9a-f]{64}$/)])
     expect(lean(d, 'find_tests', { subject_ids: [{ name: 'core', path: 'src/core.ts' }] }).split('\n').slice(1)).toEqual(['serviceAddsOne test/service.test.ts:4 depth=2'])
   })
 
@@ -142,7 +142,7 @@ describe('FR096 FR100 lean rows of a repository with awkward names, several site
   })
 
   it('FR100 a name unique in its file stands in for an id; an ambiguous one is refused with the candidates as lean rows', () => {
-    expect(lean(w, 'get_symbol', { symbol_id: { name: 'Other.total', path: 'src/odd dir/odd.ts' } }).split('\n').slice(1)).toEqual(['Other.total "src/odd dir/odd.ts":10 method'])
+    expect(lean(w, 'get_symbol', { symbol_id: { name: 'Other.total', path: 'src/odd dir/odd.ts' } }).split('\n').slice(1)).toEqual([expect.stringMatching(/^Other\.total "src\/odd dir\/odd\.ts":10 method stable_key="src\/odd dir\/odd\.ts#src\/odd dir\/odd:Other\.total#method" body_hash=[0-9a-f]{64}$/)])
     let refused: unknown
     try { runTool(w, 'get_symbol', { symbol_id: { name: 'total', path: 'src/odd dir/odd.ts' }, envelope: 'lean' }) } catch (e) { refused = e }
     expect(refused).toBeInstanceOf(ProofmeshError)
