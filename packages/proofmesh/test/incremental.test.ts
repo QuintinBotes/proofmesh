@@ -48,7 +48,8 @@ const transitions: Transition[] = [
   // A file linked into two projects is keyed by both, so an edit to either project reanalyses it.
   { name: 'edit beside a linked file', fixture: 'cs-linked', reused: 0, change: (r) => write(r, 'src/B/Use.cs', (t) => `${t}\n// changed\n`) },
   // The TypeScript adapter declares no units: any change reanalyses every file.
-  { name: 'edit', fixture: 'ts-invoicing', reused: 0, change: (r) => write(r, 'packages/format/src/currency.ts', (t) => `${t}\n// changed\n`) },
+  // The unchanged package.json is a build adapter source whose cached file result is replayed (FR124), so one file is reused (here and for the tsconfig.json of ts-prisma below).
+  { name: 'edit', fixture: 'ts-invoicing', reused: 1, change: (r) => write(r, 'packages/format/src/currency.ts', (t) => `${t}\n// changed\n`) },
   // py-shop: app imports shop, whose __init__ and cart import each other, and cart imports pricing and discounts; legacy stands alone.
   { name: 'edit a module nothing imports', fixture: 'py-shop', reused: 5, change: (r) => write(r, 'legacy.py', (t) => t.replace('return 0', 'return 1')) },
   { name: 'rename a function its importers call', fixture: 'py-shop', reused: 2, change: (r) => write(r, 'shop/pricing.py', (t) => t.replace('def total(', 'def subtotal(')) },
@@ -59,7 +60,13 @@ const transitions: Transition[] = [
   { name: 'A9 rename a mapped table', fixture: 'py-django', reused: 7, change: (r) => write(r, 'shop/models.py', (t) => t.replace('db_table = "sales_orders"', 'db_table = "orders"')) },
   // ts-prisma: the TypeScript adapter reads the Prisma schema as configuration (A36), so renaming a model's table reanalyses every
   // TypeScript file, whose model accesses now reference the new table, as well as the schema itself.
-  { name: 'A36 rename the table a Prisma model maps to', fixture: 'ts-prisma', reused: 0, change: (r) => write(r, 'prisma/schema.prisma', (t) => t.replace('@@map("users")', '@@map("accounts")')) },
+  { name: 'A36 rename the table a Prisma model maps to', fixture: 'ts-prisma', reused: 1, change: (r) => write(r, 'prisma/schema.prisma', (t) => t.replace('@@map("users")', '@@map("accounts")')) },
+  // build-graph: the build adapter answers every fact in `workspace`, which is asked on each index and never cached, so a build fact never
+  // goes stale. A manifest edit reanalyses the seven manifests (cheap file results) and, for package.json, which the TypeScript adapter also
+  // reads as configuration, the four TypeScript files; a new Go file changes no adapter's inputs, so all 13 files keep their facts (FR124).
+  { name: 'FR124 edit a go.mod', fixture: 'build-graph', reused: 6, change: (r) => write(r, 'svc/go.mod', (t) => t.replace('v1.8.1', 'v1.9.0')) },
+  { name: 'FR124 add a Go file under a project', fixture: 'build-graph', reused: 13, change: (r) => fs.writeFileSync(path.join(r, 'lib/extra.go'), 'package lib\n\nfunc Extra() int {\n\treturn 1\n}\n') },
+  { name: 'FR124 rename a package', fixture: 'build-graph', reused: 2, change: (r) => write(r, 'packages/core/package.json', (t) => t.replace('@acme/core', '@acme/kernel')) },
 ]
 
 describe('SC004 FR008 FR014 A16 an incremental index seals exactly what a clean index of the same tree seals', () => {

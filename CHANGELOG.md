@@ -4,6 +4,10 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 ## Unreleased
 
+Build graph, JavaScript and Go (part of #5):
+
+- A build adapter reads `package.json`, `tsconfig.json`, `go.mod` and `go.work` as captured text, never running a script or tool. A named package or Go module is a `project` symbol that `contains` the module symbol of each file under it (nearest manifest first), so `analyze_impact` groups dependents by project; it records `depends_on` between projects in the repository (workspace members, `tsconfig` references, `go.work` and local `replace`) and `depends_on_package` for other dependencies with their versions (FR119 to FR124). Cargo, pyproject, Composer and gemspec manifests stay open on #5.
+
 Syntax-tier structure, Go and Java (#4):
 
 - The syntax tier records each Go and Java import statement with the module as written (and a Go alias), each Java `extends` and `implements` and each Go struct embedding as `inherits` or `implements` from the declaring type, all unresolved with `outside_capability` (FR115 to FR117). `languages.md` states per language which of imports, heritage and calls the tier records (FR118).

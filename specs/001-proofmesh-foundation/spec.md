@@ -262,6 +262,15 @@ Acceptance: CI runs my pull request without secrets or release credentials; lice
 - FR117: MUST leave every syntax-tier `imports`, `inherits` and `implements` row unresolved with reason `outside_capability` and no target; binding them belongs to constrained resolution (FR023).
 - FR118: MUST state in `docs/proofmesh/languages.md`, per syntax-tier language, which of imports, heritage and calls the tier records.
 
+### Build graph
+
+- FR119: MUST declare, from the manifests of the JavaScript and Go ecosystems read as captured text, one `project` symbol per `package.json` that names a package and per `go.mod`, named by the npm name or the Go module path and declared at the line of that name; a manifest that names nothing declares none.
+- FR120: MUST record `contains` from each project to the module symbol of every source file under it, from the nearest enclosing manifest that declares a project; a file under none is contained by none, and `analyze_impact` groups its dependents under the project (never `(no project)`) when one contains it.
+- FR121: MUST record `depends_on` between projects in the repository, `resolved` and from the configuration adapter, at the line that declares each: a `package.json` dependency on a workspace member (or a `workspace:`, `file:` or `link:` dependency), a `tsconfig.json` `references` entry, and a `go.mod` `require` that a local `replace` or a module a `go.work` above it uses satisfies. A path outside the repository or without a manifest is `unresolved` with reason `dependency_missing` naming the path; two projects of one name make a dependency on it `ambiguous` with both as candidates.
+- FR122: MUST record `depends_on_package` to every other declared dependency as `resolved_external` `<ecosystem>:<name>` (`npm`, `go`) with the declared version in `detail.version`.
+- FR123: MUST fail a manifest that does not parse, with a disposition detail naming the line, and still read every other manifest.
+- FR124: MUST keep every `package.json` and `tsconfig.json` reaching the TypeScript adapter as configuration as well as the build adapter, and MUST answer every build fact on each index, so that an incremental index equals a clean one (FR014).
+
 ### Evidence and claims
 
 - FR025: MUST link reported graph facts to source evidence, hashes, extractor versions, and analysis mode.

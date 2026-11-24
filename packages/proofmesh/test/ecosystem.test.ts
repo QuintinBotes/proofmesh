@@ -55,7 +55,8 @@ describe('A11 A28 get_ecosystem: a workspace as nodes and links, from one sealed
     expect(check('envelope.schema.json', env)).toBeUndefined()
     expect(check('tools/get_ecosystem.data.schema.json', env.data)).toBeUndefined()
     expect(env.snapshot).toEqual({ id: record.id, repository_id: 'ws_shop', analysis_mode: 'no_execution', published_at: record.sealed_at, members: [{ repository_id: a!.repository_id, snapshot_id: a!.snapshot_id }, { repository_id: b!.repository_id, snapshot_id: b!.snapshot_id }] })
-    const member = (m: Member) => ({ repository_id: m.repository_id, name: m.name, snapshot_id: m.snapshot_id, current: true, symbols: m.symbols, files_indexed: m.files_indexed, endpoints: 0, channels: 0, projects: 0 })
+    // beta's two package.json files name ts-packages and @fx/util, so the build adapter declares two projects (FR119); alpha's name none.
+    const member = (m: Member) => ({ repository_id: m.repository_id, name: m.name, snapshot_id: m.snapshot_id, current: true, symbols: m.symbols, files_indexed: m.files_indexed, endpoints: 0, channels: 0, projects: m.name === 'beta' ? 2 : 0 })
     expect(env.data).toEqual({
       workspace: { name: 'shop', link_file_id: record.id, sealed_at: record.sealed_at, rules: { http_route: '1', messaging: '1' } },
       members: [member(a!), member(b!)].sort((x, y) => (x.repository_id < y.repository_id ? -1 : 1)),

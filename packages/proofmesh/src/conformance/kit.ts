@@ -24,7 +24,7 @@ const builtInOf = (s: KitSubject) => BUILT_IN.find((b) => b.id === s.id && b.ent
 /** The adapter as the kit runs it: a built-in keeps its own configuration rules, and every adapter takes the files the subject names. */
 const specOf = (s: KitSubject): AdapterSpec => {
   const b = builtInOf(s)
-  return b ? { ...b, extensions: s.extensions, languages: new Set(Object.values(s.extensions)) } : {
+  return b ? { ...b, extensions: s.extensions, languages: Object.keys(s.extensions).length ? new Set(Object.values(s.extensions)) : b.languages } : {
     id: s.id, languages: new Set(Object.values(s.extensions)), extensions: s.extensions, isConfig: (name) => s.configNames.includes(name),
     entry: () => s.entry, unavailable: () => `adapter_unavailable:${s.id}`,
   }

@@ -1,0 +1,47 @@
+{
+  "dispositions": {
+    "go.work": ["indexed", null],
+    "lib/go.mod": ["indexed", null],
+    "lib/lib.go": ["indexed", null],
+    "package.json": ["indexed", null],
+    "packages/core/package.json": ["indexed", null],
+    "packages/core/src/index.ts": ["indexed", null],
+    "packages/ui/package.json": ["indexed", null],
+    "packages/ui/src/button.ts": ["indexed", null],
+    "packages/ui/src/theme.ts": ["indexed", null],
+    "packages/ui/tsconfig.json": ["indexed", null],
+    "scripts/orphan.ts": ["indexed", null],
+    "svc/go.mod": ["indexed", null],
+    "svc/main.go": ["indexed", null]
+  },
+  "symbols": [
+    {"kind": "project", "qualified_name": "@acme/ui", "lines": [2, 2], "signature": null},
+    {"kind": "project", "qualified_name": "@acme/core", "lines": [2, 2], "signature": null},
+    {"kind": "project", "qualified_name": "example.com/svc", "lines": [1, 1], "signature": null},
+    {"kind": "project", "qualified_name": "example.com/lib", "lines": [1, 1], "signature": null},
+    {"kind": "module", "qualified_name": "lib/lib", "lines": [1, 5], "signature": null},
+    {"kind": "module", "qualified_name": "packages/core/src/index", "lines": [1, 1], "signature": null},
+    {"kind": "module", "qualified_name": "packages/ui/src/button", "lines": [1, 5], "signature": null},
+    {"kind": "module", "qualified_name": "packages/ui/src/theme", "lines": [1, 3], "signature": null},
+    {"kind": "module", "qualified_name": "scripts/orphan", "lines": [1, 1], "signature": null},
+    {"kind": "module", "qualified_name": "svc/main", "lines": [1, 7], "signature": null},
+    {"kind": "function", "qualified_name": "lib/lib:Hello", "lines": [3, 5], "signature": null},
+    {"kind": "function", "qualified_name": "packages/ui/src/button:button", "lines": [3, 5], "signature": "button(): string"},
+    {"kind": "function", "qualified_name": "packages/ui/src/theme:color", "lines": [1, 3], "signature": "color(): string"},
+    {"kind": "function", "qualified_name": "svc/main:main", "lines": [5, 7], "signature": null},
+    {"kind": "variable", "qualified_name": "packages/core/src/index:version", "lines": [1, 1], "signature": null},
+    {"kind": "variable", "qualified_name": "scripts/orphan:orphan", "lines": [1, 1], "signature": null}
+  ],
+  "structure": [
+    {"type": "depends_on", "from": "@acme/ui", "to": "@acme/core"},
+    {"type": "depends_on", "from": "@acme/ui", "to": "@acme/core"},
+    {"type": "depends_on", "from": "example.com/svc", "to": "example.com/lib"},
+    {"type": "depends_on_package", "from": "@acme/ui", "external": {"module": "npm", "name": "react"}, "detail": {"version": "^18.3.1"}},
+    {"type": "depends_on_package", "from": "example.com/svc", "external": {"module": "go", "name": "github.com/spf13/cobra"}, "detail": {"version": "v1.8.1"}},
+    {"type": "contains", "from": "@acme/core", "to": "packages/core/src/index"},
+    {"type": "contains", "from": "@acme/ui", "to": "packages/ui/src/button"},
+    {"type": "contains", "from": "@acme/ui", "to": "packages/ui/src/theme"},
+    {"type": "contains", "from": "example.com/lib", "to": "lib/lib"},
+    {"type": "contains", "from": "example.com/svc", "to": "svc/main"}
+  ]
+}

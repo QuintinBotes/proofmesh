@@ -98,8 +98,9 @@ function classify(root: string, rel: string, ignored: (rel: string) => boolean, 
   const name = path.posix.basename(rel)
   if (registry.serviceRegistries.includes(rel)) return { path: rel, size, status: 'capture', detail: null, language: 'service-registry', role: 'registry' }
   if ((CODEOWNERS_PATHS as readonly string[]).includes(rel)) return { path: rel, size, status: 'capture', detail: null, language: 'codeowners', role: 'ownership' }
-  // A source stays a source when another adapter also reads it as configuration, as the TypeScript adapter reads Prisma schemas (A36).
-  const language = registry.sourceLanguage(name)
+  // A source stays a source when another adapter also reads it as configuration, as the TypeScript adapter reads Prisma schemas (A36)
+  // and package.json, which the build adapter analyses as a manifest (FR124).
+  const language = registry.sourceLanguage(name) ?? registry.manifestLanguage(name)
   if (language) return { path: rel, size, status: 'capture', detail: null, language, role: 'source' }
   const owner = registry.configOwner(name)
   if (owner) return { path: rel, size, status: 'capture', detail: null, language: `${owner.id}-config`, role: 'config' }

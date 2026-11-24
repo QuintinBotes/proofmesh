@@ -121,7 +121,8 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
       captured.push({ ...d, hash: store.put(fs.readFileSync(path.join(root, d.path))) })
     }
     const hashOf = new Map(captured.map((c) => [c.path, c.hash]))
-    const configPaths = new Set(captured.filter((c) => c.role === 'config').map((c) => c.path))
+    // A build manifest is a source of the build adapter, and still configuration as evidence (FR124).
+    const configPaths = new Set(captured.filter((c) => c.role === 'config' || (c.role === 'source' && registry!.manifestLanguage(path.posix.basename(c.path)))).map((c) => c.path))
     const manifest = manifestHash(discovered, (p) => hashOf.get(p))
 
     const workspace = path.join(jobDir, 'workspace')
@@ -346,6 +347,7 @@ class FactWriter {
       edge: db.prepare('insert into edge (src, type, dst, resolution, assertion_id) values (?, ?, ?, ?, ?)'),
       external: db.prepare('insert or ignore into external_symbol (id, module, name) values (?, ?, ?)'),
       candidate: db.prepare('insert or ignore into assertion_candidate (assertion_id, symbol_id, rank, reason) values (?, ?, ?, ?)'),
+      moduleOf: db.prepare("select s.id from symbol s where s.file_id = ? and s.kind = 'module' limit 1"),
     }
   }
 
@@ -440,12 +442,15 @@ class FactWriter {
     let written = 0
     for (const { rel: r, producer: p } of items) {
       if (++written % 25000 === 0) onProgress?.(written)
+      // A `contains` that targets a file means that file's module symbol, which another adapter declared; a file with none is not contained (FR120).
+      const module = r.type === 'contains' && r.target?.file ? (this.stmt.moduleOf!.get(this.fileId(r.target.file)) as { id: string } | undefined)?.id : undefined
+      if (r.type === 'contains' && r.target?.file && !module) continue
       const kind = r.type === 'calls' ? 'call_site' : r.type === 'imports' ? 'import_statement' : this.configPaths.has(r.site.path) ? 'configuration' : 'reference_site'
       const ev = this.evidence(r.site.path, r.site.range, kind, p)
       const source = this.ref(p, r.source)
       if (!source.id) throw new AdapterProtocolError(`a ${r.type} relationship must name its source`)
       const resolved = r.resolution === 'resolved' || r.resolution === 'resolved_external'
-      const target = resolved ? this.ref(p, r.target) : { kind: null, id: null }
+      const target = module ? { kind: 'symbol', id: module } : resolved ? this.ref(p, r.target) : { kind: null, id: null }
       if (resolved && !target.id) throw new AdapterProtocolError(`a ${r.resolution} ${r.type} relationship must name its target`)
       if (r.resolution === 'resolved_external' && target.kind !== 'external') throw new AdapterProtocolError('resolved_external must target an external symbol')
       if (r.resolution === 'resolved' && target.kind === 'external') throw new AdapterProtocolError('resolved must target a symbol or file in the snapshot')
