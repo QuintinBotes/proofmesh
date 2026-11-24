@@ -27,9 +27,11 @@ function aggregates(db: Database.Database, snapshotId: string): Aggregates {
   // Snapshots written before the aggregate tables existed compute the same rows once per process.
   const stored = !!db.prepare("select 1 from sqlite_master where name = 'file_link'").get()
   const stats = new Map((db.prepare(stored ? 'select file_id, symbols, entries from file_stat' : STATS_SQL).all() as Array<{ file_id: string; symbols: number; entries: number }>).map((r) => [r.file_id, r]))
+  // A manifest holds the project it declares and no code, so it is no area of its own: a root package.json must not stop the overview stepping down into src.
+  const manifestOnly = new Set((db.prepare("select file_id from symbol group by file_id having sum(kind <> 'project') = 0").all() as Array<{ file_id: string }>).map((r) => r.file_id))
   const files = (db.prepare("select id, path from file where disposition = 'indexed' order by path").all() as Array<{ id: string; path: string }>)
     .map((f) => ({ ...f, symbols: stats.get(f.id)?.symbols ?? 0, entries: stats.get(f.id)?.entries ?? 0 }))
-    .filter((f) => f.entries > 0)
+    .filter((f) => f.entries > 0 && !manifestOnly.has(f.id))
   const links = db.prepare(stored ? 'select src_file as src, dst_file as dst, type, n from file_link' : LINKS_SQL).all() as Aggregates['links']
   const result = { files, links }
   memo.set(snapshotId, result)

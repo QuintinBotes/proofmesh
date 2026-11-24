@@ -330,3 +330,17 @@ describe('FR125 a named package.json changes no answer other than the project a 
     expect(tests.tests.map((t) => [t.qualified_name, t.project, t.depth])).toEqual([['src/a.test:checksF', 'pkg', 1]])
   }, 240000)
 })
+
+describe('FR125 a manifest is no area of its own in the overview', () => {
+  it('FR125 a root package.json does not stop the overview stepping down into src, and a manifest is not listed beside the code', async () => {
+    const { dataDir } = await indexedRepo({
+      'package.json': json({ name: 'root-pkg' }),
+      'src/a.ts': 'export function a(): number {\n  return 1\n}\n',
+      'src/b/c.ts': "import { a } from '../a'\nexport function c(): number {\n  return a()\n}\n",
+      'src/d/e.ts': "import { a } from '../a'\nexport function e(): number {\n  return a()\n}\n",
+    })
+    const data = tool(dataDir, 'get_overview', {}).data as { path: string; children: Array<{ name: string }> }
+    expect(data.path).toBe('src')
+    expect(data.children.map((c) => c.name).sort()).toEqual(['a.ts', 'b', 'd'])
+  }, 240000)
+})
