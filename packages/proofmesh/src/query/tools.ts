@@ -570,8 +570,8 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
       groups.set(key, g)
     }
     // The census is built when the snapshot is (FR136); one sealed before it answers no rows and says so.
-    const languages = meta.census ? (JSON.parse(meta.census) as unknown[]).slice(0, ctx.limits.max_rows) : []
-    const censusRows = meta.census ? (JSON.parse(meta.census) as Array<{ kind: string }>) : []
+    const censusRows = meta.census ? (JSON.parse(meta.census) as Array<{ kind: string; language: string; files: number }>) : []
+    const languages = censusRows
     const fileSummary = [...groups.values()].sort((a, b) => b.files - a.files || (a.extension < b.extension ? -1 : 1)).slice(0, 50)
     return {
       data: {
@@ -602,7 +602,7 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
         ...(ask ? [] : ['No file rows were asked for: file_summary groups the files by disposition, reason and extension; pass files to list rows.']),
         ...(!meta.census ? ['This snapshot was sealed before the language census existed, so languages is empty; index again to build it.'] : []),
         ...(meta.census && !censusRows.some((r) => r.kind === 'code' || r.kind === 'template') ? ['No code was recognised in this repository: the rows are data and prose files.'] : []),
-        ...(censusRows.length > languages.length ? [`languages lists the first ${languages.length} of ${censusRows.length} rows.`] : []),
+        ...(censusRows.at(-1)?.language === 'other' ? [`The languages list ends with an other row that sums ${censusRows.at(-1)!.files} files of the smallest rows beyond the first ${censusRows.length - 1}; the census keeps at most ${censusRows.length} rows.`] : []),
       ],
     }
   },

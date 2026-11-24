@@ -4,6 +4,7 @@ import { sha256 } from '../core/hash.js'
 import { ProofmeshError } from '../core/errors.js'
 import { EXCLUDED_DIRS, discover, type Discovered } from './discovery.js'
 import { BUILT_IN_REGISTRY, type Registry } from './languages.js'
+import { CENSUS_VERSION } from './census.js'
 
 /** Files excluded for where they sit, under a path git ignores or a default excluded directory, are build output and local state (A21). */
 const LOCATION_RULES = new Set<string | null>(['gitignore', ...EXCLUDED_DIRS.map((d) => `**/${d}/**`)])
@@ -12,8 +13,8 @@ const LOCATION_RULES = new Set<string | null>(['gitignore', ...EXCLUDED_DIRS.map
  * The repository part of snapshot identity: every discovered path with its content hash when captured, or its disposition. Files
  * excluded for their location stay in the inventory but not here, so a build writing its output never makes a snapshot stale (A21).
  */
-export const manifestHash = (discovered: Discovered[], hashOf: (p: string) => string | undefined): string =>
-  sha256(discovered.filter((d) => !(d.status === 'excluded' && LOCATION_RULES.has(d.detail)))
+export const manifestHash = (discovered: Discovered[], hashOf: (p: string) => string | undefined, censusVersion: string = CENSUS_VERSION): string =>
+  sha256(`census ${censusVersion}\n` + discovered.filter((d) => !(d.status === 'excluded' && LOCATION_RULES.has(d.detail)))
     .map((d) => `${d.path}\t${hashOf(d.path) ?? '-'}\t${d.status === 'capture' ? 'capture' : `${d.status}:${d.detail}`}`).join('\n'))
 
 export type Change = { path: string; change: 'added' | 'modified' | 'deleted' }

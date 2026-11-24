@@ -49,15 +49,24 @@ const BY_INTERPRETER = index((l) => l[4])
 
 const known = (name: string, via_content?: boolean): Detected => {
   const final = RENAMED[name] ?? name
-  return { name: final, kind: kindOf(final, TYPES.get(name)!), ...(via_content ? { via_content } : {}) }
+  // A language a built-in adapter reads is code whichever of its files is looked at, so a row's kind never depends on file order.
+  return { name: final, kind: ADAPTER_IDS.has(final) ? 'code' : kindOf(final, TYPES.get(name)!), ...(via_content ? { via_content } : {}) }
 }
+export const NO_EXTENSION = '(no extension)'
+const PLAUSIBLE_EXTENSION = /^\.[a-z0-9]{1,8}$/
 const unknown = (extension: string): Detected => ({ name: 'unknown', kind: 'unknown', extension })
 const one = (candidates: string[] | undefined, preferred?: string): string | undefined => (candidates?.length === 1 ? candidates[0] : candidates && preferred && candidates.includes(preferred) ? preferred : undefined)
 
+// Comments and string literals say nothing about the language: they are blanked before a header is read.
+const COMMENTS_AND_STRINGS = /\/\*[\s\S]*?(?:\*\/|$)|\/\/[^\n]*|"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'/g
+const HEADER_BYTES = 65536
 const CPP = /\b(class\s+\w+\s*[:{]|namespace\s+\w+|template\s*<|typename\s|public:|private:|protected:|std::|using\s+namespace)|#include\s*<(iostream|string|vector|memory|map|cstdint|cstdlib|algorithm)>/
 const OBJC = /@(interface|implementation|protocol|property|import|class)\b|#import\b/
 /** A .h file is C++ or Objective-C when its content says so, and C otherwise, as Linguist reads it. */
-const header = (text: string): string => (CPP.test(text) ? 'C++' : OBJC.test(text) ? 'Objective-C' : 'C')
+const header = (raw: string): string => {
+  const text = raw.replace(COMMENTS_AND_STRINGS, ' ')
+  return CPP.test(text) ? 'C++' : OBJC.test(text) ? 'Objective-C' : 'C'
+}
 
 /** The program a shebang line names: through env and its options, without a version suffix when only the bare name is known. */
 function interpreter(text: string): string | undefined {
@@ -77,7 +86,7 @@ function interpreter(text: string): string | undefined {
  * The language and kind of one file, from its file name, its longest known extension, its shebang when it has no extension, and a
  * content check where an extension is ambiguous. `probe` returns the start of the file and is called only when needed.
  */
-export function detectLanguage(rel: string, probe: () => string | undefined): Detected {
+export function detectLanguage(rel: string, probe: (bytes?: number) => string | undefined): Detected {
   const file = path.posix.basename(rel)
   const byName = one(BY_FILENAME.get(file))
   if (byName) return known(byName)
@@ -85,14 +94,24 @@ export function detectLanguage(rel: string, probe: () => string | undefined): De
   // index.html.erb is tried as .html.erb, then .erb.
   for (let dot = lower.indexOf('.', 1); dot > 0; dot = lower.indexOf('.', dot + 1)) {
     const ext = lower.slice(dot)
-    if (ext === '.h') return known(header(probe() ?? ''), true)
+    if (ext === '.h') return known(header(probe(HEADER_BYTES) ?? ''), true)
     const hit = one(BY_EXTENSION.get(ext), PREFERRED_EXTENSION[ext])
     if (hit) return known(hit)
     if (BY_EXTENSION.has(ext)) return unknown(ext)
   }
   const last = lower.lastIndexOf('.')
-  if (last > 0) return unknown(lower.slice(last))
+  // Only a short suffix of letters and digits is an extension; anything else (a dated log, a version) shares one row.
+  if (last > 0) return unknown(PLAUSIBLE_EXTENSION.test(lower.slice(last)) ? lower.slice(last) : '(other)')
   const prog = interpreter(probe() ?? '')
   const viaShebang = prog && one(BY_INTERPRETER.get(prog), PREFERRED_INTERPRETER[prog])
-  return viaShebang ? known(viaShebang, true) : unknown(file)
+  return viaShebang ? known(viaShebang, true) : unknown(NO_EXTENSION)
+}
+
+/** Everything detection decides by, for the census version: change a rule or a table entry and the census is rebuilt. */
+export const DETECTION_RULES = {
+  // Bump when detectLanguage's logic changes without changing any of the data below.
+  revision: '2',
+  adapterNames: ADAPTER_LANGUAGE_NAMES, renamed: RENAMED, templates: [...TEMPLATES], markupCode: [...MARKUP_CODE],
+  preferredExtension: PREFERRED_EXTENSION, preferredInterpreter: PREFERRED_INTERPRETER,
+  patterns: [COMMENTS_AND_STRINGS.source, CPP.source, OBJC.source, PLAUSIBLE_EXTENSION.source], headerBytes: HEADER_BYTES,
 }

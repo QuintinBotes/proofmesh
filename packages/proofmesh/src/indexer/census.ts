@@ -1,7 +1,9 @@
-import type { Kind } from './language-detect.js'
+import { sha256 } from '../core/hash.js'
+import { DETECTION_RULES, type Kind } from './language-detect.js'
+import { LINGUIST } from './linguist-table.js'
 
-/** Part of snapshot identity: a change to how files are labelled or counted rebuilds the snapshots that carry the old census. */
-export const CENSUS_VERSION = '1'
+/** The rows past this many are summed into one `other` row, so the census stays bounded on a repository of many extensions. */
+export const MAX_ROWS = 64
 export const CENSUS_CAPABILITIES = ['symbols', 'imports', 'references', 'resolved_calls'] as const
 export const LEVELS = ['complete', 'partial', 'unsupported', 'failed', 'not_run'] as const
 type Counts = Record<(typeof LEVELS)[number], number>
@@ -33,29 +35,45 @@ export type CensusRow = {
  * The one table of language to precise route (FR140): the built-in adapter that reads it, the SDK and build it needs, and the SCIP
  * indexer a person can run in a repository they trust. docs/proofmesh/languages.md shows this table, and every remedy comes from it.
  */
-export type Route = { language: string; adapter?: string; sdk?: string; build?: string; scip?: string }
+export type Route = {
+  language: string; adapter?: string; sdk?: string; build?: string
+  /** The SCIP indexer, the command that runs it where its flags are certain, or its README where they are not, and what it needs first. */
+  scip?: string; run?: string; readme?: string; needs?: string
+}
+const CLANG = { scip: 'scip-clang', run: 'scip-clang --compdb-path=compile_commands.json', needs: 'a compile_commands.json' }
+const JAVA = { scip: 'scip-java', run: 'scip-java index' }
+const TYPESCRIPT = { scip: 'scip-typescript', run: 'scip-typescript index' }
 export const REMEDY_TABLE: Route[] = [
-  { language: 'C', scip: 'scip-clang' },
-  { language: 'C#', adapter: 'csharp', sdk: '.NET 10 SDK', build: 'dotnet build adapters/csharp -c Release', scip: 'scip-dotnet' },
-  { language: 'C++', scip: 'scip-clang' },
-  { language: 'Go', scip: 'scip-go' },
+  { language: 'C', ...CLANG },
+  { language: 'C#', adapter: 'csharp', sdk: '.NET 10 SDK', build: 'dotnet build adapters/csharp -c Release', scip: 'scip-dotnet', run: 'scip-dotnet index' },
+  { language: 'C++', ...CLANG },
+  { language: 'Go', scip: 'scip-go', run: 'scip-go' },
   { language: 'HCL', adapter: 'terraform' },
-  { language: 'Java', scip: 'scip-java' },
-  { language: 'JavaScript', adapter: 'typescript', scip: 'scip-typescript' },
-  { language: 'Kotlin', scip: 'scip-java' },
-  { language: 'PHP', scip: 'scip-php' },
-  { language: 'Python', adapter: 'python', scip: 'scip-python' },
-  { language: 'Ruby', scip: 'scip-ruby' },
-  { language: 'Rust', scip: 'rust-analyzer scip' },
-  { language: 'Scala', scip: 'scip-java' },
-  { language: 'TypeScript', adapter: 'typescript', scip: 'scip-typescript' },
+  { language: 'Java', ...JAVA },
+  { language: 'JavaScript', adapter: 'typescript', ...TYPESCRIPT },
+  { language: 'Kotlin', ...JAVA },
+  { language: 'PHP', scip: 'scip-php', readme: 'https://github.com/davidrjenni/scip-php' },
+  { language: 'Python', adapter: 'python', scip: 'scip-python', run: 'scip-python index . --project-name <name>' },
+  { language: 'Ruby', scip: 'scip-ruby', readme: 'https://github.com/sourcegraph/scip-ruby' },
+  { language: 'Rust', scip: 'rust-analyzer scip', run: 'rust-analyzer scip .' },
+  { language: 'Scala', ...JAVA },
+  { language: 'TypeScript', adapter: 'typescript', ...TYPESCRIPT },
 ]
+
+/**
+ * Part of the manifest hash that identifies a snapshot: derived from the remedy table, the vendored Linguist data and detection's
+ * rules, so a change to any of them rebuilds the snapshots that carry the old census. A change to the census logic itself bumps
+ * DETECTION_RULES.revision.
+ */
+export const censusVersion = (table: Route[] = REMEDY_TABLE): string => sha256(JSON.stringify({ table, linguist: LINGUIST, rules: DETECTION_RULES, rows: MAX_ROWS })).slice(0, 16)
+export const CENSUS_VERSION = censusVersion()
 const route = (language: string) => REMEDY_TABLE.find((r) => r.language === language)
 
+const indexer = (r: Route): string => (r.run ? `\`${r.run}\`${r.needs ? ` (needs ${r.needs})` : ''}` : r.readme ? `${r.scip}, see ${r.readme}` : 'none')
 export const remedyTableMarkdown = (): string => [
   '| Language | Built-in precise adapter | SDK and build it needs | SCIP indexer |',
   '|---|---|---|---|',
-  ...REMEDY_TABLE.map((r) => `| \`${r.language}\` | ${r.adapter ?? 'none'} | ${r.sdk ? `${r.sdk}; \`${r.build}\`` : 'none'} | ${r.scip ? `\`${r.scip}\`` : 'none'} |`),
+  ...REMEDY_TABLE.map((r) => `| \`${r.language}\` | ${r.adapter ?? 'none'} | ${r.sdk ? `${r.sdk}; \`${r.build}\`` : 'none'} | ${indexer(r)} |`),
 ].join('\n')
 
 const depth = (tier: string) => (tier === 'none' ? 0 : tier === 'syntax' ? 1 : tier.startsWith('scip:') ? 2 : 3)
@@ -74,13 +92,21 @@ function fileReason(f: CensusFile, tier: string): string | null {
 }
 
 /** The advice for a row: advice only, nothing here runs or installs anything. */
-function remedy(language: string, kind: Kind, reason: string | null): string | null {
+/** Where an adapter's entry point can be overridden from the environment, so a remedy can say when the override is the problem. */
+const OVERRIDE_ENV: Record<string, string> = { csharp: 'PROOFMESH_CS_ADAPTER' }
+export type CensusContext = { overrides?: Record<string, string> }
+function remedy(language: string, kind: Kind, reason: string | null, ctx: CensusContext): string | null {
   if (!reason || kind === 'data' || kind === 'prose' || kind === 'binary' || kind === 'unknown') return null
   const r = route(language)
-  const scip = (cmd: string) => `Run \`${cmd}\` in a repository you trust, then name its index with \`proofmesh scip add <repository> <index.scip>\`.`
+  const name = '`proofmesh scip add <repository> <index.scip>`'
+  const scip = (x: Route) => `${x.run ? `Run \`${x.run}\`` : `See ${x.readme} for how to run ${x.scip}`} in a repository you trust${x.needs ? ` (it needs ${x.needs})` : ''}, then name its index with ${name}.`
   if (reason.startsWith('adapter_unavailable:')) {
     const id = reason.slice('adapter_unavailable:'.length)
-    return r?.adapter === id && r.sdk ? `Install the ${r.sdk}, then build the adapter: \`${r.build}\`.` : `The ${id} adapter is not present in this install; reinstall Proofmesh or, for an adapter you added, restore its file.`
+    const build = r?.adapter === id && r.sdk ? `install the ${r.sdk}, then build the adapter: \`${r.build}\`.` : undefined
+    const override = ctx.overrides?.[id]
+    // A mistyped override is a different problem from a missing SDK: name the variable and the path it holds.
+    if (override && build) return `${OVERRIDE_ENV[id]} names ${override}, which does not exist; correct the path or unset it. Without it, ${build}`
+    return build ? build[0]!.toUpperCase() + build.slice(1) : `The ${id} adapter is not present in this install; reinstall Proofmesh or, for an adapter you added, restore its file.`
   }
   if (reason.startsWith('adapter_changed:')) {
     const id = reason.slice('adapter_changed:'.length)
@@ -88,9 +114,9 @@ function remedy(language: string, kind: Kind, reason: string | null): string | n
   }
   if (reason.startsWith('scip_stale:')) {
     const name = reason.slice('scip_stale:'.length)
-    return `The SCIP index ${name} no longer matches these files. Produce it again${r?.scip ? ` with \`${r.scip}\`` : ''} and name it again: \`proofmesh scip add <repository> <index.scip> --name ${name}\`.`
+    return `The SCIP index ${name} no longer matches these files. Produce it again${r?.run ? ` with \`${r.run}\`` : r?.scip ? ` with ${r.scip}` : ''} and name it again: \`proofmesh scip add <repository> <index.scip> --name ${name}\`.`
   }
-  if (reason === 'no_precise_tier' || reason === 'no_grammar') return r?.scip ? scip(r.scip) : `Install an adapter that reads ${language}: \`proofmesh adapter add <entry> --id <id> --extension <.ext>=<language>\`.`
+  if (reason === 'no_precise_tier' || reason === 'no_grammar') return r?.scip ? scip(r) : `Install an adapter that reads ${language}: \`proofmesh adapter add <entry> --id <id> --extension <.ext>=<language>\`.`
   return null
 }
 
@@ -102,14 +128,15 @@ const mostCommon = (values: string[]): string => {
 }
 
 /** One row per language, every file in exactly one (FR136): the rows are ordered by kind, then file count, then name. */
-export function buildCensus(files: CensusFile[]): CensusRow[] {
+export function buildCensus(files: CensusFile[], ctx: CensusContext = {}): CensusRow[] {
   const groups = new Map<string, CensusFile[]>()
   for (const f of files) {
     const key = f.label.kind === 'unknown' ? `unknown\u0000${f.label.extension}` : f.label.language
     groups.set(key, [...(groups.get(key) ?? []), f])
   }
-  const rows = [...groups.values()].map((group): CensusRow => {
-    const first = group[0]!.label
+  const rowOf = (group: CensusFile[], forced?: CensusFile['label']): CensusRow => {
+    // A language has one kind whichever of its files comes first.
+    const first = forced ?? group.map((f) => f.label).sort((a, b) => KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind))[0]!
     const tierOf = (f: CensusFile) => (f.disposition === 'indexed' && f.capabilities.tier ? f.capabilities.tier : 'none')
     const dispositions = { indexed: 0, excluded: 0, unsupported: 0, failed: 0 }
     const excluded: Record<string, number> = {}
@@ -135,10 +162,16 @@ export function buildCensus(files: CensusFile[]): CensusRow[] {
     const reason = !open.length ? 'excluded' : reasons.find((r) => r.startsWith('scip_stale:')) ?? (reasons.length ? mostCommon(reasons) : null)
     return {
       language: first.language, kind: first.kind, ...(first.kind === 'unknown' ? { extension: first.extension! } : {}),
-      files: group.length, dispositions, excluded, tier: ranked[0]?.tier ?? 'none', tiers: ranked, capabilities, reason, remedy: remedy(first.language, first.kind, reason),
+      files: group.length, dispositions, excluded, tier: ranked[0]?.tier ?? 'none', tiers: ranked, capabilities, reason, remedy: remedy(first.language, first.kind, reason, ctx),
     }
-  })
-  return rows.sort((a, b) => KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind) || b.files - a.files || (a.language < b.language ? -1 : a.language > b.language ? 1 : (a.extension ?? '') < (b.extension ?? '') ? -1 : 1))
+  }
+  const order = (a: CensusRow, b: CensusRow) => KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind) || b.files - a.files || (a.language < b.language ? -1 : a.language > b.language ? 1 : (a.extension ?? '') < (b.extension ?? '') ? -1 : 1)
+  const ranked = [...groups.values()].map((g) => ({ g, row: rowOf(g) })).sort((a, b) => order(a.row, b.row))
+  if (ranked.length <= MAX_ROWS) return ranked.map((r) => r.row)
+  // Past the cap the smallest rows are summed into one `other` row, last, so the rows still sum to the inventory.
+  const other = rowOf(ranked.slice(MAX_ROWS - 1).flatMap((r) => r.g), { language: 'other', kind: 'unknown', extension: '(other)' })
+  const { extension: _e, ...rest } = other
+  return [...ranked.slice(0, MAX_ROWS - 1).map((r) => r.row), { ...rest, reason: 'row_cap', remedy: null }]
 }
 
 const BADNESS = ['failed', 'not_run', 'unsupported', 'partial', 'complete']

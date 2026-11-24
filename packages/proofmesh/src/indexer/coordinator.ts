@@ -19,7 +19,7 @@ import { AdapterProcess, AdapterProtocolError, PROTOCOL_VERSION } from './adapte
 import { assemble, FactCache, fileKeys, splitByFile } from './fact-cache.js'
 import { analysisConfig, checkoutCommit, discover, gitInfo, type Discovered } from './discovery.js'
 import { registryFor, type AdapterSpec, type Registry } from './languages.js'
-import { buildCensus, CENSUS_VERSION } from './census.js'
+import { buildCensus } from './census.js'
 
 export type IndexResult = {
   snapshotId: string
@@ -155,7 +155,7 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
     const adapters = runs.map((r) => ({ ...r.manifest!, analysis_mode: r.mode, external_inputs: r.inputs ?? [], entry_sha256: r.entrySha256! })).sort((a, b) => (a.id < b.id ? -1 : 1))
     const analysisMode: Mode = adapters.some((a) => a.analysis_mode === 'trusted_build') ? 'trusted_build' : 'no_execution'
     const configs = Object.fromEntries(runs.map((r) => [r.spec.id, catalog.adapterConfig(repo.id, r.spec.id)]))
-    const identity = { repository_id: repo.id, manifest_hash: manifest, config_hash: sha256(canonicalJson({ ...analysisConfig(), adapters: configs })), analysis_mode: analysisMode, adapters, format_version: FORMAT_VERSION, format_ddl: sha256(readSql(`snapshot-format/${FORMAT_VERSION}.sql`)), ownership: OWNERSHIP_VERSION, census: CENSUS_VERSION }
+    const identity = { repository_id: repo.id, manifest_hash: manifest, config_hash: sha256(canonicalJson({ ...analysisConfig(), adapters: configs })), analysis_mode: analysisMode, adapters, format_version: FORMAT_VERSION, format_ddl: sha256(readSql(`snapshot-format/${FORMAT_VERSION}.sql`)), ownership: OWNERSHIP_VERSION }
     const identityJson = canonicalJson(identity)
     const snapshotId = `snap_${sha256(identityJson).slice(0, 24)}`
     const peaks = async () => {
@@ -309,7 +309,7 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
       const labels = new Map(discovered.map((d) => [d.path, d.census!]))
       const censusFiles = (db.prepare('select path, disposition, disposition_detail as detail, capabilities from file').all() as Array<{ path: string; disposition: string; detail: string | null; capabilities: string }>)
         .map((f) => ({ label: labels.get(f.path)!, disposition: f.disposition, detail: f.detail, capabilities: JSON.parse(f.capabilities) as Record<string, string> }))
-      db.prepare("insert into meta (key, value) values ('census', ?)").run(JSON.stringify(buildCensus(censusFiles)))
+      db.prepare("insert into meta (key, value) values ('census', ?)").run(JSON.stringify(buildCensus(censusFiles, { overrides: process.env.PROOFMESH_CS_ADAPTER ? { csharp: process.env.PROOFMESH_CS_ADAPTER } : {} })))
       const counts = countDispositions((db.prepare('select disposition from file').all() as Array<{ disposition: string }>).map((r) => r.disposition))
       progress({ phase: 'seal', done: 0, total: 0 })
       sealAndPublish(catalog, db, stagingFile, snapshotId, repo.id, keepCurrent)
