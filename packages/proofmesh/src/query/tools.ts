@@ -104,7 +104,7 @@ type Partial = {
 }
 
 /** Tools whose shrink list has a total order and honours ctx.page.offset, so a cursor continues it with no omission or duplicate. */
-const PAGED = new Set<ToolName>(['find_symbols', 'get_relationships', 'search_sources', 'workspace_status', 'find_tests', 'impact_completeness'])
+const PAGED = new Set<ToolName>(['get_symbols_at', 'find_symbols', 'get_relationships', 'search_sources', 'workspace_status', 'find_tests', 'impact_completeness'])
 /** Tools that answer over a workspace's link file rather than one repository snapshot (A28). None yet in this file; get_ecosystem joins at integration. */
 const WORKSPACE_SCOPED = new Set<ToolName>([])
 
@@ -713,24 +713,26 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
   },
 
   get_symbols_at(ctx, input) {
-    const asked = input.locations as string[]
-    if (asked.length > MAX_LOCATIONS) throw new ProofmeshError('INVALID_ARGUMENT', `get_symbols_at takes at most ${MAX_LOCATIONS} locations per call; ${asked.length} were given`, { detail: 'too_many_locations', limit: MAX_LOCATIONS })
+    const all = input.locations as string[]
+    if (all.length > MAX_LOCATIONS) throw new ProofmeshError('INVALID_ARGUMENT', `get_symbols_at takes at most ${MAX_LOCATIONS} locations per call; ${all.length} were given`, { detail: 'too_many_locations', limit: MAX_LOCATIONS })
+    // max_rows or max_bytes may answer fewer than were asked: the cursor continues with the rest, in order.
+    const end = ctx.page.offset + ctx.limits.max_rows, asked = all.slice(ctx.page.offset, end)
     type At = { id: string; kind: string; name: string; qualified_name: string; stable_key: string; path: string; start_line: number; end_line: number; extractor: string }
     const files = new Map<string, At[]>()
     let column = false
     const results = asked.map((location) => {
       const m = /^(.+?):(\d+)(?::(\d+))?$/.exec(location)
-      if (!m) return { location, symbol: null, error: { code: 'invalid_location', message: `${location} is not path:line` } }
-      column ||= m[3] !== undefined
-      const line = Number(m[2])
+      // The input schema holds every location to path:line, so the pattern matches.
+      column ||= m![3] !== undefined
+      const line = Number(m![2])
       let file: { id: string; path: string }
       try {
-        file = fileAt(ctx, m[1]!)
+        file = fileAt(ctx, m![1]!)
       } catch (e) {
         if (!(e instanceof ProofmeshError) || e.code !== 'INVALID_ARGUMENT') throw e
         const disposition = e.details.disposition as string | undefined
         if (e.details.detail === 'path_outside_repository') return { location, symbol: null, error: { code: 'path_outside_repository', message: e.message } }
-        if (disposition === 'not found') return { location, symbol: null, error: { code: 'not_found', message: `${m[1]} is not a file of snapshot ${ctx.snapshot.id}` } }
+        if (disposition === 'not found') return { location, symbol: null, error: { code: 'not_found', message: `${m![1]} is not a file of snapshot ${ctx.snapshot.id}` } }
         return { location, symbol: null, disposition: disposition!, reason: 'not_indexed' }
       }
       let syms = files.get(file.id)
@@ -743,7 +745,7 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
       return { location, symbol: { ...rest, tier: extractor === 'scip' ? 'scip' : extractor === 'syntax' ? 'syntax' : 'precise' } }
     })
     return {
-      data: { results }, stop_reasons: results.length > ctx.limits.max_rows ? ['max_rows'] : [], more: false, shrink: 'results',
+      data: { results }, stop_reasons: all.length > end ? ['max_rows'] : [], more: all.length > end, shrink: 'results',
       limitations: column ? ['A location with a column is answered by its line only.'] : [],
       lean: (data) => (data.results as typeof results).map((r) => {
         const s = r.symbol as { kind: string; name: string; qualified_name: string; path: string; start_line: number } | null

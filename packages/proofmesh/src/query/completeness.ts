@@ -93,7 +93,7 @@ function touched(db: Database.Database, ranges: Ranges, text: (path: string) => 
     const imports = db.prepare("select e.start_line as s, e.end_line as e from assertion a join assertion_evidence ae on ae.assertion_id = a.id join evidence e on e.id = ae.evidence_id where a.type = 'imports' and a.source_id = ?").all(module?.file_id ?? '') as Array<{ s: number; e: number }>
     for (const [s, e] of rs) {
       for (let l = s; l <= Math.min(e, Math.max(lines.length, s)); l++) {
-        const hit = innermost(inner, l)
+        const hit = innermost(inner, l, false)
         const sym = hit ?? (module && !notAStatement(lines[l - 1] ?? '') && !imports.some((i) => i.s <= l && l <= i.e) ? module : undefined)
         if (sym) out.set(sym.id, sym)
       }

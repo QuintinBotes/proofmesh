@@ -100,7 +100,6 @@
                 "enum": [
                   "not_found",
                   "line_out_of_range",
-                  "invalid_location",
                   "path_outside_repository"
                 ]
               },

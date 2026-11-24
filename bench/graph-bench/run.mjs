@@ -292,3 +292,5 @@ extra.push(`- get_symbols_at (FR122), warm, MCP stdio: p95 ${symbol_at_latency.s
 const md = [`# Graph bench: ${path.basename(REPO)} @ ${meta.commit.slice(0, 8)}`, '', `Graphify ${meta.graphify}; ProofMesh snapshot ${snapshotId} (MCP start ${meta.pm_mcp_startup_ms} ms); truth: ${meta.truth}.`, '', ...lines, '', ...extra, ''].join('\n')
 fs.writeFileSync(path.join(OUT, 'results.md'), md)
 console.log(md)
+// The budget can fail the run: the results are written first, so the figures stay for whoever reads them.
+if (!symbol_at_latency.within_budget) { console.error('get_symbols_at is over its latency budget'); process.exitCode = 1 }

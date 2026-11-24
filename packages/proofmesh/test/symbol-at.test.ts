@@ -2,11 +2,12 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { innermost } from '../src/query/symbol-at.js'
+import { syntaxSymbols } from '../src/scip/syntax-spans.js'
 import { ProofmeshError } from '../src/core/errors.js'
-import { cli, fixtureRepo, tmpDir, tool } from './helpers.js'
+import { cli, fixtureRepo, tmpDir, tool, withSnapshot } from './helpers.js'
 import { encode, type Doc } from './helpers-scip.js'
 // @ts-expect-error the benchmark helper is a plain module outside the package
-import { percentile, sampleLocations } from '../../../bench/graph-bench/symbol-at-latency.mjs'
+import { measureSymbolAt, percentile, sampleLocations } from '../../../bench/graph-bench/symbol-at-latency.mjs'
 
 type Result = { location: string; symbol: Record<string, unknown> | null; disposition?: string; reason?: string; error?: { code: string } }
 const GO = 'scip-go gomod example.com/shop v1 '
@@ -150,5 +151,110 @@ describe('FR119 FR120 FR121 FR122 FR123 get_symbols_at: the innermost symbol at 
     let err: unknown
     try { tool(dd, 'get_symbols_at', { locations: ['ts/shapes.ts:6'], freshness: 'strict' }) } catch (e) { err = e }
     expect((err as ProofmeshError).code).toBe('STALE_INPUT')
+  })
+
+  it('FR119 a kind outside the order ranks after the types, and equal spans of one unranked kind go by id', () => {
+    const row = (id: string, kind: string) => ({ id, kind, start_line: 1, end_line: 4 })
+    expect(innermost([row('a', 'resource'), row('b', 'class')], 2)?.id).toBe('b')
+    expect(innermost([row('z', 'resource'), row('y', 'resource'), row('x', 'function')], 2)?.id).toBe('x')
+    expect(innermost([row('z', 'resource'), row('y', 'resource')], 2)?.id).toBe('y')
+  })
+
+  it('FR119 impact_completeness keeps its own order on equal spans: the first row, not the first kind', () => {
+    const row = (id: string, kind: string) => ({ id, kind, start_line: 1, end_line: 4 })
+    expect(innermost([row('c', 'class'), row('a', 'function')], 2, false)?.id).toBe('c')
+    expect(innermost([row('a', 'function'), row('c', 'class')], 2, false)?.id).toBe('a')
+    expect(innermost([row('c', 'class'), { id: 'n', kind: 'method', start_line: 2, end_line: 3 }], 2, false)?.id).toBe('n')
+  })
+
+  it('FR119 the input schema holds locations to path:line, at most 100; a path outside the repository is answered for that location only', () => {
+    for (const bad of [['ts/shapes.ts'], ['ts/shapes.ts:x'], ['a:b'], [''], [], Array.from({ length: 101 }, () => 'ts/shapes.ts:6')]) {
+      let err: unknown
+      try { at(bad) } catch (e) { err = e }
+      expect((err as ProofmeshError | undefined)?.code, JSON.stringify(bad).slice(0, 40)).toBe('INVALID_ARGUMENT')
+    }
+    const rs = results([path.join(repo, 'ts/shapes.ts:6'), 'ts/../ts/shapes.ts:6', '../outside.ts:1', '/etc/passwd:1', 'ts/shapes.ts:6'])
+    expect(rs[0]!.symbol?.name).toBe('area')
+    expect(rs[1]!.symbol?.name).toBe('area')
+    expect(rs[2]).toMatchObject({ symbol: null, error: { code: 'path_outside_repository' } })
+    expect(rs[3]).toMatchObject({ symbol: null, error: { code: 'path_outside_repository' } })
+    expect(rs[4]!.symbol?.name).toBe('area')
+  })
+
+  it('FR119 max_rows and max_bytes cut the answer at a location and a cursor continues with the rest, in order', () => {
+    const asked = Array.from({ length: 40 }, (_, i) => ['ts/shapes.ts:6', 'go/calc.go:4', 'py/calc.py:3', 'nope.ts:1'][i % 4]!)
+    for (const limits of [{ max_rows: 7 }, { max_bytes: 2500 }]) {
+      const got: Result[] = []
+      let cursor: string | null = null, pages = 0
+      do {
+        const env = at(asked, { limits, ...(cursor ? { cursor } : {}) })
+        const page = (env.data as { results: Result[] }).results
+        expect(page.length, JSON.stringify(limits)).toBeLessThan(asked.length)
+        got.push(...page)
+        cursor = env.completion.next_cursor ?? null
+        pages++
+      } while (cursor && pages < 100)
+      expect(pages, JSON.stringify(limits)).toBeGreaterThan(1)
+      expect(got.map((r) => r.location)).toEqual(asked)
+    }
+    expect((at(asked, { limits: { max_rows: 7 } }).data as { results: Result[] }).results).toHaveLength(7)
+  })
+
+  it('FR122 the benchmark reports whether the budget held, and run.mjs fails the run when it did not', async () => {
+    const symbols = Array.from({ length: 30 }, (_, i) => ({ file: `f${i}.ts`, line: i + 1, kind: 'function' }))
+    expect(await measureSymbolAt(async () => ({ ms: 3 }), symbols)).toMatchObject({ within_budget: true, single_p95_ms: 3 })
+    expect(await measureSymbolAt(async (l: string[]) => ({ ms: l.length === 1 ? 21 : 5 }), symbols)).toMatchObject({ within_budget: false })
+    expect(await measureSymbolAt(async (l: string[]) => ({ ms: l.length === 1 ? 5 : 101 }), symbols)).toMatchObject({ within_budget: false })
+    expect(fs.readFileSync(path.join(import.meta.dirname, '../../../bench/graph-bench/run.mjs'), 'utf8')).toMatch(/within_budget\) \{[^}]*exitCode = 1/)
+  })
+})
+
+describe('FR121 the syntax tier\'s spans for SCIP files: every failure of its process ends in name-only spans, and says so', () => {
+  const files = [{ path: 'a.go', content_hash: '0'.repeat(64), language: 'go' }]
+  const fake = (body: string) => { const f = path.join(tmpDir('pm-fake-syntax-'), 'adapter.mjs'); fs.writeFileSync(f, body); return f }
+  const READER = "import readline from 'node:readline'\nconst send = (id, result) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id, result }) + '\\n')\n"
+  const ws = tmpDir()
+
+  it('an adapter that cannot be found is unavailable', async () => {
+    expect(await syntaxSymbols(files, ws, null)).toMatchObject({ problem: 'unavailable' })
+  })
+  it('an adapter that crashes while initializing is a failure, not a hang', async () => {
+    const entry = fake(READER + "readline.createInterface({ input: process.stdin }).on('line', () => process.exit(3))")
+    expect(await syntaxSymbols(files, ws, entry, 5000)).toMatchObject({ problem: 'failed' })
+  })
+  it('an adapter that exits before it reads anything is a failure, with no write error', async () => {
+    const entry = fake('process.exit(0)')
+    expect(await syntaxSymbols(files, ws, entry, 5000)).toMatchObject({ problem: 'failed' })
+  })
+  it('an adapter that dies after initializing is a failure at the analyze', async () => {
+    const entry = fake(READER + "readline.createInterface({ input: process.stdin }).on('line', (l) => { const m = JSON.parse(l); if (m.method === 'initialize') send(m.id, { adapter: { languages: ['go'] } }); else process.exit(1) })")
+    expect(await syntaxSymbols(files, ws, entry, 5000)).toMatchObject({ problem: 'failed' })
+  })
+  it('an adapter that goes silent times out, well before the host\'s own timeout', async () => {
+    const entry = fake(READER + "readline.createInterface({ input: process.stdin }).on('line', () => {})")
+    const t = Date.now()
+    expect(await syntaxSymbols(files, ws, entry, 300)).toMatchObject({ problem: 'timeout' })
+    expect(Date.now() - t).toBeLessThan(5000)
+    expect((await import('../src/scip/syntax-spans.js')).SPANS_TIMEOUT_MS).toBeLessThan(30000)
+  })
+  it('a file in a language the syntax tier does not cover is reported unsupported and not analysed', async () => {
+    const entry = fake(READER + "readline.createInterface({ input: process.stdin }).on('line', (l) => { const m = JSON.parse(l); if (m.method === 'initialize') send(m.id, { adapter: { languages: ['go'] } }); else send(m.id, { symbols: [{ path: 'a.go', kind: 'function', name: 'f', range: { start_byte: 0, end_byte: 9, start_line: 1, end_line: 2 } }] }) })")
+    const r = await syntaxSymbols([...files, { path: 'b.zzz', content_hash: '1'.repeat(64), language: 'zzz' }], ws, entry, 5000)
+    expect(r.problem).toBeUndefined()
+    expect(r.unsupported).toEqual(['b.zzz'])
+    expect([...r.symbols.keys()]).toEqual(['a.go'])
+  })
+
+  it('a SCIP-covered file in a language the syntax tier lacks keeps name-only spans and reports its symbols partial', () => {
+    const r = fs.realpathSync(tmpDir('pm-symat-zzz-'))
+    fs.writeFileSync(path.join(r, 'a.zzz'), 'fn foo\n  body\n  more\nend\n')
+    const index = path.join(tmpDir('pm-symat-zzz-index-'), 'z.scip')
+    fs.writeFileSync(index, encode(r, 'hand-written', [{ path: 'a.zzz', language: 'zzz', typed: true, occurrences: [{ symbol: 'scip-zzz zzz pkg 1 foo().', range: [0, 3, 6], def: true }] }]))
+    const dd = tmpDir()
+    for (const args of [['init'], ['repo', 'add', r], ['scip', 'add', r, index], ['index', r]]) { const x = cli(['--data-dir', dd, ...args]); expect(x.status, x.stderr).toBe(0) }
+    withSnapshot(dd, (db) => {
+      expect(db.prepare("select json_extract(capabilities, '$.symbols') as symbols from file where path = 'a.zzz'").get()).toEqual({ symbols: 'partial' })
+      expect(db.prepare("select s.end_line - s.start_line as lines from symbol s join evidence e on e.id = s.evidence_id where e.extractor = 'scip' and s.kind != 'module'").all()).toEqual([{ lines: 0 }])
+    })
   })
 })

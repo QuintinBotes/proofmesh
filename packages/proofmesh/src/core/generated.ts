@@ -1373,7 +1373,7 @@ tier: ("precise" | "syntax" | "scip")
 disposition?: string
 reason?: ("not_indexed" | "no_symbol")
 error?: {
-code: ("not_found" | "line_out_of_range" | "invalid_location" | "path_outside_repository")
+code: ("not_found" | "line_out_of_range" | "path_outside_repository")
 message: string
 }
 }[]
@@ -1398,9 +1398,10 @@ max_bytes?: number
 max_depth?: number
 }
 /**
- * Locations as path:line, path being repository-relative. At most 100 per call: more is INVALID_ARGUMENT naming the limit.
+ * Locations as path:line or path:line:column, path being repository-relative (an absolute path inside the repository and .. are normalised; one outside it is answered not found for that location). At most 100 per call.
  * 
  * @minItems 1
+ * @maxItems 100
  */
 locations: [string, ...(string)[]]
 /**
@@ -1411,6 +1412,10 @@ freshness?: ("snapshot" | "strict")
  * lean, the default over MCP: plain text with no JSON and no structuredContent. A header `# <tool> · <n> rows · <snapshot> current` (stale when the snapshot is older than the repository's current one), one `<name> <path>:<line>` row per result, then `# ` lines for the limitations of this answer and `# more: cursor <c>` when a next page exists. The line is the call, import or reference site for relationship, impact and path rows and the declaration for symbol rows; tags follow: in or out when both directions are asked, depth=<n>, dispatch, external, candidate, ambiguous, unresolved:<reason>, and the relationship type when the query mixes types. A name or path with a space, quote or # is quoted as JSON. compact: the JSON envelope without the snapshot-wide parts an earlier answer gave (coverage, unresolved reasons, standing limitations). full: the whole JSON envelope. Ask for compact or full for ids, evidence and totals.
  */
 envelope?: ("full" | "compact" | "lean")
+/**
+ * The next_cursor of the previous page. It continues the same query on the same snapshot; it expires after an hour.
+ */
+cursor?: string
 }
 
 export interface GetTableReachData {
