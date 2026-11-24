@@ -28,6 +28,8 @@ describe('FR115 FR116 FR117 the syntax tier records imports and heritage in Go a
       expect(db.prepare(`select path, json_extract(capabilities, '$.imports') as imports from file order by path`).all()).toEqual([
         { path: 'go/shape.go', imports: 'partial' },
         { path: 'java/Circle.java', imports: 'partial' },
+        // #4 scenario 5: "nothing reports `complete` for imports, because nothing is resolved", also a file with no import.
+        { path: 'java/Kind.java', imports: 'partial' },
       ])
     })
   }, 240000)

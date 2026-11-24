@@ -116,7 +116,7 @@ async function analyse(file: string) {
   }
   // Imports and references are partial wherever the language names any: this tier resolves neither.
   const named = (capture: string, found: number) => (!query.captureNames.includes(capture) ? 'unsupported' : found ? 'partial' : 'complete')
-  return { symbols, relationships, result: { path: file, status: 'ok', capabilities: { text: 'complete', syntax, symbols: 'partial', imports: named('import', imports.length), references: named('reference.table', references.length), resolved_calls: 'unsupported' } } }
+  return { symbols, relationships, result: { path: file, status: 'ok', capabilities: { text: 'complete', syntax, symbols: 'partial', imports: query.captureNames.includes('import') ? 'partial' : 'unsupported', references: named('reference.table', references.length), resolved_calls: 'unsupported' } } }
 }
 
 readline.createInterface({ input: process.stdin }).on('line', async (line) => {

@@ -63,7 +63,7 @@ Tree-sitter grammars on WebAssembly (A6, A23) for Java, Go, Rust, Ruby, PHP, C, 
 
 - Symbols: the declarations each grammar's tags query finds.
 - Calls: every call site, unresolved with `outside_capability`, with the callee's name as detail. The syntax tier never claims a call target.
-- Imports (FR115): one `imports` row per import statement, from the file, with the module as written in `detail.module` (a Java wildcard ends in `.*`, a Go alias is `detail.alias`). Each is unresolved with `outside_capability` (FR117), so a file with an import reports its imports as partial.
+- Imports (FR115): one `imports` row per import statement, from the file, with the module as written in `detail.module` (a Java wildcard ends in `.*`, a Go alias is `detail.alias`). Each is unresolved with `outside_capability` (FR117), so a file in Go or Java reports its imports as partial, with or without an import statement, and nothing reports them complete. A Java static import, and a Go dot or blank import, is recorded like any other, not told apart.
 - Heritage (FR116): a Java class `inherits` the class it extends and `implements` each interface it names, as do a Java enum and record; a Go struct `inherits` each type it embeds, with `detail.relation` `embedding`. Each row runs from the declaring type, at the supertype's name, with that name in `detail.name`, and is unresolved with `outside_capability` (FR117). A Java interface's `extends` and a Go interface's embedded interfaces are not recorded yet.
 
 What the tier records per language (FR118):
