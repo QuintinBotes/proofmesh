@@ -14,6 +14,7 @@ import { readSql } from '../core/schemas.js'
 import { effectiveCodeowners, ownerRule, OWNERSHIP_VERSION, parseCodeowners, type OwnerRule } from './ownership.js'
 import { EvidenceStore } from '../evidence/store.js'
 import { manifestHash, unstable } from './freshness.js'
+import { fillBodyHashes } from './body-hash.js'
 import { AdapterProcess, AdapterProtocolError, PROTOCOL_VERSION } from './adapter-host.js'
 import { assemble, FactCache, fileKeys, splitByFile } from './fact-cache.js'
 import { analysisConfig, checkoutCommit, discover, gitInfo, type Discovered } from './discovery.js'
@@ -286,6 +287,9 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
           else updateFile.run('failed', fr.detail ?? 'adapter_failure', null, capabilities(fr.capabilities, 'failed'), c.path)
         }
       })()
+      // Hashing needs each file's captured text and the declared spans, so it follows the last write and costs adapters nothing (FR130).
+      const unreadable = fillBodyHashes(db, store)
+      if (unreadable.length) db.prepare("insert into meta (key, value) values ('body_hash_missing', ?)").run(canonicalJson({ count: unreadable.length, paths: unreadable.slice(0, 20) }))
       progress({ phase: 'check', done: 0, total: 0 })
       validate(db, store)
       // Planner statistics are part of the sealed file, so queries on large snapshots choose the selective index.

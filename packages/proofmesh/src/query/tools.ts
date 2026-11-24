@@ -28,7 +28,7 @@ import { verify, type Proposition } from './claims.js'
 import { openCursor, queryHash, sealCursor } from './cursor.js'
 import { leanName, leanRow, leanText, quote } from './lean.js'
 import { innermost } from './symbol-at.js'
-import { compare } from './compare.js'
+import { compare, hasBodyHash, unreadableFiles } from './compare.js'
 import { loadSchema } from '../core/schemas.js'
 import { changes, workingTree } from '../indexer/freshness.js'
 import { registryFor } from '../indexer/languages.js'
@@ -768,7 +768,7 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     const db = openSnapshot(ctx.catalog, base)
     try {
       const r = compare(db, ctx.db, { base: { id: base.id, published_at: base.published_at! }, head: { id: ctx.snapshot.id, published_at: ctx.snapshot.published_at! } }, ctx.limits.max_rows)
-      return { data: r.data, stop_reasons: r.truncated ? ['max_rows'] : [], limitations: ['Symbols are matched by kind and qualified name, so a renamed symbol counts as one removed and one added.'] }
+      return { data: r.data, stop_reasons: r.truncated ? ['max_rows'] : [], limitations: ['Symbols are matched by kind and qualified name; a removed and an added symbol that match by body hash are paired instead.', ...r.limitations] }
     } finally {
       db.close()
     }
@@ -1012,7 +1012,17 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     const id = input.path !== undefined ? fileAlias(ctx.db, fileAt(ctx, String(input.path)).id) : String(input.symbol_id)
     const s = ctx.db.prepare(`${SYMBOL_SQL} where s.id = ?`).get(id) as SymbolRow | undefined
     if (!s) throw new ProofmeshError('NOT_FOUND', input.path !== undefined ? `${String(input.path)} has no module symbol in snapshot ${ctx.snapshot.id}` : `symbol ${String(input.symbol_id)} is not in snapshot ${ctx.snapshot.id}`)
-    return { data: { symbol: s }, evidence_ids: [s.evidence_id], lean: () => [symbolRow(s)] }
+    // Only a hash sealed with the snapshot is answered; none is computed here from another reading of the span (FR135).
+    const sealed = hasBodyHash(ctx.db)
+    const identity = ctx.db.prepare(`select stable_key, ${sealed ? 'body_hash' : 'null as body_hash'} from symbol where id = ?`).get(id) as { stable_key: string; body_hash: string | null }
+    return {
+      data: { symbol: { ...s, ...identity } }, evidence_ids: [s.evidence_id],
+      limitations: !sealed ? ['This snapshot was sealed before body hashes existed, so body_hash is null; index again to compute it.']
+        : identity.body_hash ? []
+        : unreadableFiles(ctx.db).paths.includes(s.path) ? [`The content of ${s.path} was unavailable when the snapshot was sealed, so body_hash is null.`]
+        : ['body_hash is null: the declaration span is no more than the name, so there is no text to hash.'],
+      lean: () => [leanRow(leanName(s), s.path, s.start_line, [s.kind, `stable_key=${quote(identity.stable_key)}`, ...(identity.body_hash ? [`body_hash=${identity.body_hash}`] : [])])],
+    }
   },
 
   get_relationships(ctx, input) {
