@@ -123,19 +123,19 @@ Every remedy comes from this one table of language to precise route:
 
 | Language | Built-in precise adapter | SDK and build it needs | SCIP indexer |
 |---|---|---|---|
-| C | none | none | `scip-clang` |
-| C# | csharp | .NET 10 SDK; `dotnet build adapters/csharp -c Release` | `scip-dotnet` |
-| C++ | none | none | `scip-clang` |
-| Go | none | none | `scip-go` |
-| HCL | terraform | none | none |
-| Java | none | none | `scip-java` |
-| JavaScript | typescript | none | `scip-typescript` |
-| Kotlin | none | none | `scip-java` |
-| PHP | none | none | `scip-php` |
-| Python | python | none | `scip-python` |
-| Ruby | none | none | `scip-ruby` |
-| Rust | none | none | `rust-analyzer scip` |
-| Scala | none | none | `scip-java` |
-| TypeScript | typescript | none | `scip-typescript` |
+| `C` | none | none | `scip-clang` |
+| `C#` | csharp | .NET 10 SDK; `dotnet build adapters/csharp -c Release` | `scip-dotnet` |
+| `C++` | none | none | `scip-clang` |
+| `Go` | none | none | `scip-go` |
+| `HCL` | terraform | none | none |
+| `Java` | none | none | `scip-java` |
+| `JavaScript` | typescript | none | `scip-typescript` |
+| `Kotlin` | none | none | `scip-java` |
+| `PHP` | none | none | `scip-php` |
+| `Python` | python | none | `scip-python` |
+| `Ruby` | none | none | `scip-ruby` |
+| `Rust` | none | none | `rust-analyzer scip` |
+| `Scala` | none | none | `scip-java` |
+| `TypeScript` | typescript | none | `scip-typescript` |
 
 A language not in the table that a grammar reads gets `proofmesh adapter add`; one with no grammar gets the same, and until a person adds an adapter it stays at tier `none` or `syntax`.

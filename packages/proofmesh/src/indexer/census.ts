@@ -55,7 +55,7 @@ const route = (language: string) => REMEDY_TABLE.find((r) => r.language === lang
 export const remedyTableMarkdown = (): string => [
   '| Language | Built-in precise adapter | SDK and build it needs | SCIP indexer |',
   '|---|---|---|---|',
-  ...REMEDY_TABLE.map((r) => `| ${r.language} | ${r.adapter ?? 'none'} | ${r.sdk ? `${r.sdk}; \`${r.build}\`` : 'none'} | ${r.scip ? `\`${r.scip}\`` : 'none'} |`),
+  ...REMEDY_TABLE.map((r) => `| \`${r.language}\` | ${r.adapter ?? 'none'} | ${r.sdk ? `${r.sdk}; \`${r.build}\`` : 'none'} | ${r.scip ? `\`${r.scip}\`` : 'none'} |`),
 ].join('\n')
 
 const depth = (tier: string) => (tier === 'none' ? 0 : tier === 'syntax' ? 1 : tier.startsWith('scip:') ? 2 : 3)
