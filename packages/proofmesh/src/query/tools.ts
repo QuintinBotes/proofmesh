@@ -395,14 +395,17 @@ function withNamedIds(db: Database.Database, tool: string, input: Record<string,
   const ids: Record<string, [string, string]> = { get_symbol: ['key', 'symbol_id'], get_memory: ['key', 'symbol_id'], get_relationships: ['key', 'subject_id'], analyze_impact: ['key', 'subject_ids'], find_tests: ['key', 'subject_ids'] }
   const keyed = (name: string, into: string) => {
     if (!(name in out)) return
-    if (into !== 'subject_ids' && out[into] !== undefined) throw new ProofmeshError('INVALID_ARGUMENT', `give ${name} or ${into}, not both`)
+    // A key is one way to name the subject: with an id or a path as well, the call does not say which it means.
+    const others = name === 'source_key' ? ['source_id', 'source_path'] : name === 'target_key' ? ['target_id', 'target_path'] : [into, 'path', 'paths']
+    const given = others.filter((o) => input[o] !== undefined)
+    if (given.length) throw new ProofmeshError('INVALID_ARGUMENT', `give one of ${name}, ${others.join(' or ')}: got ${name} and ${given.join(', ')}`)
     const key = String(out[name])
     delete out[name]
     const rows = db.prepare('select id from symbol where stable_key = ?').all(key) as Array<{ id: string }>
     if (!rows.length) throw new ProofmeshError('NOT_FOUND', `no symbol has the key ${key} in this snapshot`)
     // A snapshot sealed before keys were unique may hold two; it answers none by guessing.
     if (rows.length > 1) throw new ProofmeshError('INVALID_ARGUMENT', `the key ${key} names ${rows.length} symbols in this snapshot, which was sealed before keys were unique; index again`, { detail: 'ambiguous_key' })
-    out[into] = into === 'subject_ids' ? [...((input.subject_ids as string[] | undefined) ?? []), rows[0]!.id] : rows[0]!.id
+    out[into] = into === 'subject_ids' ? [rows[0]!.id] : rows[0]!.id
   }
   if (ids[tool]) keyed(...ids[tool]!)
   if (tool === 'trace_paths') { keyed('source_key', 'source_id'); keyed('target_key', 'target_id') }
@@ -864,6 +867,7 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     })
     const limitations = [
       'Notes are curated by people; a note marked changed describes code whose relationships moved since it was accepted, and may be out of date. One marked tier_changed describes code whose file was analysed by another tier since, with its content unchanged.',
+      ...(notes.some((n) => n.missing_refs.length) ? ['With snapshot format 0.8, qualified names changed (FR146): a reference written in the older form (Java, Kotlin, Scala and PHP names started with the file path; Go and Rust members lacked their receiver or impl type) no longer matches. Rewrite it with the qualified name find_symbols or get_symbol shows.'] : []),
       ...(all.length === 0 ? ['No notes are synced in this workspace; a person adds a notes directory with proofmesh notes add and syncs it.'] : []),
     ]
     return { data: { notes, total: matching.length }, stop_reasons: matching.length > ctx.limits.max_rows ? ['max_rows'] : [], limitations, shrink: 'notes' }

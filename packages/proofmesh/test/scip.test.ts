@@ -84,7 +84,7 @@ describe('A24 A27 SCIP indexes a person produced: read, never run, and only wher
     ])
     expect(withSnapshot(d, (db) => db.prepare(`select s.kind, s.qualified_name, s.start_line, s.end_line, s.signature from symbol s join evidence ev on ev.id = s.evidence_id where ev.extractor = 'scip' order by s.qualified_name collate binary`).all())).toEqual([
       { kind: 'module', qualified_name: 'cart/cart', start_line: 1, end_line: 18, signature: null },
-      { kind: 'type_alias', qualified_name: 'cart/cart:Cart', start_line: 10, end_line: 12, signature: null },
+      { kind: 'struct', qualified_name: 'cart/cart:Cart', start_line: 10, end_line: 12, signature: null },
       { kind: 'method', qualified_name: 'cart/cart:Cart.Checkout', start_line: 14, end_line: 16, signature: 'func (c Cart) Checkout() string' },
       { kind: 'field', qualified_name: 'cart/cart:Cart.Prices', start_line: 11, end_line: 11, signature: null },
       { kind: 'function', qualified_name: 'cart/cart:Legacy', start_line: 18, end_line: 18, signature: null },

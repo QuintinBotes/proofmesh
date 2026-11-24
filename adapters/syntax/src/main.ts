@@ -19,17 +19,27 @@ const dbName = (n: Node) => (n.hasError ? null : n.text.split('.').map((p) => p.
 
 // The languages whose qualified name starts with the package or namespace the source declares; every other language's starts with the file path (FR146).
 const PACKAGE_NODES: Record<string, string> = { java: 'package_declaration', kotlin: 'package_header', scala: 'package_clause', php: 'namespace_definition' }
-function declaredPackage(lang: string, root: Node): string | undefined {
-  const node = root.namedChildren.find((c) => c.type === PACKAGE_NODES[lang])
-  return node ? /^(?:package|namespace)\s+([\w.\\]+)/.exec(node.text)?.[1]?.replace(/\\/g, '.') : undefined
+type Package = { node: Node; name: string; braced: boolean }
+const packagesOf = (lang: string, root: Node): Package[] => root.descendantsOfType(PACKAGE_NODES[lang]!).map((node) => ({ node, name: (/^(?:package|namespace)\s*([\w.\\]*)/.exec(node.text)?.[1] ?? '').replace(/\\/g, '.'), braced: !!node.childForFieldName('body') }))
+// The packages a declaration sits in: braced ones around it, and the unbraced ones before it (Scala chains them, PHP's last one replaces the rest).
+function packageParts(lang: string, packages: Package[], at: Node): string[] {
+  const around = packages.filter((p) => p.braced && p.node.startIndex <= at.startIndex && at.endIndex <= p.node.endIndex)
+  const before = packages.filter((p) => !p.braced && p.node.endIndex <= at.startIndex)
+  const parts = lang === 'php' ? (around.length ? around : before.slice(-1)) : [...before, ...around]
+  return parts.map((p) => p.name).filter(Boolean)
 }
-// A callable's parameter types as its declaration writes them, whitespace removed; a pointer or reference mark stays with its type.
+// A callable's parameter types as its declaration writes them: a default value is no part of one, varargs keep their dots, qualifiers
+// and a pointer or reference mark stay with the type, and Go's `a, b int` is two parameters.
 function parameterTypes(node: Node): string {
   const list = node.childForFieldName('parameters') ?? node.namedChildren.find((c) => /parameters?$|parameter_list$/.test(c.type))
-  return (list?.namedChildren ?? []).filter((p) => p.type !== 'self_parameter' && p.type !== 'comment').map((p) => {
-    const type = p.childForFieldName('type')
-    const text = type ? type.text + (p.childForFieldName('declarator')?.text.match(/^[*&\s]*/)?.[0] ?? '') : (p.namedChildren.at(-1) ?? p).text
-    return text.replace(/\s+/g, '')
+  return (list?.namedChildren ?? []).filter((p) => /parameter/.test(p.type) && p.type !== 'self_parameter').flatMap((p) => {
+    if (p.type === 'spread_parameter') return [`${p.namedChildren[0]?.text ?? ''}...`]
+    const type = p.childForFieldName('type') ?? p.namedChildren.find((c) => /type$/.test(c.type))
+    if (!type) return ['']
+    const qualifiers = p.namedChildren.filter((c) => c.type === 'type_qualifier').map((c) => c.text)
+    const mark = p.childForFieldName('declarator')?.text.match(/^[*&\s]*/)?.[0].replace(/\s/g, '') ?? ''
+    const text = `${p.type === 'variadic_parameter_declaration' ? '...' : ''}${[...qualifiers, type.text].join(' ')}${mark}`.replace(/\s+/g, ' ')
+    return Array(p.type === 'parameter_declaration' ? Math.max(1, p.childrenForFieldName('name').length) : 1).fill(text) as string[]
   }).join(',')
 }
 // A function_declarator is a definition when a function body hangs from it, and a prototype otherwise.
@@ -98,7 +108,8 @@ async function analyse(file: string) {
       const id = `${file}#${def.node.startIndex}`, kind = KINDS[def.name.slice('definition.'.length)]!
       // A node two patterns match is one definition; a method beats a plain function (Rust matches both inside an impl).
       const seen = symbols.find((s) => s.local_id === id)
-      if (seen) { if (kind === 'method') seen.kind = 'method'; continue }
+      // A Go type_spec is also matched as the struct or interface it declares, which is the more exact kind.
+      if (seen) { if (kind === 'method' || (seen.kind === 'type_alias' && (kind === 'struct' || kind === 'interface'))) seen.kind = kind; continue }
       const parts = kind === 'table' ? dbName(name) : null
       if (kind === 'table' && (!parts || symbols.some((s) => s.kind === 'table' && s.qualified_name === parts.join('.')))) continue
       defs.push({ id, node: def.node, qualified: name.text })
@@ -109,19 +120,24 @@ async function analyse(file: string) {
     } else if (role('reference.table')) {
       const parts = dbName(name)
       if (parts) tables.push({ name, parts })
-    } else if (role('scope')) scopes.push({ node: role('scope')!, qualified: name.text.replace(/<[^<>]*>/g, '').replace(/::/g, '.') })
+    } else if (role('scope')) {
+      // A trait impl is named under its type and the trait, so `impl Display for X` and `impl Debug for X` keep their `fmt` apart.
+      const scope = role('scope')!, trait = scope.type === 'impl_item' ? scope.childForFieldName('trait') : null
+      scopes.push({ node: scope, qualified: name.text.replace(/<[^<>]*>/g, '').replace(/::/g, '.') + (trait ? `.<${trait.text.replace(/<.*$/s, '').split('::').at(-1)}>` : '') })
+    }
     else if (role('local')) locals.push({ node: role('local')!.parent!, name: name.text.toLowerCase() })
   }
   // A definition's qualified name is the module, then the definitions it sits inside, then its own name; a table keeps its own. Java, Kotlin,
   // Scala and PHP start from the package or namespace the source declares instead (FR146).
   const within = (inner: Node, outer: Node) => outer.startIndex <= inner.startIndex && inner.endIndex <= outer.endIndex && outer !== inner
-  const prefix = PACKAGE_NODES[lang] ? [declaredPackage(lang, tree.rootNode)].filter((p): p is string => !!p) : null
+  const packages = PACKAGE_NODES[lang] ? packagesOf(lang, tree.rootNode) : null
   const members = symbols.slice(1).filter((s) => s.kind !== 'table').map((s) => {
     const d = defs.find((x) => x.id === s.local_id)!
-    const chain = [...defs, ...scopes].filter((o) => within(d.node, o.node)).sort((a, b) => a.node.startIndex - b.node.startIndex).map((o) => o.qualified)
+    // A package declaration is a definition in some grammars: it is the package, not a member of the ones around it.
+    const chain = [...defs, ...scopes].filter((o) => within(d.node, o.node) && o.node.type !== PACKAGE_NODES[lang]).sort((a, b) => a.node.startIndex - b.node.startIndex).map((o) => o.qualified)
     const parts = [...chain, d.qualified]
-    // The package declaration is itself a definition in some grammars; it is named by the package, not under it.
-    s.qualified_name = prefix ? (!chain.length && d.qualified.replace(/\\/g, '.') === prefix.join('.') ? d.qualified.replace(/\\/g, '.') : [...prefix, ...parts].join('.')) : `${module}:${parts.join('.')}`
+    const own = packages?.find((p) => p.node.startIndex <= d.node.startIndex && d.node.endIndex <= p.node.endIndex && d.node.type === PACKAGE_NODES[lang])
+    s.qualified_name = !packages ? `${module}:${parts.join('.')}` : own ? [...packageParts(lang, packages.filter((p) => p !== own), own.node), own.name].join('.') : [...packageParts(lang, packages, d.node), ...parts].join('.')
     return { s, d, types: parameterTypes(d.node) }
   })
   const byName = new Map<string, typeof members>()

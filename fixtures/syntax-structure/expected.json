@@ -7,8 +7,8 @@
   },
   "symbols": [
     { "kind": "module", "qualified_name": "go/shape", "lines": [1, 13], "signature": null },
-    { "kind": "type_alias", "qualified_name": "go/shape:Base", "lines": [8, 8], "signature": null },
-    { "kind": "type_alias", "qualified_name": "go/shape:Shape", "lines": [10, 13], "signature": null },
+    { "kind": "struct", "qualified_name": "go/shape:Base", "lines": [8, 8], "signature": null },
+    { "kind": "struct", "qualified_name": "go/shape:Shape", "lines": [10, 13], "signature": null },
     { "kind": "module", "qualified_name": "java/Circle", "lines": [1, 8], "signature": null },
     { "kind": "class", "qualified_name": "com.acme.shapes.Circle", "lines": [6, 8], "signature": null },
     { "kind": "module", "qualified_name": "java/Kind", "lines": [1, 9], "signature": null },

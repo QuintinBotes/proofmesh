@@ -2,6 +2,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { encode, type Doc } from './helpers-scip.js'
+import { execFileSync } from 'node:child_process'
+import Database from 'better-sqlite3'
 import { cli, fixtureRepo, tmpDir, tool, withSnapshot } from './helpers.js'
 
 type Row = { path: string; kind: string; qualified_name: string; stable_key: string; start_line: number; body_hash: string | null; producer: string }
@@ -50,7 +52,7 @@ const name = (repo: string, d: string) => {
   expect(r.status, r.stderr).toBe(0)
 }
 
-const GO_KEYS = ['go/cart.go#go/cart#module', 'go/cart.go#go/cart:Cart#type_alias', 'go/cart.go#go/cart:Cart.Add#method', 'go/cart.go#go/cart:Cart.Checkout#method', 'go/cart.go#go/cart:New#function']
+const GO_KEYS = ['go/cart.go#go/cart#module', 'go/cart.go#go/cart:Cart#struct', 'go/cart.go#go/cart:Cart.Add#method', 'go/cart.go#go/cart:Cart.Checkout#method', 'go/cart.go#go/cart:New#function']
 const JAVA_KEYS = ['java/Shop.java#com.acme.Shop#class', 'java/Shop.java#com.acme.Shop.add(String)#method', 'java/Shop.java#com.acme.Shop.add(int)#method', 'java/Shop.java#java/Shop#module']
 
 describe('FR146 every tier names a declaration by the qualified name of its language, and FR147 a snapshot never seals two equal keys', () => {
@@ -60,7 +62,7 @@ describe('FR146 every tier names a declaration by the qualified name of its lang
     const all = rows(d, 'go/cart.go', 'java/Shop.java', 'rust/lib.rs', 'py/calc.py', 'c/util.c')
     expect(keys(all.filter((r) => r.path === 'go/cart.go'))).toEqual(GO_KEYS)
     expect(keys(all.filter((r) => r.path === 'java/Shop.java'))).toEqual(JAVA_KEYS)
-    expect(symbolsOf(all.filter((r) => r.path === 'rust/lib.rs')).map((r) => r.qualified_name)).toEqual(['rust/lib:Counter', 'rust/lib:Counter.bump', 'rust/lib:Counter.default', 'rust/lib:Timer', 'rust/lib:Timer.bump'])
+    expect(symbolsOf(all.filter((r) => r.path === 'rust/lib.rs')).map((r) => r.qualified_name)).toEqual(['rust/lib:Counter', 'rust/lib:Counter.<Default>.default', 'rust/lib:Counter.bump', 'rust/lib:Timer', 'rust/lib:Timer.bump'])
     expect(symbolsOf(all.filter((r) => r.path === 'py/calc.py')).map((r) => [r.qualified_name, r.kind])).toEqual([['py/calc:C', 'class'], ['py/calc:C.x', 'property'], ['py/calc:C.x(value)', 'property']])
     // The prototype and the definition of `add` are one symbol, declared at the definition.
     expect(symbolsOf(all.filter((r) => r.path === 'c/util.c')).map((r) => [r.qualified_name, r.start_line])).toEqual([['c/util:add', 3]])
@@ -74,7 +76,7 @@ describe('FR146 every tier names a declaration by the qualified name of its lang
     fs.writeFileSync(path.join(repo, 'src/conv.rs'), 'struct X;\nstruct A;\nstruct B;\nimpl From<A> for X {\n    fn from(a: A) -> X {\n        X\n    }\n}\nimpl From<B> for X {\n    fn from(b: B) -> X {\n        X\n    }\n}\n')
     fs.writeFileSync(path.join(repo, 'src/a.cpp'), 'class A {\n  int f();\n  int g(int x);\n  int g(double x);\n};\n\nint A::f() {\n  return 1;\n}\n')
     ids(d, repo, ['index', repo])
-    expect(symbolsOf(rows(d, 'src/conv.rs')).map((r) => r.qualified_name).filter((n) => n.includes('from'))).toEqual(['src/conv:X.from(A)', 'src/conv:X.from(B)'])
+    expect(symbolsOf(rows(d, 'src/conv.rs')).map((r) => r.qualified_name).filter((n) => n.includes('from'))).toEqual(['src/conv:X.<From>.from(A)', 'src/conv:X.<From>.from(B)'])
     expect(symbolsOf(rows(d, 'src/a.cpp')).map((r) => [r.qualified_name, r.start_line])).toEqual([['src/a:A', 1], ['src/a:A.f', 7], ['src/a:A.g(double)', 4], ['src/a:A.g(int)', 3]])
   }, 240000)
 
@@ -89,11 +91,11 @@ describe('FR146 every tier names a declaration by the qualified name of its lang
     ])
   }, 240000)
 
-  it('FR147 edge: two declarations still sharing a name after every suffix take ~1 and ~2 in source order, from the core', () => {
+  it('FR147 edge: two declarations still sharing a name after every suffix take ~<hash of their text>, from the core', () => {
     const d = tmpDir(), repo = fs.realpathSync(tmpDir('pm-keys-dup-'))
     fs.writeFileSync(path.join(repo, 'dup.py'), 'def f():\n    return 1\n\n\ndef f():\n    return 2\n')
     ids(d, repo, ['index', repo])
-    expect(rows(d, 'dup.py').filter((r) => r.kind === 'function').map((r) => [r.stable_key, r.start_line])).toEqual([['dup.py#dup:f#function~1', 1], ['dup.py#dup:f#function~2', 5]])
+    expect(rows(d, 'dup.py').filter((r) => r.kind === 'function').map((r) => [r.stable_key, r.start_line]).sort((a, b) => (a[1] as number) - (b[1] as number))).toEqual([[expect.stringMatching(/^dup\.py#dup:f#function~[0-9a-f]{8}$/), 1], [expect.stringMatching(/^dup\.py#dup:f#function~[0-9a-f]{8}$/), 5]])
   }, 240000)
 })
 
@@ -103,12 +105,13 @@ describe('FR148 the SCIP importer names a definition as the syntax tier names it
     ids(d, repo, ['index', repo])
     const before = rows(d, 'go/cart.go', 'java/Shop.java')
     expect(keys(before)).toEqual([...GO_KEYS, ...JAVA_KEYS].sort())
+    expect(before.every((r) => r.body_hash !== null)).toBe(true)
     name(repo, d)
     index(d, repo)
     const after = rows(d, 'go/cart.go', 'java/Shop.java')
     expect(after.map((r) => r.producer)).toEqual(Array(after.length).fill('scip'))
     expect(after.map((r) => [r.stable_key, r.body_hash])).toEqual(before.map((r) => [r.stable_key, r.body_hash]))
-    expect(after.every((r) => r.body_hash === null || /^[0-9a-f]{64}$/.test(r.body_hash))).toBe(true)
+    expect(after.every((r) => /^[0-9a-f]{64}$/.test(r.body_hash ?? ''))).toBe(true)
   }, 240000)
 
   it('scenario 3: editing go/cart.go returns it to the syntax tier (scip_stale) with every key unchanged', () => {
@@ -164,7 +167,7 @@ describe('FR150 a note reference that matches several symbols is ambiguous, and 
     const n = memory(d).find((x) => x.id === 'overloads')!
     expect(n.ambiguous_refs).toEqual([{ ref: 'method:com.acme.Shop.add', keys: ['java/Shop.java#com.acme.Shop.add(String)#method', 'java/Shop.java#com.acme.Shop.add(int)#method'] }])
     expect(n.missing_refs).toEqual([])
-    expect(n.staleness).not.toBe('current')
+    expect(n.staleness).toBe('ambiguous')
   }, 240000)
 
   it('scenario 6: a note on go/cart:Cart.Checkout accepted on the syntax tier is tier_changed, not changed, after the SCIP index is named', () => {
@@ -178,6 +181,167 @@ describe('FR150 a note reference that matches several symbols is ambiguous, and 
     // A content change under the accepted tier is not a tier change.
     fs.writeFileSync(path.join(repo, 'go/cart.go'), fs.readFileSync(path.join(repo, 'go/cart.go'), 'utf8').replace('return "done"', 'return "done!"'))
     index(d, repo)
-    expect(n().staleness).not.toBe('tier_changed')
+    expect(n().staleness).toBe('current')
+  }, 240000)
+})
+
+/** A repository of the given files, indexed. */
+function indexed(files: Record<string, string>) {
+  const d = tmpDir(), repo = fs.realpathSync(tmpDir('pm-keys-x-'))
+  for (const [f, text] of Object.entries(files)) { fs.mkdirSync(path.dirname(path.join(repo, f)), { recursive: true }); fs.writeFileSync(path.join(repo, f), text) }
+  ids(d, repo, ['index', repo])
+  return { d, repo }
+}
+const names = (d: string, file: string) => withSnapshot(d, (db) => (db.prepare("select s.qualified_name from symbol s join file f on f.id = s.file_id where f.path = ? and s.kind <> 'module' order by s.start_byte, s.qualified_name").all(file) as Array<{ qualified_name: string }>).map((r) => r.qualified_name))
+const meta = (d: string, key: string) => withSnapshot(d, (db) => { const r = db.prepare('select value from meta where key = ?').get(key) as { value: string } | undefined; return r ? JSON.parse(r.value) : undefined })
+
+describe('FR146 a trait impl names its trait, so two traits with one method do not collide', () => {
+  it('impl Display for X and impl Debug for X both declare fmt: X.<Display>.fmt and X.<Debug>.fmt, with no ~n', () => {
+    const { d } = indexed({ 'src/t.rs': 'struct X;\nimpl fmt::Display for X {\n    fn fmt(&self, f: &mut Formatter) -> Result { Ok(()) }\n}\nimpl Debug for X {\n    fn fmt(&self, f: &mut Formatter) -> Result { Ok(()) }\n}\n' })
+    expect(names(d, 'src/t.rs')).toEqual(['src/t:X', 'src/t:X.<Display>.fmt', 'src/t:X.<Debug>.fmt'])
+    expect(meta(d, 'key_disambiguated')).toBeUndefined()
+  }, 240000)
+})
+
+describe('FR147 a duplicate key is told apart by its content, so inserting one above an existing one renames nothing', () => {
+  it('the keys of existing duplicates survive a new duplicate inserted above them, with no nested suffix, and the meta lists every one', () => {
+    const body = (n: number) => `def f():\n    return ${n}\n\n\n`
+    const first = indexed({ 'dup.py': body(1) + body(2) })
+    const before = rows(first.d, 'dup.py').filter((r) => r.kind === 'function')
+    expect(before.map((r) => r.stable_key)).toEqual(before.map((r) => expect.stringMatching(/^dup\.py#dup:f#function~[0-9a-f]{8}$/)))
+    fs.writeFileSync(path.join(first.repo, 'dup.py'), body(0) + body(1) + body(2))
+    index(first.d, first.repo)
+    const after = rows(first.d, 'dup.py').filter((r) => r.kind === 'function')
+    expect(after).toHaveLength(3)
+    for (const r of before) expect(after.map((a) => a.stable_key)).toContain(r.stable_key)
+    expect(after.every((r) => (r.stable_key.match(/~/g) ?? []).length === 1)).toBe(true)
+    const m = meta(first.d, 'key_disambiguated') as { count: number; truncated: boolean; keys: Array<[string, string]> }
+    expect(m.count).toBe(3)
+    expect(m.truncated).toBe(false)
+    expect(m.keys.map(([base]) => base)).toEqual(Array(3).fill('dup.py#dup:f#function'))
+    expect(m.keys.map(([, key]) => key).sort()).toEqual(after.map((r) => r.stable_key).sort())
+  }, 240000)
+})
+
+describe('FR146 a Go struct is a struct and an interface an interface, in the syntax tier and in a SCIP index', () => {
+  it('type X struct, type Y interface and type Z = X are struct, interface and type_alias; find_symbols by kind finds the SCIP-tier struct', () => {
+    const { d } = indexed({ 'a.go': 'package a\n\ntype X struct{}\n\ntype Y interface{ M() }\n\ntype Z = X\n\ntype W int\n' })
+    expect(withSnapshot(d, (db) => db.prepare("select name, kind from symbol where kind <> 'module' order by start_byte").all())).toEqual([{ name: 'X', kind: 'struct' }, { name: 'Y', kind: 'interface' }, { name: 'Z', kind: 'type_alias' }, { name: 'W', kind: 'type_alias' }])
+    const repo = copy(), dir = tmpDir()
+    ids(dir, repo)
+    name(repo, dir)
+    index(dir, repo)
+    const found = tool(dir, 'find_symbols', { text: 'Cart', kinds: ['struct'] }).data as { symbols: Array<{ path: string; kind: string; qualified_name: string }> }
+    expect(found.symbols.map((x) => [x.path, x.kind, x.qualified_name])).toEqual([['go/cart.go', 'struct', 'go/cart:Cart']])
+    // A struct root is a type root for find_tests, by key, in the SCIP tier.
+    const reach = tool(dir, 'find_tests', { key: 'go/cart.go#go/cart:Cart#struct' }).data as { tests: unknown[]; totals: unknown }
+    expect(reach.tests).toEqual([])
+    expect(reach.totals).toBeDefined()
+  }, 240000)
+})
+
+describe('FR146 parameter types are read as the declaration writes them', () => {
+  it('Java varargs, C++ qualifiers, Kotlin defaults and grouped Go names', () => {
+    const { d } = indexed({
+      'V.java': 'class V {\n  void add(int... xs) {}\n  void add(String s) {}\n}\n',
+      'q.cpp': 'void f(const char* a) {}\nvoid f(char* a) {}\n',
+      'k.kt': 'class K {\n    fun f(a: Int = 3) {}\n    fun f(a: String) {}\n}\n',
+      'g.go': 'package g\n\nfunc init(a, b int) {}\n\nfunc init() {}\n',
+    })
+    expect(names(d, 'V.java')).toEqual(['V', 'V.add(int...)', 'V.add(String)'])
+    expect(names(d, 'q.cpp')).toEqual(['q:f(const char*)', 'q:f(char*)'])
+    expect(names(d, 'k.kt')).toEqual(['K', 'K.f(Int)', 'K.f(String)'])
+    expect(names(d, 'g.go')).toEqual(['g:init(int,int)', 'g:init()'])
+  }, 240000)
+})
+
+describe('FR146 a file with several packages or namespaces names each declaration under its own', () => {
+  it('Scala nested and chained packages, PHP several namespaces and the global one', () => {
+    const { d } = indexed({
+      'n.scala': 'package a {\n  package b {\n    class C\n  }\n  class D\n}\n',
+      'c.scala': 'package p\npackage q\n\nclass E\n',
+      'm.php': '<?php\nnamespace A { class X {} }\nnamespace B { class Y {} }\nnamespace { class G {} }\n',
+      'u.php': '<?php\nnamespace A;\nclass X {}\nnamespace B;\nclass Y {}\n',
+    })
+    expect(names(d, 'n.scala').filter((n) => /C$|D$/.test(n))).toEqual(['a.b.C', 'a.D'])
+    expect(names(d, 'c.scala').filter((n) => /E$/.test(n))).toEqual(['p.q.E'])
+    expect(names(d, 'm.php').filter((n) => /[XYG]$/.test(n))).toEqual(['A.X', 'B.Y', 'G'])
+    expect(names(d, 'u.php').filter((n) => /[XY]$/.test(n))).toEqual(['A.X', 'B.Y'])
+  }, 240000)
+})
+
+describe('FR146 two same-named classes in different files stay apart in name lookups', () => {
+  it('a new file declaring Main.run is added, not a modification of the Main.run another file already has', () => {
+    const git = (cwd: string, ...a: string[]) => execFileSync('git', ['-c', 'user.name=Test', '-c', 'user.email=test@example.com', '-c', 'commit.gpgsign=false', ...a], { cwd, encoding: 'utf8' }).trim()
+    const repo = fs.realpathSync(tmpDir('pm-keys-git-')), d = tmpDir()
+    fs.mkdirSync(path.join(repo, 'a'))
+    fs.writeFileSync(path.join(repo, 'a/Main.java'), 'class Main {\n  void run() {\n    System.out.println(1);\n  }\n}\n')
+    git(repo, 'init', '-q'); git(repo, 'add', '-A'); git(repo, 'commit', '-q', '-m', 'base')
+    const base = git(repo, 'rev-parse', 'HEAD')
+    fs.mkdirSync(path.join(repo, 'c'))
+    fs.writeFileSync(path.join(repo, 'c/Main.java'), 'class Main {\n  void run() {\n    System.out.println(2);\n  }\n}\n')
+    git(repo, 'add', '-A'); git(repo, 'commit', '-q', '-m', 'head')
+    const head = git(repo, 'rev-parse', 'HEAD')
+    expect(cli(['--data-dir', d, 'init']).status).toBe(0)
+    expect(cli(['--data-dir', d, 'repo', 'add', repo]).status).toBe(0)
+    const out = cli(['--data-dir', d, 'completeness', repo, `${base}..${head}`])
+    expect(out.status, out.stderr).toBe(0)
+    expect(out.stdout).toMatch(/^changed Main\.run c\/Main\.java:2 added/m)
+    expect(out.stdout).not.toMatch(/^changed Main\.run c\/Main\.java:2 modified/m)
+  }, 240000)
+})
+
+describe('FR149 key and an id or a path are not given together', () => {
+  const setup = () => { const d = tmpDir(), repo = copy(); ids(d, repo, ['index', repo]); return d }
+  const KEY = 'go/cart.go#go/cart:Cart.Checkout#method'
+  const code = (d: string, t: string, input: Record<string, unknown>) => { try { tool(d, t, input) } catch (e) { return [(e as { code?: string }).code, (e as Error).message] as const } return ['none', ''] as const }
+  it('rejects key with an id or a path, and an unknown target_key, naming each', () => {
+    const d = setup()
+    const id = withSnapshot(d, (db) => (db.prepare('select id from symbol where stable_key = ?').get(KEY) as { id: string }).id)
+    for (const [t, input] of [['get_symbol', { key: KEY, symbol_id: id }], ['get_symbol', { key: KEY, path: 'go/cart.go' }], ['get_relationships', { key: KEY, subject_id: id }], ['get_relationships', { key: KEY, path: 'go/cart.go' }], ['analyze_impact', { key: KEY, subject_ids: [id] }], ['analyze_impact', { key: KEY, paths: ['go/cart.go'] }], ['find_tests', { key: KEY, paths: ['go/cart.go'] }], ['get_memory', { key: KEY, path: 'go/cart.go' }], ['trace_paths', { source_key: KEY, source_id: id, target_id: id }], ['trace_paths', { source_key: KEY, source_path: 'go/cart.go', target_id: id }]] as const) {
+      expect([t, code(d, t, input)[0]]).toEqual([t, 'INVALID_ARGUMENT'])
+    }
+    const unknown = code(d, 'trace_paths', { source_key: KEY, target_key: 'nowhere#x#function' })
+    expect(unknown[0]).toBe('NOT_FOUND')
+    expect(unknown[1]).toContain('nowhere#x#function')
+  }, 240000)
+  it('get_memory by key finds the notes that name the symbol', () => {
+    const d = tmpDir(), repo = copy(), notes = tmpDir('pm-keys-notes-')
+    fs.writeFileSync(path.join(notes, 'n.md'), '---\nid: n\ntitle: "n title"\nkind: invariant\nnodes:\n  - method:go/cart:Cart.Checkout\n---\n\nBody.\n')
+    ids(d, repo, ['index', repo], ['notes', 'add', notes])
+    cli(['--data-dir', d, 'notes', 'sync'])
+    expect((tool(d, 'get_memory', { key: KEY }).data as { notes: Array<{ id: string }> }).notes.map((n) => n.id)).toEqual(['n'])
+    expect((tool(d, 'get_memory', { key: 'go/cart.go#go/cart:New#function' }).data as { notes: unknown[] }).notes).toEqual([])
+  }, 240000)
+  it('a key two symbols share, in a snapshot sealed before keys were unique, is INVALID_ARGUMENT ambiguous_key', () => {
+    const d = setup()
+    const catalog = new Database(path.join(d, 'catalog.db'))
+    const snap = (catalog.prepare("select id from snapshot where state = 'published'").get() as { id: string }).id
+    catalog.close()
+    const file = path.join(d, 'snapshots', `${snap}.db`)
+    fs.chmodSync(file, 0o644)
+    const sealed = new Database(file)
+    sealed.exec('drop index symbol_by_key')
+    sealed.prepare('update symbol set stable_key = ? where stable_key = ?').run(KEY, 'go/cart.go#go/cart:Cart.Add#method')
+    sealed.close()
+    fs.chmodSync(file, 0o444)
+    const c2 = new Database(path.join(d, 'catalog.db'))
+    c2.prepare('update snapshot set store_digest = ? where id = ?').run(require('node:crypto').createHash('sha256').update(fs.readFileSync(file)).digest('hex'), snap)
+    c2.close()
+    const r = code(d, 'get_symbol', { key: KEY })
+    expect(r[0]).toBe('INVALID_ARGUMENT')
+    expect(r[1]).toContain('index again')
+  }, 240000)
+})
+
+describe('FR150 a note whose reference used a name of an older format is told to rename it', () => {
+  it('a missing reference says that names changed with snapshot format 0.8', () => {
+    const d = tmpDir(), repo = copy(), notes = tmpDir('pm-keys-notes-')
+    fs.writeFileSync(path.join(notes, 'old.md'), '---\nid: old\ntitle: "old title"\nkind: invariant\nnodes:\n  - method:java/Shop:Shop.add\n---\n\nBody.\n')
+    ids(d, repo, ['index', repo], ['notes', 'add', notes])
+    cli(['--data-dir', d, 'notes', 'sync'])
+    const r = tool(d, 'get_memory', { query: 'old title' })
+    expect((r.data as { notes: Array<{ missing_refs: string[] }> }).notes[0]!.missing_refs).toEqual(['method:java/Shop:Shop.add'])
+    expect(r.limitations.join(' ')).toMatch(/snapshot format 0\.8.*qualified names changed.*rewrite/i)
   }, 240000)
 })
