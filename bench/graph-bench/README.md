@@ -132,3 +132,7 @@ snapshot as above; Graphify 0.9.108.
 Q8's answer names every hop as `name path:line`, so the path needs no `get_symbol` per node. Per correct item rather than
 per row, Q2 is 230 bytes against Graphify's 96 (2.4x): its 12 callers make 47 calls, and Graphify lists one site per caller
 (4% of the call sites). The other questions are within 2x either way (Q1 58 / 62, Q5 34 / 69, Q7 57 / 58).
+
+## Symbol identity across renames and moves (issue 7, SC-2)
+
+`node bench/graph-bench/identity-mutation.mjs [<orbit-clone-or-url>] [--n 50] [--seed 7]` clones the same Orbit commit into a temporary directory, renames 25 and moves 25 random top-level functions (one per file, seeded), commits, indexes both trees with `index --rev`, and checks what `compare_snapshots` pairs. It exits 1 on any wrong pair or a paired rate below 95%. Result of 2026-11-24 (seed 7, 3,881 candidate functions in 685 files): 50 of 50 mutated functions paired as `renamed` or `moved` with the right target, 0 wrong pairs among 50 pairs, 0 ambiguous, 0 below the pairing floor. About 80 seconds.

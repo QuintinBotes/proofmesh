@@ -9,7 +9,7 @@ const envelope = JSON.parse(fs.readFileSync(path.join(import.meta.dirname, 'fixt
 const data = envelope.data as CompareData
 
 describe('FR019 the Diff view reads a compare_snapshots answer', () => {
-  it('the recorded envelope is valid against the tool contract', () => {
+  it('the hand-written envelope is valid against the tool contract', () => {
     expect(check('tools/compare_snapshots.data.schema.json', data)).toBeUndefined()
   })
 
@@ -25,9 +25,9 @@ describe('FR019 the Diff view reads a compare_snapshots answer', () => {
   it('rows are one ordered table by path, then name, then change, and filters narrow it', () => {
     expect(rows(data).map((r) => `${r.change} ${r.qualified_name}${r.what ? ` [${r.what}]` : ''}`)).toEqual([
       'added packages/api/src/handler:Rates',
-      'changed packages/api/src/handler:handleInvoice [range, signature]',
+      'changed packages/api/src/handler:handleInvoice [range, signature, body]',
       'added packages/billing/src/invoice:invoiceTax',
-      'changed packages/billing/src/invoice:invoiceTotal [signature]',
+      'changed packages/billing/src/invoice:invoiceTotal [signature, body]',
       'removed packages/format/src/currency:legacyFormat',
     ])
     expect(rows(data, { kinds: new Set(['class']) }).map((r) => r.qualified_name)).toEqual(['packages/api/src/handler:Rates'])

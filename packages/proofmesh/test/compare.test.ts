@@ -32,7 +32,7 @@ describe('FR019 FR063 compare_snapshots: two sealed files of one repository, rea
     expect(r.data.symbols.added.map(sym)).toEqual([['module', 'packages/format/src/extra', 'packages/format/src/extra.ts'], ['function', 'packages/format/src/extra:extra', 'packages/format/src/extra.ts']])
     expect(r.data.symbols.removed.map(sym)).toEqual(expectedFor('ts-invoicing').symbols.filter((s: any) => s.qualified_name.startsWith('packages/legacy/src/format')).map((s: any) => [s.kind, s.qualified_name, 'packages/legacy/src/format.ts']).sort((a: string[], b: string[]) => (a[1]! < b[1]! ? -1 : 1)))
     expect(r.data.symbols.changed.map((s: any) => [s.qualified_name, s.what])).toEqual([['packages/format/src/currency:formatAmount', ['signature', 'body']]])
-    expect(r.data.symbols.counts).toEqual({ added: 2, removed: r.data.symbols.removed.length, changed: 1, paired: 0, ambiguous: 0 })
+    expect(r.data.symbols.counts).toEqual({ added: 2, removed: r.data.symbols.removed.length, changed: 1, paired: 0, ambiguous: 0, too_small: 0 })
     expect(r.data.files).toEqual({ added: ['packages/format/src/extra.ts'], removed: ['packages/legacy/src/format.ts'], changed: ['packages/format/src/currency.ts'], disposition_changes: [] })
     // The deleted decoy's relationships leave; the new file's module has none, so nothing is added.
     expect(r.data.relationships.added).toBe(0)
@@ -48,7 +48,7 @@ describe('FR019 FR063 compare_snapshots: two sealed files of one repository, rea
     for (const args of [['init'], ['repo', 'add', repo, '--name', 'one'], ['repo', 'add', other, '--name', 'two']]) expect(cli(['--data-dir', d, ...args]).status).toBe(0)
     const a = index(d, repo), b = index(d, other)
     const same = tool(d, 'compare_snapshots', { repository_id: repoId(d, repo), base_snapshot_id: a, snapshot_id: a }) as any
-    expect(same.data.symbols.counts).toEqual({ added: 0, removed: 0, changed: 0, paired: 0, ambiguous: 0 })
+    expect(same.data.symbols.counts).toEqual({ added: 0, removed: 0, changed: 0, paired: 0, ambiguous: 0, too_small: 0 })
     expect(same.data.relationships).toMatchObject({ added: 0, removed: 0 })
     expect(same.data.files).toEqual({ added: [], removed: [], changed: [], disposition_changes: [] })
     expect(() => tool(d, 'compare_snapshots', { repository_id: same.snapshot.repository_id, base_snapshot_id: b })).toThrow(/same repository/)

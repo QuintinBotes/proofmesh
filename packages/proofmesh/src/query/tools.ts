@@ -28,7 +28,7 @@ import { verify, type Proposition } from './claims.js'
 import { openCursor, queryHash, sealCursor } from './cursor.js'
 import { leanName, leanRow, leanText, quote } from './lean.js'
 import { innermost } from './symbol-at.js'
-import { compare, hasBodyHash } from './compare.js'
+import { compare, hasBodyHash, unreadableFiles } from './compare.js'
 import { loadSchema } from '../core/schemas.js'
 import { changes, workingTree } from '../indexer/freshness.js'
 import { registryFor } from '../indexer/languages.js'
@@ -1017,7 +1017,10 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     const identity = ctx.db.prepare(`select stable_key, ${sealed ? 'body_hash' : 'null as body_hash'} from symbol where id = ?`).get(id) as { stable_key: string; body_hash: string | null }
     return {
       data: { symbol: { ...s, ...identity } }, evidence_ids: [s.evidence_id],
-      limitations: sealed ? [] : ['This snapshot was sealed before body hashes existed, so body_hash is null; index again to compute it.'],
+      limitations: !sealed ? ['This snapshot was sealed before body hashes existed, so body_hash is null; index again to compute it.']
+        : identity.body_hash ? []
+        : unreadableFiles(ctx.db).paths.includes(s.path) ? [`The content of ${s.path} was unavailable when the snapshot was sealed, so body_hash is null.`]
+        : ['body_hash is null: the declaration span is no more than the name, so there is no text to hash.'],
       lean: () => [leanRow(leanName(s), s.path, s.start_line, [s.kind, `stable_key=${quote(identity.stable_key)}`, ...(identity.body_hash ? [`body_hash=${identity.body_hash}`] : [])])],
     }
   },

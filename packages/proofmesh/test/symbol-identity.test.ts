@@ -5,12 +5,13 @@ import Database from 'better-sqlite3'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { check } from '../src/core/schemas.js'
 import { sha256File } from '../src/core/hash.js'
-import { hashDeclaration } from '../src/indexer/body-hash.js'
+import { fillBodyHashes, hashDeclaration, MIN_PAIR_TOKENS, tokenCount } from '../src/indexer/body-hash.js'
+import { readSql } from '../src/core/schemas.js'
 import { cli, ROOT, tmpDir, tool, withSnapshot } from './helpers.js'
 
 const git = (cwd: string, ...args: string[]) => execFileSync('git', ['-c', 'user.name=Test', '-c', 'user.email=test@example.com', '-c', 'commit.gpgsign=false', ...args], { cwd, encoding: 'utf8' }).trim()
 const FIXTURE = path.join(ROOT, 'fixtures', 'symbol-identity')
-const HEADS = ['head-rename', 'head-move', 'head-edit', 'head-both', 'head-dup', 'head-moverename', 'head-filemove', 'head-copy']
+const HEADS = ['head-rename', 'head-move', 'head-edit', 'head-both', 'head-dup', 'head-moverename', 'head-filemove', 'head-copy', 'head-tiny', 'head-method']
 const HEX64 = /^[0-9a-f]{64}$/
 
 type Side = { id: string; name: string; kind: string; path: string; qualified_name: string; stable_key: string; body_hash: string | null }
@@ -41,6 +42,7 @@ function legacy(): { dir: string; tree: string; baseId: string } {
   fs.chmodSync(file, 0o644)
   const sealed = new Database(file)
   sealed.exec('alter table symbol drop column body_hash')
+  sealed.exec('alter table symbol drop column body_tokens')
   sealed.prepare("update meta set value = '0.6' where key = 'format_version'").run()
   sealed.close()
   fs.chmodSync(file, 0o444)
@@ -100,6 +102,23 @@ describe('FR130 a symbol records the hash of its declaration text with its own n
     expect(hashDeclaration('  Checkout\n', 'Checkout', 'method')).toBeNull()
   })
 
+  it('FR130 only the declared name and plain self-references are masked, never a member access: get and set stay apart', () => {
+    const get = hashDeclaration('get(k) { return this.map.get(k) }', 'get', 'method')
+    const set = hashDeclaration('set(k) { return this.map.set(k) }', 'set', 'method')
+    expect(get).toMatch(HEX64)
+    expect(get).not.toBe(set)
+    // The name still masks where it is the declaration and a bare self-call.
+    expect(hashDeclaration('def total(xs):\n    return total(xs[1:]) + self.total', 'total', 'function')).toBe(hashDeclaration('def sum_all(xs):\n    return sum_all(xs[1:]) + self.total', 'sum_all', 'function'))
+  })
+
+  it('FR133 the pairing floor: bodies below the minimum token count are counted, so two declarations that differ only by name stay apart', () => {
+    expect(MIN_PAIR_TOKENS).toBe(10)
+    expect(hashDeclaration('const a = 1', 'a', 'variable')).toBe(hashDeclaration('const b = 1', 'b', 'variable'))
+    expect(tokenCount('const a = 1')).toBe(4)
+    expect(tokenCount('# placeholder')).toBe(2)
+    expect(tokenCount('def f(x):\n    return x[0]')).toBe(11)
+  })
+
   it('FR130 a module is the hash of its file text, whatever the file is called', () => {
     const text = 'export const x = 1\n'
     expect(hashDeclaration(text, 'a', 'module')).toBe(hashDeclaration(text, 'b', 'module'))
@@ -151,12 +170,7 @@ describe('FR132 compare_snapshots reports a body edit, with the ids and keys of 
     const before = symbol(snap.base!, 'spread'), after = symbol(snap['head-edit']!, 'spread')
     expect(changed[0]).toMatchObject({ name: 'spread', what: ['body'], id: after.id, base_id: before.id, stable_key: before.stable_key, base_stable_key: before.stable_key, body_hash: after.body_hash, base_body_hash: before.body_hash })
     expect(before.body_hash).not.toBe(after.body_hash)
-    expect(r.data.symbols.counts).toEqual({ added: 0, removed: 0, changed: 1, paired: 0, ambiguous: 0 })
-  })
-
-  it('FR132 an edit to a signature that is also the declaration text is a body change as well', () => {
-    const r = compare('head-both')
-    expect(r.data.symbols.changed).toEqual([])
+    expect(r.data.symbols.counts).toEqual({ added: 0, removed: 0, changed: 1, paired: 0, ambiguous: 0, too_small: 0 })
   })
 })
 
@@ -177,7 +191,7 @@ describe('FR133 compare_snapshots pairs one removed and one added symbol of equa
     })
     expect(total).toMatchObject({ body_hash: symbol(snap.base!, 'total').body_hash, base: { id: symbol(snap.base!, 'total').id }, head: { id: symbol(snap['head-rename']!, 'sum_all').id } })
     expect(paired.every((p) => HEX64.test(p.body_hash))).toBe(true)
-    expect(r.data.symbols.counts).toEqual({ added: 0, removed: 0, changed: 0, paired: 2, ambiguous: 0 })
+    expect(r.data.symbols.counts).toEqual({ added: 0, removed: 0, changed: 0, paired: 2, ambiguous: 0, too_small: 0 })
   })
 
   it('FR133 scenario 3: clamp and Add moved unchanged to a new file are two moved pairs; the new files\' modules are the only additions', () => {
@@ -200,6 +214,26 @@ describe('FR133 compare_snapshots pairs one removed and one added symbol of equa
     const r = compare('head-moverename')
     expect(r.data.symbols.paired.map(ends)).toEqual([['moved_renamed', 'function', 'clamp', 'limit', 'src/util.ts', 'src/limits.ts']])
     expect(r.data.symbols.ambiguous).toEqual([])
+  })
+
+  it('FR133 a trivial declaration or file is never paired: one = 1 to uno = 1 and a one-line placeholder file stay a removal and an addition, and the answer counts them', () => {
+    const r = compare('head-tiny')
+    const { added, removed, paired, ambiguous, counts } = r.data.symbols
+    expect(paired).toEqual([])
+    expect(ambiguous).toEqual([])
+    expect(removed.map((x) => [x.kind, x.name]).sort()).toEqual([['module', 'stub'], ['variable', 'one']])
+    expect(added.map((x) => [x.kind, x.name]).sort()).toEqual([['module', 'other'], ['variable', 'uno']])
+    expect(removed.every((x) => x.body_hash && HEX64.test(x.body_hash))).toBe(true)
+    expect(counts).toMatchObject({ paired: 0, ambiguous: 0, too_small: 2 })
+    expect(r.limitations.join(' ')).toMatch(/2 matches? below 10 tokens were not paired/)
+  })
+
+  it('FR133 a method moved to another class of the same file is a moved pair: its qualified name changed', () => {
+    const r = compare('head-method')
+    expect(r.data.symbols.paired.map((p) => [p.change, p.kind, p.base.qualified_name, p.head.qualified_name, p.base.path, p.head.path])).toEqual([['moved', 'method', 'src/shapes:Circle.area', 'src/shapes:Disc.area', 'src/shapes.ts', 'src/shapes.ts']])
+    expect(r.data.symbols.ambiguous).toEqual([])
+    expect(r.data.symbols.removed).toEqual([])
+    expect(r.data.symbols.added).toEqual([])
   })
 
   it('FR133 a file moved without change pairs as moved at module level too, whatever its new name', () => {
@@ -231,7 +265,7 @@ describe('FR133 compare_snapshots pairs one removed and one added symbol of equa
     expect(names(ambiguous[0]!.removed)).toEqual(['a', 'b'])
     expect(names(ambiguous[0]!.added)).toEqual(['c'])
     expect(ambiguous[0]!.removed.map((s) => s.id)).toEqual(removed.map((s) => s.id))
-    expect(counts).toEqual({ added: 1, removed: 2, changed: 1, paired: 0, ambiguous: 1 })
+    expect(counts).toEqual({ added: 1, removed: 2, changed: 1, paired: 0, ambiguous: 1, too_small: 0 })
   })
 
   it('FR134 one removed with the hash of two added is ambiguous too, never a guess', () => {
@@ -268,5 +302,49 @@ describe('FR135 a snapshot without hashes answers null and a limitation, never a
     expect(cmp.data.symbols.changed.filter((c) => c.what.includes('body'))).toEqual([])
     expect(names(cmp.data.symbols.removed)).toEqual(expect.arrayContaining(['a', 'b']))
     expect(cmp.limitations.join(' ')).toMatch(/sealed before body hashes existed.*index (it )?again/i)
+  }, 240000)
+})
+
+describe('FR135 a file whose content was missing at seal time leaves null hashes, and the snapshot says which', () => {
+  it('FR135 fillBodyHashes names the files it could not read, and hashes the rest', () => {
+    const db = new Database(':memory:')
+    db.pragma('foreign_keys = OFF')
+    db.exec(readSql('snapshot-format/0.7.sql'))
+    db.prepare("insert into file (id, path, content_hash, size, language, disposition, capabilities) values ('f1', 'a.ts', 'h1', 1, 'typescript', 'indexed', '{}'), ('f2', 'b.ts', 'h2', 1, 'typescript', 'indexed', '{}')").run()
+    const sym = db.prepare("insert into symbol (id, file_id, kind, name, qualified_name, start_byte, end_byte, start_line, end_line, stable_key, evidence_id) values (?, ?, 'function', ?, ?, 0, 26, 1, 1, ?, 'ev')")
+    sym.run('s1', 'f1', 'f', 'a:f', 'a.ts#a:f#function'); sym.run('s2', 'f2', 'g', 'b:g', 'b.ts#b:g#function')
+    const store = { read: (h: string) => (h === 'h1' ? Buffer.from('function f() { return 1 }\n') : undefined) } as never
+    expect(fillBodyHashes(db, store)).toEqual(['b.ts'])
+    expect(db.prepare('select id, body_hash is null as gap from symbol order by id').all()).toEqual([{ id: 's1', gap: 0 }, { id: 's2', gap: 1 }])
+  })
+
+  it('FR135 get_symbol and compare_snapshots name the files recorded as unreadable, and a name-only span says why it has no hash', () => {
+    const { dir, tree, baseId } = legacy()
+    // Reseal the previous snapshot as a 0.7 file that recorded one file as unreadable.
+    const catalog = new Database(path.join(dir, 'catalog.db'))
+    const file = path.join(dir, 'snapshots', `${baseId}.db`)
+    fs.chmodSync(file, 0o644)
+    const sealed = new Database(file)
+    sealed.exec('alter table symbol add column body_hash text')
+    sealed.exec('alter table symbol add column body_tokens integer')
+    sealed.exec('update symbol set body_tokens = 20')
+    sealed.exec("update symbol set body_hash = 'a' || substr(id, 1, 0) || printf('%063d', rowid) where kind <> 'module'")
+    sealed.exec("update symbol set body_hash = null where qualified_name = 'src/stats:mean'")
+    sealed.prepare("insert into meta (key, value) values ('body_hash_missing', ?)").run(JSON.stringify({ count: 1, paths: ['src/stats.ts'] }))
+    sealed.prepare("update meta set value = '0.7' where key = 'format_version'").run()
+    sealed.close()
+    fs.chmodSync(file, 0o444)
+    catalog.prepare('update snapshot set store_digest = ? where id = ?').run(sha256File(file), baseId)
+    catalog.close()
+    const id = (tool(dir, 'find_symbols', { text: 'mean' }).data.symbols as Array<{ id: string }>)[0]!.id
+    const r = tool(dir, 'get_symbol', { symbol_id: id })
+    expect((r.data as { symbol: Side }).symbol.body_hash).toBeNull()
+    expect(r.limitations.join(' ')).toMatch(/content of src\/stats\.ts was unavailable when the snapshot was sealed/)
+    const other = (tool(dir, 'find_symbols', { text: 'spread' }).data.symbols as Array<{ id: string }>)[0]!.id
+    expect((tool(dir, 'get_symbol', { symbol_id: other }).data as { symbol: Side }).symbol.body_hash).toMatch(HEX64)
+    fs.appendFileSync(path.join(tree, 'src/util.ts'), '// edited\n')
+    const idx = cli(['--data-dir', dir, 'index', tree]); expect(idx.status, idx.stderr).toBe(0)
+    const cmp = tool(dir, 'compare_snapshots', { base_snapshot_id: baseId }) as unknown as { limitations: string[] }
+    expect(cmp.limitations.join(' ')).toMatch(/content of src\/stats\.ts was unavailable when the base snapshot was sealed/)
   }, 240000)
 })

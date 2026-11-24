@@ -272,6 +272,10 @@ removed: number
 changed: number
 paired: number
 ambiguous: number
+/**
+ * Matches of one removed with one or more added symbols below the minimum token count: not paired, not listed as ambiguous, still removed and added.
+ */
+too_small: number
 }
 added: Symbol[]
 removed: Symbol[]
@@ -292,7 +296,7 @@ base: Symbol
 head: Symbol
 }[]
 /**
- * Removed and added symbols of one kind and body hash that are not one on each side, or have the same file and name: candidates, never a guess. They stay in removed and added.
+ * Removed and added symbols of one kind and body hash that are not one on each side: candidates, never a guess. They stay in removed and added.
  */
 ambiguous: {
 kind: string
@@ -332,6 +336,7 @@ unresolved: number
 export interface Symbol {
 id: string
 stable_key: string
+body_tokens?: (number | null)
 /**
  * Null when the span is no more than the name, or the snapshot was sealed before hashes existed.
  */

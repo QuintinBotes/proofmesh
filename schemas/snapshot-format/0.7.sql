@@ -1,4 +1,4 @@
--- Proofmesh snapshot file, format 0.7. Superset of 0.6: each symbol's body_hash, the hash of its declaration text with its own name masked (FR130), null when the span is no more than the name. Sealed and immutable after publication; no timestamps or random values.
+-- Proofmesh snapshot file, format 0.7. Superset of 0.6: each symbol's body_hash, the hash of its declaration text with its own name masked (FR130), null when the span is no more than the name or its content was unavailable (listed in meta body_hash_missing); body_tokens is the token count of the normalised text, the floor below which compare_snapshots never pairs. Sealed and immutable after publication; no timestamps or random values.
 CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL) STRICT;
 CREATE TABLE file (
   id TEXT PRIMARY KEY, path TEXT NOT NULL UNIQUE, content_hash TEXT, size INTEGER NOT NULL,
@@ -21,7 +21,7 @@ CREATE TABLE symbol (
   kind TEXT NOT NULL CHECK (kind IN ('function','class','method','interface','type_alias','variable','module','struct','enum','property','field','constructor','namespace','project','package','endpoint','table','message','channel','job','feature_flag','config_key','team','service','resource','output','module_call')),
   name TEXT NOT NULL, qualified_name TEXT NOT NULL,
   start_byte INTEGER NOT NULL, end_byte INTEGER NOT NULL, start_line INTEGER NOT NULL, end_line INTEGER NOT NULL,
-  signature TEXT, stable_key TEXT NOT NULL, evidence_id TEXT NOT NULL REFERENCES evidence(id), body_hash TEXT
+  signature TEXT, stable_key TEXT NOT NULL, evidence_id TEXT NOT NULL REFERENCES evidence(id), body_hash TEXT, body_tokens INTEGER
 ) STRICT;
 CREATE TABLE external_symbol (id TEXT PRIMARY KEY, module TEXT NOT NULL, name TEXT NOT NULL) STRICT;
 CREATE TABLE assertion (
