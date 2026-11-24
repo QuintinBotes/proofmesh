@@ -5,8 +5,8 @@ import { createRequire } from 'node:module'
 import readline from 'node:readline'
 
 type Range = { start_byte: number; end_byte: number; start_line: number; end_line: number }
-/** A declaration the syntax tier parsed: its name and whole span. */
-export type SyntaxSymbol = { path: string; kind: string; name: string; range: Range }
+/** A declaration the syntax tier parsed: its name, qualified name, kind and whole span. */
+export type SyntaxSymbol = { path: string; kind: string; name: string; qualified_name: string; range: Range }
 export type SyntaxFile = { path: string; content_hash: string; language: string }
 export type Spans = { symbols: Map<string, SyntaxSymbol[]>; unsupported: string[]; problem?: 'unavailable' | 'failed' | 'timeout' }
 

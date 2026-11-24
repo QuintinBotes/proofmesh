@@ -17,6 +17,24 @@ const KINDS: Record<string, string> = { function: 'function', method: 'method', 
 // A database object is named by its schema-qualified identity, unquoted; a name the grammar could not parse names nothing.
 const dbName = (n: Node) => (n.hasError ? null : n.text.split('.').map((p) => p.replace(/^["`[](.*)["`\]]$/, '$1')))
 
+// The languages whose qualified name starts with the package or namespace the source declares; every other language's starts with the file path (FR146).
+const PACKAGE_NODES: Record<string, string> = { java: 'package_declaration', kotlin: 'package_header', scala: 'package_clause', php: 'namespace_definition' }
+function declaredPackage(lang: string, root: Node): string | undefined {
+  const node = root.namedChildren.find((c) => c.type === PACKAGE_NODES[lang])
+  return node ? /^(?:package|namespace)\s+([\w.\\]+)/.exec(node.text)?.[1]?.replace(/\\/g, '.') : undefined
+}
+// A callable's parameter types as its declaration writes them, whitespace removed; a pointer or reference mark stays with its type.
+function parameterTypes(node: Node): string {
+  const list = node.childForFieldName('parameters') ?? node.namedChildren.find((c) => /parameters?$|parameter_list$/.test(c.type))
+  return (list?.namedChildren ?? []).filter((p) => p.type !== 'self_parameter' && p.type !== 'comment').map((p) => {
+    const type = p.childForFieldName('type')
+    const text = type ? type.text + (p.childForFieldName('declarator')?.text.match(/^[*&\s]*/)?.[0] ?? '') : (p.namedChildren.at(-1) ?? p).text
+    return text.replace(/\s+/g, '')
+  }).join(',')
+}
+// A function_declarator is a definition when a function body hangs from it, and a prototype otherwise.
+const isDefinition = (n: Node) => { let p = n.parent; while (p && /^(pointer|reference|parenthesized)_declarator$/.test(p.type)) p = p.parent; return p?.type === 'function_definition' }
+
 let workspace = ''
 const languageOf = new Map<string, string>()
 const queries = new Map<string, Promise<Query>>()
@@ -91,16 +109,30 @@ async function analyse(file: string) {
     } else if (role('reference.table')) {
       const parts = dbName(name)
       if (parts) tables.push({ name, parts })
-    } else if (role('scope')) scopes.push({ node: role('scope')!, qualified: name.text })
+    } else if (role('scope')) scopes.push({ node: role('scope')!, qualified: name.text.replace(/<[^<>]*>/g, '').replace(/::/g, '.') })
     else if (role('local')) locals.push({ node: role('local')!.parent!, name: name.text.toLowerCase() })
   }
-  // A definition's qualified name is the module, then the definitions it sits inside, then its own name; a table keeps its own.
+  // A definition's qualified name is the module, then the definitions it sits inside, then its own name; a table keeps its own. Java, Kotlin,
+  // Scala and PHP start from the package or namespace the source declares instead (FR146).
   const within = (inner: Node, outer: Node) => outer.startIndex <= inner.startIndex && inner.endIndex <= outer.endIndex && outer !== inner
-  for (const s of symbols.slice(1)) {
-    if (s.kind === 'table') continue
+  const prefix = PACKAGE_NODES[lang] ? [declaredPackage(lang, tree.rootNode)].filter((p): p is string => !!p) : null
+  const members = symbols.slice(1).filter((s) => s.kind !== 'table').map((s) => {
     const d = defs.find((x) => x.id === s.local_id)!
     const chain = [...defs, ...scopes].filter((o) => within(d.node, o.node)).sort((a, b) => a.node.startIndex - b.node.startIndex).map((o) => o.qualified)
-    s.qualified_name = `${module}:${[...chain, d.qualified].join('.')}`
+    const parts = [...chain, d.qualified]
+    // The package declaration is itself a definition in some grammars; it is named by the package, not under it.
+    s.qualified_name = prefix ? (!chain.length && d.qualified.replace(/\\/g, '.') === prefix.join('.') ? d.qualified.replace(/\\/g, '.') : [...prefix, ...parts].join('.')) : `${module}:${parts.join('.')}`
+    return { s, d, types: parameterTypes(d.node) }
+  })
+  const byName = new Map<string, typeof members>()
+  for (const n of members) if (n.s.kind === 'function' || n.s.kind === 'method') byName.set(String(n.s.qualified_name), [...(byName.get(String(n.s.qualified_name)) ?? []), n])
+  for (const group of byName.values()) {
+    // A C or C++ prototype and the definition with the same parameters are one symbol, declared at the definition.
+    const dropped = lang === 'c' || lang === 'cpp' ? group.filter((n) => !isDefinition(n.d.node) && group.some((o) => isDefinition(o.d.node) && o.types === n.types)) : []
+    for (const n of dropped) { symbols.splice(symbols.indexOf(n.s), 1); defs.splice(defs.indexOf(n.d), 1) }
+    // Declarations of one name that remain, overloads and the like, are told apart by their parameter types.
+    const rest = group.filter((n) => !dropped.includes(n))
+    if (rest.length > 1) for (const n of rest) n.s.qualified_name = `${n.s.qualified_name}(${n.types})`
   }
   const enclosing = (n: Node) => defs.filter((d) => within(n, d.node) || d.node === n).sort((a, b) => b.node.startIndex - a.node.startIndex)[0]?.id ?? moduleId
   const relationships: Array<Record<string, unknown>> = calls.map((c) => ({ type: 'calls', origin: 'syntax', source: { symbol: enclosing(c.node) }, site: { path: file, range: c.site }, resolution: 'unresolved', reason: 'outside_capability', detail: { callee: c.name } }))

@@ -47,7 +47,7 @@ describe('FR119 FR120 FR121 FR122 FR123 get_symbols_at: the innermost symbol at 
       ['go/calc.go:2', 'go/calc', 'module'],
       ['cs/Calc.cs:6', 'Calc.Add', 'method'],
       // The SCIP importer's own qualified name; issue 15 gives every tier one name.
-      ['scip/cart.go:15', 'example.com/shop/cart.Cart.Checkout', 'method'],
+      ['scip/cart.go:15', 'Cart.Checkout', 'method'],
       ['tf/main.tf:2', 'aws_s3_bucket.logs', 'resource'],
       ['README.md:1', null, null],
       ['ts/shapes.ts:99', null, null],
@@ -79,7 +79,7 @@ describe('FR119 FR120 FR121 FR122 FR123 get_symbols_at: the innermost symbol at 
       'go/calc.go:4 Add go/calc.go:3 function',
       'go/calc.go:2 go/calc.go:1 module',
       'cs/Calc.cs:6 Calc.Add cs/Calc.cs:5 method',
-      'scip/cart.go:15 example.com/shop/cart.Cart.Checkout scip/cart.go:14 method',
+      'scip/cart.go:15 Cart.Checkout scip/cart.go:14 method',
       'tf/main.tf:2 aws_s3_bucket.logs tf/main.tf:1 resource',
       'README.md:1 - not_indexed',
       'ts/shapes.ts:99 - line_out_of_range',

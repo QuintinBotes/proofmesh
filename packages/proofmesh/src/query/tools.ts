@@ -23,7 +23,7 @@ import { changedSymbols, complete, completenessRows, diffLines, inTestCode, summ
 import { gitInfo } from '../indexer/discovery.js'
 import { findTables, tableReach } from './table-reach.js'
 import { searchSources } from './sources.js'
-import { fingerprint, NOTE_KINDS, notesMatching, resolveRef } from './notes.js'
+import { NOTE_KINDS, notesMatching, resolveRef, resolveRefs, staleness } from './notes.js'
 import { verify, type Proposition } from './claims.js'
 import { openCursor, queryHash, sealCursor } from './cursor.js'
 import { leanName, leanRow, leanText, quote } from './lean.js'
@@ -232,7 +232,7 @@ function runRepositoryTool(dataDir: string, tool: string, input: Record<string, 
       const lean = input.envelope === 'lean'
       const ctx: Ctx = { dataDir, db, catalog, snapshot, limits: applied, started: Date.now(), store: new EvidenceStore(dataDir), repo: { id: repo.id, name: repo.name, root: repo.root }, page: { offset: cursor?.offset ?? 0, query }, compact: lean || input.envelope === 'compact' || (input.envelope === undefined && !!session?.fullSent.has(snapshot.id)), lean }
       const freshness = strict ? strictFreshness(ctx, repo.root) : SNAPSHOT_FRESHNESS
-      const result = IMPL[tool as ToolName](ctx, withNamedIds(db, input))
+      const result = IMPL[tool as ToolName](ctx, withNamedIds(db, tool, input))
       const out = envelope(ctx, tool as ToolName, input.limits as Limits | undefined, result, limitations, freshness)
       // Only what list_queries reports: never the input or the result (NFR008).
       catalog.recordQuery({ query_id: out.query_id, tool, repository_id: repo.id, snapshot_id: snapshot.id, duration_ms: Date.now() - ctx.started, truncated: out.completion.truncated, input_hash: query })
@@ -388,9 +388,24 @@ function symbolNamed(db: Database.Database, named: { name: string; path: string 
 }
 
 /** The input with every `{ name, path }` given in place of a symbol id replaced by that id. */
-function withNamedIds(db: Database.Database, input: Record<string, unknown>): Record<string, unknown> {
+function withNamedIds(db: Database.Database, tool: string, input: Record<string, unknown>): Record<string, unknown> {
   const id = (v: unknown) => (v !== null && typeof v === 'object' ? symbolNamed(db, v as { name: string; path: string }) : v)
   const out = { ...input }
+  // A `key` is a stable_key, the same in every tier (FR149): it stands in for the id the tool takes.
+  const ids: Record<string, [string, string]> = { get_symbol: ['key', 'symbol_id'], get_memory: ['key', 'symbol_id'], get_relationships: ['key', 'subject_id'], analyze_impact: ['key', 'subject_ids'], find_tests: ['key', 'subject_ids'] }
+  const keyed = (name: string, into: string) => {
+    if (!(name in out)) return
+    if (into !== 'subject_ids' && out[into] !== undefined) throw new ProofmeshError('INVALID_ARGUMENT', `give ${name} or ${into}, not both`)
+    const key = String(out[name])
+    delete out[name]
+    const rows = db.prepare('select id from symbol where stable_key = ?').all(key) as Array<{ id: string }>
+    if (!rows.length) throw new ProofmeshError('NOT_FOUND', `no symbol has the key ${key} in this snapshot`)
+    // A snapshot sealed before keys were unique may hold two; it answers none by guessing.
+    if (rows.length > 1) throw new ProofmeshError('INVALID_ARGUMENT', `the key ${key} names ${rows.length} symbols in this snapshot, which was sealed before keys were unique; index again`, { detail: 'ambiguous_key' })
+    out[into] = into === 'subject_ids' ? [...((input.subject_ids as string[] | undefined) ?? []), rows[0]!.id] : rows[0]!.id
+  }
+  if (ids[tool]) keyed(...ids[tool]!)
+  if (tool === 'trace_paths') { keyed('source_key', 'source_id'); keyed('target_key', 'target_id') }
   for (const k of ['subject_id', 'source_id', 'target_id', 'symbol_id']) if (k in out) out[k] = id(out[k])
   if (Array.isArray(out.subject_ids)) out.subject_ids = out.subject_ids.map(id)
   // A claim keeps a symbol as kind:qualified name, which resolves in any snapshot, not as an id of this one.
@@ -838,17 +853,17 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     const q = (input.query as string | undefined)?.toLowerCase()
     const all = ctx.catalog.notes()
     const matching = all.filter((n) => {
-      if (symbolId !== undefined && !n.refs.some((r) => resolveRef(ctx.db, r) === symbolId)) return false
+      if (symbolId !== undefined && !n.refs.some((r) => resolveRefs(ctx.db, r).includes(symbolId))) return false
       if (q && !`${n.title}\n${n.body}\n${n.refs.join('\n')}`.toLowerCase().includes(q)) return false
       return true
     })
     const notes = matching.slice(0, ctx.limits.max_rows).map((n) => {
-      const missing = n.refs.filter((r) => !resolveRef(ctx.db, r))
-      const staleness = !n.fingerprint ? 'unaccepted' : fingerprint(ctx.db, n.refs) === n.fingerprint ? 'current' : 'changed'
-      return { id: n.id, title: n.title, kind: n.kind, status: n.status, target: n.target, refs: n.refs, missing_refs: missing, staleness, accepted_by: n.accepted_by, accepted_at: n.accepted_at, sources: n.sources, body: n.body.length > 4000 ? `${n.body.slice(0, 4000)}…` : n.body }
+      const missing = n.refs.filter((r) => !resolveRefs(ctx.db, r).length)
+      const ambiguous = n.refs.flatMap((r) => { const hits = resolveRefs(ctx.db, r); return hits.length > 1 ? [{ ref: r, keys: hits.map((h) => (ctx.db.prepare('select stable_key from symbol where id = ?').get(h) as { stable_key: string }).stable_key).sort() }] : [] })
+      return { id: n.id, title: n.title, kind: n.kind, status: n.status, target: n.target, refs: n.refs, missing_refs: missing, ambiguous_refs: ambiguous, staleness: staleness(ctx.db, n.refs, n.fingerprint, ambiguous.length > 0), accepted_by: n.accepted_by, accepted_at: n.accepted_at, sources: n.sources, body: n.body.length > 4000 ? `${n.body.slice(0, 4000)}…` : n.body }
     })
     const limitations = [
-      'Notes are curated by people; a note marked changed describes code whose relationships moved since it was accepted, and may be out of date.',
+      'Notes are curated by people; a note marked changed describes code whose relationships moved since it was accepted, and may be out of date. One marked tier_changed describes code whose file was analysed by another tier since, with its content unchanged.',
       ...(all.length === 0 ? ['No notes are synced in this workspace; a person adds a notes directory with proofmesh notes add and syncs it.'] : []),
     ]
     return { data: { notes, total: matching.length }, stop_reasons: matching.length > ctx.limits.max_rows ? ['max_rows'] : [], limitations, shrink: 'notes' }
