@@ -682,6 +682,21 @@
     ],
     "FR118": [
       "packages/proofmesh/test/syntax-structure.test.ts"
+    ],
+    "FR119": [
+      "packages/proofmesh/test/symbol-at.test.ts"
+    ],
+    "FR120": [
+      "packages/proofmesh/test/symbol-at.test.ts"
+    ],
+    "FR121": [
+      "packages/proofmesh/test/symbol-at.test.ts"
+    ],
+    "FR122": [
+      "packages/proofmesh/test/symbol-at.test.ts"
+    ],
+    "FR123": [
+      "packages/proofmesh/test/symbol-at.test.ts"
     ]
   },
   "manual": {

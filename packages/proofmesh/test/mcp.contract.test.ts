@@ -17,7 +17,7 @@ beforeAll(async () => {
 })
 afterAll(async () => { await client?.close() })
 
-const TOOLS = ['analyze_impact', 'compare_snapshots', 'find_query_source', 'find_symbols', 'find_tests', 'get_claims', 'get_ecosystem', 'get_external_usage', 'get_job', 'get_memory', 'get_overview', 'get_property_reads', 'get_relationships', 'get_symbol', 'get_table_reach', 'get_verification', 'impact_completeness', 'list_queries', 'list_repositories', 'list_snapshots', 'list_workspaces', 'prepare_verification', 'read_evidence', 'request_index', 'save_memory', 'search_sources', 'trace_paths', 'verify_claim', 'workspace_status']
+const TOOLS = ['analyze_impact', 'compare_snapshots', 'find_query_source', 'find_symbols', 'find_tests', 'get_claims', 'get_ecosystem', 'get_external_usage', 'get_job', 'get_memory', 'get_overview', 'get_property_reads', 'get_relationships', 'get_symbol', 'get_symbols_at', 'get_table_reach', 'get_verification', 'impact_completeness', 'list_queries', 'list_repositories', 'list_snapshots', 'list_workspaces', 'prepare_verification', 'read_evidence', 'request_index', 'save_memory', 'search_sources', 'trace_paths', 'verify_claim', 'workspace_status']
 
 describe('AC22 MCP tool contracts', () => {
   it('FR035 lists exactly the M0 tools plus the M2, M3, M5 and M6 tools, each with its input schema file unchanged', async () => {
@@ -59,6 +59,7 @@ describe('AC22 MCP tool contracts', () => {
     const calls: Array<[string, Record<string, unknown>]> = [
       ['find_symbols', { text: 'formatAmount' }], ['get_symbol', { symbol_id: handle }], ['get_relationships', { subject_id: handle }],
       ['trace_paths', { source_id: handle, target_id: target }], ['analyze_impact', { subject_ids: [target] }], ['find_tests', { subject_ids: [target] }],
+      ['get_symbols_at', { locations: ['packages/api/src/handler.ts:1'] }],
     ]
     expect(calls.map(([name]) => name).sort()).toEqual([...LEAN].sort())
     for (const [name, args] of calls) {

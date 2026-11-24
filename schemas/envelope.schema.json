@@ -56,7 +56,8 @@
         "get_ecosystem",
         "prepare_verification",
         "get_verification",
-        "impact_completeness"
+        "impact_completeness",
+        "get_symbols_at"
       ]
     },
     "snapshot": {

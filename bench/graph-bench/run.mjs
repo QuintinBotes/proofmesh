@@ -8,6 +8,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { McpClient } from './mcp-client.mjs'
+import { measureSymbolAt } from './symbol-at-latency.mjs'
 
 const HERE = path.dirname(new URL(import.meta.url).pathname)
 const argv = process.argv.slice(2)
@@ -261,9 +262,12 @@ for (const q of Q) {
   results.push(row)
   console.error(`${q.id} done`)
 }
+// get_symbols_at over MCP stdio on this snapshot, warm: 1,000 single-location calls and 100 calls of 100 locations (FR122).
+const symbol_at_latency = await measureSymbolAt(async (locations) => { const r = await pm.call('get_symbols_at', { locations }); if (r.isError) throw new Error(r.text.slice(0, 300)); return r }, T.symbols)
+console.error(`get_symbols_at p95 ${symbol_at_latency.single_p95_ms} ms single, ${symbol_at_latency.batch_p95_ms} ms for 100 locations`)
 pm.close()
 const meta = { repo: REPO, commit: spawnSync('git', ['-C', REPO, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).stdout.trim(), graphify: spawnSync('graphify', ['--version'], { encoding: 'utf8' }).stdout.trim(), proofmesh_snapshot: snapshotId, pm_mcp_startup_ms: Math.round(pmStartMs), truth: T.tool + ' ' + T.ts_version, when: new Date().toISOString() }
-fs.writeFileSync(path.join(OUT, 'results.json'), JSON.stringify({ meta, results }, null, 1))
+fs.writeFileSync(path.join(OUT, 'results.json'), JSON.stringify({ meta, results, symbol_at_latency }, null, 1))
 // table
 const pct = (x) => (x === null || x === undefined ? '-' : `${Math.round(x * 100)}%`)
 const bound = (r) => {
@@ -284,6 +288,9 @@ for (const r of results) {
 const extra = results.filter((r) => r.graphify.sites).map((r) => `- ${r.id} call sites (file:line): Graphify R ${pct(r.graphify.sites.recall)} P ${pct(r.graphify.sites.precision)}; ProofMesh R ${pct(r.proofmesh.sites?.recall)} P ${pct(r.proofmesh.sites?.precision)}. Caller files: Graphify R ${pct(r.graphify.files?.recall)} P ${pct(r.graphify.files?.precision)}; ProofMesh R ${pct(r.proofmesh.files?.recall)} P ${pct(r.proofmesh.files?.precision)}`)
 extra.push('- ProofMesh answers are its default MCP envelope, lean; bytes are the answering call(s) only, and the symbol lookup (find_symbols) is the lookup column; Q5 and Q6 name their file by path and look nothing up.')
 extra.push('- A correct row states a true fact: for callers, a true caller at a site where it makes the call (ProofMesh lists each call site, Graphify one site per caller); otherwise a true caller, implementer, file or dependent. Per correct item instead: ' + results.filter((r) => r.proofmesh.bytes_per_correct_item).map((r) => `${r.id} G ${r.graphify.bytes_per_correct_item ?? '-'} / P ${r.proofmesh.bytes_per_correct_item}`).join('; ') + '.')
+extra.push(`- get_symbols_at (FR122), warm, MCP stdio: p95 ${symbol_at_latency.single_p95_ms} ms over ${symbol_at_latency.single_calls} single-location calls (budget ${symbol_at_latency.budget.single_p95_ms} ms), p95 ${symbol_at_latency.batch_p95_ms} ms over ${symbol_at_latency.batch_calls} calls of 100 locations (budget ${symbol_at_latency.budget.batch_p95_ms} ms): ${symbol_at_latency.within_budget ? 'within' : 'OVER'} budget.`)
 const md = [`# Graph bench: ${path.basename(REPO)} @ ${meta.commit.slice(0, 8)}`, '', `Graphify ${meta.graphify}; ProofMesh snapshot ${snapshotId} (MCP start ${meta.pm_mcp_startup_ms} ms); truth: ${meta.truth}.`, '', ...lines, '', ...extra, ''].join('\n')
 fs.writeFileSync(path.join(OUT, 'results.md'), md)
 console.log(md)
+// The budget can fail the run: the results are written first, so the figures stay for whoever reads them.
+if (!symbol_at_latency.within_budget) { console.error('get_symbols_at is over its latency budget'); process.exitCode = 1 }
