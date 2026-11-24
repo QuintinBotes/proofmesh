@@ -4,6 +4,13 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 ## Unreleased
 
+SCIP calls, inheritance and imports (#19):
+
+- The SCIP importer records `calls` by joining the syntax tier's call sites with the index's occurrences at each callee name (`resolved`, or `resolved_external` with the package from the symbol), where it recorded only `references`. A call is no longer also a `references` row; a function passed as a value, and a field or variable that holds one, stay references (FR161, FR167, FR168).
+- It reads the index's `is_implementation` relationships into `implements`, `inherits` and `overrides` (FR162), and records each import statement, resolved to the package's file or to `<ecosystem>:<package>` (`go:std` for Go's standard library) (FR163). `analyze_impact` and `find_tests` follow them like any other edge (FR169).
+- A file reports `resolved_calls` `partial` when a call site matches no occurrence, and `unsupported` with `imports` where the syntax tier lacks the language or cannot be reached (FR166, FR170).
+- The index is read one document at a time, in memory that grows with its definitions, not its size; `proofmesh scip add` too (FR164). An index with a document before its metadata is refused.
+
 Stable symbol keys (#15):
 
 - Every tier names a declaration by one qualified name per language: the declared package or namespace for C#, Java, Kotlin, Scala and PHP (`com.acme.Shop.add(int)`), `<path>:<containers>.<name>` for the rest, with a Go receiver, a Rust `impl` target (and its trait, `X.<Display>.fmt`) and a C++ out-of-class owner as the container, a Go struct or interface kept as such, parameter types on overloads, and a C or C++ prototype merged into its definition (FR146). A Python property setter is `C.x(value)`.
