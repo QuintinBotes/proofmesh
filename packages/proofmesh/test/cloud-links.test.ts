@@ -129,7 +129,7 @@ describe('A8 A35 links from cloud resources to the services that deploy to or us
       { from: 'orders', to: 'infra', type: 'uses_resource', resolved: 2, candidate: 0, min: 0.9, max: 1 },
     ])
     // infra's package.json names two npm packages that no member builds: package boundaries, as an unmatched NuGet package is (fixtures/cs-links).
-    expect(data.boundaries.map((b) => b.type)).toEqual(['depends_on_package', 'messages'])
+    expect(data.boundaries.map((b) => b.type).sort()).toEqual(['depends_on_package', 'messages'])
   })
 
   it('A8 A35 a link file in format 0.1 still opens and answers', () => {
