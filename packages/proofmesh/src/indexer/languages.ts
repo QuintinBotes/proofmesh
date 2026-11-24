@@ -26,7 +26,8 @@ export type AdapterSpec = {
 const here = path.dirname(fileURLToPath(import.meta.url))
 
 function csharpAdapterPath(): string | undefined {
-  if (process.env.PROOFMESH_CS_ADAPTER) return process.env.PROOFMESH_CS_ADAPTER
+  // An override naming a file that is not there leaves the adapter unavailable, so the census says so (FR138).
+  if (process.env.PROOFMESH_CS_ADAPTER) return fs.existsSync(process.env.PROOFMESH_CS_ADAPTER) ? process.env.PROOFMESH_CS_ADAPTER : undefined
   const candidates = [
     path.join(here, 'adapters', 'csharp', 'Proofmesh.Adapter.CSharp.dll'),
     path.resolve(here, '..', '..', '..', '..', 'adapters', 'csharp', 'bin', 'Release', 'net10.0', 'Proofmesh.Adapter.CSharp.dll'),
@@ -120,7 +121,7 @@ export class Registry {
       const owner = d.role === 'source' && d.language ? this.specs.find((s) => s.languages.has(d.language!)) : undefined
       if (owner && owner.id !== 'syntax') return d
       if (d.status !== 'capture' && !(d.status === 'unsupported' && d.detail?.startsWith('no_adapter:'))) return d
-      if (ix.current && sha256File(path.join(root, d.path)) === covered.hash) return { ...d, status: 'capture', detail: null, role: 'source', language: d.language ?? covered.language, adapter: 'scip' }
+      if (ix.current && sha256File(path.join(root, d.path)) === covered.hash) return { ...d, status: 'capture', detail: null, role: 'source', language: d.language ?? covered.language, adapter: 'scip', scip: ix.name }
       return { ...d, detail: `scip_stale:${ix.name}` }
     }
     return d
