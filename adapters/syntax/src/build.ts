@@ -1,4 +1,4 @@
-// The build adapter (FR124 to FR129): the module graph of JavaScript and Go, read from manifests as captured text and never by running
+// The build adapter (FR124 to FR129, FR151 to FR160): the module graph of JavaScript, Go, Maven and Gradle, read from manifests as captured text and never by running
 // a build tool, package manager or script (FR079). A package.json that names a package and a go.mod are `project` symbols; each file
 // is contained by the project of its nearest enclosing manifest; a project depends_on the projects in the repository that its
 // manifests name (package.json dependencies, tsconfig references, go.mod requires satisfied by go.work or a local replace) and
@@ -7,16 +7,16 @@ import fs from 'node:fs'
 import path from 'node:path'
 import readline from 'node:readline'
 import { byteOffsets, send, type Range } from './common.js'
+import { ParseError, catalogLookup, parseXml, readBuildScript, readCatalog, readPom, readSettings, type Catalog, type GradleDep, type Pom, type XNode } from './jvm.js'
 
 const VERSION = '0.1.0'
 type Ref = { symbol: string } | { file: string } | { external: { module: string; name: string } }
 type Fact = Record<string, unknown>
 type Manifest = { path: string; dir: string; text: string; at: Uint32Array; lines: number[] }
-type Project = { id: string; eco: 'npm' | 'go'; manifest: Manifest; dir: string; name: string; range: Range }
+type Project = { id: string; eco: 'npm' | 'go' | 'maven' | 'gradle'; manifest: Manifest; dir: string; name: string; range: Range }
 
 /** A node of a JSON document with where it sits; comments and trailing commas are allowed, as tsconfig.json allows them. */
 type JNode = { kind: 'object' | 'array' | 'string' | 'other'; start: number; end: number; value?: string; members?: Array<{ key: string; start: number; value: JNode }>; items?: JNode[] }
-class ParseError extends Error { constructor(message: string, readonly offset: number) { super(message) } }
 
 function parseJson(text: string): JNode {
   let i = 0
@@ -113,7 +113,7 @@ function parseGoFile(text: string): Directive[] {
 
 let workspace = ''
 let manifests: string[] = []
-const results = new Map<string, { status: 'ok' | 'failed'; detail?: string }>()
+const results = new Map<string, { status: 'ok' | 'failed'; detail?: string; partial?: boolean }>()
 let computed: { symbols: Fact[]; relationships: Fact[] } | undefined
 
 const dirOf = (p: string) => (path.posix.dirname(p) === '.' ? '' : path.posix.dirname(p))
@@ -163,8 +163,13 @@ function compute(): { symbols: Fact[]; relationships: Fact[] } {
   const gos = new Map<string, { m: Manifest; directives: Directive[]; project?: Project }>()
   const works: Array<{ m: Manifest; directives: Directive[] }> = []
   const pnpm: Array<{ dir: string; patterns: string[] }> = []
-  const declare = (p: Omit<Project, 'id'>) => {
-    const project = { ...p, id: `project:${p.manifest.path}` }
+  const poms = new Map<string, { m: Manifest; pom: Pom; project?: Project }>()
+  const settings: Array<{ m: Manifest; notes: string[]; projects: Map<string, Project> }> = []
+  const gradleBuilds: Array<{ m: Manifest; deps: GradleDep[]; notes: string[] }> = []
+  const catalogs = new Map<string, Catalog>()
+  const partial = (file: string) => results.set(file, { ...results.get(file)!, partial: true })
+  const declare = (p: Omit<Project, 'id'>, idSuffix = '') => {
+    const project = { ...p, id: `project:${p.manifest.path}${idSuffix}` }
     projects.push(project)
     symbols.push({ local_id: project.id, path: p.manifest.path, kind: 'project', name: p.name, qualified_name: p.name, range: p.range, signature: null })
     return project
@@ -188,6 +193,23 @@ function compute(): { symbols: Fact[]; relationships: Fact[] } {
           if (decl) entry.project = declare({ eco: 'go', manifest: m, dir: m.dir, name: decl.args[0]!, range: rangeOf(m, decl.start, decl.end) })
           gos.set(m.dir, entry)
         }
+      } else if (base === 'pom.xml') {
+        const root = parseXml(m.text), pom = readPom(root)
+        const entry: { m: Manifest; pom: Pom; project?: Project } = { m, pom }
+        poms.set(file, entry)
+        // The group and version a pom does not state are its parent's, as Maven reads them.
+        const g = pom.groupId ?? pom.parent?.groupId
+        if (!ignored && g && pom.artifactId && pom.artifact) entry.project = declare({ eco: 'maven', manifest: m, dir: m.dir, name: `${g}:${pom.artifactId}`, range: rangeOf(m, pom.artifact.start, pom.artifact.end) })
+      } else if (base === 'settings.gradle' || base === 'settings.gradle.kts') {
+        const { includes, notes } = readSettings(m.text)
+        const entry = { m, notes, projects: new Map<string, Project>() }
+        settings.push(entry)
+        if (!ignored) for (const inc of includes) if (!entry.projects.has(inc.path)) entry.projects.set(inc.path, declare({ eco: 'gradle', manifest: m, dir: resolveFrom(m.dir, inc.path.slice(1).replace(/:/g, '/')), name: inc.path, range: rangeOf(m, inc.start, inc.end) }, `#${inc.path}`))
+      } else if (base === 'build.gradle' || base === 'build.gradle.kts') {
+        const { deps, notes } = readBuildScript(m.text)
+        if (!ignored) gradleBuilds.push({ m, deps, notes })
+      } else if (base === 'libs.versions.toml') {
+        if (!ignored && path.posix.basename(m.dir) === 'gradle') catalogs.set(dirOf(m.dir), readCatalog(m.text))
       } else {
         const root = parseJson(m.text)
         if (base === 'package.json') {
@@ -197,7 +219,7 @@ function compute(): { symbols: Fact[]; relationships: Fact[] } {
         } else if (!ignored) tsconfigs.push({ m, root })
       }
       results.set(file, { status: 'ok' })
-    } catch (e) { fail(file, e, m, base.startsWith('go.') ? `invalid_${base.replace('.', '_')}` : 'invalid_json') }
+    } catch (e) { fail(file, e, m, base.startsWith('go.') ? `invalid_${base.replace('.', '_')}` : base === 'pom.xml' ? 'invalid_xml' : /gradle|toml/.test(base) ? 'invalid_gradle' : 'invalid_json') }
   }
 
   // The nearest project at or above a directory, the files' container; both ecosystems in one directory, Go first.
@@ -209,13 +231,22 @@ function compute(): { symbols: Fact[]; relationships: Fact[] } {
   const exactAt = (dir: string, eco?: Project['eco']) => byDir.get(dir)?.find((p) => !eco || p.eco === eco)
 
   const rel = (type: string, source: Project, site: Range, manifest: Manifest, extra: Fact): Fact => ({ type, origin: 'configuration_adapter', source: { symbol: source.id }, site: { path: manifest.path, range: site }, ...extra })
-  const dependsOn = (source: Project, site: Range, manifest: Manifest, candidates: Project[], missing: Record<string, string>): Fact => {
-    if (candidates.length === 1) return rel('depends_on', source, site, manifest, { resolution: 'resolved', target: { symbol: candidates[0]!.id } })
-    if (candidates.length) return rel('depends_on', source, site, manifest, { resolution: 'ambiguous', candidates: candidates.map((c) => c.id) })
-    return rel('depends_on', source, site, manifest, { resolution: 'unresolved', reason: 'dependency_missing', detail: missing })
+  /** `extra` is detail every outcome carries: a Gradle fact says it was read from a script by pattern. */
+  const dependsOn = (source: Project, site: Range, manifest: Manifest, candidates: Project[], missing: Record<string, string>, extra: Record<string, string> = {}): Fact => {
+    const more = Object.keys(extra).length ? { detail: extra } : {}
+    if (candidates.length === 1) return rel('depends_on', source, site, manifest, { resolution: 'resolved', target: { symbol: candidates[0]!.id }, ...more })
+    if (candidates.length) return rel('depends_on', source, site, manifest, { resolution: 'ambiguous', candidates: candidates.map((c) => c.id), ...more })
+    return rel('depends_on', source, site, manifest, { resolution: 'unresolved', reason: 'dependency_missing', detail: { ...missing, ...extra } })
   }
-  const external = (source: Project, site: Range, manifest: Manifest, ecosystem: string, name: string, version: string): Fact =>
-    rel('depends_on_package', source, site, manifest, { resolution: 'resolved_external', target: { external: { module: ecosystem, name } }, ...(version ? { detail: { version } } : {}) })
+  const external = (source: Project, site: Range, manifest: Manifest, ecosystem: string, name: string, version: string, extra: Record<string, string> = {}): Fact => {
+    const detail = { ...(version ? { version } : {}), ...extra }
+    return rel('depends_on_package', source, site, manifest, { resolution: 'resolved_external', target: { external: { module: ecosystem, name } }, ...(Object.keys(detail).length ? { detail } : {}) })
+  }
+  /** A dependency no static read can name: kept as an unresolved row at its line, never dropped and never guessed, and its file reports partial. */
+  const dynamic = (source: Project, site: Range, manifest: Manifest, detail: Record<string, string>): Fact => {
+    partial(manifest.path)
+    return rel('depends_on_package', source, site, manifest, { resolution: 'unresolved', reason: 'dynamic_specifier', detail })
+  }
   const pathDependency = (source: Project, site: Range, manifest: Manifest, name: string, written: string, from: string, eco: Project['eco']) => {
     const target = resolveFrom(from, written)
     const hit = outside(target) ? undefined : exactAt(target, eco)
@@ -291,6 +322,82 @@ function compute(): { symbols: Fact[]; relationships: Fact[] } {
     }
   }
 
+  // Maven: a module a pom lists must have a pom; a dependency is a project of the repository by groupId:artifactId, else a package.
+  const pomAt = (dir: string) => poms.get(dir ? `${dir}/pom.xml` : 'pom.xml')
+  /** The pom a pom names as parent: its relativePath (default ../pom.xml) when that pom is in the repository. */
+  const parentOf = (e: { m: Manifest; pom: Pom }) => {
+    const rp = e.pom.parent?.relativePath
+    if (!e.pom.parent || rp === '') return undefined
+    const target = resolveFrom(e.m.dir, rp ?? '../pom.xml')
+    return outside(target) ? undefined : poms.get(target.endsWith('.xml') ? target : target ? `${target}/pom.xml` : 'pom.xml')
+  }
+  /** `${...}` resolved against the pom's own properties, then its parents', and the project.* names; a cycle or an unknown name is left as written. */
+  const interpolate = (e: { m: Manifest; pom: Pom }, s: string): string => {
+    const lookup = (key: string): string | undefined => {
+      const own = e.pom
+      const project: Record<string, string | undefined> = { 'project.groupId': own.groupId ?? own.parent?.groupId, 'project.artifactId': own.artifactId, 'project.version': own.version ?? own.parent?.version, 'project.parent.groupId': own.parent?.groupId, 'project.parent.version': own.parent?.version }
+      project['pom.groupId'] = project['project.groupId']; project['pom.version'] = project['project.version']; project['pom.artifactId'] = project['project.artifactId']
+      if (key in project) return project[key]
+      for (let p: typeof e | undefined = e, n = 0; p && n < 20; p = parentOf(p), n++) if (Object.hasOwn(p.pom.properties, key)) return p.pom.properties[key]
+      return undefined
+    }
+    let out = s
+    for (let round = 0; round < 8 && out.includes('${'); round++) {
+      const next = out.replace(/\$\{([^}]+)\}/g, (whole, key: string) => lookup(key) ?? whole)
+      if (next === out) break
+      out = next
+    }
+    return out
+  }
+  const managedVersion = (e: { m: Manifest; pom: Pom }, key: string): string | undefined => {
+    for (let p: typeof e | undefined = e, n = 0; p && n < 20; p = parentOf(p), n++) if (p.pom.managed[key]) return interpolate(p, p.pom.managed[key]!)
+    return undefined
+  }
+  const mavenProjects = projects.filter((x) => x.eco === 'maven')
+  for (const e of poms.values()) {
+    const source = e.project
+    if (!source) continue
+    for (const mod of e.pom.modules) {
+      const written = mod.value.replace(/\\/g, '/'), target = resolveFrom(e.m.dir, written)
+      const found = outside(target) ? undefined : poms.get(target.endsWith('.xml') ? target : target ? `${target}/pom.xml` : 'pom.xml')
+      // A listed module with a pom is declared by that pom; one without is missing.
+      if (!found?.project) relationships.push(dependsOn(source, rangeOf(e.m, mod.start, mod.end), e.m, [], { module: written }))
+    }
+    for (const d of e.pom.dependencies) {
+      const site = rangeOf(e.m, d.start, d.end)
+      const group = d.groupId && interpolate(e, d.groupId), artifact = d.artifactId && interpolate(e, d.artifactId)
+      if (!group || !artifact || group.includes('${') || artifact.includes('${')) { relationships.push(dynamic(source, site, e.m, { ...(d.artifactId ? { artifactId: d.artifactId } : {}), ...(d.groupId ? { groupId: d.groupId } : {}) })); continue }
+      const name = `${group}:${artifact}`
+      const named = mavenProjects.filter((x) => x.name === name && x !== source)
+      if (named.length) { relationships.push(dependsOn(source, site, e.m, named, { name })); continue }
+      const raw = d.version ?? managedVersion(e, name), version = raw && interpolate(e, raw)
+      relationships.push(external(source, site, e.m, 'maven', name, version && !version.includes('${') ? version : '', version?.includes('${') ? { version_expression: version } : {}))
+    }
+  }
+
+  // Gradle: a build script belongs to the project of its directory in the nearest settings script that includes one there. Only declarative
+  // statements are read, each marked inferred, and anything else is named dynamic; a script is never evaluated (FR079).
+  const INFERRED = { inferred: 'gradle_script_pattern' }
+  for (const s of settings) if (s.notes.length) partial(s.m.path)
+  for (const { m, deps, notes } of gradleBuilds) {
+    const owner = settings.filter((s) => [...s.projects.values()].some((p) => p.dir === m.dir)).sort((a, b) => b.m.dir.length - a.m.dir.length)[0]
+    const source = owner && [...owner.projects.values()].find((p) => p.dir === m.dir)
+    if (!owner || !source) continue
+    if (notes.length) partial(m.path)
+    const catalog = catalogs.get(owner.m.dir)
+    const coordinate = (group: string, name: string, version: string | undefined, site: Range) => relationships.push(external(source, site, m, 'maven', `${group}:${name}`, version ?? '', INFERRED))
+    for (const dep of deps) {
+      const site = rangeOf(m, dep.start, dep.end)
+      if (dep.kind === 'coordinate') coordinate(dep.group, dep.name, dep.version, site)
+      else if (dep.kind === 'project') relationships.push(dependsOn(source, site, m, [owner.projects.get(dep.path)].filter((p): p is Project => !!p && p !== source), { path: dep.path }, INFERRED))
+      else if (dep.kind === 'catalog') {
+        const libs = catalogLookup(catalog, dep.alias)
+        if (libs) for (const l of libs) coordinate(l.group, l.name, l.version, site)
+        else relationships.push(dynamic(source, site, m, { configuration: dep.configuration, source: `libs.${dep.alias}`, ...INFERRED }))
+      } else relationships.push(dynamic(source, site, m, { configuration: dep.configuration, source: dep.source.slice(dep.configuration.length).trim(), ...INFERRED }))
+    }
+  }
+
   // Each captured file, nearest project first; the core attaches it to its module symbol, and skips a file that has none.
   const walk = (dir: string) => {
     for (const e of fs.readdirSync(path.join(workspace, dir), { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : 1))) {
@@ -307,7 +414,7 @@ function compute(): { symbols: Fact[]; relationships: Fact[] } {
 const fileResult = (file: string) => {
   const r = results.get(file) ?? { status: 'ok' as const }
   return r.status === 'ok'
-    ? { path: file, status: 'ok', capabilities: { text: 'complete', syntax: 'complete', symbols: 'complete' } }
+    ? { path: file, status: 'ok', capabilities: { text: 'complete', syntax: 'complete', symbols: r.partial ? 'partial' : 'complete' } }
     : { path: file, status: 'failed', detail: r.detail, capabilities: { text: 'complete', syntax: 'failed' } }
 }
 

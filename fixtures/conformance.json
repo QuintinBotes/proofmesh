@@ -107,10 +107,12 @@
     },
     "build": {
       "fixtures": [
-        "build-graph"
+        "build-graph",
+        "build-graph-jvm"
       ],
       "tests": [
-        "packages/proofmesh/test/build-graph.test.ts"
+        "packages/proofmesh/test/build-graph.test.ts",
+        "packages/proofmesh/test/build-graph-jvm.test.ts"
       ]
     },
     "scip": {

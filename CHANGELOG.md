@@ -4,6 +4,11 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 ## Unreleased
 
+Build graph, Maven and Gradle (part of #13):
+
+- The build adapter reads `pom.xml`, `settings.gradle(.kts)`, `build.gradle(.kts)` and `gradle/libs.versions.toml` as captured text and never runs a build tool, a JVM or a script. A pom is a `project` named `groupId:artifactId` and a Gradle `include` a project named by its path; each contains the source files under its directory, `depends_on` records the modules a dependency names, and `depends_on_package` records the others as `maven:<group>:<artifact>` with their version. Gradle facts are marked `inferred`. A dependency a Gradle script computes is named as unresolved (`dynamic_specifier`) at its line and its file reports `partial` in the census (FR151 to FR160). Bazel and Buck stay open on #13.
+- `settings.gradle.kts` and `build.gradle.kts` go to the build adapter as manifests, no longer to the syntax tier as Kotlin source.
+
 Stable symbol keys (#15):
 
 - Every tier names a declaration by one qualified name per language: the declared package or namespace for C#, Java, Kotlin, Scala and PHP (`com.acme.Shop.add(int)`), `<path>:<containers>.<name>` for the rest, with a Go receiver, a Rust `impl` target (and its trait, `X.<Display>.fmt`) and a C++ out-of-class owner as the container, a Go struct or interface kept as such, parameter types on overloads, and a C or C++ prototype merged into its definition (FR146). A Python property setter is `C.x(value)`.

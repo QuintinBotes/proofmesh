@@ -4,32 +4,12 @@ import { describe, expect, it } from 'vitest'
 import type Database from 'better-sqlite3'
 import { runKit } from '../src/conformance/kit.js'
 import { BUILT_IN } from '../src/indexer/languages.js'
-import { expectedFor, fixtureRepo, indexedDataDir, symbolId, tmpDir, tool, withSnapshot } from './helpers.js'
+import { expectedFor, fixtureRepo, indexedDataDir, indexedRepo, json, rows, symbolId, tmpDir, tool, withSnapshot } from './helpers.js'
 
 const build = () => { const b = BUILT_IN.find((x) => x.id === 'build')!; return { id: 'build', entry: b.entry()!, extensions: b.extensions, configNames: [] } }
 const EXPECTED = expectedFor('build-graph')
 let fixtureDir: Promise<string> | undefined
 const fixtureIndex = () => (fixtureDir ??= indexedDataDir(fixtureRepo('build-graph')).then((r) => r.dataDir))
-
-type Row = { type: string; from: string; to: string | null; resolution: string; reason: string | null; origin: string; detail: Record<string, string> | null; line: number; path: string; candidates: string[] }
-/** Every assertion of the given types, with the line and file where it is declared. */
-function rows(db: Database.Database, ...types: string[]): Row[] {
-  const marks = types.map(() => '?').join(', ')
-  const found = db.prepare(`select a.id, a.type, a.origin, a.resolution, a.reason, a.detail, s.qualified_name as src, t.qualified_name as dst, x.module as xm, x.name as xn from assertion a join symbol s on s.id = a.source_id left join symbol t on t.id = a.target_id and a.target_kind = 'symbol' left join external_symbol x on x.id = a.target_id and a.target_kind = 'external' where a.type in (${marks})`).all(...types) as Array<{ id: string; type: string; origin: string; resolution: string; reason: string | null; detail: string | null; src: string; dst: string | null; xm: string | null; xn: string | null }>
-  return found.map((r) => {
-    const ev = db.prepare('select e.start_line, f.path from assertion_evidence ae join evidence e on e.id = ae.evidence_id join file f on f.id = e.file_id where ae.assertion_id = ?').get(r.id) as { start_line: number; path: string }
-    const candidates = (db.prepare('select s.qualified_name || \'@\' || f.path as n from assertion_candidate c join symbol s on s.id = c.symbol_id join file f on f.id = s.file_id where c.assertion_id = ? order by c.rank').all(r.id) as Array<{ n: string }>).map((c) => c.n)
-    return { type: r.type, from: r.src, to: r.xm ? `${r.xm}:${r.xn}` : r.dst, resolution: r.resolution, reason: r.reason, origin: r.origin, detail: r.detail ? JSON.parse(r.detail) : null, line: ev.start_line, path: ev.path, candidates }
-  }).sort((a, b) => a.from.localeCompare(b.from) || String(a.to).localeCompare(String(b.to)) || a.line - b.line)
-}
-
-/** A throwaway repository, indexed through the same path as a fixture. */
-async function indexedRepo(files: Record<string, string>) {
-  const repo = tmpDir('pm-bg-')
-  for (const [p, text] of Object.entries(files)) { fs.mkdirSync(path.dirname(path.join(repo, p)), { recursive: true }); fs.writeFileSync(path.join(repo, p), text) }
-  return { repo, ...(await indexedDataDir(repo)) }
-}
-const json = (o: unknown) => JSON.stringify(o, null, 2) + '\n'
 
 describe('FR124 FR125 FR126 FR127 the build graph of JavaScript and Go: each file in its declared module, each module its declared dependencies', () => {
   it('FR124 issue 5 scenario 1: find_symbols with kind project returns one project per named manifest, at the line of its name', async () => {

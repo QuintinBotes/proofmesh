@@ -751,6 +751,37 @@
     "FR150": [
       "packages/proofmesh/test/stable-keys.test.ts"
     ],
+    "FR151": [
+      "packages/proofmesh/test/build-graph-jvm.test.ts"
+    ],
+    "FR152": [
+      "packages/proofmesh/test/build-graph-jvm.test.ts"
+    ],
+    "FR153": [
+      "packages/proofmesh/test/build-graph-jvm.test.ts"
+    ],
+    "FR154": [
+      "packages/proofmesh/test/build-graph-jvm.test.ts"
+    ],
+    "FR155": [
+      "packages/proofmesh/test/build-graph-jvm.test.ts"
+    ],
+    "FR156": [
+      "packages/proofmesh/test/build-graph-jvm.test.ts"
+    ],
+    "FR157": [
+      "packages/proofmesh/test/build-graph-jvm.test.ts"
+    ],
+    "FR158": [
+      "packages/proofmesh/test/build-graph-jvm.test.ts"
+    ],
+    "FR159": [
+      "packages/proofmesh/test/build-graph-jvm.test.ts"
+    ],
+    "FR160": [
+      "packages/proofmesh/test/build-graph-jvm.test.ts",
+      "packages/proofmesh/test/incremental.test.ts"
+    ],
     "FR136": [
       "packages/proofmesh/test/census.test.ts"
     ],

@@ -68,3 +68,24 @@ export function cli(args: string[], env: Record<string, string> = {}): { status:
   const r = spawnSync(process.execPath, [CLI, ...args], { encoding: 'utf8', env: { ...process.env, ...env } })
   return { status: r.status, stdout: r.stdout, stderr: r.stderr }
 }
+
+export type Row = { type: string; from: string; to: string | null; resolution: string; reason: string | null; origin: string; detail: Record<string, string> | null; line: number; path: string; candidates: string[] }
+/** Every assertion of the given types, with the line and file where it is declared. */
+export function rows(db: Database.Database, ...types: string[]): Row[] {
+  const marks = types.map(() => '?').join(', ')
+  const found = db.prepare(`select a.id, a.type, a.origin, a.resolution, a.reason, a.detail, s.qualified_name as src, t.qualified_name as dst, x.module as xm, x.name as xn from assertion a join symbol s on s.id = a.source_id left join symbol t on t.id = a.target_id and a.target_kind = 'symbol' left join external_symbol x on x.id = a.target_id and a.target_kind = 'external' where a.type in (${marks})`).all(...types) as Array<{ id: string; type: string; origin: string; resolution: string; reason: string | null; detail: string | null; src: string; dst: string | null; xm: string | null; xn: string | null }>
+  return found.map((r) => {
+    const ev = db.prepare('select e.start_line, f.path from assertion_evidence ae join evidence e on e.id = ae.evidence_id join file f on f.id = e.file_id where ae.assertion_id = ?').get(r.id) as { start_line: number; path: string }
+    const candidates = (db.prepare('select s.qualified_name || \'@\' || f.path as n from assertion_candidate c join symbol s on s.id = c.symbol_id join file f on f.id = s.file_id where c.assertion_id = ? order by c.rank').all(r.id) as Array<{ n: string }>).map((c) => c.n)
+    return { type: r.type, from: r.src, to: r.xm ? `${r.xm}:${r.xn}` : r.dst, resolution: r.resolution, reason: r.reason, origin: r.origin, detail: r.detail ? JSON.parse(r.detail) : null, line: ev.start_line, path: ev.path, candidates }
+  }).sort((a, b) => a.from.localeCompare(b.from) || String(a.to).localeCompare(String(b.to)) || a.line - b.line)
+}
+
+/** A throwaway repository, indexed through the same path as a fixture. */
+export async function indexedRepo(files: Record<string, string>) {
+  const repo = tmpDir('pm-bg-')
+  for (const [p, text] of Object.entries(files)) { fs.mkdirSync(path.dirname(path.join(repo, p)), { recursive: true }); fs.writeFileSync(path.join(repo, p), text) }
+  return { repo, ...(await indexedDataDir(repo)) }
+}
+export const json = (o: unknown) => JSON.stringify(o, null, 2) + '\n'
+
