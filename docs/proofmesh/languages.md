@@ -98,7 +98,7 @@ The build adapter (FR124 to FR129) reads manifests as captured text and never ru
 A person who runs a SCIP indexer can name its output: `proofmesh scip add <repository> <index.scip>`. Proofmesh reads the file and never runs an indexer (A24).
 
 - An index covers only files no semantic adapter analyses, so it upgrades the syntax tier and languages with no adapter (A27).
-- Symbols: each definition, with its kind and signature as the indexer recorded them, named by its SCIP descriptors.
+- Symbols: each definition, with its kind and signature as the indexer recorded them, named by its SCIP descriptors. A definition's span is the indexer's enclosing range; when the index records none, it is the syntax tier's span of the declaration that holds the name, so a line inside the body has an enclosing symbol (FR121).
 - References: from the innermost definition that encloses each occurrence, resolved to a definition the index serves, or to an external symbol named by its package. A symbol the index defines in a file whose facts come from another adapter is unresolved with `outside_capability`.
 - Calls and imports are not reported: SCIP does not distinguish a call from another reference.
 - Staleness: Proofmesh records each covered file's content when the index is named. A file edited after that, or every file of an index whose own file changed, goes back to its usual adapter, and its disposition says `scip_stale:<name>` until the person produces the index again and names it again.

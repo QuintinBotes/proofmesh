@@ -4,6 +4,7 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import readline from 'node:readline'
+import { syntaxSymbols } from './syntax-spans.js'
 import { decodeScip, DEFINITION, repositoryPath, type ScipDocument, type ScipOccurrence, type ScipRange, type ScipSymbol } from './decode.js'
 
 const VERSION = '0.1.0'
@@ -16,6 +17,8 @@ const documents = new Map<string, ScipDocument>()
 const definitions = new Map<string, Definition>()
 /** Symbols an index defines in a file that is not routed to this adapter: a stale one, or one a first-party adapter analyses. */
 const elsewhere = new Set<string>()
+/** Files with a definition whose declaration span could not be taken from the syntax tier, and why ('' while none failed). */
+const narrow = new Map<string, string>()
 
 /** One descriptor of a SCIP symbol: a name and its suffix, such as `Cart` and `#` for a type. */
 type Descriptor = { name: string; suffix: string }
@@ -100,7 +103,7 @@ function positions(text: string, encoding: number) {
   }
 }
 
-function initialize(params: { workspace: string; repository_root?: string; files: Array<{ path: string }>; config?: { indexes?: Array<{ name: string; path: string; sha256: string }> } }) {
+async function initialize(params: { workspace: string; repository_root?: string; files: Array<{ path: string; content_hash: string; language: string }>; config?: { indexes?: Array<{ name: string; path: string; sha256: string }> } }) {
   workspace = params.workspace
   const routed = new Set(params.files.map((f) => f.path))
   const indexes = params.config?.indexes ?? []
@@ -117,14 +120,28 @@ function initialize(params: { workspace: string; repository_root?: string; files
       else for (const o of doc.occurrences) if (o.roles & DEFINITION) elsewhere.add(o.symbol)
     }
   }
+  // A file with a definition that has no enclosing range is parsed by the syntax tier, for the span of that declaration.
+  const bare = params.files.filter((f) => { const doc = documents.get(f.path); return doc?.occurrences.some((o) => o.roles & DEFINITION && !o.enclosing && o.range) })
+  const spans = await syntaxSymbols(bare, workspace)
+  const parsedBy = spans.symbols
+  // A file whose spans could not be widened says so: its symbols are partial, and a line in a body may have no enclosing symbol.
+  for (const f of bare) narrow.set(f.path, spans.problem ? `syntax_tier_${spans.problem}` : spans.unsupported.includes(f.path) ? `language_not_in_syntax_tier:${f.language}` : '')
   // Every definition first, so a reference in one file can name a symbol another file defines.
   for (const [p, doc] of documents) {
     const range = positions(fs.readFileSync(path.join(workspace, p), 'utf8'), doc.positionEncoding)
     const info = new Map(doc.symbols.map((s) => [s.symbol, s]))
     for (const o of doc.occurrences) {
       const parsed = (o.roles & DEFINITION) && !definitions.has(o.symbol) ? parseSymbol(o.symbol) : undefined
-      const r = parsed && parsed.descriptors.length ? range(o.enclosing ?? o.range!) : undefined
+      let r = parsed && parsed.descriptors.length ? range(o.enclosing ?? o.range!) : undefined
       if (!parsed || !r || !o.range) continue
+      if (!o.enclosing) {
+        // The narrowest declaration of that name which holds the name's own span.
+        const name = parsed.descriptors.filter((x) => x.suffix !== '[' && x.suffix !== '(').at(-1)!.name
+        const decl = (parsedBy.get(p) ?? []).filter((x) => x.kind !== 'module' && x.name === name && x.range.start_byte <= r!.start_byte && r!.end_byte <= x.range.end_byte)
+          .sort((a, b) => (a.range.end_byte - a.range.start_byte) - (b.range.end_byte - b.range.start_byte))[0]
+        if (decl) r = decl.range
+        else if (!narrow.get(p)) narrow.set(p, 'declaration_not_found')
+      }
       definitions.set(o.symbol, { local_id: `${p}#${o.symbol}`, path: p, qualified: dotted(parsed.descriptors), range: r, occurrence: o, info: info.get(o.symbol) })
     }
   }
@@ -168,18 +185,19 @@ function analyse(p: string) {
   }
   return {
     symbols, relationships,
-    result: { path: p, status: 'ok', capabilities: { text: 'complete', syntax: 'unsupported', symbols: skippedDefinitions ? 'partial' : 'complete', imports: 'unsupported', references: skipped ? 'partial' : 'complete', resolved_calls: 'unsupported' } },
+    ...(narrow.get(p) ? { diagnostic: { level: 'warning', path: p, message: `definitions in ${p} span only their names: ${narrow.get(p)}` } } : {}),
+    result: { path: p, status: 'ok', capabilities: { text: 'complete', syntax: 'unsupported', symbols: skippedDefinitions || narrow.get(p) ? 'partial' : 'complete', imports: 'unsupported', references: skipped ? 'partial' : 'complete', resolved_calls: 'unsupported' } },
   }
 }
 
-readline.createInterface({ input: process.stdin }).on('line', (line) => {
+readline.createInterface({ input: process.stdin }).on('line', async (line) => {
   const req = JSON.parse(line)
   try {
-    if (req.method === 'initialize') send({ jsonrpc: '2.0', id: req.id, result: initialize(req.params) })
+    if (req.method === 'initialize') send({ jsonrpc: '2.0', id: req.id, result: await initialize(req.params) })
     else if (req.method === 'workspace') send({ jsonrpc: '2.0', id: req.id, result: { symbols: [], relationships: [], file_results: [], diagnostics: [] } })
     else if (req.method === 'analyze') {
       const out = { symbols: [] as unknown[], relationships: [] as unknown[], file_results: [] as unknown[], diagnostics: [] as unknown[] }
-      for (const p of req.params.paths as string[]) { const r = analyse(p); out.symbols.push(...r.symbols); out.relationships.push(...r.relationships); out.file_results.push(r.result) }
+      for (const p of req.params.paths as string[]) { const r = analyse(p); out.symbols.push(...r.symbols); out.relationships.push(...r.relationships); out.file_results.push(r.result); if ('diagnostic' in r && r.diagnostic) out.diagnostics.push(r.diagnostic) }
       send({ jsonrpc: '2.0', id: req.id, result: out })
     } else if (req.method === 'shutdown') { send({ jsonrpc: '2.0', id: req.id, result: {} }); process.exit(0) }
   } catch (e) {

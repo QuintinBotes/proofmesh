@@ -184,7 +184,7 @@ describe('FR108 FR109 FR110 FR111 FR112 FR113 FR114 impact_completeness: what a 
 describe('FR125 impact_completeness answers the same with a named package.json, which only adds the project of each file', () => {
   it('scenario 1 and its summary are unchanged when the repository is a named package', () => {
     // The package.json is committed in the base, so the diff is the same two edits.
-    const { out } = completeness([(r) => fs.writeFileSync(path.join(r, 'package.json'), '{ "name": "reach-pkg" }\n'), ...HEAD], [], false, 1)
+    const { out } = completeness([(r) => { fs.writeFileSync(path.join(r, 'package.json'), '{ "name": "reach-pkg" }\n'); git(r, 'add', '-A'); git(r, 'commit', '-q', '-m', 'package') }, ...HEAD], [], false, 1)
     expect(rows(out.stdout)).toEqual(SCENARIO_1)
     expect(summary(out.stdout)).toBe('summary: 2 changed symbols; 4 dependents: 1 changed, 1 tested, 2 neither')
   }, 180000)

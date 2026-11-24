@@ -26,7 +26,8 @@ import { searchSources } from './sources.js'
 import { fingerprint, NOTE_KINDS, notesMatching, resolveRef } from './notes.js'
 import { verify, type Proposition } from './claims.js'
 import { openCursor, queryHash, sealCursor } from './cursor.js'
-import { leanName, leanRow, leanText } from './lean.js'
+import { leanName, leanRow, leanText, quote } from './lean.js'
+import { innermost } from './symbol-at.js'
 import { compare } from './compare.js'
 import { loadSchema } from '../core/schemas.js'
 import { changes, workingTree } from '../indexer/freshness.js'
@@ -37,10 +38,10 @@ import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 
-export const TOOLS = ['workspace_status', 'list_repositories', 'list_snapshots', 'list_workspaces', 'find_symbols', 'get_symbol', 'get_relationships', 'trace_paths', 'read_evidence', 'get_overview', 'analyze_impact', 'find_tests', 'search_sources', 'get_memory', 'verify_claim', 'request_index', 'get_job', 'get_claims', 'save_memory', 'get_table_reach', 'get_property_reads', 'get_external_usage', 'find_query_source', 'compare_snapshots', 'list_queries', 'get_ecosystem', 'prepare_verification', 'get_verification', 'impact_completeness'] as const
+export const TOOLS = ['workspace_status', 'list_repositories', 'list_snapshots', 'list_workspaces', 'find_symbols', 'get_symbol', 'get_relationships', 'trace_paths', 'read_evidence', 'get_overview', 'analyze_impact', 'find_tests', 'search_sources', 'get_memory', 'verify_claim', 'request_index', 'get_job', 'get_claims', 'save_memory', 'get_table_reach', 'get_property_reads', 'get_external_usage', 'find_query_source', 'compare_snapshots', 'list_queries', 'get_ecosystem', 'prepare_verification', 'get_verification', 'impact_completeness', 'get_symbols_at'] as const
 export type ToolName = (typeof TOOLS)[number]
 /** The query tools whose results are code locations: they answer in the lean envelope on request, and by default over MCP (FR099). */
-export const LEAN = new Set<string>(['find_symbols', 'get_symbol', 'get_relationships', 'trace_paths', 'analyze_impact', 'find_tests'])
+export const LEAN = new Set<string>(['find_symbols', 'get_symbol', 'get_symbols_at', 'get_relationships', 'trace_paths', 'analyze_impact', 'find_tests'])
 /** A lean answer is its text; the envelope beside it is what the text was rendered from, for in-process callers. */
 export type Answer = Envelope & { text?: string }
 
@@ -54,7 +55,7 @@ export const CAPABILITY: Record<ToolName, ListQueriesData['tools'][number]['capa
   read_evidence: 'read', get_overview: 'read', analyze_impact: 'read', find_tests: 'read', search_sources: 'read', get_memory: 'read',
   verify_claim: 'read', request_index: 'management', get_job: 'read', get_claims: 'read', save_memory: 'management', get_table_reach: 'read',
   get_property_reads: 'read', get_external_usage: 'read', find_query_source: 'read', compare_snapshots: 'read', list_queries: 'read',
-  get_ecosystem: 'read', prepare_verification: 'management', get_verification: 'read', impact_completeness: 'management',
+  get_ecosystem: 'read', prepare_verification: 'management', get_verification: 'read', impact_completeness: 'management', get_symbols_at: 'read',
 }
 
 /** The version of every public contract this build speaks (FR037, FR076); COMPATIBILITY.md states the same versions and their policy. */
@@ -103,7 +104,7 @@ type Partial = {
 }
 
 /** Tools whose shrink list has a total order and honours ctx.page.offset, so a cursor continues it with no omission or duplicate. */
-const PAGED = new Set<ToolName>(['find_symbols', 'get_relationships', 'search_sources', 'workspace_status', 'find_tests', 'impact_completeness'])
+const PAGED = new Set<ToolName>(['get_symbols_at', 'find_symbols', 'get_relationships', 'search_sources', 'workspace_status', 'find_tests', 'impact_completeness'])
 /** Tools that answer over a workspace's link file rather than one repository snapshot (A28). None yet in this file; get_ecosystem joins at integration. */
 const WORKSPACE_SCOPED = new Set<ToolName>([])
 
@@ -367,6 +368,8 @@ const propertyReadRow = (r: PropertyRead, propertyOf: Database.Statement) => ({
 })
 
 type SymbolRow = { id: string; kind: string; name: string; qualified_name: string; path: string; start_line: number; end_line: number; signature: string | null; evidence_id: string }
+/** Most locations one get_symbols_at call answers (FR119). */
+const MAX_LOCATIONS = 100
 const SYMBOL_SQL = 'select s.id, s.kind, s.name, s.qualified_name, f.path, s.start_line, s.end_line, s.signature, s.evidence_id from symbol s join file f on f.id = s.file_id'
 const publicSymbol = ({ evidence_id: _e, ...s }: SymbolRow) => s
 /** A symbol as a lean row: at its declaration, with its kind, and its id when asked (FR096, FR100). */
@@ -706,6 +709,49 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
       }
     } finally {
       for (const db of new Set([baseDb, headDb])) if (db !== ctx.db) db.close()
+    }
+  },
+
+  get_symbols_at(ctx, input) {
+    const all = input.locations as string[]
+    if (all.length > MAX_LOCATIONS) throw new ProofmeshError('INVALID_ARGUMENT', `get_symbols_at takes at most ${MAX_LOCATIONS} locations per call; ${all.length} were given`, { detail: 'too_many_locations', limit: MAX_LOCATIONS })
+    // max_rows or max_bytes may answer fewer than were asked: the cursor continues with the rest, in order.
+    const end = ctx.page.offset + ctx.limits.max_rows, asked = all.slice(ctx.page.offset, end)
+    type At = { id: string; kind: string; name: string; qualified_name: string; stable_key: string; path: string; start_line: number; end_line: number; extractor: string }
+    const files = new Map<string, At[]>()
+    let column = false
+    const results = asked.map((location) => {
+      const m = /^(.+?):(\d+)(?::(\d+))?$/.exec(location)
+      // The input schema holds every location to path:line, so the pattern matches.
+      column ||= m![3] !== undefined
+      const line = Number(m![2])
+      let file: { id: string; path: string }
+      try {
+        file = fileAt(ctx, m![1]!)
+      } catch (e) {
+        if (!(e instanceof ProofmeshError) || e.code !== 'INVALID_ARGUMENT') throw e
+        const disposition = e.details.disposition as string | undefined
+        if (e.details.detail === 'path_outside_repository') return { location, symbol: null, error: { code: 'path_outside_repository', message: e.message } }
+        if (disposition === 'not found') return { location, symbol: null, error: { code: 'not_found', message: `${m![1]} is not a file of snapshot ${ctx.snapshot.id}` } }
+        return { location, symbol: null, disposition: disposition!, reason: 'not_indexed' }
+      }
+      let syms = files.get(file.id)
+      if (!syms) files.set(file.id, syms = ctx.db.prepare('select s.id, s.kind, s.name, s.qualified_name, s.stable_key, f.path, s.start_line, s.end_line, ev.extractor from symbol s join file f on f.id = s.file_id join evidence ev on ev.id = s.evidence_id where s.file_id = ?').all(file.id) as At[])
+      if (!syms.length) return { location, symbol: null, reason: 'no_symbol' }
+      if (line < 1 || line > Math.max(...syms.map((s) => s.end_line))) return { location, symbol: null, error: { code: 'line_out_of_range', message: `${file.path} has no line ${line}` } }
+      const hit = innermost(syms.filter((s) => s.kind !== 'module'), line) ?? syms.find((s) => s.kind === 'module')
+      if (!hit) return { location, symbol: null, reason: 'no_symbol' }
+      const { extractor, ...rest } = hit
+      return { location, symbol: { ...rest, tier: extractor === 'scip' ? 'scip' : extractor === 'syntax' ? 'syntax' : 'precise' } }
+    })
+    return {
+      data: { results }, stop_reasons: all.length > end ? ['max_rows'] : [], more: all.length > end, shrink: 'results',
+      limitations: column ? ['A location with a column is answered by its line only.'] : [],
+      lean: (data) => (data.results as typeof results).map((r) => {
+        const s = r.symbol as { kind: string; name: string; qualified_name: string; path: string; start_line: number } | null
+        const reason = 'error' in r ? r.error!.code : 'reason' in r ? r.reason : undefined
+        return `${quote(r.location)} ${s ? symbolRow(s as never) : `- ${reason}`}`
+      }),
     }
   },
 

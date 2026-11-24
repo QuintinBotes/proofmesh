@@ -4,6 +4,10 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 ## Unreleased
 
+The symbol at a location (#8):
+
+- `get_symbols_at` takes 1 to 100 locations `path:line` and returns, for each in order, the innermost symbol whose declaration span holds the line, with its id, `stable_key`, kind, lines and tier, or the file's module; a location it cannot answer has its own reason or error. A SCIP definition with no enclosing range takes its span from the syntax tier's parse of the declaration, and the graph benchmark records the tool's p95 latency (FR119 to FR123).
+
 Build graph, JavaScript and Go (part of #5):
 
 - A build adapter reads `package.json`, `tsconfig.json`, `go.mod` and `go.work` as captured text, never running a script or tool. A named package or Go module is a `project` symbol that `contains` the module symbol of each file under it (nearest manifest first), so `analyze_impact` groups dependents by project; it records `depends_on` between projects in the repository (workspace members, `tsconfig` references, `go.work` and local `replace`) and `depends_on_package` for other dependencies with their versions (FR124 to FR129). Cargo, pyproject, Composer and gemspec manifests stay open on #5.

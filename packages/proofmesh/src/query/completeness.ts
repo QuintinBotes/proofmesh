@@ -4,6 +4,7 @@ import { spawnSync } from 'node:child_process'
 import type Database from 'better-sqlite3'
 import { ProofmeshError } from '../core/errors.js'
 import { leanName, leanRow, quote } from './lean.js'
+import { innermost } from './symbol-at.js'
 import { EXECUTING, importedNames, testReach } from './test-reach.js'
 
 /** Changed line ranges by path, on one side of a diff. */
@@ -92,7 +93,7 @@ function touched(db: Database.Database, ranges: Ranges, text: (path: string) => 
     const imports = db.prepare("select e.start_line as s, e.end_line as e from assertion a join assertion_evidence ae on ae.assertion_id = a.id join evidence e on e.id = ae.evidence_id where a.type = 'imports' and a.source_id = ?").all(module?.file_id ?? '') as Array<{ s: number; e: number }>
     for (const [s, e] of rs) {
       for (let l = s; l <= Math.min(e, Math.max(lines.length, s)); l++) {
-        const hit = inner.filter((x) => x.start_line <= l && l <= x.end_line).sort((x, y) => (x.end_line - x.start_line) - (y.end_line - y.start_line))[0]
+        const hit = innermost(inner, l, false)
         const sym = hit ?? (module && !notAStatement(lines[l - 1] ?? '') && !imports.some((i) => i.s <= l && l <= i.e) ? module : undefined)
         if (sym) out.set(sym.id, sym)
       }

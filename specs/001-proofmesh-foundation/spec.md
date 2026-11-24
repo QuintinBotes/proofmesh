@@ -262,6 +262,14 @@ Acceptance: CI runs my pull request without secrets or release credentials; lice
 - FR117: MUST leave every syntax-tier `imports`, `inherits` and `implements` row unresolved with reason `outside_capability` and no target; binding them belongs to constrained resolution (FR023).
 - FR118: MUST state in `docs/proofmesh/languages.md`, per syntax-tier language, which of imports, heritage and calls the tier records.
 
+### Locating symbols
+
+- FR119: MUST provide `get_symbols_at`, which takes 1 to 100 locations `path:line` (a `path:line:column` is read by its line, and the answer says so) and returns one result per location, in order: the innermost symbol whose declaration span holds the line, or the file's module symbol when no inner symbol holds it. A location it cannot answer (`not_found`, `line_out_of_range`, a file the snapshot does not index, a file with no symbol) is a null symbol with its own reason or error and does not fail the call; more than 100 locations, or one that is not `path:line`, is `INVALID_ARGUMENT`, and a call cut by `max_rows` or `max_bytes` gives a cursor for the locations not yet answered. When two symbols have equal spans, the choice is by kind (function or method, then property or variable, then type) and then id, the same on every run.
+- FR120: MUST give each symbol it returns as `id`, `stable_key`, `name`, `qualified_name`, `kind`, `path`, `start_line`, `end_line` and `tier` (`precise`, `syntax` or `scip`: the tier of the adapter that declared it).
+- FR121: MUST take the span of a SCIP definition that has no enclosing range from the syntax tier's parse of the same declaration, so that every tier's declaration span covers the declaration's body. When the syntax tier cannot give it (its adapter is missing, fails or times out, or does not cover the language), the definition keeps its name's span and the file reports its symbols `partial`.
+- FR122: MUST answer a single-location call in 20 ms or less at p95 and a 100-location call in 100 ms or less at p95 on the warm graph-bench snapshot over MCP stdio, and the graph benchmark MUST record both figures in its results file.
+- FR123: MUST answer in the lean form on request, and over MCP by default: one row per location, the location then the symbol as `name path:line kind`, or `-` and the reason.
+
 ### Build graph
 
 - FR124: MUST declare, from the manifests of the JavaScript and Go ecosystems read as captured text, one `project` symbol per `package.json` that names a package and per `go.mod`, named by the npm name or the Go module path and declared at the line of that name; a manifest that names nothing declares none, and a manifest under `testdata` or `vendor` declares nothing.
