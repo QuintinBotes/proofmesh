@@ -1,9 +1,9 @@
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { sha256File } from '../src/core/hash.js'
-import { decodeScip, newProbe, scanScip, type ScipDocument } from '../src/scip/decode.js'
+import { decodeScip, newProbe, readDocument, scanScip, type ScipDocument } from '../src/scip/decode.js'
 import { loadIndexes, type LoadProbe } from '../src/scip/load.js'
 import { documentBytes, encode, metadataBytes, type Doc, type Occ } from './helpers-scip.js'
 import { tmpDir } from './helpers.js'
@@ -83,5 +83,54 @@ describe('FR164 the index is read document by document, in memory that grows wit
   it('FR164 an index file that changed after it was named is refused, as before', () => {
     const { file } = synthetic(10, 1), hash = crypto.createHash('sha256').update('not this file').digest('hex')
     expect(() => loadIndexes([{ name: 'big', path: file, sha256: hash }], new Set(), '/synthetic')).toThrow(/changed after it was added/)
+  })
+
+  it('FR164 a length no file could hold is refused before anything is allocated, whatever its size', () => {
+    const varint = (n: bigint): number[] => { const out: number[] = []; do { let b = Number(n & 0x7fn); n >>= 7n; if (n) b |= 0x80; out.push(b) } while (n); return out }
+    for (const length of [3_000_000_000n, 2n ** 40n, 2n ** 63n]) {
+      const file = path.join(tmpDir('pm-scip-huge-'), 'huge.scip')
+      fs.writeFileSync(file, Uint8Array.from([0x12, ...varint(length), ...Array(16).fill(7)]))
+      const probe = newProbe()
+      expect(() => scanScip(file, { document: () => {} }, { chunkBytes: CHUNK, probe }), String(length)).toThrow(/truncated or corrupt at offset 0/)
+      expect(probe.maxBufferedBytes).toBeLessThan(2 * CHUNK)
+    }
+    // A length that fits the file's size but is longer than the bytes left is refused the same way, at its own offset.
+    const ok = encode('/r', 't', [{ path: 'a.go', language: 'go', typed: true, occurrences: [] }]), file = path.join(tmpDir('pm-scip-huge-'), 'short.scip')
+    fs.writeFileSync(file, ok.subarray(0, ok.length - 1))
+    expect(() => scanScip(file, { document: () => {} })).toThrow(/truncated or corrupt at offset \d+/)
+  })
+
+  it('FR164 reads that return a few bytes at a time give the same documents, in the same bound', () => {
+    const { file } = synthetic(300, 40), whole = decodeScip(fs.readFileSync(file)), got: ScipDocument[] = [], probe = newProbe()
+    const real = fs.readSync
+    const spy = vi.spyOn(fs, 'readSync').mockImplementation(((fd: number, buf: NodeJS.ArrayBufferView, off: number, len: number, pos: number | null) => real(fd, buf, off, Math.min(len, 5), pos)) as typeof fs.readSync)
+    try { scanScip(file, { document: (doc) => { got.push(doc) } }, { chunkBytes: 4096, probe }) } finally { spy.mockRestore() }
+    expect(got).toEqual(whole.documents)
+    expect(probe.maxBufferedBytes).toBeLessThanOrEqual(probe.largestMessage + 2 * 4096)
+  })
+
+  it('FR164 one document many times the chunk size is held alone, and the buffer is bounded by it plus two chunks', () => {
+    const occurrences: Occ[] = Array.from({ length: 150000 }, (_, i) => ({ symbol: `scip-go gomod x v1 \`x/p\`/F${i % 1000}().`, range: [i, 2, 8] }))
+    const file = path.join(tmpDir('pm-scip-one-'), 'one.scip')
+    fs.writeFileSync(file, encode('/r', 'one', [{ path: 'huge.go', language: 'go', typed: true, occurrences }, { path: 'small.go', language: 'go', typed: true, occurrences: [] }]))
+    const probe = newProbe(), counts: number[] = []
+    scanScip(file, { document: (doc) => { counts.push(doc.occurrences.length) } }, { chunkBytes: CHUNK, probe })
+    expect(counts).toEqual([150000, 0])
+    expect(probe.largestMessage).toBeGreaterThan(50 * CHUNK)
+    expect(probe.maxDocumentsHeld).toBe(1)
+    expect(probe.maxBufferedBytes).toBeLessThanOrEqual(probe.largestMessage + 2 * CHUNK)
+    expect(probe.maxBufferedBytes).toBeGreaterThanOrEqual(probe.largestMessage)
+  })
+
+  it('FR164 a document read again by offset is refused when the file changed, and when the document at that offset is another one', () => {
+    const file = path.join(tmpDir('pm-scip-again-'), 'again.scip'), docs: Doc[] = [{ path: 'a.go', language: 'go', typed: true, occurrences: [] }, { path: 'b.go', language: 'go', typed: true, occurrences: [] }]
+    fs.writeFileSync(file, encode('/r', 't', docs))
+    const at: Array<{ offset: number; length: number }> = []
+    scanScip(file, { document: (_doc, where) => { at.push(where) } })
+    const stamp = fs.statSync(file), expected = (p: string) => ({ path: p, size: stamp.size, mtimeMs: stamp.mtimeMs })
+    expect(readDocument(file, at[1]!, expected('b.go')).path).toBe('b.go')
+    expect(() => readDocument(file, at[1]!, expected('a.go'))).toThrow(/is not the document/)
+    fs.writeFileSync(file, encode('/r', 'rewritten', docs.slice().reverse()))
+    expect(() => readDocument(file, at[1]!, expected('b.go'))).toThrow(/changed/)
   })
 })

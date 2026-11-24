@@ -4,7 +4,8 @@ import path from 'node:path'
 import readline from 'node:readline'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { sha256File } from '../src/core/hash.js'
-import { encode, type Doc, type Occ } from './helpers-scip.js'
+import { encode, type Doc, type Occ, type Sym } from './helpers-scip.js'
+import { syntaxSymbols } from '../src/scip/syntax-spans.js'
 import { cli, evidenceSlice, fixtureRepo, ROOT, tmpDir, tool, withSnapshot } from './helpers.js'
 
 const GO = 'scip-go gomod example.com/shop v1 ', STD = 'scip-go gomod github.com/golang/go/src go1.22 ', JAVA = 'scip-java maven com.shop 1.0 ', JDK = 'scip-java maven jdk 11 '
@@ -70,12 +71,12 @@ function fixtureIndex(repo: string): Doc[] {
 }
 
 /** A copy of a fixture with the index named for it, as a person would after producing it, and indexed. */
-function named(fixture: string, docs: (repo: string) => Doc[], edit: (repo: string) => void = () => {}) {
+function named(fixture: string, docs: (repo: string) => Doc[], edit: (repo: string) => void = () => {}, externals: Sym[] = []) {
   const repo = fs.realpathSync(tmpDir('pm-scipcalls-'))
   fs.cpSync(fixtureRepo(fixture), repo, { recursive: true })
   edit(repo)
   const file = path.join(tmpDir('pm-scipcalls-index-'), 'shop.scip')
-  fs.writeFileSync(file, encode(repo, 'hand-written', docs(repo)))
+  fs.writeFileSync(file, encode(repo, 'hand-written', docs(repo), externals))
   const d = tmpDir()
   for (const args of [['init'], ['repo', 'add', repo], ['scip', 'add', repo, file], ['index', repo]]) { const r = cli(['--data-dir', d, ...args]); expect(r.status, r.stderr).toBe(0) }
   return { repo, file, d }
@@ -140,13 +141,19 @@ describe('FR161 FR162 FR163 FR169 calls, inheritance and imports from a SCIP ind
     expect(impact('com.shop.Circle.area').map((x) => [x.qualified_name, x.depth])).toContainEqual(['com.shop.Report.describe', 1])
   })
 
-  it('FR163 scenario 5: an import is resolved to the package\'s file, or to its external module; occurrences inside it are no references', () => {
+  it('FR163 scenario 5: an import is resolved to the package\'s file, or to its external module; the occurrences inside it stay references', () => {
     expect(imports(d, 'cart/cart.go')).toEqual([
       [4, 'resolved_external', 'go:std:fmt', 'semantic_resolver', null, null],
       [6, 'resolved', 'pricing/pricing.go', 'semantic_resolver', null, null],
     ])
     expect(imports(d, 'api/handler.go')).toEqual([[4, 'resolved', 'cart/cart.go', 'semantic_resolver', null, null], [5, 'resolved', 'pricing/pricing.go', 'semantic_resolver', null, null]])
-    expect(edges(d, 'references').filter((r) => /^(cart|api)\//.test(String(r[0])) && (r[4] === 4 || r[4] === 5 || r[4] === 6))).toEqual([])
+    // The occurrences inside the statements stay references: the import edge is in addition to them, so get_relationships keeps answering what it did.
+    expect(edges(d, 'references').filter((r) => /^(cart|api)\//.test(String(r[0])) && (r[4] === 4 || r[4] === 5 || r[4] === 6))).toEqual([
+      ['api/handler', 'resolved_external', 'example.com/shop:example.com/shop/cart', 'semantic_resolver', 4, null, null],
+      ['api/handler', 'resolved_external', 'example.com/shop:example.com/shop/pricing', 'semantic_resolver', 5, null, null],
+      ['cart/cart', 'resolved_external', 'github.com/golang/go/src:fmt', 'semantic_resolver', 4, null, null],
+      ['cart/cart', 'resolved_external', 'example.com/shop:example.com/shop/pricing', 'semantic_resolver', 6, null, null],
+    ])
     expect(capability(d, 'cart/cart.go', 'imports')).toBe('complete')
   })
 
@@ -232,19 +239,81 @@ describe('FR166 FR167 FR168 FR170 edge cases of the join between call sites and 
   it('FR170 when the syntax tier cannot be reached, calls and imports are unsupported with a warning, and references stay', async () => {
     const { repo, file } = named('scip-calls', fixtureIndex)
     const r = await rpc(repo, file, [{ path: 'cart/cart.go', language: 'go' }], true)
-    const result = r.file_results[0] as { capabilities: Record<string, string> }
+    const result = r.file_results[0]!
     expect(result.capabilities).toMatchObject({ resolved_calls: 'unsupported', imports: 'unsupported' })
     expect(r.relationships.filter((x) => x.type === 'calls' || x.type === 'imports')).toEqual([])
     expect(r.relationships.filter((x) => x.type === 'references').length).toBeGreaterThan(0)
     expect(r.diagnostics.map((x) => x.message)).toContain('call sites and imports in cart/cart.go are not read: syntax_tier_unavailable')
   }, 240000)
+
+  it('FR162 an external supertype is an implements when the index says its kind is an interface, else an inherits that says the kind is unknown', () => {
+    const RUNNABLE = `${JDK}java/lang/Runnable#`, THREAD = `${JDK}java/lang/Thread#`, SERIAL = `${JDK}java/io/Serializable#`
+    const docs = (repo: string) => fixtureIndex(repo).map((doc) => (doc.path !== 'java/Circle.java' ? doc
+      : { ...doc, symbols: [...doc.symbols!.map((s) => (s.symbol === S.circle ? { ...s, implements: [S.shape, RUNNABLE, THREAD, SERIAL] } : s)), { symbol: RUNNABLE, kind: 21 }] }))
+    const { d } = named('scip-calls', docs, () => {}, [{ symbol: THREAD, kind: 7 }])
+    const circle = (type: string) => edges(d, type).filter((r) => r[0] === 'com.shop.Circle').sort((a, b) => String(a[2]).localeCompare(String(b[2])))
+    expect(circle('implements')).toEqual([['com.shop.Circle', 'resolved', 'com.shop.Shape', 'semantic_resolver', 3, null, null], ['com.shop.Circle', 'resolved_external', 'jdk:java.lang.Runnable', 'semantic_resolver', 3, null, null]])
+    expect(circle('inherits')).toEqual([['com.shop.Circle', 'resolved_external', 'jdk:java.io.Serializable', 'semantic_resolver', 3, null, { kind: 'unknown' }], ['com.shop.Circle', 'resolved_external', 'jdk:java.lang.Thread', 'semantic_resolver', 3, null, null]])
+  }, 240000)
+
+  it('FR163 on a Java import the references stay and the import is added, resolved to the file of the type', () => {
+    const use = (repo: string) => fs.writeFileSync(path.join(repo, 'java/Use.java'), 'package com.shop.app;\n\nimport com.shop.Shape;\n\npublic class Use {\n    Shape shape;\n}\n')
+    const docs = (repo: string): Doc[] => {
+      const { at, block } = place(repo), U = 'java/Use.java'
+      return [...fixtureIndex(repo), { path: U, language: 'java', typed: true, occurrences: [
+        { symbol: `${JAVA}com/shop/app/Use#`, range: at(U, 'class Use', 'Use'), enclosing: block(U, 'class Use'), def: true },
+        { symbol: S.shape, range: at(U, 'import com.shop.Shape', 'Shape') }, { symbol: S.shape, range: at(U, 'Shape shape', 'Shape') },
+      ], symbols: [{ symbol: `${JAVA}com/shop/app/Use#`, kind: 7 }] }]
+    }
+    const { d } = named('scip-calls', docs, use)
+    expect(imports(d, 'java/Use.java')).toEqual([[3, 'resolved', 'java/Shape.java', 'semantic_resolver', null, null]])
+    expect(edges(d, 'references').filter((r) => r[3] === 'semantic_resolver' && /Use|app/.test(String(r[0])) && r[2] === 'com.shop.Shape').map((r) => [r[0], r[4]])).toEqual([['com.shop.app.Use', 6], ['java/Use', 3]])
+  }, 240000)
+
+  it('FR170 a syntax tier that times out leaves the files it did not answer partial, not unsupported, and says why', async () => {
+    const { repo, file } = named('scip-calls', fixtureIndex)
+    const entry = path.join(tmpDir('pm-silent-syntax-'), 'silent.mjs')
+    fs.writeFileSync(entry, "import readline from 'node:readline'\nreadline.createInterface({ input: process.stdin }).on('line', (l) => { const m = JSON.parse(l); if (m.method === 'initialize') process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: m.id, result: { adapter: { languages: ['go', 'java'] } } }) + '\\n') })\n")
+    const r = await rpc(repo, file, [{ path: 'cart/cart.go', language: 'go' }, { path: 'java/Report.java', language: 'java' }], false, { PROOFMESH_TEST_SYNTAX_ENTRY: entry, PROOFMESH_TEST_SYNTAX_TIMEOUT_MS: '400' })
+    expect(r.file_results.map((f) => [f.capabilities.resolved_calls, f.capabilities.imports])).toEqual([['partial', 'partial'], ['partial', 'partial']])
+    expect(r.diagnostics.map((x) => x.message)).toContain('call sites and imports in cart/cart.go are only partly read: syntax_tier_timeout')
+    expect(r.relationships.filter((x) => x.type === 'references').length).toBeGreaterThan(0)
+  }, 240000)
+
+  it('FR170 the syntax tier is asked in batches, each with its own time, and a batch it does not answer leaves only its own files unanswered', async () => {
+    const entry = path.join(tmpDir('pm-gated-syntax-'), 'gated.mjs')
+    fs.writeFileSync(entry, `import readline from 'node:readline'
+let answered = 0
+const send = (id, result) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id, result }) + '\\n')
+readline.createInterface({ input: process.stdin }).on('line', (l) => {
+  const m = JSON.parse(l)
+  if (m.method === 'initialize') send(m.id, { adapter: { languages: ['go'] } })
+  else if (m.method === 'analyze_calls' && answered++ < 1) send(m.id, { symbols: [], relationships: [], file_results: m.params.paths.map((path) => ({ path, status: 'ok', capabilities: {} })), diagnostics: [] })
+})
+`)
+    const files = Array.from({ length: 45 }, (_, i) => ({ path: `f${i}.go`, content_hash: '0'.repeat(64), language: 'go' }))
+    let answers = 0
+    const r = await syntaxSymbols(files, tmpDir(), entry, 5000, 'analyze_calls', () => { answers++ })
+    expect(r.problem).toBe('timeout')
+    expect([...r.capabilities.keys()]).toEqual(files.slice(0, 20).map((f) => f.path))
+    expect(r.unanswered).toEqual(files.slice(20).map((f) => f.path))
+    expect(answers).toBe(1)
+  })
+
+  it('FR164 an index rewritten between the adapter reading it and analysing a file is refused for that file, not read as garbage', async () => {
+    const { repo, file } = named('scip-calls', fixtureIndex)
+    const r = await rpc(repo, file, [{ path: 'cart/cart.go', language: 'go' }], false, {}, () => fs.writeFileSync(file, encode(repo, 'rewritten-after-it-was-read', fixtureIndex(repo).reverse())))
+    expect(r.file_results).toEqual([{ path: 'cart/cart.go', status: 'failed', detail: 'scip_index_changed', capabilities: { text: 'complete' } }])
+    expect(r.relationships).toEqual([])
+    expect(r.diagnostics.map((x) => x.message).join('\n')).toMatch(/changed after the adapter read it/)
+  }, 240000)
 })
 
 /** Runs the SCIP adapter as the host does, and returns its answer to one analyze. `isolated` runs a copy of it where the syntax tier cannot be found. */
-async function rpc(repo: string, index: string, files: Array<{ path: string; language: string }>, isolated = false) {
+async function rpc(repo: string, index: string, files: Array<{ path: string; language: string }>, isolated = false, env: Record<string, string> = {}, between: () => void = () => {}) {
   let entry = path.join(ROOT, 'packages', 'proofmesh', 'dist', 'scip-adapter.mjs')
   if (isolated) { const copy = path.join(tmpDir('pm-scip-isolated-'), 'scip-adapter.mjs'); fs.copyFileSync(entry, copy); entry = copy }
-  const child = spawn(process.execPath, [entry], { stdio: ['pipe', 'pipe', 'inherit'], env: { ...process.env, NODE_PATH: '' } })
+  const child = spawn(process.execPath, [entry], { stdio: ['pipe', 'pipe', 'inherit'], env: { ...process.env, NODE_PATH: '', ...env } })
   const waiting = new Map<number, (m: { result?: unknown; error?: { message: string } }) => void>()
   readline.createInterface({ input: child.stdout }).on('line', (l) => { const m = JSON.parse(l); waiting.get(m.id)?.(m) })
   let id = 0
@@ -254,6 +323,7 @@ async function rpc(repo: string, index: string, files: Array<{ path: string; lan
   })
   try {
     await ask('initialize', { protocol_version: '1.0', workspace: repo, repository_root: repo, analysis_mode: 'no_execution', files: files.map((f) => ({ ...f, content_hash: '0'.repeat(64) })), config: { indexes: [{ name: 'shop', path: index, sha256: sha256File(index) }] } })
-    return await ask('analyze', { paths: files.map((f) => f.path) }) as { relationships: Array<{ type: string }>; file_results: unknown[]; diagnostics: Array<{ message: string }> }
+    between()
+    return await ask('analyze', { paths: files.map((f) => f.path) }) as { relationships: Array<{ type: string }>; file_results: Array<{ status: string; detail?: string; capabilities: Record<string, string> }>; diagnostics: Array<{ message: string }> }
   } finally { child.kill() }
 }

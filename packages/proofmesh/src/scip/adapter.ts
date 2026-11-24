@@ -20,6 +20,10 @@ const definitionsIn = new Map<string, Definition[]>()
 const routedFiles = new Map<string, SyntaxFile>()
 /** Symbols an index defines in a file that is not routed to this adapter: a stale one, or one a first-party adapter analyses. */
 let elsewhere = new Set<string>()
+/** The kinds the index gives symbols it does not define (FR162). */
+let externalKinds = new Map<string, number>()
+/** The syntax tier is the one the package resolves; a test points these at a stand-in that is slow or silent. */
+const SYNTAX = { entry: process.env.PROOFMESH_TEST_SYNTAX_ENTRY, timeout: Number(process.env.PROOFMESH_TEST_SYNTAX_TIMEOUT_MS) || undefined }
 /** The packages those symbols sit in, and the file of each package a routed definition sits in (FR163). */
 const elsewherePackages = new Set<string>()
 const packageFiles = new Map<string, string>()
@@ -141,13 +145,14 @@ async function initialize(params: { workspace: string; repository_root?: string;
   const loaded = loadIndexes(indexes, new Set(routedFiles.keys()), root)
   documents = loaded.routed
   elsewhere = loaded.elsewhere
+  externalKinds = loaded.kinds
   for (const s of elsewhere) { const parsed = parseSymbol(s); if (parsed?.descriptors.length) elsewherePackages.add(packageKey(parsed.pkg, parsed.descriptors)) }
   const tools = loaded.tools
   // A file with a definition is parsed by the syntax tier: its declaration gives the definition its name, kind and span, so every tier names
   // and measures one declaration alike (FR148). One whose definition has no enclosing range depends on it for the span alone.
   const defined = params.files.filter((f) => documents.get(f.path)?.definitions.some((o) => o.range))
   const bare = defined.filter((f) => documents.get(f.path)!.definitions.some((o) => !o.enclosing && o.range))
-  const spans = await syntaxSymbols(defined, workspace)
+  const spans = await syntaxSymbols(defined, workspace, SYNTAX.entry, SYNTAX.timeout)
   const parsedBy = spans.symbols
   // A file whose spans could not be widened says so: its symbols are partial, and a line in a body may have no enclosing symbol.
   for (const f of bare) narrow.set(f.path, spans.problem ? `syntax_tier_${spans.problem}` : spans.unsupported.includes(f.path) ? `language_not_in_syntax_tier:${f.language}` : '')
@@ -210,7 +215,11 @@ function calleeOf(symbol: string): { symbol: string; parsed: Parsed; target: Def
 async function analyse(p: string, facts: Spans) {
   const ref = documents.get(p)
   if (!ref) return { symbols: [], relationships: [], diagnostics: [], result: { path: p, status: 'failed', detail: 'not_in_scip_index', capabilities: { text: 'complete' } } }
-  const doc = readDocument(ref.index, ref.at)
+  let doc
+  try { doc = readDocument(ref.index, ref.at, { ...ref.stamp, path: ref.scipPath }) } catch (e) {
+    // An index rewritten since it was read must not be read at an old offset: the file fails, and says why.
+    return { symbols: [], relationships: [], diagnostics: [{ level: 'error', path: p, message: (e as Error).message }], result: { path: p, status: 'failed', detail: 'scip_index_changed', capabilities: { text: 'complete' } } }
+  }
   const text = fs.readFileSync(path.join(workspace, p), 'utf8'), range = positions(text, ref.positionEncoding)
   const lines = text.split('\n').length - (text.endsWith('\n') ? 1 : 0)
   const module = { local_id: `${p}#module`, path: p, kind: 'module', name: path.posix.basename(p), qualified_name: p.replace(/\.[^./]+$/, ''), range: { start_byte: 0, end_byte: Buffer.byteLength(text), start_line: 1, end_line: Math.max(1, lines) }, signature: null }
@@ -255,7 +264,6 @@ async function analyse(p: string, facts: Spans) {
   let unresolvedImports = 0
   for (const st of statements) {
     const inside = [...sited].filter(([o, r]) => !(o.roles & DEFINITION) && st.site.range.start_byte <= r.start_byte && r.end_byte <= st.site.range.end_byte && !o.symbol.startsWith('local ') && parseSymbol(o.symbol)?.descriptors.length)
-    for (const [o] of inside) consumed.add(o)
     // The most specific symbol inside the statement, the last one on a tie: `import a.b.C` names the package `a/b/` and the type `a/b/C#`.
     const best = inside.map(([o, r]) => ({ o, r, parsed: parseSymbol(o.symbol)! })).sort((a, b) => b.parsed.descriptors.length - a.parsed.descriptors.length || b.r.start_byte - a.r.start_byte)[0]
     const base = { type: 'imports', source: { file: p }, site: st.site }
@@ -272,7 +280,11 @@ async function analyse(p: string, facts: Spans) {
       const parsed = rel.implementation && rel.symbol !== d.occurrence.symbol ? parseSymbol(rel.symbol) : undefined
       if (!parsed || !parsed.descriptors.length) continue
       const target = definitions.get(rel.symbol)
-      relationships.push({ type: MEMBER_KINDS.has(kind) ? 'overrides' : target && kindOfDefinition(target) === 'interface' ? 'implements' : 'inherits', origin: 'semantic_resolver', source: { symbol: d.local_id }, site: { path: p, range: d.named }, ...resolution(rel.symbol, parsed, target) })
+      // A target the index defines has the kind the syntax tier gave it; an outside one, the kind the index records for it, if any (FR162).
+      const outside = target ? undefined : KINDS[externalKinds.get(rel.symbol) ?? 0]
+      const type = MEMBER_KINDS.has(kind) ? 'overrides' : (target ? kindOfDefinition(target) : outside) === 'interface' ? 'implements' : 'inherits'
+      const resolved = resolution(rel.symbol, parsed, target)
+      relationships.push({ type, origin: 'semantic_resolver', source: { symbol: d.local_id }, site: { path: p, range: d.named }, ...resolved, ...(type === 'inherits' && resolved.resolution === 'resolved_external' && !outside ? { detail: { kind: 'unknown' } } : {}) })
     }
   }
   let skipped = 0
@@ -285,20 +297,21 @@ async function analyse(p: string, facts: Spans) {
     if (!source || target?.local_id === source) continue
     relationships.push({ type: 'references', origin: 'semantic_resolver', source: { symbol: source }, site: { path: p, range: site }, ...resolution(o.symbol, parsed, target) })
   }
-  const problem = facts.problem ? `syntax_tier_${facts.problem}` : ''
+  // A file the syntax tier did not answer in time is partial, so a later run can read it again; one it never could read is unsupported.
+  const late = facts.unanswered.includes(p), problem = facts.problem ? `syntax_tier_${facts.problem}` : ''
   return {
     symbols, relationships,
     diagnostics: [
       ...(narrow.get(p) ? [{ level: 'warning', path: p, message: `definitions in ${p} span only their names: ${narrow.get(p)}` }] : []),
-      ...(problem ? [{ level: 'warning', path: p, message: `call sites and imports in ${p} are not read: ${problem}` }] : []),
+      ...(late ? [{ level: 'warning', path: p, message: `call sites and imports in ${p} are only partly read: ${problem}` }] : problem && !caps ? [{ level: 'warning', path: p, message: `call sites and imports in ${p} are not read: ${problem}` }] : []),
       ...(unmatched ? [{ level: 'warning', path: p, message: `${unmatched} of ${callSites.length} call sites in ${p} match no occurrence in the index, so they are not recorded as calls` }] : []),
     ],
     result: {
       path: p, status: 'ok',
       capabilities: {
         text: 'complete', syntax: 'unsupported', symbols: skippedDefinitions || narrow.get(p) ? 'partial' : 'complete',
-        imports: !caps || caps.imports === 'unsupported' ? 'unsupported' : unresolvedImports ? 'partial' : 'complete', references: skipped ? 'partial' : 'complete',
-        resolved_calls: !caps ? 'unsupported' : unmatched ? 'partial' : 'complete',
+        imports: late ? 'partial' : !caps || caps.imports === 'unsupported' ? 'unsupported' : unresolvedImports ? 'partial' : 'complete', references: skipped ? 'partial' : 'complete',
+        resolved_calls: late ? 'partial' : !caps ? 'unsupported' : unmatched ? 'partial' : 'complete',
       },
     },
   }
@@ -313,7 +326,7 @@ readline.createInterface({ input: process.stdin }).on('line', async (line) => {
       const out = { symbols: [] as unknown[], relationships: [] as unknown[], file_results: [] as unknown[], diagnostics: [] as unknown[] }
       const paths = req.params.paths as string[]
       // One syntax-tier process answers the call sites and imports of every file in the request.
-      const facts = await syntaxSymbols(paths.filter((p) => documents.has(p)).map((p) => routedFiles.get(p)!), workspace, undefined, undefined, 'analyze_calls')
+      const facts = await syntaxSymbols(paths.filter((p) => documents.has(p)).map((p) => routedFiles.get(p)!), workspace, SYNTAX.entry, SYNTAX.timeout, 'analyze_calls', () => send({ jsonrpc: '2.0', method: 'log', params: { level: 'debug', message: 'the syntax tier answered a batch of call sites' } }))
       for (const p of paths) { const r = await analyse(p, facts); out.symbols.push(...r.symbols); out.relationships.push(...r.relationships); out.file_results.push(r.result); out.diagnostics.push(...r.diagnostics) }
       send({ jsonrpc: '2.0', id: req.id, result: out })
     } else if (req.method === 'shutdown') { send({ jsonrpc: '2.0', id: req.id, result: {} }); process.exit(0) }

@@ -25,5 +25,6 @@ export const documentBytes = (d: Doc): number[] => field(2, [
 ])
 /** The index's metadata, which comes first. */
 export const metadataBytes = (root: string, tool: string): number[] => field(1, [...field(2, [...field(1, tool), ...field(2, '1.0')]), ...field(3, `file://${root}`)])
-export const encode = (root: string, tool: string, docs: Doc[]) => Uint8Array.from([...metadataBytes(root, tool), ...docs.flatMap(documentBytes)])
+/** `externals` are the index's own symbol information for symbols defined outside it (`external_symbols`). */
+export const encode = (root: string, tool: string, docs: Doc[], externals: Sym[] = []) => Uint8Array.from([...metadataBytes(root, tool), ...docs.flatMap(documentBytes), ...externals.flatMap(symbolInformation)])
 

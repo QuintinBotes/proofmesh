@@ -10,18 +10,20 @@ export type SyntaxSymbol = { path: string; kind: string; name: string; qualified
 export type SyntaxFile = { path: string; content_hash: string; language: string }
 /** A relationship the syntax tier read: a call site, an import statement. Its detail names the callee or module as written. */
 export type SyntaxRelationship = { type: string; site: { path: string; range: Range }; detail?: Record<string, string> }
-export type Spans = { symbols: Map<string, SyntaxSymbol[]>; relationships: Map<string, SyntaxRelationship[]>; capabilities: Map<string, Record<string, string>>; unsupported: string[]; problem?: 'unavailable' | 'failed' | 'timeout' }
+export type Spans = { symbols: Map<string, SyntaxSymbol[]>; relationships: Map<string, SyntaxRelationship[]>; capabilities: Map<string, Record<string, string>>; unsupported: string[]; /** Files the syntax tier was asked about and did not answer (only when `problem` is set). */ unanswered: string[]; problem?: 'unavailable' | 'failed' | 'timeout' }
 
-/** Well under the host's 60 s of adapter silence. */
+/** Well under the host's 60 s of adapter silence; for call sites it is the time of each batch, not of the whole request. */
 export const SPANS_TIMEOUT_MS = 15000
+/** Files asked of the syntax tier at once for their call sites: a slow machine loses one batch, not the whole request. */
+export const CALLS_BATCH = 20
 
 export function syntaxEntry(): string | undefined {
   try { return createRequire(import.meta.url).resolve('@proofmesh/adapter-syntax') } catch { return undefined }
 }
 
 // shortcut: one process and a serial parse of every file with a bare definition on each initialize, with no cache across runs; cache spans by content hash if SCIP-covered repositories get large.
-export async function syntaxSymbols(files: SyntaxFile[], workspace: string, entry: string | null | undefined = syntaxEntry() ?? null, timeoutMs = SPANS_TIMEOUT_MS, method: 'analyze' | 'analyze_calls' = 'analyze'): Promise<Spans> {
-  const out: Spans = { symbols: new Map(), relationships: new Map(), capabilities: new Map(), unsupported: [] }
+export async function syntaxSymbols(files: SyntaxFile[], workspace: string, entry: string | null | undefined = syntaxEntry() ?? null, timeoutMs = SPANS_TIMEOUT_MS, method: 'analyze' | 'analyze_calls' = 'analyze', progress: () => void = () => {}): Promise<Spans> {
+  const out: Spans = { symbols: new Map(), relationships: new Map(), capabilities: new Map(), unsupported: [], unanswered: [] }
   if (!files.length) return out
   if (!entry) return { ...out, problem: 'unavailable' }
   let child: ReturnType<typeof spawn>
@@ -42,27 +44,35 @@ export async function syntaxSymbols(files: SyntaxFile[], workspace: string, entr
     waiting.set(++id, resolve)
     try { child.stdin!.write(`${JSON.stringify({ jsonrpc: '2.0', id, method, params })}\n`) } catch { die() }
   })
-  let timer: NodeJS.Timeout | undefined
-  const late = new Promise<'timeout'>((resolve) => { timer = setTimeout(() => resolve('timeout'), timeoutMs) })
-  const work = (async (): Promise<Spans['problem']> => {
-    const init = await ask('initialize', { protocol_version: '1.0', workspace, analysis_mode: 'no_execution', files })
+  /** The answer, or 'timeout' when none came in time; each wait has its own clock. */
+  const within = async <T>(p: Promise<T>): Promise<T | 'timeout'> => {
+    let timer: NodeJS.Timeout | undefined
+    try { return await Promise.race([p, new Promise<'timeout'>((resolve) => { timer = setTimeout(() => resolve('timeout'), timeoutMs) })]) } finally { clearTimeout(timer) }
+  }
+  const work = async (): Promise<Spans['problem']> => {
+    const init = await within(ask('initialize', { protocol_version: '1.0', workspace, analysis_mode: 'no_execution', files }))
+    if (init === 'timeout') { out.unanswered = files.map((f) => f.path); return 'timeout' }
     if (!init) return 'failed'
     const languages = new Set(init.adapter?.languages ?? [])
     out.unsupported = files.filter((f) => !languages.has(f.language)).map((f) => f.path)
     const paths = files.filter((f) => languages.has(f.language)).map((f) => f.path)
-    if (!paths.length) return undefined
-    const r = await ask(method, { paths })
-    if (!r) return 'failed'
-    for (const sym of r.symbols ?? []) out.symbols.set(sym.path, [...(out.symbols.get(sym.path) ?? []), sym])
-    for (const rel of r.relationships ?? []) out.relationships.set(rel.site.path, [...(out.relationships.get(rel.site.path) ?? []), rel])
-    for (const f of r.file_results ?? []) if (f.status === 'ok') out.capabilities.set(f.path, f.capabilities)
+    // Call sites are asked in batches; spans in one, whose partial answer would be worse than none.
+    const size = method === 'analyze_calls' ? CALLS_BATCH : Math.max(1, paths.length)
+    for (let at = 0; at < paths.length; at += size) {
+      const r = await within(ask(method, { paths: paths.slice(at, at + size) }))
+      if (r === 'timeout' || !r) { out.unanswered = paths.slice(at); return r ? 'timeout' : 'failed' }
+      for (const sym of r.symbols ?? []) out.symbols.set(sym.path, [...(out.symbols.get(sym.path) ?? []), sym])
+      for (const rel of r.relationships ?? []) out.relationships.set(rel.site.path, [...(out.relationships.get(rel.site.path) ?? []), rel])
+      for (const f of r.file_results ?? []) if (f.status === 'ok') out.capabilities.set(f.path, f.capabilities)
+      progress()
+    }
     return undefined
-  })()
+  }
   try {
-    const problem = await Promise.race([work, late])
-    return problem ? { ...out, symbols: new Map(), relationships: new Map(), capabilities: new Map(), problem } : out
+    const problem = await work()
+    // The spans of a file are all or nothing; the call sites of the batches that were answered stand.
+    return problem ? { ...out, ...(method === 'analyze' ? { symbols: new Map(), relationships: new Map(), capabilities: new Map() } : {}), problem } : out
   } finally {
-    clearTimeout(timer)
     child.kill()
   }
 }
