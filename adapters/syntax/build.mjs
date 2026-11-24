@@ -55,6 +55,6 @@ for (const [language, [pkg, wasm, ownTags]] of Object.entries(GRAMMARS)) {
   manifest[language] = { package: pkg, version: meta.version, license: meta.license, sha256, tags: ownTags === null ? null : ownTags ? 'proofmesh' : extra ? `${pkg}+proofmesh` : pkg }
 }
 fs.writeFileSync(path.join(dist, 'grammars', 'grammars.json'), JSON.stringify(manifest, null, 2) + '\n')
-for (const entry of ['main', 'terraform', 'python']) {
+for (const entry of ['main', 'terraform', 'python', 'build']) {
   await build({ entryPoints: [path.join(here, 'src', `${entry}.ts`)], bundle: true, platform: 'node', format: 'esm', target: 'node22', outfile: path.join(dist, `${entry}.mjs`), external: ['web-tree-sitter'], logLevel: 'warning' })
 }

@@ -105,6 +105,14 @@
         "packages/proofmesh/test/syntax-structure.test.ts"
       ]
     },
+    "build": {
+      "fixtures": [
+        "build-graph"
+      ],
+      "tests": [
+        "packages/proofmesh/test/build-graph.test.ts"
+      ]
+    },
     "scip": {
       "fixtures": [
         "scip-mixed"

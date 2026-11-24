@@ -13,6 +13,8 @@ export type AdapterSpec = {
   extensions: Record<string, string>
   /** Configuration files this adapter needs captured, by file name. */
   isConfig: (name: string) => boolean
+  /** Build manifests this adapter analyses as sources whatever their extension: the language of a file name, or undefined. Other adapters still read them as configuration. */
+  manifest?: (name: string) => string | undefined
   /** Resolves the adapter entry point, or undefined when it is not installed or no longer the file a person installed. */
   entry: () => string | undefined
   /** Why entry() is undefined, as a file disposition detail. */
@@ -72,6 +74,14 @@ export const BUILT_IN: AdapterSpec[] = [
     entry: () => createRequire(import.meta.url).resolve('@proofmesh/adapter-syntax/terraform'),
     unavailable: () => 'adapter_unavailable:terraform',
   },
+  // The build graph (FR124 to FR129): each manifest is a source for this adapter and, where another adapter reads it as configuration, for that one too.
+  {
+    id: 'build', languages: new Set(['build']), extensions: {},
+    manifest: (name) => (/^(go\.(mod|work)|package\.json|pnpm-workspace\.yaml|tsconfig(\..+)?\.json)$/.test(name) ? 'build' : undefined),
+    isConfig: () => false,
+    entry: () => createRequire(import.meta.url).resolve('@proofmesh/adapter-syntax/build'),
+    unavailable: () => 'adapter_unavailable:build',
+  },
   // The Tree-sitter syntax tier (A6, A23) comes after the semantic adapters, so it takes only the languages they do not cover.
   {
     id: 'syntax', languages: new Set(Object.values(SYNTAX)), extensions: SYNTAX,
@@ -129,6 +139,10 @@ export class Registry {
   sourceLanguage(fileName: string): string | undefined {
     const ext = path.posix.extname(fileName).toLowerCase()
     for (const s of this.specs) if (Object.hasOwn(s.extensions, ext)) return s.extensions[ext]
+    return undefined
+  }
+  manifestLanguage(fileName: string): string | undefined {
+    for (const s of this.specs) { const l = s.manifest?.(fileName); if (l) return l }
     return undefined
   }
   configOwner(fileName: string): AdapterSpec | undefined {

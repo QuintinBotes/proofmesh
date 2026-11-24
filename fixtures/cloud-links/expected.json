@@ -6,6 +6,8 @@
     { "type": "uses_resource", "rule": "cloud_messaging", "source_repository": "orders", "source": "kafka:orders.placed", "target_repository": "infra", "target": "terraform:azurerm_servicebus_topic.placed", "confidence": 1, "resolution": "resolved", "reason": null },
     { "type": "uses_resource", "rule": "cloud_messaging", "source_repository": "orders", "source": "kafka:orders.shipped", "target_repository": "infra", "target": "terraform:aws_sns_topic.shipped", "confidence": 0.9, "resolution": "resolved", "reason": null },
     { "type": "messages", "rule": "messaging", "source_repository": "orders", "source": "kafka:orders.placed", "target_repository": null, "target": null, "confidence": 1, "resolution": "unresolved", "reason": "no_match" },
-    { "type": "messages", "rule": "messaging", "source_repository": "orders", "source": "kafka:orders.audit", "target_repository": null, "target": null, "confidence": 1, "resolution": "unresolved", "reason": "no_match" }
+    { "type": "messages", "rule": "messaging", "source_repository": "orders", "source": "kafka:orders.audit", "target_repository": null, "target": null, "confidence": 1, "resolution": "unresolved", "reason": "no_match" },
+    { "type": "depends_on_package", "rule": "package", "source_repository": "infra", "source": "infra", "target_repository": null, "target": null, "confidence": 1, "resolution": "unresolved", "reason": "no_match" },
+    { "type": "depends_on_package", "rule": "package", "source_repository": "infra", "source": "infra", "target_repository": null, "target": null, "confidence": 1, "resolution": "unresolved", "reason": "no_match" }
   ]
 }

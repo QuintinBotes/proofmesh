@@ -35,6 +35,7 @@
   "exports": {
     ".": "./dist/main.mjs",
     "./terraform": "./dist/terraform.mjs",
-    "./python": "./dist/python.mjs"
+    "./python": "./dist/python.mjs",
+    "./build": "./dist/build.mjs"
   }
 }
