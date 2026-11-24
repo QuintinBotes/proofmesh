@@ -4,6 +4,10 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 ## Unreleased
 
+The symbol at a location (#8):
+
+- `get_symbols_at` takes 1 to 100 locations `path:line` and returns, for each in order, the innermost symbol whose declaration span holds the line, with its id, `stable_key`, kind, lines and tier, or the file's module; a location it cannot answer has its own reason or error. A SCIP definition with no enclosing range takes its span from the syntax tier's parse of the declaration, and the graph benchmark records the tool's p95 latency (FR119 to FR123).
+
 Syntax-tier structure, Go and Java (#4):
 
 - The syntax tier records each Go and Java import statement with the module as written (and a Go alias), each Java `extends` and `implements` and each Go struct embedding as `inherits` or `implements` from the declaring type, all unresolved with `outside_capability` (FR115 to FR117). `languages.md` states per language which of imports, heritage and calls the tier records (FR118).

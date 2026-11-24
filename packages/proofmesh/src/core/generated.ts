@@ -4,7 +4,7 @@
 export interface Envelope {
 schema_version: "0.1"
 query_id: string
-tool: ("workspace_status" | "list_repositories" | "list_snapshots" | "list_workspaces" | "find_symbols" | "get_symbol" | "get_relationships" | "trace_paths" | "read_evidence" | "get_overview" | "analyze_impact" | "find_tests" | "search_sources" | "get_memory" | "verify_claim" | "request_index" | "get_job" | "get_claims" | "save_memory" | "get_table_reach" | "get_property_reads" | "get_external_usage" | "find_query_source" | "compare_snapshots" | "list_queries" | "get_ecosystem" | "prepare_verification" | "get_verification" | "impact_completeness")
+tool: ("workspace_status" | "list_repositories" | "list_snapshots" | "list_workspaces" | "find_symbols" | "get_symbol" | "get_relationships" | "trace_paths" | "read_evidence" | "get_overview" | "analyze_impact" | "find_tests" | "search_sources" | "get_memory" | "verify_claim" | "request_index" | "get_job" | "get_claims" | "save_memory" | "get_table_reach" | "get_property_reads" | "get_external_usage" | "find_query_source" | "compare_snapshots" | "list_queries" | "get_ecosystem" | "prepare_verification" | "get_verification" | "impact_completeness" | "get_symbols_at")
 /**
  * The sealed snapshot or link file that answered; null for a catalog tool, which answers from the list of registered repositories.
  */
@@ -1340,6 +1340,69 @@ path: string
  * A file by its repository-relative path, meaning the file itself and its module symbol; .., an absolute path inside the repository and backslashes are normalised. A path the snapshot does not index is INVALID_ARGUMENT naming its disposition. Give symbol_id or path.
  */
 path?: string
+/**
+ * snapshot (default) answers from the published snapshot. strict first checks that the working tree is exactly what the snapshot was built from; if not, it starts an index and refuses with STALE_INPUT naming the changed files.
+ */
+freshness?: ("snapshot" | "strict")
+/**
+ * lean, the default over MCP: plain text with no JSON and no structuredContent. A header `# <tool> · <n> rows · <snapshot> current` (stale when the snapshot is older than the repository's current one), one `<name> <path>:<line>` row per result, then `# ` lines for the limitations of this answer and `# more: cursor <c>` when a next page exists. The line is the call, import or reference site for relationship, impact and path rows and the declaration for symbol rows; tags follow: in or out when both directions are asked, depth=<n>, dispatch, external, candidate, ambiguous, unresolved:<reason>, and the relationship type when the query mixes types. A name or path with a space, quote or # is quoted as JSON. compact: the JSON envelope without the snapshot-wide parts an earlier answer gave (coverage, unresolved reasons, standing limitations). full: the whole JSON envelope. Ask for compact or full for ids, evidence and totals.
+ */
+envelope?: ("full" | "compact" | "lean")
+}
+
+export interface GetSymbolsAtData {
+results: {
+location: string
+symbol: ({
+id: string
+stable_key: string
+name: string
+qualified_name: string
+kind: string
+path: string
+start_line: number
+end_line: number
+/**
+ * The tier of the adapter that declared the symbol: precise (a compiler-grade or language-specific adapter), syntax (Tree-sitter) or scip (an index a person named).
+ */
+tier: ("precise" | "syntax" | "scip")
+} | null)
+/**
+ * The file's disposition when the snapshot does not index it.
+ */
+disposition?: string
+reason?: ("not_indexed" | "no_symbol")
+error?: {
+code: ("not_found" | "line_out_of_range" | "invalid_location" | "path_outside_repository")
+message: string
+}
+}[]
+}
+
+/**
+ * The innermost symbol whose declaration span holds each of 1 to 100 locations path:line (or path:line:column, the column ignored), in every tier: the symbol with its id, stable_key, kind, lines and the tier that declared it, or the file's module when no inner symbol holds the line. A location the call cannot answer has its own error or reason; the others are still answered. Lean rows: the location, then the symbol as name path:line kind, or - and the reason.
+ */
+export interface GetSymbolsAtInput {
+/**
+ * Optional when exactly one repository is registered.
+ */
+repository_id?: string
+/**
+ * Null pins the current published snapshot.
+ */
+snapshot_id?: (string | null)
+limits?: {
+timeout_ms?: number
+max_rows?: number
+max_bytes?: number
+max_depth?: number
+}
+/**
+ * Locations as path:line, path being repository-relative. At most 100 per call: more is INVALID_ARGUMENT naming the limit.
+ * 
+ * @minItems 1
+ */
+locations: [string, ...(string)[]]
 /**
  * snapshot (default) answers from the published snapshot. strict first checks that the working tree is exactly what the snapshot was built from; if not, it starts an index and refuses with STALE_INPUT naming the changed files.
  */

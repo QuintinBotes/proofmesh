@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "get_symbols_at.data.schema.json",
+  "title": "get_symbols_at data",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "results"
+  ],
+  "properties": {
+    "results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "location",
+          "symbol"
+        ],
+        "properties": {
+          "location": {
+            "type": "string"
+          },
+          "symbol": {
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "stable_key",
+                  "name",
+                  "qualified_name",
+                  "kind",
+                  "path",
+                  "start_line",
+                  "end_line",
+                  "tier"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "pattern": "^sym_[0-9a-z]+$"
+                  },
+                  "stable_key": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "qualified_name": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "start_line": {
+                    "type": "integer"
+                  },
+                  "end_line": {
+                    "type": "integer"
+                  },
+                  "tier": {
+                    "enum": [
+                      "precise",
+                      "syntax",
+                      "scip"
+                    ],
+                    "description": "The tier of the adapter that declared the symbol: precise (a compiler-grade or language-specific adapter), syntax (Tree-sitter) or scip (an index a person named)."
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "disposition": {
+            "type": "string",
+            "description": "The file's disposition when the snapshot does not index it."
+          },
+          "reason": {
+            "enum": [
+              "not_indexed",
+              "no_symbol"
+            ]
+          },
+          "error": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "code",
+              "message"
+            ],
+            "properties": {
+              "code": {
+                "enum": [
+                  "not_found",
+                  "line_out_of_range",
+                  "invalid_location",
+                  "path_outside_repository"
+                ]
+              },
+              "message": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,7 +1,9 @@
 // The SCIP adapter (A24, A27): serves the facts of SCIP indexes a person named, for the files the core routes to it. It reads each
 // index file and checks it still has the hash recorded when it was named; it never runs an indexer.
+import { spawn } from 'node:child_process'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
+import { createRequire } from 'node:module'
 import path from 'node:path'
 import readline from 'node:readline'
 import { decodeScip, DEFINITION, repositoryPath, type ScipDocument, type ScipOccurrence, type ScipRange, type ScipSymbol } from './decode.js'
@@ -100,7 +102,39 @@ function positions(text: string, encoding: number) {
   }
 }
 
-function initialize(params: { workspace: string; repository_root?: string; files: Array<{ path: string }>; config?: { indexes?: Array<{ name: string; path: string; sha256: string }> } }) {
+/** A declaration the syntax tier parsed: its name and whole span. */
+type SyntaxSymbol = { path: string; kind: string; name: string; range: Range }
+
+/**
+ * The syntax tier's symbols of some files, from its own adapter process, or none when it cannot run: an index that records no enclosing
+ * range gives a definition only the span of its name, and the declaration's span is the syntax tier's (FR121).
+ */
+async function syntaxSymbols(files: Array<{ path: string; content_hash: string; language: string }>): Promise<Map<string, SyntaxSymbol[]>> {
+  const out = new Map<string, SyntaxSymbol[]>()
+  if (!files.length) return out
+  // shortcut: the syntax adapter's build is not part of this adapter's identity, so a rebuilt syntax tier does not refresh these spans until the index or the file changes.
+  let entry: string
+  try { entry = createRequire(import.meta.url).resolve('@proofmesh/adapter-syntax') } catch { return out }
+  const child = spawn(process.execPath, [entry], { stdio: ['pipe', 'pipe', 'ignore'], env: { PATH: process.env.PATH ?? '', HOME: process.env.HOME ?? '' } })
+  const lines = readline.createInterface({ input: child.stdout! })
+  const waiting = new Map<number, (r: { symbols?: SyntaxSymbol[] } | undefined) => void>()
+  lines.on('line', (l) => { try { const m = JSON.parse(l); waiting.get(m.id)?.(m.result); waiting.delete(m.id) } catch { /* not a reply */ } })
+  child.on('exit', () => { for (const w of waiting.values()) w(undefined); waiting.clear() })
+  child.on('error', () => { for (const w of waiting.values()) w(undefined); waiting.clear() })
+  let id = 0
+  const ask = (method: string, params: unknown) => new Promise<{ symbols?: SyntaxSymbol[] } | undefined>((resolve) => { waiting.set(++id, resolve); child.stdin!.write(`${JSON.stringify({ jsonrpc: '2.0', id, method, params })}\n`) })
+  try {
+    await ask('initialize', { protocol_version: '1.0', workspace, analysis_mode: 'no_execution', files })
+    const r = await ask('analyze', { paths: files.map((f) => f.path) })
+    for (const sym of r?.symbols ?? []) out.set(sym.path, [...(out.get(sym.path) ?? []), sym])
+    await ask('shutdown', {})
+  } finally {
+    child.kill()
+  }
+  return out
+}
+
+async function initialize(params: { workspace: string; repository_root?: string; files: Array<{ path: string; content_hash: string; language: string }>; config?: { indexes?: Array<{ name: string; path: string; sha256: string }> } }) {
   workspace = params.workspace
   const routed = new Set(params.files.map((f) => f.path))
   const indexes = params.config?.indexes ?? []
@@ -117,14 +151,24 @@ function initialize(params: { workspace: string; repository_root?: string; files
       else for (const o of doc.occurrences) if (o.roles & DEFINITION) elsewhere.add(o.symbol)
     }
   }
+  // A file with a definition that has no enclosing range is parsed by the syntax tier, for the span of that declaration.
+  const bare = params.files.filter((f) => { const doc = documents.get(f.path); return doc?.occurrences.some((o) => o.roles & DEFINITION && !o.enclosing && o.range) })
+  const parsedBy = await syntaxSymbols(bare)
   // Every definition first, so a reference in one file can name a symbol another file defines.
   for (const [p, doc] of documents) {
     const range = positions(fs.readFileSync(path.join(workspace, p), 'utf8'), doc.positionEncoding)
     const info = new Map(doc.symbols.map((s) => [s.symbol, s]))
     for (const o of doc.occurrences) {
       const parsed = (o.roles & DEFINITION) && !definitions.has(o.symbol) ? parseSymbol(o.symbol) : undefined
-      const r = parsed && parsed.descriptors.length ? range(o.enclosing ?? o.range!) : undefined
+      let r = parsed && parsed.descriptors.length ? range(o.enclosing ?? o.range!) : undefined
       if (!parsed || !r || !o.range) continue
+      if (!o.enclosing) {
+        // The narrowest declaration of that name which holds the name's own span.
+        const name = parsed.descriptors.filter((x) => x.suffix !== '[' && x.suffix !== '(').at(-1)!.name
+        const decl = (parsedBy.get(p) ?? []).filter((x) => x.kind !== 'module' && x.name === name && x.range.start_byte <= r!.start_byte && r!.end_byte <= x.range.end_byte)
+          .sort((a, b) => (a.range.end_byte - a.range.start_byte) - (b.range.end_byte - b.range.start_byte))[0]
+        if (decl) r = decl.range
+      }
       definitions.set(o.symbol, { local_id: `${p}#${o.symbol}`, path: p, qualified: dotted(parsed.descriptors), range: r, occurrence: o, info: info.get(o.symbol) })
     }
   }
@@ -172,10 +216,10 @@ function analyse(p: string) {
   }
 }
 
-readline.createInterface({ input: process.stdin }).on('line', (line) => {
+readline.createInterface({ input: process.stdin }).on('line', async (line) => {
   const req = JSON.parse(line)
   try {
-    if (req.method === 'initialize') send({ jsonrpc: '2.0', id: req.id, result: initialize(req.params) })
+    if (req.method === 'initialize') send({ jsonrpc: '2.0', id: req.id, result: await initialize(req.params) })
     else if (req.method === 'workspace') send({ jsonrpc: '2.0', id: req.id, result: { symbols: [], relationships: [], file_results: [], diagnostics: [] } })
     else if (req.method === 'analyze') {
       const out = { symbols: [] as unknown[], relationships: [] as unknown[], file_results: [] as unknown[], diagnostics: [] as unknown[] }
