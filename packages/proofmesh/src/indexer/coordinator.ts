@@ -298,6 +298,8 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
       // Hashing needs each file's captured text and the declared spans, so it follows the last write and costs adapters nothing (FR130).
       const unreadable = fillBodyHashes(db, store)
       if (unreadable.length) db.prepare("insert into meta (key, value) values ('body_hash_missing', ?)").run(canonicalJson({ count: unreadable.length, paths: unreadable.slice(0, 20) }))
+      // A key the core had to disambiguate means an adapter named two declarations alike: recorded, never silent (FR147).
+      if (writer.disambiguated.length) db.prepare("insert into meta (key, value) values ('key_disambiguated', ?)").run(canonicalJson({ count: writer.disambiguated.length, truncated: false, keys: writer.disambiguated }))
       progress({ phase: 'check', done: 0, total: 0 })
       validate(db, store)
       // Planner statistics are part of the sealed file, so queries on large snapshots choose the selective index.
@@ -344,6 +346,10 @@ class FactWriter {
   private seenEvidence = new Set<string>()
   private seenAssertion = new Set<string>()
   private seenExternal = new Set<string>()
+  /** Every stable key written so far, so no two symbols of a snapshot share one (FR147). */
+  private keys = new Set<string>()
+  /** Keys that took a `~n` because an adapter gave two symbols the same one, for the snapshot's meta. */
+  readonly disambiguated: Array<[string, string]> = []
   private sizes = new Map<string, number | undefined>()
   private stmt: Record<string, Database.Statement>
 
@@ -392,7 +398,42 @@ class FactWriter {
     for (const s of symbols) this.localToSymbol.set(`${p.id}:${s.local_id}`, this.symbolId(s))
   }
 
+  /**
+   * The stable key of each new symbol. Symbols that share one, whatever adapter made them, are told apart by a hash of their declaration
+   * text, `~<8 hex>`, so a duplicate inserted above them renames none (FR147); identical text, or a key an earlier batch already wrote,
+   * takes `.2`, `.3` and so on in source order. Adapters avoid this with parameter types, so it is a last resort.
+   */
+  private stableKeys(symbols: AnalyzeResponse['symbols']): Map<AnalyzeResponse['symbols'][number], string> {
+    const base = (s: AnalyzeResponse['symbols'][number]) => `${s.path}#${s.qualified_name}#${s.kind}`
+    const groups = new Map<string, Array<AnalyzeResponse['symbols'][number]>>()
+    for (const s of symbols) groups.set(base(s), [...(groups.get(base(s)) ?? []), s])
+    const text = new Map<string, Buffer | undefined>()
+    const digest = (s: AnalyzeResponse['symbols'][number]) => {
+      const h = this.hashOf.get(s.path)
+      if (!text.has(s.path)) text.set(s.path, h ? this.store.read(h) : undefined)
+      return sha256(text.get(s.path)?.subarray(s.range.start_byte, s.range.end_byte) ?? `${s.range.start_byte}`).slice(0, 8)
+    }
+    const out = new Map<AnalyzeResponse['symbols'][number], string>()
+    for (const [key, group] of groups) {
+      group.sort((a, b) => a.range.start_byte - b.range.start_byte)
+      for (const s of group) {
+        let k = key
+        if (group.length > 1 || this.keys.has(key)) {
+          const h = digest(s)
+          k = `${key}~${h}`
+          for (let n = 2; this.keys.has(k); n++) k = `${key}~${h}.${n}`
+          this.disambiguated.push([key, k])
+        }
+        this.keys.add(k)
+        out.set(s, k)
+      }
+    }
+    return out
+  }
+
   symbols(symbols: AnalyzeResponse['symbols'], p: Producer): void {
+    // A resumed adapter sends symbols again that are already written; they take no key.
+    const stableKeys = this.stableKeys(symbols.filter((s) => !this.localToSymbol.has(`${p.id}:${s.local_id}`)))
     for (const s of symbols) {
       const key = `${p.id}:${s.local_id}`
       const id = this.symbolId(s)
@@ -402,7 +443,7 @@ class FactWriter {
         throw new AdapterProtocolError(`duplicate symbol ${s.local_id}`)
       }
       const ev = this.evidence(s.path, s.range, this.configPaths.has(s.path) ? 'configuration' : 'declaration', p)
-      this.stmt.symbol!.run(id, this.fileId(s.path), s.kind, s.name, s.qualified_name, s.range.start_byte, s.range.end_byte, s.range.start_line, s.range.end_line, s.signature, `${s.path}#${s.qualified_name}#${s.kind}`, ev)
+      this.stmt.symbol!.run(id, this.fileId(s.path), s.kind, s.name, s.qualified_name, s.range.start_byte, s.range.end_byte, s.range.start_line, s.range.end_line, s.signature, stableKeys.get(s)!, ev)
       this.stmt.fts!.run(id, s.name, s.qualified_name)
       this.localToSymbol.set(key, id)
     }
@@ -435,6 +476,7 @@ class FactWriter {
       if (known) return known
       const id = derivedId('sym', 24, this.snapshotId, file, 'team', owner, rule.startByte)
       const range = lineOf(rule)
+      this.keys.add(`${file}#${owner}#team`)
       this.stmt.symbol!.run(id, this.fileId(file), 'team', owner, owner, range.start_byte, range.end_byte, range.start_line, range.end_line, null, `${file}#${owner}#team`, this.evidence(file, range, 'configuration', p))
       this.stmt.fts!.run(id, owner, owner)
       teams.set(owner, id)

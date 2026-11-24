@@ -9,7 +9,7 @@ import { decodeScip, DEFINITION, repositoryPath, type ScipDocument, type ScipOcc
 
 const VERSION = '0.1.0'
 type Range = { start_byte: number; end_byte: number; start_line: number; end_line: number }
-type Definition = { local_id: string; path: string; qualified: string; range: Range; occurrence: ScipOccurrence; info?: ScipSymbol }
+type Definition = { local_id: string; path: string; qualified: string; kind?: string; range: Range; occurrence: ScipOccurrence; info?: ScipSymbol }
 
 const send = (m: unknown) => process.stdout.write(`${JSON.stringify(m)}\n`)
 let workspace = ''
@@ -65,6 +65,16 @@ function parseSymbol(symbol: string): { pkg: string; descriptors: Descriptor[] }
 
 /** A symbol's name in its language's own dotted form: namespaces, types and members, without parameters. */
 const dotted = (ds: Descriptor[]) => ds.filter((d) => d.suffix !== '[' && d.suffix !== '(').map((d) => d.name).join('.')
+/** The languages whose qualified name is the dotted package form; the others name a declaration `<path without extension>:<containers>.<name>` (FR146). */
+const PACKAGE_LANGUAGES = new Set(['java', 'kotlin', 'scala', 'php', 'csharp'])
+/**
+ * The name the syntax tier would give a definition it has no declaration for (a field, a parameter): the same form, from the
+ * descriptors. A definition the syntax tier does declare takes that declaration's name instead, so an overload suffix agrees.
+ */
+function qualifiedName(language: string, file: string, ds: Descriptor[]): string {
+  const members = ds.filter((d) => d.suffix !== '[' && d.suffix !== '(' && d.suffix !== '/')
+  return PACKAGE_LANGUAGES.has(language) || !members.length ? dotted(ds) : `${file.replace(/\.[^./]+$/, '')}:${members.map((d) => d.name).join('.')}`
+}
 
 const KINDS: Record<number, string> = {
   7: 'class', 54: 'class', 33: 'class', 26: 'method', 80: 'method', 66: 'method', 17: 'function', 25: 'function', 21: 'interface', 53: 'interface',
@@ -120,9 +130,11 @@ async function initialize(params: { workspace: string; repository_root?: string;
       else for (const o of doc.occurrences) if (o.roles & DEFINITION) elsewhere.add(o.symbol)
     }
   }
-  // A file with a definition that has no enclosing range is parsed by the syntax tier, for the span of that declaration.
-  const bare = params.files.filter((f) => { const doc = documents.get(f.path); return doc?.occurrences.some((o) => o.roles & DEFINITION && !o.enclosing && o.range) })
-  const spans = await syntaxSymbols(bare, workspace)
+  // A file with a definition is parsed by the syntax tier: its declaration gives the definition its name, kind and span, so every tier names
+  // and measures one declaration alike (FR148). One whose definition has no enclosing range depends on it for the span alone.
+  const defined = params.files.filter((f) => documents.get(f.path)?.occurrences.some((o) => o.roles & DEFINITION && o.range))
+  const bare = defined.filter((f) => documents.get(f.path)!.occurrences.some((o) => o.roles & DEFINITION && !o.enclosing && o.range))
+  const spans = await syntaxSymbols(defined, workspace)
   const parsedBy = spans.symbols
   // A file whose spans could not be widened says so: its symbols are partial, and a line in a body may have no enclosing symbol.
   for (const f of bare) narrow.set(f.path, spans.problem ? `syntax_tier_${spans.problem}` : spans.unsupported.includes(f.path) ? `language_not_in_syntax_tier:${f.language}` : '')
@@ -132,17 +144,16 @@ async function initialize(params: { workspace: string; repository_root?: string;
     const info = new Map(doc.symbols.map((s) => [s.symbol, s]))
     for (const o of doc.occurrences) {
       const parsed = (o.roles & DEFINITION) && !definitions.has(o.symbol) ? parseSymbol(o.symbol) : undefined
+      const named = o.range ? range(o.range) : undefined
       let r = parsed && parsed.descriptors.length ? range(o.enclosing ?? o.range!) : undefined
-      if (!parsed || !r || !o.range) continue
-      if (!o.enclosing) {
-        // The narrowest declaration of that name which holds the name's own span.
-        const name = parsed.descriptors.filter((x) => x.suffix !== '[' && x.suffix !== '(').at(-1)!.name
-        const decl = (parsedBy.get(p) ?? []).filter((x) => x.kind !== 'module' && x.name === name && x.range.start_byte <= r!.start_byte && r!.end_byte <= x.range.end_byte)
-          .sort((a, b) => (a.range.end_byte - a.range.start_byte) - (b.range.end_byte - b.range.start_byte))[0]
-        if (decl) r = decl.range
-        else if (!narrow.get(p)) narrow.set(p, 'declaration_not_found')
-      }
-      definitions.set(o.symbol, { local_id: `${p}#${o.symbol}`, path: p, qualified: dotted(parsed.descriptors), range: r, occurrence: o, info: info.get(o.symbol) })
+      if (!parsed || !r || !o.range || !named) continue
+      // The narrowest declaration of that name which holds the name's own span.
+      const name = parsed.descriptors.filter((x) => x.suffix !== '[' && x.suffix !== '(').at(-1)!.name
+      const decl = (parsedBy.get(p) ?? []).filter((x) => x.kind !== 'module' && x.name === name && x.range.start_byte <= named.start_byte && named.end_byte <= x.range.end_byte)
+        .sort((a, b) => (a.range.end_byte - a.range.start_byte) - (b.range.end_byte - b.range.start_byte))[0]
+      if (decl) r = decl.range
+      else if (!o.enclosing && !narrow.get(p)) narrow.set(p, 'declaration_not_found')
+      definitions.set(o.symbol, { local_id: `${p}#${o.symbol}`, path: p, qualified: decl?.qualified_name ?? qualifiedName(doc.language, p, parsed.descriptors), ...(decl ? { kind: decl.kind } : {}), range: r, occurrence: o, info: info.get(o.symbol) })
     }
   }
   return {
@@ -160,7 +171,7 @@ function analyse(p: string) {
   const own = [...definitions.values()].filter((d) => d.path === p)
   const symbols = [...(text ? [module] : []), ...own.map((d) => {
     const ds = parseSymbol(d.occurrence.symbol)!.descriptors
-    return { local_id: d.local_id, path: p, kind: kindOf(d.info, ds), name: ds.filter((x) => x.suffix !== '[' && x.suffix !== '(').at(-1)!.name, qualified_name: d.qualified, range: d.range, signature: d.info?.signature ?? null }
+    return { local_id: d.local_id, path: p, kind: d.kind ?? kindOf(d.info, ds), name: ds.filter((x) => x.suffix !== '[' && x.suffix !== '(').at(-1)!.name, qualified_name: d.qualified, range: d.range, signature: d.info?.signature ?? null }
   })]
   const relationships: unknown[] = []
   // Occurrences of global symbols that could not be read, or whose ranges do not fit the file, make the file's facts partial.

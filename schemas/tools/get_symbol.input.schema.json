@@ -80,6 +80,11 @@
       "minLength": 1,
       "description": "A file by its repository-relative path, meaning the file itself and its module symbol; .., an absolute path inside the repository and backslashes are normalised. A path the snapshot does not index is INVALID_ARGUMENT naming its disposition. Give symbol_id or path."
     },
+    "key": {
+      "type": "string",
+      "minLength": 1,
+      "description": "A symbol by its stable_key (FR149): the key get_symbol and every other row names it with, unique in a snapshot and the same in every tier. An unknown key is NOT_FOUND. In place of the id."
+    },
     "freshness": {
       "enum": [
         "snapshot",

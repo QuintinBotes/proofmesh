@@ -83,29 +83,29 @@ describe('A24 A27 SCIP indexes a person produced: read, never run, and only wher
       { path: 'web/greet.ts', language: 'typescript', disposition: 'indexed', detail: null, producer: 'typescript' },
     ])
     expect(withSnapshot(d, (db) => db.prepare(`select s.kind, s.qualified_name, s.start_line, s.end_line, s.signature from symbol s join evidence ev on ev.id = s.evidence_id where ev.extractor = 'scip' order by s.qualified_name collate binary`).all())).toEqual([
-      { kind: 'struct', qualified_name: 'View', start_line: 1, end_line: 4, signature: null },
-      { kind: 'method', qualified_name: 'View.body', start_line: 2, end_line: 2, signature: null },
-      { kind: 'method', qualified_name: 'View.label', start_line: 3, end_line: 3, signature: null },
       { kind: 'module', qualified_name: 'cart/cart', start_line: 1, end_line: 18, signature: null },
-      { kind: 'struct', qualified_name: 'example.com/shop/cart.Cart', start_line: 10, end_line: 12, signature: null },
-      { kind: 'method', qualified_name: 'example.com/shop/cart.Cart.Checkout', start_line: 14, end_line: 16, signature: 'func (c Cart) Checkout() string' },
-      { kind: 'field', qualified_name: 'example.com/shop/cart.Cart.Prices', start_line: 11, end_line: 11, signature: null },
-      { kind: 'function', qualified_name: 'example.com/shop/cart.Legacy', start_line: 18, end_line: 18, signature: null },
-      { kind: 'function', qualified_name: 'example.com/shop/pricing.Total', start_line: 4, end_line: 10, signature: 'func Total(prices []int) int' },
+      { kind: 'struct', qualified_name: 'cart/cart:Cart', start_line: 10, end_line: 12, signature: null },
+      { kind: 'method', qualified_name: 'cart/cart:Cart.Checkout', start_line: 14, end_line: 16, signature: 'func (c Cart) Checkout() string' },
+      { kind: 'field', qualified_name: 'cart/cart:Cart.Prices', start_line: 11, end_line: 11, signature: null },
+      { kind: 'function', qualified_name: 'cart/cart:Legacy', start_line: 18, end_line: 18, signature: null },
       { kind: 'module', qualified_name: 'pricing/pricing', start_line: 1, end_line: 10, signature: null },
+      { kind: 'function', qualified_name: 'pricing/pricing:Total', start_line: 4, end_line: 10, signature: 'func Total(prices []int) int' },
       { kind: 'module', qualified_name: 'ui/View', start_line: 1, end_line: 4, signature: null },
+      { kind: 'struct', qualified_name: 'ui/View:View', start_line: 1, end_line: 4, signature: null },
+      { kind: 'method', qualified_name: 'ui/View:View.body', start_line: 2, end_line: 2, signature: null },
+      { kind: 'method', qualified_name: 'ui/View:View.label', start_line: 3, end_line: 3, signature: null },
     ])
     const refs = withSnapshot(d, (db) => (db.prepare(`select a.resolution, a.reason, a.detail, s.qualified_name as src, t.qualified_name as dst, x.module, x.name, ev.start_line as line, ae.evidence_id as ev
       from assertion a join symbol s on s.id = a.source_id left join symbol t on t.id = a.target_id left join external_symbol x on x.id = a.target_id
       join assertion_evidence ae on ae.assertion_id = a.id join evidence ev on ev.id = ae.evidence_id where a.adapter = 'scip' and a.type = 'references' order by ev.file_id, ev.start_byte`).all() as Array<Record<string, string | number | null>>)
       .map((r) => [r.line, evidenceSlice(d, db, String(r.ev)), r.src, r.resolution, r.dst ?? (r.module ? `${r.module}:${r.name}` : null), r.reason, r.detail ? JSON.parse(String(r.detail)) : null]))
     expect(refs.sort((a, b) => String(a[2]).localeCompare(String(b[2])) || Number(a[0]) - Number(b[0]) || String(a[1]).localeCompare(String(b[1])))).toEqual([
-      [15, 'Prices', 'example.com/shop/cart.Cart.Checkout', 'resolved', 'example.com/shop/cart.Cart.Prices', null, null],
-      [15, 'Sprint', 'example.com/shop/cart.Cart.Checkout', 'resolved_external', 'github.com/golang/go/src:fmt.Sprint', null, null],
-      [15, 'Total', 'example.com/shop/cart.Cart.Checkout', 'resolved', 'example.com/shop/pricing.Total', null, null],
-      [18, 'Old', 'example.com/shop/cart.Legacy', 'unresolved', null, 'outside_capability', { symbol: 'example.com/shop/legacy.Old' }],
-      [2, 'label', 'View.body', 'resolved', 'View.label', null, null],
-      [2, 'String', 'View.body', 'resolved_external', 'Swift:String', null, null],
+      [15, 'Prices', 'cart/cart:Cart.Checkout', 'resolved', 'cart/cart:Cart.Prices', null, null],
+      [15, 'Sprint', 'cart/cart:Cart.Checkout', 'resolved_external', 'github.com/golang/go/src:fmt.Sprint', null, null],
+      [15, 'Total', 'cart/cart:Cart.Checkout', 'resolved', 'pricing/pricing:Total', null, null],
+      [18, 'Old', 'cart/cart:Legacy', 'unresolved', null, 'outside_capability', { symbol: 'example.com/shop/legacy.Old' }],
+      [2, 'label', 'ui/View:View.body', 'resolved', 'ui/View:View.label', null, null],
+      [2, 'String', 'ui/View:View.body', 'resolved_external', 'Swift:String', null, null],
     ])
     expect(withSnapshot(d, (db) => db.prepare(`select path, json_extract(capabilities, '$.references') as refs from file where path in ('cart/cart.go', 'pricing/pricing.go', 'ui/View.swift') order by path`).all())).toEqual([
       { path: 'cart/cart.go', refs: 'complete' }, { path: 'pricing/pricing.go', refs: 'complete' }, { path: 'ui/View.swift', refs: 'partial' },

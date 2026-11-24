@@ -4,6 +4,14 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 ## Unreleased
 
+Stable symbol keys (#15):
+
+- Every tier names a declaration by one qualified name per language: the declared package or namespace for C#, Java, Kotlin, Scala and PHP (`com.acme.Shop.add(int)`), `<path>:<containers>.<name>` for the rest, with a Go receiver, a Rust `impl` target (and its trait, `X.<Display>.fmt`) and a C++ out-of-class owner as the container, a Go struct or interface kept as such, parameter types on overloads, and a C or C++ prototype merged into its definition (FR146). A Python property setter is `C.x(value)`.
+- `stable_key` is unique in a snapshot: the core tells any remaining duplicates apart by `~` and a hash of their text, so a new duplicate renames none, and records every one in the snapshot meta. Snapshot format 0.8 adds a unique index on it, so the next index of every repository rebuilds, and the keys of syntax-tier and SCIP symbols change once (FR147).
+- The SCIP importer takes each definition's name, kind and span from the syntax tier's declaration of it, so naming an index changes no key and no `body_hash` (FR148).
+- `get_symbol`, `get_relationships`, `analyze_impact`, `find_tests` and `get_memory` take `key`, and `trace_paths` takes `source_key` and `target_key` (FR149).
+- `get_memory` lists a reference that matches several symbols under `ambiguous_refs` with their keys (staleness `ambiguous`), and reports `tier_changed` when only the tier that analysed a referenced file changed (FR150). A fingerprint accepted before still reads: it is the relationships part alone. Names changed with format 0.8, so a note reference written in the older form reports as missing, once, with that explanation; rewrite it (notes are not migrated).
+
 Language census (#3):
 
 - `workspace_status` returns `languages`, and `proofmesh status` prints it: every file in exactly one language row (Linguist's names; `unknown` names its extension), with kind, file counts by disposition, the tier that read it (`precise:<adapter>`, `scip:<index>`, `syntax`, `none`), capability counts per level, why it stops there, and a remedy from one table that `docs/proofmesh/languages.md` shows (FR136 to FR141).

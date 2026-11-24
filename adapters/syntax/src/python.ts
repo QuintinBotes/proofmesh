@@ -95,8 +95,13 @@ function readFacts(file: string): Promise<FileFacts> {
           const d = c.type === 'decorated_definition' ? c.childForFieldName('definition') ?? c : c
           if (d.type === 'class_definition' || d.type === 'function_definition') {
             const name = d.childForFieldName('name')!.text, id = `${file}#${d.startIndex}`
-            const kind = d.type === 'class_definition' ? 'class' : inClass ? 'method' : 'function'
-            symbols.push({ local_id: id, path: file, kind, name, qualified_name: `${module}:${[...chain, name].join('.')}`, range: rangeOf({ at }, d), signature: header(d) })
+            // A property is its getter; its setter and deleter share the name, so they take their parameters as a suffix (FR146).
+            const decorators = c.type === 'decorated_definition' ? c.namedChildren.filter((x) => x.type === 'decorator').map((x) => x.text.replace(/^@\s*/, '')) : []
+            const accessor = inClass && d.type === 'function_definition' && decorators.some((t) => /^\w+\.(setter|deleter)\b/.test(t))
+            const property = accessor || (inClass && d.type === 'function_definition' && decorators.some((t) => /^(?:[\w.]+\.)?(?:property|cached_property)$/.test(t)))
+            const kind = d.type === 'class_definition' ? 'class' : property ? 'property' : inClass ? 'method' : 'function'
+            const params = accessor ? `(${(d.childForFieldName('parameters')?.namedChildren ?? []).slice(1).map((p) => (p.childForFieldName('name') ?? p.namedChildren[0] ?? p).text).join(',')})` : ''
+            symbols.push({ local_id: id, path: file, kind, name, qualified_name: `${module}:${[...chain, name].join('.')}${params}`, range: rangeOf({ at }, d), signature: header(d) })
             const nameNode = d.childForFieldName('name')!
             byName.set(`${nameNode.startPosition.row}:${nameNode.startPosition.column}`, id)
             if (d.type === 'class_definition') classes.set(id, d)

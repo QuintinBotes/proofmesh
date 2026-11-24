@@ -736,6 +736,21 @@
     "FR135": [
       "packages/proofmesh/test/symbol-identity.test.ts"
     ],
+    "FR146": [
+      "packages/proofmesh/test/stable-keys.test.ts"
+    ],
+    "FR147": [
+      "packages/proofmesh/test/stable-keys.test.ts"
+    ],
+    "FR148": [
+      "packages/proofmesh/test/stable-keys.test.ts"
+    ],
+    "FR149": [
+      "packages/proofmesh/test/stable-keys.test.ts"
+    ],
+    "FR150": [
+      "packages/proofmesh/test/stable-keys.test.ts"
+    ],
     "FR136": [
       "packages/proofmesh/test/census.test.ts"
     ],

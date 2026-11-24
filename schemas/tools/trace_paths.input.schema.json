@@ -115,6 +115,16 @@
       "minLength": 1,
       "description": "The target as a file. A file by its repository-relative path, meaning the file itself and its module symbol; .., an absolute path inside the repository and backslashes are normalised. A path the snapshot does not index is INVALID_ARGUMENT naming its disposition. Give target_id or target_path."
     },
+    "source_key": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The source by its stable_key, in place of source_id."
+    },
+    "target_key": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The target by its stable_key, in place of target_id."
+    },
     "types": {
       "type": "array",
       "items": {

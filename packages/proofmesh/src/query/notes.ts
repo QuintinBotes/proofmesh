@@ -51,26 +51,50 @@ export function readNotes(dir: string): { notes: Array<Note & { file: string }>;
   return { notes, problems }
 }
 
-/** A reference is `kind:qualified name`; it resolves to the symbol of that kind and name in a snapshot. */
-export function resolveRef(db: Database.Database, ref: string): string | null {
+/**
+ * The symbols a reference `kind:qualified name` matches: the symbol of exactly that name, else every overload of it, whose names
+ * carry their parameter types (`com.acme.Shop.add(int)`). More than one is an ambiguous reference (FR150).
+ */
+export function resolveRefs(db: Database.Database, ref: string): string[] {
   const i = ref.indexOf(':')
-  if (i < 1) return null
-  const row = db.prepare('select id from symbol where kind = ? and qualified_name = ? order by id limit 1').get(ref.slice(0, i), ref.slice(i + 1)) as { id: string } | undefined
-  return row?.id ?? null
+  if (i < 1) return []
+  const kind = ref.slice(0, i), name = ref.slice(i + 1)
+  const ids = (sql: string, ...args: Array<string | number>) => (db.prepare(sql).all(...args) as Array<{ id: string }>).map((r) => r.id)
+  const exact = ids('select id from symbol where kind = ? and qualified_name = ? order by id', kind, name)
+  return exact.length ? exact : ids("select id from symbol where kind = ? and substr(qualified_name, 1, ?) = ? and substr(qualified_name, ? + 1, 1) = '(' order by id", kind, name.length, name, name.length)
 }
 
+/** The first symbol a reference matches, or null. */
+export const resolveRef = (db: Database.Database, ref: string): string | null => resolveRefs(db, ref)[0] ?? null
+
 /**
- * The relationships of a note's referenced symbols, by kind and qualified name rather than snapshot-scoped IDs, so the
- * same code gives the same fingerprint in every snapshot. Unresolved references count as absent.
+ * What a note's referenced symbols look like, by kind and qualified name rather than snapshot-scoped IDs, so the same code gives
+ * the same fingerprint in every snapshot: the relationships of the referenced symbols (unresolved references count as absent),
+ * then, after a `+`, the content and the tier of each referenced file, which tell a tier switch from a change (FR150). A
+ * fingerprint accepted before the second part existed is the first part alone.
  */
 export function fingerprint(db: Database.Database, refs: string[]): string {
-  const ids = refs.map((r) => resolveRef(db, r)).filter((x): x is string => !!x)
+  const ids = [...new Set(refs.flatMap((r) => resolveRefs(db, r)))]
   const label = (id: string) => { const s = db.prepare('select kind, qualified_name from symbol where id = ?').get(id) as { kind: string; qualified_name: string } | undefined; return s ? `${s.kind}:${s.qualified_name}` : id }
   const lines = new Set<string>()
   for (const id of ids) {
     for (const e of db.prepare("select src, type, dst from edge where (src = ? or dst = ?) and resolution = 'resolved'").all(id, id) as Array<{ src: string; type: string; dst: string }>) lines.add(`${label(e.src)} ${e.type} ${label(e.dst)}`)
   }
-  return sha256(canonicalJson({ refs: [...refs].sort(), resolved: ids.map(label).sort(), edges: [...lines].sort() }))
+  const relations = sha256(canonicalJson({ refs: [...refs].sort(), resolved: ids.map(label).sort(), edges: [...lines].sort() }))
+  const files = new Set(ids.map((id) => { const r = db.prepare('select f.path, f.content_hash, ev.extractor from symbol s join file f on f.id = s.file_id join evidence ev on ev.id = s.evidence_id where s.id = ?').get(id) as { path: string; content_hash: string | null; extractor: string }; return `${sha256(r.path).slice(0, 8)}:${(r.content_hash ?? '').slice(0, 12)}:${r.extractor}` }))
+  return `${relations}+${[...files].sort().join(',')}`
+}
+
+/** Where a note stands: unaccepted, ambiguous, tier_changed (a referenced file's tier moved and its content did not), changed or current. */
+export function staleness(db: Database.Database, refs: string[], accepted: string | null, ambiguous: boolean): 'unaccepted' | 'ambiguous' | 'tier_changed' | 'changed' | 'current' {
+  if (!accepted) return 'unaccepted'
+  if (ambiguous) return 'ambiguous'
+  const [was = '', wasFiles = ''] = accepted.split('+'), [now = '', nowFiles = ''] = fingerprint(db, refs).split('+')
+  const parts = (v: string) => new Map(v.split(',').filter(Boolean).map((f) => { const [path, content, tier] = f.split(':'); return [path!, { content, tier }] as const }))
+  const before = parts(wasFiles), after = parts(nowFiles)
+  const sameContent = before.size > 0 && before.size === after.size && [...before].every(([k, v]) => after.get(k)?.content === v.content)
+  if (sameContent && [...before].some(([k, v]) => after.get(k)!.tier !== v.tier)) return 'tier_changed'
+  return now === was ? 'current' : 'changed'
 }
 
 /** Accepted notes with a pattern the text matches: the code a note targets writes text like it, so it is the place to look. */

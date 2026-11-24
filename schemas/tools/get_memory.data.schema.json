@@ -26,6 +26,7 @@
           "target",
           "refs",
           "missing_refs",
+          "ambiguous_refs",
           "staleness",
           "accepted_by",
           "accepted_at",
@@ -66,12 +67,38 @@
               "type": "string"
             }
           },
+          "ambiguous_refs": {
+            "type": "array",
+            "description": "References that match several symbols, each with the stable_key of every match (FR150): the note does not say which one it means, so it is not current.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "ref",
+                "keys"
+              ],
+              "properties": {
+                "ref": {
+                  "type": "string"
+                },
+                "keys": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
           "staleness": {
             "enum": [
               "current",
               "changed",
+              "tier_changed",
+              "ambiguous",
               "unaccepted"
-            ]
+            ],
+            "description": "unaccepted: no person has accepted the note. ambiguous: a reference matches several symbols. tier_changed: a referenced file was analysed by another tier (an index was named, went stale or a precise adapter appeared) and its content did not change (FR150). changed: the relationships of the referenced symbols moved. current otherwise."
           },
           "accepted_by": {
             "type": [

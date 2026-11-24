@@ -22,6 +22,8 @@ export type Changed = { id: string; name: string; path: string; line: number; ch
 
 /** Dependents' relations in row order (FR111); overrides joins them, since a member overriding a changed one is an implementer of it. */
 const RELATIONS = ['calls', 'implements', 'overrides', 'inherits', 'references', 'imports']
+/** Java, Kotlin, Scala and PHP qualified names carry no path, so the same name in two files is two symbols; other languages' names say their file or are matched across files as before. */
+const SAME_FILE = "(f.path = ? or f.language not in ('java', 'kotlin', 'scala', 'php'))"
 const SYMBOL_SQL = 'select s.id, s.kind, s.name, s.qualified_name, f.path, s.file_id, s.start_line, s.end_line from symbol s join file f on f.id = s.file_id'
 
 /**
@@ -104,11 +106,11 @@ function touched(db: Database.Database, ranges: Ranges, text: (path: string) => 
 
 /** The changed symbols (FR110): head symbols touched, modified when base has one of that kind and name, else added; base symbols touched that head lacks, deleted. */
 export function changedSymbols(head: Snap, base: Snap, diff: Diff, read: (db: Database.Database, path: string) => string | undefined): Array<{ sym: Sym; change: Changed['change']; snap: Snap }> {
-  const counterpart = (db: Database.Database, s: Sym) => db.prepare('select 1 from symbol where kind = ? and qualified_name = ?').get(s.kind, s.qualified_name)
+  const counterpart = (db: Database.Database, s: Sym) => db.prepare(`select 1 from symbol s join file f on f.id = s.file_id where s.kind = ? and s.qualified_name = ? and ${SAME_FILE}`).get(s.kind, s.qualified_name, s.path)
   const out = new Map<string, { sym: Sym; change: Changed['change']; snap: Snap }>()
   for (const s of touched(head.db, diff.head, (p) => read(head.db, p))) out.set(s.id, { sym: s, change: counterpart(base.db, s) ? 'modified' : 'added', snap: head })
   for (const s of touched(base.db, diff.base, (p) => read(base.db, p))) {
-    const h = head.db.prepare(`${SYMBOL_SQL} where s.kind = ? and s.qualified_name = ?`).get(s.kind, s.qualified_name) as Sym | undefined
+    const h = head.db.prepare(`${SYMBOL_SQL} where s.kind = ? and s.qualified_name = ? and ${SAME_FILE}`).get(s.kind, s.qualified_name, s.path) as Sym | undefined
     if (!h) out.set(s.id, { sym: s, change: 'deleted', snap: base })
     else if (!out.has(h.id)) out.set(h.id, { sym: h, change: 'modified', snap: head })
   }
@@ -137,7 +139,7 @@ export function complete(c: { sym: Sym; change: Changed['change']; snap: Snap },
   const { db, ranges } = c.snap, other = c.snap === o.head ? o.base : o.head
   // Changed on either side: a deletion inside a symbol leaves no head line, and an insertion no base line.
   const changedIn = (s: Sym) => overlaps(ranges.get(s.path), s.start_line, s.end_line) || (() => {
-    const t = other.db.prepare(`${SYMBOL_SQL} where s.kind = ? and s.qualified_name = ?`).get(s.kind, s.qualified_name) as Sym | undefined
+    const t = other.db.prepare(`${SYMBOL_SQL} where s.kind = ? and s.qualified_name = ? and ${SAME_FILE}`).get(s.kind, s.qualified_name, s.path) as Sym | undefined
     return !!t && overlaps(other.ranges.get(t.path), t.start_line, t.end_line)
   })()
   const testCode = (s: { path: string; file_id: string }) => inTestCode(db, s, o.isTest)

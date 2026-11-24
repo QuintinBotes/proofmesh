@@ -246,6 +246,10 @@ path: string
  */
 paths?: [string, ...(string)[]]
 /**
+ * A symbol by its stable_key (FR149): the key get_symbol and every other row names it with, unique in a snapshot and the same in every tier. An unknown key is NOT_FOUND. In place of the id.
+ */
+key?: string
+/**
  * @minItems 1
  */
 types?: [("calls" | "imports" | "contains" | "inherits" | "implements" | "overrides" | "references" | "injects" | "registered_as" | "exposes" | "maps_to" | "runs" | "dispatches_to" | "handles" | "publishes" | "consumes" | "sends_to" | "listens_on" | "evaluates_flag" | "reads_config" | "depends_on" | "depends_on_package" | "owned_by" | "calls_service" | "renders" | "uses_hook" | "provides_context" | "uses_context"), ...(("calls" | "imports" | "contains" | "inherits" | "implements" | "overrides" | "references" | "injects" | "registered_as" | "exposes" | "maps_to" | "runs" | "dispatches_to" | "handles" | "publishes" | "consumes" | "sends_to" | "listens_on" | "evaluates_flag" | "reads_config" | "depends_on" | "depends_on_package" | "owned_by" | "calls_service" | "renders" | "uses_hook" | "provides_context" | "uses_context"))[]]
@@ -629,6 +633,10 @@ path: string
  */
 paths?: [string, ...(string)[]]
 /**
+ * A symbol by its stable_key (FR149): the key get_symbol and every other row names it with, unique in a snapshot and the same in every tier. An unknown key is NOT_FOUND. In place of the id.
+ */
+key?: string
+/**
  * snapshot (default) answers from the published snapshot. strict first checks that the working tree is exactly what the snapshot was built from; if not, it starts an index and refuses with STALE_INPUT naming the changed files.
  */
 freshness?: ("snapshot" | "strict")
@@ -960,7 +968,17 @@ status: (string | null)
 target: (string | null)
 refs: string[]
 missing_refs: string[]
-staleness: ("current" | "changed" | "unaccepted")
+/**
+ * References that match several symbols, each with the stable_key of every match (FR150): the note does not say which one it means, so it is not current.
+ */
+ambiguous_refs: {
+ref: string
+keys: string[]
+}[]
+/**
+ * unaccepted: no person has accepted the note. ambiguous: a reference matches several symbols. tier_changed: a referenced file was analysed by another tier (an index was named, went stale or a precise adapter appeared) and its content did not change (FR150). changed: the relationships of the referenced symbols moved. current otherwise.
+ */
+staleness: ("current" | "changed" | "tier_changed" | "ambiguous" | "unaccepted")
 accepted_by: (string | null)
 accepted_at: (string | null)
 sources: string[]
@@ -1003,6 +1021,10 @@ path: string
  * Notes that reference this file's module symbol. A file by its repository-relative path, meaning the file itself and its module symbol; .., an absolute path inside the repository and backslashes are normalised. A path the snapshot does not index is INVALID_ARGUMENT naming its disposition.
  */
 path?: string
+/**
+ * A symbol by its stable_key (FR149): the key get_symbol and every other row names it with, unique in a snapshot and the same in every tier. An unknown key is NOT_FOUND. In place of the id.
+ */
+key?: string
 query?: string
 /**
  * snapshot (default) answers from the published snapshot. strict first checks that the working tree is exactly what the snapshot was built from; if not, it starts an index and refuses with STALE_INPUT naming the changed files.
@@ -1295,6 +1317,10 @@ path: string
  * A file by its repository-relative path, meaning the file itself and its module symbol; .., an absolute path inside the repository and backslashes are normalised. A path the snapshot does not index is INVALID_ARGUMENT naming its disposition. Give subject_id or path.
  */
 path?: string
+/**
+ * A symbol by its stable_key (FR149): the key get_symbol and every other row names it with, unique in a snapshot and the same in every tier. An unknown key is NOT_FOUND. In place of the id.
+ */
+key?: string
 direction?: ("in" | "out" | "both")
 /**
  * @minItems 1
@@ -1383,6 +1409,10 @@ path: string
  * A file by its repository-relative path, meaning the file itself and its module symbol; .., an absolute path inside the repository and backslashes are normalised. A path the snapshot does not index is INVALID_ARGUMENT naming its disposition. Give symbol_id or path.
  */
 path?: string
+/**
+ * A symbol by its stable_key (FR149): the key get_symbol and every other row names it with, unique in a snapshot and the same in every tier. An unknown key is NOT_FOUND. In place of the id.
+ */
+key?: string
 /**
  * snapshot (default) answers from the published snapshot. strict first checks that the working tree is exactly what the snapshot was built from; if not, it starts an index and refuses with STALE_INPUT naming the changed files.
  */
@@ -2369,6 +2399,14 @@ source_path?: string
  * The target as a file. A file by its repository-relative path, meaning the file itself and its module symbol; .., an absolute path inside the repository and backslashes are normalised. A path the snapshot does not index is INVALID_ARGUMENT naming its disposition. Give target_id or target_path.
  */
 target_path?: string
+/**
+ * The source by its stable_key, in place of source_id.
+ */
+source_key?: string
+/**
+ * The target by its stable_key, in place of target_id.
+ */
+target_key?: string
 /**
  * Relationship types to follow; default calls, implements and overrides. implements and overrides are followed in both directions, so a call to an interface or virtual member reaches its implementations.
  * 
