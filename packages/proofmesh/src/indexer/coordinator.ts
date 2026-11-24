@@ -19,6 +19,7 @@ import { AdapterProcess, AdapterProtocolError, PROTOCOL_VERSION } from './adapte
 import { assemble, FactCache, fileKeys, splitByFile } from './fact-cache.js'
 import { analysisConfig, checkoutCommit, discover, gitInfo, type Discovered } from './discovery.js'
 import { registryFor, type AdapterSpec, type Registry } from './languages.js'
+import { buildCensus } from './census.js'
 
 export type IndexResult = {
   snapshotId: string
@@ -278,12 +279,19 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
       for (const c of captured) if (c.role === 'registry') fileResults.set(c.path, { status: 'ok', capabilities: { text: 'complete' } })
 
       const updateFile = db.prepare('update file set disposition = ?, disposition_detail = ?, content_hash = ?, capabilities = ? where path = ?')
+      // The tier that produced a source file's facts rides beside its capabilities (FR137); capture-only files have none.
+      const tierOf = (c: Captured): { tier: string } | {} => {
+        if (c.role !== 'source') return {}
+        if (c.adapter === 'scip') return { tier: `scip:${c.scip}` }
+        const id = owner(c.language!)?.id
+        return id ? { tier: id === 'syntax' ? 'syntax' : `precise:${id}` } : {}
+      }
       db.transaction(() => {
         for (const c of captured) {
           const fr = fileResults.get(c.path)
           if (!fr) updateFile.run('failed', 'not_analysed', null, capabilities({}, 'failed'), c.path)
           // Discovery's detail stays: a file a stale SCIP index covers is indexed by its usual adapter and says why (A27).
-          else if (fr.status === 'ok') updateFile.run('indexed', c.detail, c.hash, capabilities(fr.capabilities, 'unsupported'), c.path)
+          else if (fr.status === 'ok') updateFile.run('indexed', c.detail, c.hash, capabilities({ ...fr.capabilities, ...tierOf(c) }, 'unsupported'), c.path)
           else updateFile.run('failed', fr.detail ?? 'adapter_failure', null, capabilities(fr.capabilities, 'failed'), c.path)
         }
       })()
@@ -297,6 +305,11 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
       fillAggregates(db)
       db.exec('ANALYZE')
       db.prepare("insert into meta (key, value) values ('summary', ?)").run(canonicalJson(computeSummary(db)))
+      // The language census (FR136): every discovered file in exactly one row, from the final disposition of each.
+      const labels = new Map(discovered.map((d) => [d.path, d.census!]))
+      const censusFiles = (db.prepare('select path, disposition, disposition_detail as detail, capabilities from file').all() as Array<{ path: string; disposition: string; detail: string | null; capabilities: string }>)
+        .map((f) => ({ label: labels.get(f.path)!, disposition: f.disposition, detail: f.detail, capabilities: JSON.parse(f.capabilities) as Record<string, string> }))
+      db.prepare("insert into meta (key, value) values ('census', ?)").run(JSON.stringify(buildCensus(censusFiles, { overrides: process.env.PROOFMESH_CS_ADAPTER ? { csharp: process.env.PROOFMESH_CS_ADAPTER } : {} })))
       const counts = countDispositions((db.prepare('select disposition from file').all() as Array<{ disposition: string }>).map((r) => r.disposition))
       progress({ phase: 'seal', done: 0, total: 0 })
       sealAndPublish(catalog, db, stagingFile, snapshotId, repo.id, keepCurrent)

@@ -31,6 +31,7 @@ import { backup, restore } from './backup.js'
 import { runGc } from './gc.js'
 import { runMcpConfig } from './mcp-config.js'
 import { runConventions } from './conventions.js'
+import { weakestCapability, type CensusRow } from '../indexer/census.js'
 import { duration, phaseLabel, progressReporter } from './progress.js'
 
 export const VERSION = '0.1.0'
@@ -462,7 +463,9 @@ export async function main(argv: string[]): Promise<number> {
             catalog.close()
           }
         }
-        const env = runTool(dataDir, 'workspace_status', opts[0] ? { repository_id: opts[0] } : {})
+        // A path names a repository as well as its id does.
+        const named = opts[0] ? (() => { const c = Catalog.open(dataDir); try { return c.repository(opts[0]!).id } finally { c.close() } })() : undefined
+        const env = runTool(dataDir, 'workspace_status', named ? { repository_id: named } : {})
         if (json) console.log(JSON.stringify(env, null, 2))
         else {
           for (const j of (env.data.jobs as IndexJob[] | undefined) ?? []) console.log(`index job ${j.id} ${j.state}${j.started_at ? ` since ${j.started_at}` : `, requested ${j.requested_at}`} by ${j.requested_by}${j.phase ? `: ${j.phase}${j.total ? ` ${j.done}/${j.total}` : ''}` : ''}`)
@@ -470,6 +473,10 @@ export async function main(argv: string[]): Promise<number> {
           console.log(`snapshot ${env.snapshot!.id} (${env.snapshot!.analysis_mode})${env.snapshot!.commit ? ` of commit ${env.snapshot!.commit} (${env.snapshot!.ref})` : ''}, published ${env.snapshot!.published_at}`)
           console.log(`files ${env.coverage!.files_discovered}: indexed ${d.indexed}, excluded ${d.excluded_by_rule}, unsupported ${d.unsupported}, failed ${d.failed}, pending ${d.pending}`)
           console.log(`capabilities ${Object.entries(env.coverage!.capabilities).map(([k, v]) => `${k}=${v}`).join(' ')}`)
+          // The language census (FR141): one line per row, in the tool's order, with the capability each row is weakest in.
+          const census = (env.data.languages ?? []) as CensusRow[]
+          console.log(`languages ${census.length}${census.length ? '' : ' (this snapshot predates the census; index again)'}`)
+          for (const r of census) { const w = weakestCapability(r); console.log(`  ${r.language}${r.extension ? ` ${r.extension}` : ''}: ${r.files} file${r.files === 1 ? '' : 's'}, tier ${r.tier}, weakest ${w.capability}=${w.level}${r.remedy ? `, remedy: ${r.remedy}` : ''}`) }
           console.log(`unresolved ${env.unresolved.count}${Object.keys(env.unresolved.by_reason).length ? ` (${Object.entries(env.unresolved.by_reason).map(([k, v]) => `${k} ${v}`).join(', ')})` : ''}`)
           // The rules discovery applied, and what each adapter read from outside the repository (FR004).
           const catalog = Catalog.open(dataDir)

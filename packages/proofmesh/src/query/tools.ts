@@ -569,6 +569,9 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
       g.files++
       groups.set(key, g)
     }
+    // The census is built when the snapshot is (FR136); one sealed before it answers no rows and says so.
+    const censusRows = meta.census ? (JSON.parse(meta.census) as Array<{ kind: string; language: string; files: number }>) : []
+    const languages = censusRows
     const fileSummary = [...groups.values()].sort((a, b) => b.files - a.files || (a.extension < b.extension ? -1 : 1)).slice(0, 50)
     return {
       data: {
@@ -587,6 +590,7 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
         },
         files,
         file_summary: fileSummary,
+        languages,
         hubs: snapshotSummary(ctx.db, ctx.snapshot.id).hubs,
         jobs: ctx.catalog.openJobs(ctx.repo.id),
         calls: { sites: snapshotSummary(ctx.db, ctx.snapshot.id).call_sites, unresolved: snapshotSummary(ctx.db, ctx.snapshot.id).unresolved_calls.count, by_reason: snapshotSummary(ctx.db, ctx.snapshot.id).unresolved_calls.by_reason, dependency_missing_by_package: snapshotSummary(ctx.db, ctx.snapshot.id).unresolved_calls.dependency_missing_by_package },
@@ -594,7 +598,12 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
       stop_reasons: all.length > ctx.limits.max_rows ? ['max_rows'] : [],
       shrink: 'files',
       more: all.length > ctx.limits.max_rows,
-      ...(ask ? {} : { limitations: ['No file rows were asked for: file_summary groups the files by disposition, reason and extension; pass files to list rows.'] }),
+      limitations: [
+        ...(ask ? [] : ['No file rows were asked for: file_summary groups the files by disposition, reason and extension; pass files to list rows.']),
+        ...(!meta.census ? ['This snapshot was sealed before the language census existed, so languages is empty; index again to build it.'] : []),
+        ...(meta.census && !censusRows.some((r) => r.kind === 'code' || r.kind === 'template') ? ['No code was recognised in this repository: the rows are data and prose files.'] : []),
+        ...(censusRows.at(-1)?.language === 'other' ? [`The languages list ends with an other row that sums ${censusRows.at(-1)!.files} files of the smallest rows beyond the first ${censusRows.length - 1}; the census keeps at most ${censusRows.length} rows.`] : []),
+      ],
     }
   },
 
