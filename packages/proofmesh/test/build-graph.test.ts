@@ -31,8 +31,8 @@ async function indexedRepo(files: Record<string, string>) {
 }
 const json = (o: unknown) => JSON.stringify(o, null, 2) + '\n'
 
-describe('FR119 FR120 FR121 FR122 the build graph of JavaScript and Go: each file in its declared module, each module its declared dependencies', () => {
-  it('FR119 issue 5 scenario 1: find_symbols with kind project returns one project per named manifest, at the line of its name', async () => {
+describe('FR124 FR125 FR126 FR127 the build graph of JavaScript and Go: each file in its declared module, each module its declared dependencies', () => {
+  it('FR124 issue 5 scenario 1: find_symbols with kind project returns one project per named manifest, at the line of its name', async () => {
     const d = await fixtureIndex()
     // find_symbols searches by name, so ask for each declared name and keep the projects.
     const names = ['@acme/ui', '@acme/core', 'example.com/svc', 'example.com/lib']
@@ -43,7 +43,7 @@ describe('FR119 FR120 FR121 FR122 the build graph of JavaScript and Go: each fil
     ])
   }, 240000)
 
-  it('FR121 issue 5 scenario 2: depends_on rows are resolved, from the configuration adapter, at the line that declares each', async () => {
+  it('FR126 issue 5 scenario 2: depends_on rows are resolved, from the configuration adapter, at the line that declares each', async () => {
     const d = await fixtureIndex()
     withSnapshot(d, (db) => {
       expect(rows(db, 'depends_on').map((r) => [r.from, r.to, r.resolution, r.origin, r.path, r.line])).toEqual([
@@ -54,7 +54,7 @@ describe('FR119 FR120 FR121 FR122 the build graph of JavaScript and Go: each fil
     })
   }, 240000)
 
-  it('FR122 issue 5 scenario 3: depends_on_package rows are resolved_external with the declared version', async () => {
+  it('FR127 issue 5 scenario 3: depends_on_package rows are resolved_external with the declared version', async () => {
     const d = await fixtureIndex()
     withSnapshot(d, (db) => {
       expect(rows(db, 'depends_on_package').map((r) => [r.from, r.to, r.resolution, r.detail, r.path, r.line])).toEqual([
@@ -64,7 +64,7 @@ describe('FR119 FR120 FR121 FR122 the build graph of JavaScript and Go: each fil
     })
   }, 240000)
 
-  it('FR120 issue 5 scenario 4: every source file is contained by the project of its nearest named manifest, and a file under none by none', async () => {
+  it('FR125 issue 5 scenario 4: every source file is contained by the project of its nearest named manifest, and a file under none by none', async () => {
     const d = await fixtureIndex()
     withSnapshot(d, (db) => {
       const sources = db.prepare("select f.path, (select p.qualified_name from assertion a join symbol p on p.id = a.source_id where a.type = 'contains' and p.kind = 'project' and a.target_id = m.id) as project from symbol m join file f on f.id = m.file_id where m.kind = 'module' order by f.path").all()
@@ -79,7 +79,7 @@ describe('FR119 FR120 FR121 FR122 the build graph of JavaScript and Go: each fil
     })
   }, 240000)
 
-  it('FR120 issue 5 scenario 5: analyze_impact groups the dependent of color under its project, not (no project)', async () => {
+  it('FR125 issue 5 scenario 5: analyze_impact groups the dependent of color under its project, not (no project)', async () => {
     const d = await fixtureIndex()
     const data = tool(d, 'analyze_impact', { subject_ids: [symbolId(d, 'packages/ui/src/theme:color')] }).data as { totals: { by_project: Array<{ name: string; count: number }> } }
     expect(data.totals.by_project).toEqual([{ name: '@acme/ui', count: 1 }])
@@ -94,15 +94,15 @@ describe('FR119 FR120 FR121 FR122 the build graph of JavaScript and Go: each fil
     expect(fs.existsSync(path.join(repo, 'MARKER-preinstall'))).toBe(false)
   }, 240000)
 
-  it('FR119 FR121 FR122 the build adapter passes the conformance kit on the fixture, against the hand-written expected facts', async () => {
+  it('FR124 FR126 FR127 the build adapter passes the conformance kit on the fixture, against the hand-written expected facts', async () => {
     const r = await runKit(build(), fixtureRepo('build-graph'), EXPECTED)
     expect(r.checks.filter((c) => !c.passed).map((c) => `${c.id}: ${c.detail}`)).toEqual([])
     expect(r.checks.map((c) => c.id)).toEqual(expect.arrayContaining(['golden.symbols', 'golden.structure']))
   }, 240000)
 })
 
-describe('FR119 FR121 FR123 manifests that cannot be read, or name the same module twice, or reach outside the repository', () => {
-  it('FR123 a manifest that does not parse fails that file with the line, and every other manifest is still read', async () => {
+describe('FR124 FR126 FR128 manifests that cannot be read, or name the same module twice, or reach outside the repository', () => {
+  it('FR128 a manifest that does not parse fails that file with the line, and every other manifest is still read', async () => {
     const { dataDir } = await indexedRepo({
       'a/package.json': json({ name: 'a' }),
       'b/package.json': '{\n  "name": "b",\n  "dependencies": {\n    "x":\n  }\n}\n',
@@ -118,7 +118,7 @@ describe('FR119 FR121 FR123 manifests that cannot be read, or name the same modu
     })
   }, 240000)
 
-  it('FR121 a replace that points outside the repository is an unresolved depends_on, dependency_missing, naming the path', async () => {
+  it('FR126 a replace that points outside the repository is an unresolved depends_on, dependency_missing, naming the path', async () => {
     const { dataDir } = await indexedRepo({
       'svc/go.mod': 'module example.com/svc\n\nrequire example.com/ext v1.0.0\n\nrequire example.com/hole v1.0.0\n\nreplace example.com/ext => ../../outside\n\nreplace example.com/hole => ./hole\n',
     })
@@ -131,7 +131,7 @@ describe('FR119 FR121 FR123 manifests that cannot be read, or name the same modu
     })
   }, 240000)
 
-  it('FR121 two projects with the same name make a dependency on it ambiguous, with both as candidates', async () => {
+  it('FR126 two projects with the same name make a dependency on it ambiguous, with both as candidates', async () => {
     const { dataDir } = await indexedRepo({
       'package.json': json({ private: true, workspaces: ['packages/*'] }),
       'packages/a/package.json': json({ name: 'dup' }),
@@ -145,7 +145,7 @@ describe('FR119 FR121 FR123 manifests that cannot be read, or name the same modu
     })
   }, 240000)
 
-  it('FR121 the workspaces object form and its exclusions are honoured: only a member resolves by name', async () => {
+  it('FR126 the workspaces object form and its exclusions are honoured: only a member resolves by name', async () => {
     const { dataDir } = await indexedRepo({
       'package.json': json({ private: true, workspaces: { packages: ['pkgs/*', '!pkgs/skip'] } }),
       'pkgs/x/package.json': json({ name: 'x', dependencies: { y: '^1.0.0', w: '^1.0.0', z: '^1.0.0' } }),
@@ -159,7 +159,7 @@ describe('FR119 FR121 FR123 manifests that cannot be read, or name the same modu
     })
   }, 240000)
 
-  it('FR120 a package.json that names no package does not hide the project above it', async () => {
+  it('FR125 a package.json that names no package does not hide the project above it', async () => {
     const { dataDir } = await indexedRepo({
       'lib/package.json': json({ name: 'lib' }),
       'lib/index.ts': 'export const a = 1\n',
@@ -174,8 +174,8 @@ describe('FR119 FR121 FR123 manifests that cannot be read, or name the same modu
   }, 240000)
 })
 
-describe('FR124 a manifest reaches the build adapter and every adapter that reads it as configuration', () => {
-  it('FR124 package.json is read by the build adapter for its project and dependencies, and by the TypeScript adapter for the packages it declares', async () => {
+describe('FR129 a manifest reaches the build adapter and every adapter that reads it as configuration', () => {
+  it('FR129 package.json is read by the build adapter for its project and dependencies, and by the TypeScript adapter for the packages it declares', async () => {
     const repo = tmpDir('pm-bg-pkg-')
     fs.cpSync(fixtureRepo('ts-packages'), repo, { recursive: true })
     const { dataDir } = await indexedDataDir(repo)

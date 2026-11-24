@@ -683,22 +683,22 @@
     "FR118": [
       "packages/proofmesh/test/syntax-structure.test.ts"
     ],
-    "FR119": [
-      "packages/proofmesh/test/build-graph.test.ts"
-    ],
-    "FR120": [
-      "packages/proofmesh/test/build-graph.test.ts"
-    ],
-    "FR121": [
-      "packages/proofmesh/test/build-graph.test.ts"
-    ],
-    "FR122": [
-      "packages/proofmesh/test/build-graph.test.ts"
-    ],
-    "FR123": [
-      "packages/proofmesh/test/build-graph.test.ts"
-    ],
     "FR124": [
+      "packages/proofmesh/test/build-graph.test.ts"
+    ],
+    "FR125": [
+      "packages/proofmesh/test/build-graph.test.ts"
+    ],
+    "FR126": [
+      "packages/proofmesh/test/build-graph.test.ts"
+    ],
+    "FR127": [
+      "packages/proofmesh/test/build-graph.test.ts"
+    ],
+    "FR128": [
+      "packages/proofmesh/test/build-graph.test.ts"
+    ],
+    "FR129": [
       "packages/proofmesh/test/build-graph.test.ts",
       "packages/proofmesh/test/incremental.test.ts"
     ]

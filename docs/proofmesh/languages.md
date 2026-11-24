@@ -84,7 +84,7 @@ What the tier records per language (FR118):
 
 ## The build graph: JavaScript and Go modules
 
-The build adapter (FR119 to FR124) reads manifests as captured text and never runs a build tool, package manager or script, so a `preinstall` script in a `package.json` is data (FR079).
+The build adapter (FR124 to FR129) reads manifests as captured text and never runs a build tool, package manager or script, so a `preinstall` script in a `package.json` is data (FR079).
 
 - Projects: a `package.json` that names a package and a `go.mod` are `project` symbols, named by the npm name or the Go module path and declared at the line of that name. A `package.json` with no name (a workspace root, or a `{"type": "module"}` marker) declares none and does not hide the project above it.
 - Containment: each source file is contained by the project of its nearest enclosing manifest that declares one, so `analyze_impact` groups dependents by project. A file under none is contained by none. A directory with both a `go.mod` and a `package.json` gives its files to the Go project.

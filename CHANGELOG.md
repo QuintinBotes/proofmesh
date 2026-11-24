@@ -6,7 +6,7 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 Build graph, JavaScript and Go (part of #5):
 
-- A build adapter reads `package.json`, `tsconfig.json`, `go.mod` and `go.work` as captured text, never running a script or tool. A named package or Go module is a `project` symbol that `contains` the module symbol of each file under it (nearest manifest first), so `analyze_impact` groups dependents by project; it records `depends_on` between projects in the repository (workspace members, `tsconfig` references, `go.work` and local `replace`) and `depends_on_package` for other dependencies with their versions (FR119 to FR124). Cargo, pyproject, Composer and gemspec manifests stay open on #5.
+- A build adapter reads `package.json`, `tsconfig.json`, `go.mod` and `go.work` as captured text, never running a script or tool. A named package or Go module is a `project` symbol that `contains` the module symbol of each file under it (nearest manifest first), so `analyze_impact` groups dependents by project; it records `depends_on` between projects in the repository (workspace members, `tsconfig` references, `go.work` and local `replace`) and `depends_on_package` for other dependencies with their versions (FR124 to FR129). Cargo, pyproject, Composer and gemspec manifests stay open on #5.
 
 Syntax-tier structure, Go and Java (#4):
 

@@ -1,4 +1,4 @@
-// The build adapter (FR119 to FR124): the module graph of JavaScript and Go, read from manifests as captured text and never by running
+// The build adapter (FR124 to FR129): the module graph of JavaScript and Go, read from manifests as captured text and never by running
 // a build tool, package manager or script (FR079). A package.json that names a package and a go.mod are `project` symbols; each file
 // is contained by the project of its nearest enclosing manifest; a project depends_on the projects in the repository that its
 // manifests name (package.json dependencies, tsconfig references, go.mod requires satisfied by go.work or a local replace) and

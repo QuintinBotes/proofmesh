@@ -121,7 +121,7 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
       captured.push({ ...d, hash: store.put(fs.readFileSync(path.join(root, d.path))) })
     }
     const hashOf = new Map(captured.map((c) => [c.path, c.hash]))
-    // A build manifest is a source of the build adapter, and still configuration as evidence (FR124).
+    // A build manifest is a source of the build adapter, and still configuration as evidence (FR129).
     const configPaths = new Set(captured.filter((c) => c.role === 'config' || (c.role === 'source' && registry!.manifestLanguage(path.posix.basename(c.path)))).map((c) => c.path))
     const manifest = manifestHash(discovered, (p) => hashOf.get(p))
 
@@ -442,7 +442,7 @@ class FactWriter {
     let written = 0
     for (const { rel: r, producer: p } of items) {
       if (++written % 25000 === 0) onProgress?.(written)
-      // A `contains` that targets a file means that file's module symbol, which another adapter declared; a file with none is not contained (FR120).
+      // A `contains` that targets a file means that file's module symbol, which another adapter declared; a file with none is not contained (FR125).
       const module = r.type === 'contains' && r.target?.file ? (this.stmt.moduleOf!.get(this.fileId(r.target.file)) as { id: string } | undefined)?.id : undefined
       if (r.type === 'contains' && r.target?.file && !module) continue
       const kind = r.type === 'calls' ? 'call_site' : r.type === 'imports' ? 'import_statement' : this.configPaths.has(r.site.path) ? 'configuration' : 'reference_site'
