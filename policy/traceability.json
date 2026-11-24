@@ -750,6 +750,24 @@
     ],
     "FR150": [
       "packages/proofmesh/test/stable-keys.test.ts"
+    ],
+    "FR136": [
+      "packages/proofmesh/test/census.test.ts"
+    ],
+    "FR137": [
+      "packages/proofmesh/test/census.test.ts"
+    ],
+    "FR138": [
+      "packages/proofmesh/test/census.test.ts"
+    ],
+    "FR139": [
+      "packages/proofmesh/test/census.test.ts"
+    ],
+    "FR140": [
+      "packages/proofmesh/test/census.test.ts"
+    ],
+    "FR141": [
+      "packages/proofmesh/test/census.test.ts"
     ]
   },
   "manual": {

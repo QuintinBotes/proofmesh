@@ -12,6 +12,14 @@ Stable symbol keys (#15):
 - `get_symbol`, `get_relationships`, `analyze_impact`, `find_tests` and `get_memory` take `key`, and `trace_paths` takes `source_key` and `target_key` (FR149).
 - `get_memory` lists a reference that matches several symbols under `ambiguous_refs` with their keys (staleness `ambiguous`), and reports `tier_changed` when only the tier that analysed a referenced file changed (FR150). A fingerprint accepted before still reads: it is the relationships part alone. Names changed with format 0.8, so a note reference written in the older form reports as missing, once, with that explanation; rewrite it (notes are not migrated).
 
+Language census (#3):
+
+- `workspace_status` returns `languages`, and `proofmesh status` prints it: every file in exactly one language row (Linguist's names; `unknown` names its extension), with kind, file counts by disposition, the tier that read it (`precise:<adapter>`, `scip:<index>`, `syntax`, `none`), capability counts per level, why it stops there, and a remedy from one table that `docs/proofmesh/languages.md` shows (FR136 to FR141).
+- Each indexed source file records its tier as the `tier` key of its capabilities. An extensionless script with a shebang, and a `.h` that holds C++, are routed to their syntax-tier grammar.
+- A Linguist language table, trimmed, is vendored as data under the MIT licence (`THIRD_PARTY_NOTICES.md`).
+- The census version derives from the remedy table, the Linguist data and the detection rules, and is part of a snapshot's manifest hash, so older snapshots are stale under strict freshness and get rebuilt. Unknown files are bounded: `(no extension)`, `(other)` and a 64-row cap with a last `other` row; Objective-C headers are their own row; header detection ignores comments and strings.
+- `PROOFMESH_CS_ADAPTER` naming a file that does not exist now leaves the C# adapter unavailable (`adapter_unavailable:csharp`) instead of trying to start it. `proofmesh status` accepts a repository path as well as its id.
+
 Symbol identity across change (#7):
 
 - Every symbol records `body_hash`, the hash of its declaration text with line endings, common indentation, trailing whitespace and its own name normalised, in every tier; a module's is its file's text (FR130). Snapshot format 0.7 adds the column, so the next index of every repository rebuilds; a snapshot sealed before answers a null hash and says to index again (FR135).

@@ -3,6 +3,7 @@ import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { ProofmeshError } from '../core/errors.js'
 import { BUILT_IN_REGISTRY, type Registry } from './languages.js'
+import { ADAPTER_LANGUAGE_NAMES, adapterLanguageId, detectLanguage, type Kind } from './language-detect.js'
 import { CODEOWNERS_PATHS } from './ownership.js'
 
 export const EXCLUDED_DIRS = ['node_modules', 'dist', 'build', 'bin', 'obj'] as const
@@ -18,6 +19,10 @@ export type Discovered = {
   role: 'source' | 'config' | 'ownership' | 'registry' | null
   /** The adapter a file goes to regardless of its language: a SCIP index covers it (A27). */
   adapter?: string
+  /** For a file the SCIP adapter takes: the name of the index that covers it, which the file's tier names. */
+  scip?: string
+  /** The language and kind the census lists the file under, whether or not any adapter reads it. */
+  census?: { language: string; kind: Kind; extension?: string }
 }
 
 export type GitInfo = { available: boolean; reason?: string; commit?: string; ref?: string; behind_remote?: number | null; behind_ref?: string | null; fetched_at?: string | null }
@@ -70,7 +75,8 @@ export function discover(root: string, registry: Registry = BUILT_IN_REGISTRY, i
     }
   }
   walk('')
-  return out
+  // Every file, links and unreadable directories included, is in one row of the language census.
+  return out.map((d) => ({ ...d, census: censusLabel(d, root) }))
 }
 
 function classify(root: string, rel: string, ignored: (rel: string) => boolean, registry: Registry): Discovered {
@@ -86,12 +92,14 @@ function classify(root: string, rel: string, ignored: (rel: string) => boolean, 
   if (excluded) return { path: rel, size, status: 'excluded', detail: `**/${excluded}/**`, language: null, role: null }
   if (ignored(rel)) return { path: rel, size, status: 'excluded', detail: 'gitignore', language: null, role: null }
   if (size > MAX_FILE_BYTES) return { path: rel, size, status: 'excluded', detail: `max_file_bytes:${MAX_FILE_BYTES}`, language: null, role: null }
+  let head = ''
   try {
     const fd = fs.openSync(abs, 'r')
     const probe = Buffer.alloc(Math.min(size, BINARY_PROBE_BYTES))
     fs.readSync(fd, probe, 0, probe.length, 0)
     fs.closeSync(fd)
     if (probe.includes(0)) return { path: rel, size, status: 'unsupported', detail: 'binary', language: null, role: null }
+    head = probe.toString('utf8')
   } catch (e) {
     return { path: rel, size, status: 'failed', detail: (e as NodeJS.ErrnoException).code ?? 'EREAD', language: null, role: null }
   }
@@ -100,12 +108,48 @@ function classify(root: string, rel: string, ignored: (rel: string) => boolean, 
   if ((CODEOWNERS_PATHS as readonly string[]).includes(rel)) return { path: rel, size, status: 'capture', detail: null, language: 'codeowners', role: 'ownership' }
   // A source stays a source when another adapter also reads it as configuration, as the TypeScript adapter reads Prisma schemas (A36)
   // and package.json, which the build adapter analyses as a manifest (FR129).
-  const language = registry.sourceLanguage(name) ?? registry.manifestLanguage(name)
+  const language = sourceLanguageOf(registry, root, name, rel, head) ?? registry.manifestLanguage(name)
   if (language) return { path: rel, size, status: 'capture', detail: null, language, role: 'source' }
   const owner = registry.configOwner(name)
   if (owner) return { path: rel, size, status: 'capture', detail: null, language: `${owner.id}-config`, role: 'config' }
   const ext = path.posix.extname(name)
   return { path: rel, size, status: 'unsupported', detail: `no_adapter:${ext || name}`, language: null, role: null }
+}
+
+/** The first bytes of a file as text, or undefined when it cannot be read. */
+function readHead(abs: string, bytes: number): string | undefined {
+  try {
+    const fd = fs.openSync(abs, 'r')
+    try {
+      const buf = Buffer.alloc(bytes)
+      return buf.toString('utf8', 0, fs.readSync(fd, buf, 0, bytes, 0))
+    } finally { fs.closeSync(fd) }
+  } catch { return undefined }
+}
+
+/**
+ * The language an adapter analyses a file as. The extension decides, except where the file's shebang or content settles the language
+ * (an extensionless script, a .h that holds C++): then it goes to the syntax tier, whose grammar follows the language it is given.
+ */
+function sourceLanguageOf(registry: Registry, root: string, name: string, rel: string, head: string): string | undefined {
+  const byExtension = registry.sourceLanguage(name)
+  if (byExtension && !/\.h$/i.test(name)) return byExtension
+  const found = detectLanguage(rel, (bytes) => (bytes && bytes > head.length ? readHead(path.join(root, rel), bytes) : head))
+  if (!found.via_content) return byExtension
+  // The content settled it: a language the syntax tier reads goes there, any other (Objective-C in a .h) is not given to the extension's parser.
+  const id = adapterLanguageId(found.name)
+  return id && registry.specs.find((s) => s.languages.has(id))?.id === 'syntax' ? id : undefined
+}
+
+/** The row of the language census a file belongs to. Source files take the name of the language their adapter was given. */
+function censusLabel(d: Discovered, root: string): NonNullable<Discovered['census']> {
+  if (d.detail === 'binary') return { language: 'binary', kind: 'binary' }
+  const adapterName = d.role === 'source' && d.language ? ADAPTER_LANGUAGE_NAMES[d.language] : undefined
+  if (adapterName) return { language: adapterName, kind: 'code' }
+  // A link is never followed and an unreadable file has no text: they are named by their file name alone.
+  const readable = d.status !== 'failed' && d.detail !== 'symlink_not_followed'
+  const found = detectLanguage(d.path, (bytes = BINARY_PROBE_BYTES) => (readable ? readHead(path.join(root, d.path), bytes) : undefined))
+  return found.name === 'unknown' ? { language: 'unknown', kind: 'unknown', extension: found.extension! } : { language: found.name, kind: found.kind }
 }
 
 /** The git facts of a commit-ish in the working tree at root: HEAD unless another is named. */

@@ -78,7 +78,8 @@ describe('discovery and coverage of a repository with every disposition', () => 
   })
 
   it('FR003 every file row reports each of the seven capabilities separately', () => {
-    const analysed = { text: 'complete', syntax: 'unsupported', symbols: 'complete', imports: 'unsupported', references: 'unsupported', resolved_calls: 'complete', framework: 'unsupported' }
+    // An analysed source file also records the tier that read it, as the additive key tier (FR137).
+    const analysed = { text: 'complete', syntax: 'unsupported', symbols: 'complete', imports: 'unsupported', references: 'unsupported', resolved_calls: 'complete', framework: 'unsupported', tier: 'precise:linelang' }
     const failed = { text: 'complete', syntax: 'failed', symbols: 'failed', imports: 'failed', references: 'failed', resolved_calls: 'failed', framework: 'failed' }
     const notRun = { text: 'not_run', syntax: 'not_run', symbols: 'not_run', imports: 'not_run', references: 'not_run', resolved_calls: 'not_run', framework: 'not_run' }
     expect(Object.fromEntries(rows(d).map((f) => [f.path, f.capabilities]))).toEqual({
