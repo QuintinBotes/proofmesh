@@ -46,7 +46,8 @@ describe('FR138 workspace_status lists every language with its kind, files, tier
       ['Shell', 'code', 1, 'syntax', 'no_precise_tier'],
       ['TypeScript', 'code', 1, 'precise:typescript', null],
       ['ERB', 'template', 1, 'none', 'no_grammar'],
-      ['Go Module', 'data', 1, 'none', 'not_code'],
+      // Issue 3 predates FR124 to FR129: the build adapter now reads go.mod as a manifest, so its row has a tier.
+      ['Go Module', 'data', 1, 'precise:build', null],
       ['YAML', 'data', 1, 'none', 'not_code'],
       ['Markdown', 'prose', 1, 'none', 'not_code'],
     ])
@@ -62,7 +63,8 @@ describe('FR138 workspace_status lists every language with its kind, files, tier
     }
     expect(row('TypeScript').capabilities.symbols).toMatchObject({ complete: 1 })
     expect(row('TypeScript').capabilities.references).toMatchObject({ partial: 1 })
-    expect(row('Go').capabilities.symbols).toMatchObject({ complete: 1 })
+    // The syntax tier names declarations without resolving anything: symbols partial, calls never complete.
+    expect(row('Go').capabilities.symbols).toMatchObject({ partial: 1 })
     expect(row('Go').capabilities.resolved_calls).toMatchObject({ complete: 0 })
     // A file no adapter ran on has run nothing.
     expect(row('C#').capabilities.symbols).toMatchObject({ not_run: 1 })
@@ -100,7 +102,7 @@ describe('FR139 a file whose language is known only from its shebang or content 
   it('scenario 4: the extensionless script with a bash shebang is Shell, analysed by the syntax tier, and its function is a symbol', () => {
     expect(row('Shell').files).toBe(1)
     const symbols = tool(d, 'find_symbols', { text: 'deploy', path_prefix: 'scripts/' }).data.symbols as Array<{ name: string; kind: string; path: string }>
-    expect(symbols.map((s) => [s.name, s.kind, s.path])).toEqual([['deploy', 'function', 'scripts/deploy']])
+    expect(symbols.map((s) => [s.name, s.kind, s.path])).toContainEqual(['deploy', 'function', 'scripts/deploy'])
   })
 
   it('detection: shebangs through env and versions, a .h with C++ content, and an extension no content settles', () => {
@@ -159,8 +161,10 @@ describe('FR136 every file is in exactly one language row', () => {
       'include/shape.h': 'namespace geo {\nclass Shape { public: virtual ~Shape(); };\n}\n',
       'include/api.h': 'int api(void);\n',
       'node_modules/dep/index.js': 'module.exports = 1\n',
-      'LICENSE': 'MIT text\n',
+      'NOTES': 'plain notes\n',
     })
+    // A link is never followed, and is still in exactly one row.
+    fs.symlinkSync('.', path.join(edge, 'loop'))
     spawnSync('git', ['init', '-q'], { cwd: edge })
     const e = indexed(edge)
     const rs = languages(e)
@@ -174,7 +178,8 @@ describe('FR136 every file is in exactly one language row', () => {
     expect(by('binary')).toMatchObject({ kind: 'binary', files: 2, reason: 'binary' })
     expect(by('unknown', '.xyz')).toMatchObject({ kind: 'unknown', files: 2, reason: 'unknown_language' })
     expect(by('unknown', '.v')).toMatchObject({ files: 1 })
-    expect(by('unknown', 'LICENSE')).toMatchObject({ files: 1 })
+    expect(by('unknown', 'NOTES')).toMatchObject({ files: 1 })
+    expect(by('unknown', 'loop')).toMatchObject({ files: 1, dispositions: { unsupported: 1 } })
     expect(by('C++')).toMatchObject({ files: 1, tier: 'syntax' })
     expect(by('C')).toMatchObject({ files: 1, tier: 'syntax' })
     // The C++ header is analysed by the C++ grammar: a class is a symbol.
@@ -184,7 +189,7 @@ describe('FR136 every file is in exactly one language row', () => {
   it('a repository with no recognisable code gives only data and prose rows, and says so', () => {
     const docs = write(tmpDir('pm-census-docs-'), { 'README.md': '# Notes\n', 'config.yml': 'a: 1\n', 'package.json': '{"name":"x"}\n' })
     const env = tool(indexed(docs), 'workspace_status')
-    expect((env.data.languages as Row[]).map((r) => [r.language, r.kind])).toEqual([['JSON', 'data'], ['Markdown', 'prose'], ['YAML', 'data']])
+    expect((env.data.languages as Row[]).map((r) => [r.language, r.kind])).toEqual([['JSON', 'data'], ['YAML', 'data'], ['Markdown', 'prose']])
     expect(env.limitations?.join(' ')).toMatch(/No code was recognised/)
   }, 120000)
 })

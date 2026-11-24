@@ -66,8 +66,10 @@ function fileReason(f: CensusFile, tier: string): string | null {
   if (f.label.kind === 'binary') return 'binary'
   if (f.label.kind === 'unknown') return 'unknown_language'
   if (f.disposition === 'failed') return f.detail ?? 'adapter_failure'
+  // A data file an adapter read, such as a manifest, has a tier; one nothing reads is simply not code.
+  if (f.disposition === 'indexed' && depth(tier) >= 2) return null
   if (f.label.kind === 'data' || f.label.kind === 'prose') return 'not_code'
-  if (f.disposition === 'indexed') return depth(tier) >= 2 ? null : f.detail?.startsWith('scip_stale:') ? f.detail : 'no_precise_tier'
+  if (f.disposition === 'indexed') return f.detail?.startsWith('scip_stale:') ? f.detail : 'no_precise_tier'
   return f.detail?.startsWith('no_adapter') || !f.detail ? 'no_grammar' : f.detail
 }
 

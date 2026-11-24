@@ -735,6 +735,24 @@
     ],
     "FR135": [
       "packages/proofmesh/test/symbol-identity.test.ts"
+    ],
+    "FR136": [
+      "packages/proofmesh/test/census.test.ts"
+    ],
+    "FR137": [
+      "packages/proofmesh/test/census.test.ts"
+    ],
+    "FR138": [
+      "packages/proofmesh/test/census.test.ts"
+    ],
+    "FR139": [
+      "packages/proofmesh/test/census.test.ts"
+    ],
+    "FR140": [
+      "packages/proofmesh/test/census.test.ts"
+    ],
+    "FR141": [
+      "packages/proofmesh/test/census.test.ts"
     ]
   },
   "manual": {

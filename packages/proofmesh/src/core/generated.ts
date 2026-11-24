@@ -2572,7 +2572,11 @@ disposition: ("indexed" | "excluded_by_rule" | "unsupported" | "failed" | "pendi
 detail: (string | null)
 language: (string | null)
 capabilities: {
-[k: string]: "complete" | "partial" | "unsupported" | "failed" | "not_run"
+/**
+ * The tier that produced the file's facts: precise:<adapter>, scip:<index> or syntax. Absent on files no adapter analysed.
+ */
+tier?: string
+[k: string]: "complete" | "partial" | "unsupported" | "failed" | "not_run" | string | undefined
 }
 }[]
 /**
@@ -2656,6 +2660,85 @@ detail: (string | null)
  */
 extension: string
 files: number
+}[]
+/**
+ * The language census (FR136): every discovered file in exactly one row, code and template kinds first, then by file count, then by name. Each row says which tier read the language, how deep it goes, why it stops there and what a person can do about it. Empty for a snapshot sealed before the census existed.
+ */
+languages: {
+/**
+ * The language by Linguist's name, `unknown` for a file no rule names (see extension), or `binary`.
+ */
+language: string
+kind: ("code" | "template" | "data" | "prose" | "unknown" | "binary")
+/**
+ * Only on `unknown` rows: the extension with its dot, or the whole file name when it has none.
+ */
+extension?: string
+files: number
+dispositions: {
+indexed: number
+excluded: number
+unsupported: number
+failed: number
+}
+/**
+ * Files left out by rule, counted by the rule that left them out.
+ */
+excluded: {
+[k: string]: number
+}
+/**
+ * The tier that read most of the files not excluded: precise:<adapter>, scip:<index>, syntax, or none.
+ */
+tier: string
+/**
+ * Every tier that read files of this language, or none for files nothing read, with its file count; excluded files are in none of them.
+ */
+tiers: {
+tier: string
+files: number
+}[]
+/**
+ * For each capability, the count of the row's files at each level; each capability's counts sum to files.
+ */
+capabilities: {
+symbols: {
+complete: number
+partial: number
+unsupported: number
+failed: number
+not_run: number
+}
+imports: {
+complete: number
+partial: number
+unsupported: number
+failed: number
+not_run: number
+}
+references: {
+complete: number
+partial: number
+unsupported: number
+failed: number
+not_run: number
+}
+resolved_calls: {
+complete: number
+partial: number
+unsupported: number
+failed: number
+not_run: number
+}
+}
+/**
+ * Why the weakest files stop where they do: no_precise_tier, no_grammar, not_code, adapter_unavailable:<id>, adapter_changed:<id>, scip_stale:<index>, unknown_language, binary, excluded, or a failure detail; null when nothing holds the row back.
+ */
+reason: (string | null)
+/**
+ * Advice only: what a person can do to deepen the row. The census runs nothing and installs nothing.
+ */
+remedy: (string | null)
 }[]
 /**
  * How the snapshot was analysed (FR004): discovery's rules, what happens to generated source, and each adapter's external inputs.

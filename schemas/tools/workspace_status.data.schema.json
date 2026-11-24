@@ -8,6 +8,7 @@
     "repository",
     "adapters",
     "files",
+    "languages",
     "hubs",
     "calls",
     "file_summary",
@@ -153,6 +154,12 @@
                 "failed",
                 "not_run"
               ]
+            },
+            "properties": {
+              "tier": {
+                "type": "string",
+                "description": "The tier that produced the file's facts: precise:<adapter>, scip:<index> or syntax. Absent on files no adapter analysed."
+              }
             }
           }
         }
@@ -409,6 +416,270 @@
           "files": {
             "type": "integer",
             "minimum": 0
+          }
+        }
+      }
+    },
+    "languages": {
+      "type": "array",
+      "description": "The language census (FR136): every discovered file in exactly one row, code and template kinds first, then by file count, then by name. Each row says which tier read the language, how deep it goes, why it stops there and what a person can do about it. Empty for a snapshot sealed before the census existed.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "language",
+          "kind",
+          "files",
+          "dispositions",
+          "excluded",
+          "tier",
+          "tiers",
+          "capabilities",
+          "reason",
+          "remedy"
+        ],
+        "properties": {
+          "language": {
+            "type": "string",
+            "description": "The language by Linguist's name, `unknown` for a file no rule names (see extension), or `binary`."
+          },
+          "kind": {
+            "enum": [
+              "code",
+              "template",
+              "data",
+              "prose",
+              "unknown",
+              "binary"
+            ]
+          },
+          "extension": {
+            "type": "string",
+            "description": "Only on `unknown` rows: the extension with its dot, or the whole file name when it has none."
+          },
+          "files": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "dispositions": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "indexed",
+              "excluded",
+              "unsupported",
+              "failed"
+            ],
+            "properties": {
+              "indexed": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "excluded": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "unsupported": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "failed": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          },
+          "excluded": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "description": "Files left out by rule, counted by the rule that left them out."
+          },
+          "tier": {
+            "type": "string",
+            "description": "The tier that read most of the files not excluded: precise:<adapter>, scip:<index>, syntax, or none."
+          },
+          "tiers": {
+            "type": "array",
+            "description": "Every tier that read files of this language, or none for files nothing read, with its file count; excluded files are in none of them.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "tier",
+                "files"
+              ],
+              "properties": {
+                "tier": {
+                  "type": "string"
+                },
+                "files": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            }
+          },
+          "capabilities": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "symbols",
+              "imports",
+              "references",
+              "resolved_calls"
+            ],
+            "description": "For each capability, the count of the row's files at each level; each capability's counts sum to files.",
+            "properties": {
+              "symbols": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "complete",
+                  "partial",
+                  "unsupported",
+                  "failed",
+                  "not_run"
+                ],
+                "properties": {
+                  "complete": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "partial": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "unsupported": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "failed": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "not_run": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                }
+              },
+              "imports": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "complete",
+                  "partial",
+                  "unsupported",
+                  "failed",
+                  "not_run"
+                ],
+                "properties": {
+                  "complete": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "partial": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "unsupported": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "failed": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "not_run": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                }
+              },
+              "references": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "complete",
+                  "partial",
+                  "unsupported",
+                  "failed",
+                  "not_run"
+                ],
+                "properties": {
+                  "complete": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "partial": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "unsupported": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "failed": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "not_run": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                }
+              },
+              "resolved_calls": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "complete",
+                  "partial",
+                  "unsupported",
+                  "failed",
+                  "not_run"
+                ],
+                "properties": {
+                  "complete": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "partial": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "unsupported": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "failed": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "not_run": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                }
+              }
+            }
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why the weakest files stop where they do: no_precise_tier, no_grammar, not_code, adapter_unavailable:<id>, adapter_changed:<id>, scip_stale:<index>, unknown_language, binary, excluded, or a failure detail; null when nothing holds the row back."
+          },
+          "remedy": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Advice only: what a person can do to deepen the row. The census runs nothing and installs nothing."
           }
         }
       }

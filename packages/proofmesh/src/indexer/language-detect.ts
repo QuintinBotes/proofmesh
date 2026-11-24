@@ -30,7 +30,8 @@ const MARKUP_CODE = new Set(['CSS', 'SCSS', 'Sass', 'Less', 'Stylus', 'Vue', 'Sv
 // Anything not listed here and shared by several languages stays unknown, never a guess.
 const PREFERRED_EXTENSION: Record<string, string> = {
   '.cs': 'C#', '.ex': 'Elixir', '.html': 'HTML', '.json': 'JSON', '.md': 'Markdown', '.php': 'PHP', '.properties': 'Java Properties',
-  '.rs': 'Rust', '.sql': 'SQL', '.ts': 'TypeScript', '.txt': 'Text', '.yaml': 'YAML', '.yml': 'YAML',
+  '.rs': 'Rust', '.sql': 'SQL', '.ts': 'TypeScript', '.tsx': 'TSX', '.txt': 'Text', '.yaml': 'YAML', '.yml': 'YAML',
+  '.sc': 'Scala', '.fs': 'F#', '.ml': 'OCaml', '.r': 'R', '.sol': 'Solidity', '.scm': 'Scheme', '.hh': 'C++', '.lisp': 'Common Lisp', '.lsp': 'Common Lisp',
 }
 const PREFERRED_INTERPRETER: Record<string, string> = { node: 'JavaScript', bun: 'JavaScript', deno: 'JavaScript', perl: 'Perl', lua: 'Lua', ocaml: 'OCaml' }
 

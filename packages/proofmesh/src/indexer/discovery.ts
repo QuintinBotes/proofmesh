@@ -70,13 +70,13 @@ export function discover(root: string, registry: Registry = BUILT_IN_REGISTRY, i
       } else if (entry.isDirectory()) {
         walk(rel)
       } else if (entry.isFile()) {
-        const d = registry.route(classify(root, rel, ignored, registry), root)
-        out.push({ ...d, census: censusLabel(d, root) })
+        out.push(registry.route(classify(root, rel, ignored, registry), root))
       }
     }
   }
   walk('')
-  return out
+  // Every file, links and unreadable directories included, is in one row of the language census.
+  return out.map((d) => ({ ...d, census: censusLabel(d, root) }))
 }
 
 function classify(root: string, rel: string, ignored: (rel: string) => boolean, registry: Registry): Discovered {
@@ -133,7 +133,10 @@ function censusLabel(d: Discovered, root: string): NonNullable<Discovered['censu
   if (d.detail === 'binary') return { language: 'binary', kind: 'binary' }
   const adapterName = d.role === 'source' && d.language ? ADAPTER_LANGUAGE_NAMES[d.language] : undefined
   if (adapterName) return { language: adapterName, kind: 'code' }
+  // A link is never followed and an unreadable file has no text: they are named by their file name alone.
+  const readable = d.status !== 'failed' && d.detail !== 'symlink_not_followed'
   const found = detectLanguage(d.path, () => {
+    if (!readable) return undefined
     try {
       const fd = fs.openSync(path.join(root, d.path), 'r')
       try {

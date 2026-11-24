@@ -106,3 +106,36 @@ A person who runs a SCIP indexer can name its output: `proofmesh scip add <repos
 ## Other languages
 
 `proofmesh adapter add` installs an adapter a contributor wrote for another language (US18). Its capabilities are unverified until it passes the conformance kit; see `adapter-authoring.md`.
+
+## The language census
+
+`workspace_status` returns `languages` and `proofmesh status` prints it, with no configuration (FR136 to FR141). Every discovered file is in exactly one row: the language by GitHub Linguist's name, a kind (`code`, `template`, `data`, `prose`), or `unknown` with its extension, or `binary`. Rows list code and template kinds first, then by file count, then by name.
+
+- Detection uses the file name, the longest known extension (`.html.erb` is ERB, not HTML), the shebang of a file with no extension, and a content check for `.h` (C++ or Objective-C when the text says so, C otherwise). An extension several languages share and nothing settles, such as `.m`, `.pl` or `.v`, is `unknown` with the extension, never a guess. The names, kinds, extensions, file names and interpreters come from a trimmed copy of Linguist's `languages.yml` (MIT; `THIRD_PARTY_NOTICES.md` carries its notice), vendored as data in `packages/proofmesh/src/indexer/linguist-table.ts`.
+- A file whose language only its shebang or content gives is routed to that language when the syntax tier reads it, so an extensionless bash script is Shell and its functions are symbols. A script in a language a semantic adapter reads, such as Python, still waits for its extension.
+- `tier` is the tier that read most of the row's files: `precise:<adapter>`, `scip:<index>`, `syntax` or `none`, and `tiers` lists each with its file count. Each indexed source file records its tier as the `tier` key of its capabilities. Files left out by rule are counted under `excluded`, by rule, and are in no tier.
+- `capabilities` counts the row's files at each level (`complete`, `partial`, `unsupported`, `failed`, `not_run`) for `symbols`, `imports`, `references` and `resolved_calls`; each capability's counts sum to `files`.
+- `reason` says why the row's weakest files stop where they do (`no_precise_tier`, `no_grammar`, `not_code`, `adapter_unavailable:<id>`, `scip_stale:<index>`, `unknown_language`, `binary`, `excluded`), and `remedy` is advice from the table below. The census runs nothing and installs nothing; a SCIP indexer runs only in a repository you trust.
+
+### Remedies
+
+Every remedy comes from this one table of language to precise route:
+
+| Language | Built-in precise adapter | SDK and build it needs | SCIP indexer |
+|---|---|---|---|
+| C | none | none | `scip-clang` |
+| C# | csharp | .NET 10 SDK; `dotnet build adapters/csharp -c Release` | `scip-dotnet` |
+| C++ | none | none | `scip-clang` |
+| Go | none | none | `scip-go` |
+| HCL | terraform | none | none |
+| Java | none | none | `scip-java` |
+| JavaScript | typescript | none | `scip-typescript` |
+| Kotlin | none | none | `scip-java` |
+| PHP | none | none | `scip-php` |
+| Python | python | none | `scip-python` |
+| Ruby | none | none | `scip-ruby` |
+| Rust | none | none | `rust-analyzer scip` |
+| Scala | none | none | `scip-java` |
+| TypeScript | typescript | none | `scip-typescript` |
+
+A language not in the table that a grammar reads gets `proofmesh adapter add`; one with no grammar gets the same, and until a person adds an adapter it stays at tier `none` or `syntax`.

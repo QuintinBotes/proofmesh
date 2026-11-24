@@ -4,6 +4,13 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 ## Unreleased
 
+Language census (#3):
+
+- `workspace_status` returns `languages`, and `proofmesh status` prints it: every file in exactly one language row (Linguist's names; `unknown` names its extension), with kind, file counts by disposition, the tier that read it (`precise:<adapter>`, `scip:<index>`, `syntax`, `none`), capability counts per level, why it stops there, and a remedy from one table that `docs/proofmesh/languages.md` shows (FR136 to FR141).
+- Each indexed source file records its tier as the `tier` key of its capabilities. An extensionless script with a shebang, and a `.h` that holds C++, are routed to their syntax-tier grammar.
+- A Linguist language table, trimmed, is vendored as data under the MIT licence (`THIRD_PARTY_NOTICES.md`).
+- `PROOFMESH_CS_ADAPTER` naming a file that does not exist now leaves the C# adapter unavailable (`adapter_unavailable:csharp`) instead of trying to start it. `proofmesh status` accepts a repository path as well as its id.
+
 Symbol identity across change (#7):
 
 - Every symbol records `body_hash`, the hash of its declaration text with line endings, common indentation, trailing whitespace and its own name normalised, in every tier; a module's is its file's text (FR130). Snapshot format 0.7 adds the column, so the next index of every repository rebuilds; a snapshot sealed before answers a null hash and says to index again (FR135).
