@@ -48,8 +48,11 @@ for (const [language, [pkg, wasm, ownTags]] of Object.entries(GRAMMARS)) {
   const license = [path.join(here, 'grammars', `${language}.LICENSE`), ...['LICENSE', 'LICENSE.md', 'LICENSE.txt', 'COPYING'].map((f) => path.join(dir, f))].find((f) => fs.existsSync(f))
   if (!license) throw new Error(`${pkg}@${meta.version} has no license file to ship with its grammar`)
   fs.copyFileSync(license, path.join(dist, 'grammars', `${language}.LICENSE`))
-  if (ownTags !== null) fs.copyFileSync(ownTags ? path.join(here, ownTags) : path.join(dir, 'queries', 'tags.scm'), path.join(dist, 'grammars', `${language}.scm`))
-  manifest[language] = { package: pkg, version: meta.version, license: meta.license, sha256, tags: ownTags === null ? null : ownTags ? 'proofmesh' : pkg }
+  // Our queries/<language>.structure.scm, where there is one, adds imports and heritage to the package's own query (FR115, FR116).
+  const structure = path.join(here, 'queries', `${language}.structure.scm`)
+  const extra = !ownTags && ownTags !== null && fs.existsSync(structure)
+  if (ownTags !== null) fs.writeFileSync(path.join(dist, 'grammars', `${language}.scm`), fs.readFileSync(ownTags ? path.join(here, ownTags) : path.join(dir, 'queries', 'tags.scm'), 'utf8') + (extra ? '\n' + fs.readFileSync(structure, 'utf8') : ''))
+  manifest[language] = { package: pkg, version: meta.version, license: meta.license, sha256, tags: ownTags === null ? null : ownTags ? 'proofmesh' : extra ? `${pkg}+proofmesh` : pkg }
 }
 fs.writeFileSync(path.join(dist, 'grammars', 'grammars.json'), JSON.stringify(manifest, null, 2) + '\n')
 for (const entry of ['main', 'terraform', 'python']) {

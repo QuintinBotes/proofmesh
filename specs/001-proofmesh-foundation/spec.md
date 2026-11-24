@@ -255,6 +255,13 @@ Acceptance: CI runs my pull request without secrets or release credentials; lice
 - FR113: MUST answer `changed[]` (`id`, `name`, `path`, `line`, `change`, `status`, `test`, `dependents[]` of `id`, `name`, `path`, `line`, `relation`, `via`, `status`, `test`) by path and line, with `totals` (`changed_symbols`, `dependents`, `changed`, `tested`, `neither`) over every changed symbol, paged by `max_rows` with a cursor. A lean row is `changed <name> <path>:<line> <change> <status>`, each dependent below it `  <relation> <name> <path>:<line> <status>`, then a `# summary:` line. The answer MUST name the files the diff touches that no snapshot analyses, say when a test search behind a `neither` stopped at the depth limit or could not follow dispatch, and say that dependents in other repositories of a workspace are not searched.
 - FR114: MUST exit `proofmesh completeness` 0 when no dependent is `neither`, 1 when one is, and 2 on a usage error, an unknown commit or a failed index.
 
+### Syntax-tier structure
+
+- FR115: MUST record, in the syntax tier, one `imports` row per import statement in Go and Java, from the file at the statement, with the module exactly as written in `detail.module` (a Java wildcard ends in `.*`) and a Go alias in `detail.alias`.
+- FR116: MUST record, in the syntax tier, an `inherits` row for each class a Java class extends and each type a Go struct embeds (`detail.relation` `embedding`), and an `implements` row for each interface a Java class, enum or record implements, from the declaring type at the supertype's name, with that name in `detail.name`.
+- FR117: MUST leave every syntax-tier `imports`, `inherits` and `implements` row unresolved with reason `outside_capability` and no target; binding them belongs to constrained resolution (FR023).
+- FR118: MUST state in `docs/proofmesh/languages.md`, per syntax-tier language, which of imports, heritage and calls the tier records.
+
 ### Evidence and claims
 
 - FR025: MUST link reported graph facts to source evidence, hashes, extractor versions, and analysis mode.

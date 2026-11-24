@@ -670,6 +670,18 @@
     ],
     "FR088": [
       "packages/proofmesh/test/typescript.heritage.test.ts"
+    ],
+    "FR115": [
+      "packages/proofmesh/test/syntax-structure.test.ts"
+    ],
+    "FR116": [
+      "packages/proofmesh/test/syntax-structure.test.ts"
+    ],
+    "FR117": [
+      "packages/proofmesh/test/syntax-structure.test.ts"
+    ],
+    "FR118": [
+      "packages/proofmesh/test/syntax-structure.test.ts"
     ]
   },
   "manual": {

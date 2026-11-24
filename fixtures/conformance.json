@@ -96,11 +96,13 @@
     "syntax": {
       "fixtures": [
         "syntax-tier",
-        "prisma-schema"
+        "prisma-schema",
+        "syntax-structure"
       ],
       "tests": [
         "packages/proofmesh/test/syntax-tier.test.ts",
-        "packages/proofmesh/test/prisma.test.ts"
+        "packages/proofmesh/test/prisma.test.ts",
+        "packages/proofmesh/test/syntax-structure.test.ts"
       ]
     },
     "scip": {

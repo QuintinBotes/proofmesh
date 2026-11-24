@@ -54,7 +54,8 @@ describe('A6 A23 the Tree-sitter syntax tier', () => {
         })
       expect(references.sort(byLine)).toEqual([...EXPECTED.table_references].sort(byLine))
       expect(db.prepare(`select path, json_extract(capabilities, '$.imports') as imports, json_extract(capabilities, '$.references') as refs from file where path in ('java/Main.java', 'sql/schema.sql', 'swift/Shop.swift') order by path`).all()).toEqual([
-        { path: 'java/Main.java', imports: 'unsupported', refs: 'unsupported' },
+        // #4 scenario 5: "nothing reports `complete` for imports, because nothing is resolved"; Java's query names imports since FR115.
+        { path: 'java/Main.java', imports: 'partial', refs: 'unsupported' },
         { path: 'sql/schema.sql', imports: 'unsupported', refs: 'partial' },
         { path: 'swift/Shop.swift', imports: 'partial', refs: 'unsupported' },
       ])

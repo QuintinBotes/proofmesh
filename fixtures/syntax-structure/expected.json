@@ -1,0 +1,35 @@
+{
+  "closed_world": "Every symbol, call, heritage row and import statement of these files. Imports are unresolved, so they are listed under imports_unresolved, which the test compares exactly.",
+  "dispositions": {
+    "go/shape.go": ["indexed", null],
+    "java/Circle.java": ["indexed", null],
+    "java/Kind.java": ["indexed", null]
+  },
+  "symbols": [
+    { "kind": "module", "qualified_name": "go/shape", "lines": [1, 13], "signature": null },
+    { "kind": "type_alias", "qualified_name": "go/shape:Base", "lines": [8, 8], "signature": null },
+    { "kind": "type_alias", "qualified_name": "go/shape:Shape", "lines": [10, 13], "signature": null },
+    { "kind": "module", "qualified_name": "java/Circle", "lines": [1, 8], "signature": null },
+    { "kind": "class", "qualified_name": "java/Circle:Circle", "lines": [6, 8], "signature": null },
+    { "kind": "module", "qualified_name": "java/Kind", "lines": [1, 9], "signature": null },
+    { "kind": "enum", "qualified_name": "java/Kind:Kind", "lines": [3, 7], "signature": null },
+    { "kind": "enum", "qualified_name": "java/Kind:Kind.Size", "lines": [6, 6], "signature": null },
+    { "kind": "class", "qualified_name": "java/Kind:Pair", "lines": [9, 9], "signature": null }
+  ],
+  "calls": [],
+  "structure": [
+    { "type": "inherits", "from": "go/shape:Shape", "to": null, "detail": { "name": "Base", "relation": "embedding" }, "site_text": "Base" },
+    { "type": "inherits", "from": "java/Circle:Circle", "to": null, "detail": { "name": "Base" }, "site_text": "Base" },
+    { "type": "implements", "from": "java/Circle:Circle", "to": null, "detail": { "name": "Shape" }, "site_text": "Shape" },
+    { "type": "implements", "from": "java/Circle:Circle", "to": null, "detail": { "name": "Named" }, "site_text": "Named" },
+    { "type": "implements", "from": "java/Kind:Kind", "to": null, "detail": { "name": "Named" }, "site_text": "Named" },
+    { "type": "implements", "from": "java/Kind:Kind.Size", "to": null, "detail": { "name": "Shape" }, "site_text": "Shape" },
+    { "type": "implements", "from": "java/Kind:Pair", "to": null, "detail": { "name": "Shape" }, "site_text": "Shape" }
+  ],
+  "imports_unresolved": [
+    { "from": "go/shape.go", "line": 4, "site_text": "\"fmt\"", "detail": { "module": "fmt" } },
+    { "from": "go/shape.go", "line": 5, "site_text": "geo \"example.com/shop/geo\"", "detail": { "module": "example.com/shop/geo", "alias": "geo" } },
+    { "from": "java/Circle.java", "line": 3, "site_text": "import com.acme.geo.Point;", "detail": { "module": "com.acme.geo.Point" } },
+    { "from": "java/Circle.java", "line": 4, "site_text": "import com.acme.util.*;", "detail": { "module": "com.acme.util.*" } }
+  ]
+}
