@@ -697,6 +697,24 @@
     ],
     "FR123": [
       "packages/proofmesh/test/symbol-at.test.ts"
+    ],
+    "FR130": [
+      "packages/proofmesh/test/symbol-identity.test.ts"
+    ],
+    "FR131": [
+      "packages/proofmesh/test/symbol-identity.test.ts"
+    ],
+    "FR132": [
+      "packages/proofmesh/test/symbol-identity.test.ts"
+    ],
+    "FR133": [
+      "packages/proofmesh/test/symbol-identity.test.ts"
+    ],
+    "FR134": [
+      "packages/proofmesh/test/symbol-identity.test.ts"
+    ],
+    "FR135": [
+      "packages/proofmesh/test/symbol-identity.test.ts"
     ]
   },
   "manual": {

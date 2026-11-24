@@ -4,6 +4,12 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 ## Unreleased
 
+Symbol identity across change (#7):
+
+- Every symbol records `body_hash`, the hash of its declaration text with line endings, common indentation, trailing whitespace and its own name normalised, in every tier; a module's is its file's text (FR130). Snapshot format 0.7 adds the column, so the next index of every repository rebuilds; a snapshot sealed before answers a null hash and says to index again (FR135).
+- `get_symbol` returns `stable_key` and `body_hash`, in the lean row too (FR131).
+- `compare_snapshots` reports `body` among a changed symbol's change kinds with the ids, keys and hashes of both sides (FR132), pairs one removed and one added symbol of equal kind and hash as `moved`, `renamed` or `moved_renamed`, and lists any other match as `ambiguous` with its candidates (FR133, FR134). A paired symbol is no longer both removed and added.
+
 The symbol at a location (#8):
 
 - `get_symbols_at` takes 1 to 100 locations `path:line` and returns, for each in order, the innermost symbol whose declaration span holds the line, with its id, `stable_key`, kind, lines and tier, or the file's module; a location it cannot answer has its own reason or error. A SCIP definition with no enclosing range takes its span from the syntax tier's parse of the declaration, and the graph benchmark records the tool's p95 latency (FR119 to FR123).

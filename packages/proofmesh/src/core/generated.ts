@@ -260,7 +260,7 @@ envelope?: ("full" | "compact" | "lean")
 }
 
 /**
- * What changed between two sealed snapshots of one repository, matched by qualified name and kind for symbols and by path for files.
+ * What changed between two sealed snapshots of one repository, matched by qualified name and kind for symbols, then a removed and an added symbol of equal kind and body hash paired as moved or renamed, and by path for files.
  */
 export interface CompareSnapshotsData {
 base: Side
@@ -270,12 +270,36 @@ counts: {
 added: number
 removed: number
 changed: number
+paired: number
+ambiguous: number
 }
 added: Symbol[]
 removed: Symbol[]
 changed: (Symbol & {
-what: ("signature" | "range" | "path")[]
+what: ("signature" | "range" | "path" | "body")[]
+base_id?: string
+base_stable_key?: string
+base_body_hash?: (string | null)
 })[]
+/**
+ * One removed and one added symbol of the same kind and body hash. The change is moved (the file differs), renamed (the name differs) or moved_renamed.
+ */
+paired: {
+change: ("moved" | "renamed" | "moved_renamed")
+kind: string
+body_hash: string
+base: Symbol
+head: Symbol
+}[]
+/**
+ * Removed and added symbols of one kind and body hash that are not one on each side, or have the same file and name: candidates, never a guess. They stay in removed and added.
+ */
+ambiguous: {
+kind: string
+body_hash: string
+removed: Symbol[]
+added: Symbol[]
+}[]
 }
 relationships: {
 added: number
@@ -306,6 +330,12 @@ relationships: number
 unresolved: number
 }
 export interface Symbol {
+id: string
+stable_key: string
+/**
+ * Null when the span is no more than the name, or the snapshot was sealed before hashes existed.
+ */
+body_hash: (string | null)
 qualified_name: string
 kind: string
 path: string
@@ -1302,6 +1332,14 @@ start_line: number
 end_line: number
 signature: (string | null)
 evidence_id: string
+/**
+ * path#qualified_name#kind, as this snapshot stores it.
+ */
+stable_key: string
+/**
+ * SHA-256 of the declaration text with line endings, common indentation, trailing whitespace and the symbol's own name normalised (a module: its file text); null when the span is no more than the name, or the snapshot was sealed before hashes existed.
+ */
+body_hash: (string | null)
 }
 }
 

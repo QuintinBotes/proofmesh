@@ -270,6 +270,15 @@ Acceptance: CI runs my pull request without secrets or release credentials; lice
 - FR122: MUST answer a single-location call in 20 ms or less at p95 and a 100-location call in 100 ms or less at p95 on the warm graph-bench snapshot over MCP stdio, and the graph benchmark MUST record both figures in its results file.
 - FR123: MUST answer in the lean form on request, and over MCP by default: one row per location, the location then the symbol as `name path:line kind`, or `-` and the reason.
 
+### Symbol identity
+
+- FR130: MUST record in every new snapshot, for every symbol and whatever adapter or tier declared it, `body_hash`: the SHA-256, in 64 lowercase hex characters, of the declaration's span as the snapshot records it, with line endings read as LF, the lines' common leading indentation and every line's trailing whitespace removed, and every whole-identifier occurrence of the symbol's own simple name replaced by one fixed placeholder. A module's hash is that of its file's text, with no name masked. A symbol whose span is no more than its name has a null `body_hash`. The snapshot format gains the column additively (0.7), and the hash is computed at seal time in the core.
+- FR131: MUST return `stable_key` and `body_hash` from `get_symbol`, in the lean row as well.
+- FR132: MUST report `body` among a changed symbol's change kinds in `compare_snapshots` when its `body_hash` differs between the snapshots, and MUST return the id, `stable_key` and `body_hash` of both sides of every changed symbol. A module's text change is the file's, listed under `files.changed`, not a symbol change.
+- FR133: MUST pair, in `compare_snapshots`, exactly one removed and exactly one added symbol of the same kind and `body_hash` as `moved` (the path differs), `renamed` (the name differs) or `moved_renamed` (both), with both ids, both keys and the shared hash, and MUST leave a paired symbol out of the added and removed lists. A module is `moved` whatever its file is now called.
+- FR134: MUST report any other match of removed and added symbols of one kind and `body_hash` (several on either side, or one on each side with the same path and name) as one `ambiguous` entry listing every candidate, and MUST leave those symbols in the added and removed lists. A symbol with a null hash is never paired.
+- FR135: MUST answer a snapshot sealed before hashes existed with a null `body_hash` and a limitation saying to index again, from `get_symbol` and from `compare_snapshots` (which then pairs nothing and reports no body change), and MUST NOT compute a hash at query time from another reading of the span.
+
 ### Evidence and claims
 
 - FR025: MUST link reported graph facts to source evidence, hashes, extractor versions, and analysis mode.

@@ -40,25 +40,39 @@
       "counts": {
         "added": 2,
         "removed": 1,
-        "changed": 2
+        "changed": 2,
+        "paired": 0,
+        "ambiguous": 0
       },
       "added": [
         {
           "qualified_name": "packages/billing/src/invoice:invoiceTax",
           "kind": "function",
-          "path": "packages/billing/src/invoice.ts"
+          "path": "packages/billing/src/invoice.ts",
+          "id": "sym_h001",
+          "name": "invoiceTax",
+          "stable_key": "packages/billing/src/invoice.ts#packages/billing/src/invoice:invoiceTax#function",
+          "body_hash": "0000000000000000000000000000000000000000000000000000000000001eef"
         },
         {
           "qualified_name": "packages/api/src/handler:Rates",
           "kind": "class",
-          "path": "packages/api/src/handler.ts"
+          "path": "packages/api/src/handler.ts",
+          "id": "sym_h002",
+          "name": "Rates",
+          "stable_key": "packages/api/src/handler.ts#packages/api/src/handler:Rates#class",
+          "body_hash": "0000000000000000000000000000000000000000000000000000000000003dde"
         }
       ],
       "removed": [
         {
           "qualified_name": "packages/format/src/currency:legacyFormat",
           "kind": "function",
-          "path": "packages/format/src/currency.ts"
+          "path": "packages/format/src/currency.ts",
+          "id": "sym_h003",
+          "name": "legacyFormat",
+          "stable_key": "packages/format/src/currency.ts#packages/format/src/currency:legacyFormat#function",
+          "body_hash": "0000000000000000000000000000000000000000000000000000000000005ccd"
         }
       ],
       "changed": [
@@ -68,7 +82,14 @@
           "path": "packages/billing/src/invoice.ts",
           "what": [
             "signature"
-          ]
+          ],
+          "id": "sym_h004",
+          "name": "invoiceTotal",
+          "stable_key": "packages/billing/src/invoice.ts#packages/billing/src/invoice:invoiceTotal#function",
+          "body_hash": "0000000000000000000000000000000000000000000000000000000000007bbc",
+          "base_id": "sym_b004",
+          "base_stable_key": "packages/billing/src/invoice.ts#packages/billing/src/invoice:invoiceTotal#function",
+          "base_body_hash": "0000000000000000000000000000000000000000000000000000000000007bbc"
         },
         {
           "qualified_name": "packages/api/src/handler:handleInvoice",
@@ -77,9 +98,18 @@
           "what": [
             "range",
             "signature"
-          ]
+          ],
+          "id": "sym_h005",
+          "name": "handleInvoice",
+          "stable_key": "packages/api/src/handler.ts#packages/api/src/handler:handleInvoice#function",
+          "body_hash": "0000000000000000000000000000000000000000000000000000000000009aab",
+          "base_id": "sym_b005",
+          "base_stable_key": "packages/api/src/handler.ts#packages/api/src/handler:handleInvoice#function",
+          "base_body_hash": "0000000000000000000000000000000000000000000000000000000000009aab"
         }
-      ]
+      ],
+      "paired": [],
+      "ambiguous": []
     },
     "relationships": {
       "added": 5,

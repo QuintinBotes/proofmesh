@@ -1,0 +1,3 @@
+# Provenance
+
+Project-authored for Proofmesh. Apache-2.0. No third-party code. `base/` is a small repository in TypeScript, Python and Go (syntax tier); each `head-*/` directory holds only the files one commit changes or adds, written over `base/` (a path listed in its `DELETED` file is removed). The tests in `packages/proofmesh/test/symbol-identity.test.ts` build a git repository from them, one commit per head on top of `base`, and write the expected pairs and changes by hand (FR130 to FR135). `head-moverename`, `head-filemove` and `head-copy` go beyond the five heads of the spec: a move with a rename, a file moved without change, and one removed symbol with two identical successors.

@@ -1,19 +1,28 @@
 // compare_snapshots (FR019, FR063): what changed between two sealed snapshots of one repository, each opened read-only (D03).
 import type Database from 'better-sqlite3'
 
-type Sym = { qualified_name: string; kind: string; path: string; signature: string | null; start_line: number; end_line: number }
+type Sym = { id: string; name: string; qualified_name: string; kind: string; path: string; stable_key: string; body_hash: string | null; signature: string | null; start_line: number; end_line: number }
+type Pair = { change: 'moved' | 'renamed' | 'moved_renamed'; kind: string; body_hash: string; base: Sym; head: Sym }
+type Ambiguous = { kind: string; body_hash: string; removed: Sym[]; added: Sym[] }
 type Side = { snapshot_id: string; published_at: string; symbols: number; relationships: number; unresolved: number }
 export type Comparison = {
   base: Side; head: Side
-  symbols: { counts: { added: number; removed: number; changed: number }; added: Sym[]; removed: Sym[]; changed: Array<Sym & { what: string[] }> }
+  symbols: {
+    counts: { added: number; removed: number; changed: number; paired: number; ambiguous: number }
+    added: Sym[]; removed: Sym[]; changed: Array<Sym & { what: string[]; base_id: string; base_stable_key: string; base_body_hash: string | null }>
+    paired: Pair[]; ambiguous: Ambiguous[]
+  }
   relationships: { added: number; removed: number; by_type: Record<string, { added: number; removed: number }> }
   files: { added: string[]; removed: string[]; changed: string[]; disposition_changes: Array<{ path: string; from: string; to: string }> }
 }
 
 const symbolKey = (s: Sym) => `${s.kind}\u0000${s.qualified_name}`
 
+/** Whether the snapshot was sealed with body hashes (format 0.7); an older file has no such column and its symbols have none (FR135). */
+export const hasBodyHash = (db: Database.Database): boolean => db.prepare("select 1 from pragma_table_info('symbol') where name = 'body_hash'").get() !== undefined
+
 function symbols(db: Database.Database): Map<string, Sym> {
-  const rows = db.prepare('select s.qualified_name, s.kind, f.path, s.signature, s.start_line, s.end_line from symbol s join file f on f.id = s.file_id order by s.qualified_name, s.kind').all() as Sym[]
+  const rows = db.prepare(`select s.id, s.name, s.qualified_name, s.kind, f.path, s.stable_key, ${hasBodyHash(db) ? 's.body_hash' : 'null as body_hash'}, s.signature, s.start_line, s.end_line from symbol s join file f on f.id = s.file_id order by s.qualified_name, s.kind, s.id`).all() as Sym[]
   // shortcut: two declarations with one kind and qualified name (overloads, partial classes) collapse to the last; split by signature when that matters.
   return new Map(rows.map((s) => [symbolKey(s), s]))
 }
@@ -37,16 +46,44 @@ function side(db: Database.Database, snapshot_id: string, published_at: string):
   return { snapshot_id, published_at, symbols: n('select count(*) n from symbol'), relationships: n('select count(*) n from assertion'), unresolved: n("select count(*) n from assertion where resolution not in ('resolved', 'resolved_external')") }
 }
 
-export function compare(base: Database.Database, head: Database.Database, ids: { base: { id: string; published_at: string }; head: { id: string; published_at: string } }, maxRows: number): { data: Comparison; truncated: boolean } {
+const NOT_PAIRED = 'Pairing needs exactly one removed and one added symbol of the same kind and body hash, in files that differ (moved), under names that differ (renamed) or both; any other match is listed as ambiguous with its candidates, and a symbol with no hash is never paired.'
+const NO_HASHES = 'A snapshot sealed before body hashes existed has none, so nothing it holds is paired and no body change is reported; index it again to compute them.'
+
+/** Removed and added symbols of one kind and hash: one on each side is a pair, any other count an ambiguous entry (FR133, FR134). */
+function pairUp(added: Sym[], removed: Sym[]): { paired: Pair[]; ambiguous: Ambiguous[]; left: { added: Set<Sym>; removed: Set<Sym> } } {
+  const group = (xs: Sym[]) => { const m = new Map<string, Sym[]>(); for (const x of xs) if (x.body_hash) { const k = `${x.kind}\u0000${x.body_hash}`; m.set(k, [...(m.get(k) ?? []), x]) } return m }
+  const gone = group(removed), came = group(added)
+  const paired: Pair[] = [], ambiguous: Ambiguous[] = []
+  for (const [k, rs] of [...gone].sort(([a], [b]) => (a < b ? -1 : 1))) {
+    const as = came.get(k)
+    if (!as) continue
+    const b = rs[0]!, h = as[0]!
+    // A module's name is its file's, so a moved file is `moved` whatever it is now called.
+    const moved = b.path !== h.path, renamed = b.kind !== 'module' && b.name !== h.name
+    if (rs.length === 1 && as.length === 1 && (moved || renamed)) paired.push({ change: moved && renamed ? 'moved_renamed' : moved ? 'moved' : 'renamed', kind: b.kind, body_hash: b.body_hash!, base: b, head: h })
+    else ambiguous.push({ kind: b.kind, body_hash: b.body_hash!, removed: rs, added: as })
+  }
+  const taken = new Set(paired.flatMap((p) => [p.base, p.head]))
+  const order = (a: Sym, b: Sym) => (a.qualified_name < b.qualified_name ? -1 : a.qualified_name > b.qualified_name ? 1 : a.id < b.id ? -1 : 1)
+  paired.sort((x, y) => order(x.base, y.base))
+  ambiguous.sort((x, y) => order(x.removed[0]!, y.removed[0]!))
+  return { paired, ambiguous, left: { added: new Set(added.filter((x) => !taken.has(x))), removed: new Set(removed.filter((x) => !taken.has(x))) } }
+}
+
+export function compare(base: Database.Database, head: Database.Database, ids: { base: { id: string; published_at: string }; head: { id: string; published_at: string } }, maxRows: number): { data: Comparison; truncated: boolean; limitations: string[] } {
   const bs = symbols(base), hs = symbols(head)
-  const added: Sym[] = [], removed: Sym[] = [], changed: Array<Sym & { what: string[] }> = []
+  const unhashed = !hasBodyHash(base) || !hasBodyHash(head)
+  const matched: Sym[] = [], unmatched: Sym[] = [], changed: Comparison['symbols']['changed'] = []
   for (const [k, h] of hs) {
     const b = bs.get(k)
-    if (!b) { added.push(h); continue }
-    const what = [b.signature !== h.signature && 'signature', (b.start_line !== h.start_line || b.end_line !== h.end_line) && 'range', b.path !== h.path && 'path'].filter((x): x is string => !!x)
-    if (what.length) changed.push({ ...h, what })
+    if (!b) { matched.push(h); continue }
+    // A module's text is its file's, already listed under files.changed, so only a declaration's body change is a symbol's.
+    const what = [b.signature !== h.signature && 'signature', (b.start_line !== h.start_line || b.end_line !== h.end_line) && 'range', b.path !== h.path && 'path', h.kind !== 'module' && b.body_hash && h.body_hash && b.body_hash !== h.body_hash && 'body'].filter((x): x is string => !!x)
+    if (what.length) changed.push({ ...h, what, base_id: b.id, base_stable_key: b.stable_key, base_body_hash: b.body_hash })
   }
-  for (const [k, b] of bs) if (!hs.has(k)) removed.push(b)
+  for (const [k, b] of bs) if (!hs.has(k)) unmatched.push(b)
+  const { paired, ambiguous, left } = pairUp(matched, unmatched)
+  const added = matched.filter((x) => left.added.has(x)), removed = unmatched.filter((x) => left.removed.has(x))
 
   const br = relationships(base), hr = relationships(head)
   const by_type: Record<string, { added: number; removed: number }> = {}
@@ -68,12 +105,13 @@ export function compare(base: Database.Database, head: Database.Database, ids: {
   const fRemoved = [...bf.keys()].filter((p) => !hf.has(p)).sort()
 
   const cut = <T>(xs: T[]) => xs.slice(0, maxRows)
-  const truncated = [added, removed, changed, fAdded, fRemoved, fChanged, disposition_changes].some((xs) => xs.length > maxRows)
+  const truncated = [added, removed, changed, paired, ambiguous, fAdded, fRemoved, fChanged, disposition_changes].some((xs) => xs.length > maxRows)
   return {
     truncated,
+    limitations: [unhashed ? NO_HASHES : NOT_PAIRED],
     data: {
       base: side(base, ids.base.id, ids.base.published_at), head: side(head, ids.head.id, ids.head.published_at),
-      symbols: { counts: { added: added.length, removed: removed.length, changed: changed.length }, added: cut(added), removed: cut(removed), changed: cut(changed) },
+      symbols: { counts: { added: added.length, removed: removed.length, changed: changed.length, paired: paired.length, ambiguous: ambiguous.length }, added: cut(added), removed: cut(removed), changed: cut(changed), paired: cut(paired), ambiguous: cut(ambiguous) },
       relationships: { added: sum('added'), removed: sum('removed'), by_type: Object.fromEntries(Object.entries(by_type).sort()) },
       files: { added: cut(fAdded.sort()), removed: cut(fRemoved), changed: cut(fChanged.sort()), disposition_changes: cut(disposition_changes.sort((a, b) => (a.path < b.path ? -1 : 1))) },
     },
