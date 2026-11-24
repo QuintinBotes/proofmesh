@@ -4,6 +4,10 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 ## Unreleased
 
+Syntax-tier structure, Go and Java (#4):
+
+- The syntax tier records each Go and Java import statement with the module as written (and a Go alias), each Java `extends` and `implements` and each Go struct embedding as `inherits` or `implements` from the declaring type, all unresolved with `outside_capability` (FR115 to FR117). `languages.md` states per language which of imports, heritage and calls the tier records (FR118).
+
 From the Graphify replacement roadmap (#39):
 
 - TypeScript `implements` and `inherits` from heritage clauses, cited at the clause; `references` for every use of a repository class, interface, enum or type alias other than imports and exports; interface members are `method` symbols, so a call through an interface resolves to its member (FR083 to FR088). A concrete member `implements` or `overrides` the members above it, so a caller query on it lists the calls that reach it by dispatch, marked `via`, and `analyze_impact` and `trace_paths` follow them; abstract and static members are not dispatch targets. Enums are symbols, an overloaded member is one symbol (static and instance members apart), and every TypeScript file reports references as partial.

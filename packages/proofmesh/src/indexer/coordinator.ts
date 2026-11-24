@@ -436,7 +436,7 @@ class FactWriter {
   }
 
   relationships(items: Array<{ rel: Rel; producer: Producer }>, onProgress?: (done: number) => void): void {
-    const imports = new Map<string, { source: string; target: string | null; targetKind: string | null; resolution: string; reason: string | null; group: string; kind: string; evidence: string[]; origin: string; p: Producer }>()
+    const imports = new Map<string, { source: string; target: string | null; targetKind: string | null; resolution: string; reason: string | null; group: string; kind: string; detail?: Record<string, unknown>; evidence: string[]; origin: string; p: Producer }>()
     let written = 0
     for (const { rel: r, producer: p } of items) {
       if (++written % 25000 === 0) onProgress?.(written)
@@ -454,7 +454,8 @@ class FactWriter {
         // Statements between the same two files are one assertion (AC05) of the strongest kind among them; an import() is its own (FR092).
         const kind = r.detail?.kind ?? '', group = kind === 'dynamic' ? kind : ''
         const key = `${source.id}\n${group}\n${target.id ?? `unresolved:${r.site.path}:${r.site.range.start_byte}`}`
-        const entry = imports.get(key) ?? { source: source.id, target: target.id, targetKind: target.kind, resolution: r.resolution, reason: r.reason ?? null, group, kind, evidence: [], origin: r.origin, p }
+        // An unresolved statement is its own assertion, so it keeps the adapter's detail: the module it names (FR115).
+        const entry = imports.get(key) ?? { source: source.id, target: target.id, targetKind: target.kind, resolution: r.resolution, reason: r.reason ?? null, group, kind, ...(target.id || !r.detail ? {} : { detail: r.detail }), evidence: [], origin: r.origin, p }
         if (IMPORT_KINDS.indexOf(kind) < IMPORT_KINDS.indexOf(entry.kind)) entry.kind = kind
         entry.evidence.push(ev)
         imports.set(key, entry)
@@ -473,7 +474,7 @@ class FactWriter {
     for (const imp of imports.values()) {
       const id = derivedId('as', 24, this.snapshotId, 'imports', imp.source, imp.group, imp.target ?? `unresolved:${imp.evidence[0]}`)
       const reason = imp.target ? null : (imp.reason ?? 'import_unresolved')
-      this.stmt.assertion!.run(id, 'imports', imp.origin, imp.target ? imp.resolution : 'unresolved', 'file', imp.source, imp.targetKind, imp.target, reason, imp.kind ? canonicalJson({ kind: imp.kind }) : null, imp.p.id, imp.p.version, imp.p.mode)
+      this.stmt.assertion!.run(id, 'imports', imp.origin, imp.target ? imp.resolution : 'unresolved', 'file', imp.source, imp.targetKind, imp.target, reason, imp.detail ? canonicalJson(imp.detail) : imp.kind ? canonicalJson({ kind: imp.kind }) : null, imp.p.id, imp.p.version, imp.p.mode)
       for (const ev of imp.evidence) this.stmt.assertionEvidence!.run(id, ev)
       if (imp.target) this.stmt.edge!.run(imp.source, 'imports', imp.target, imp.resolution, id)
     }

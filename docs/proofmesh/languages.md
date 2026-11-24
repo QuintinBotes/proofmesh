@@ -63,6 +63,20 @@ Tree-sitter grammars on WebAssembly (A6, A23) for Java, Go, Rust, Ruby, PHP, C, 
 
 - Symbols: the declarations each grammar's tags query finds.
 - Calls: every call site, unresolved with `outside_capability`, with the callee's name as detail. The syntax tier never claims a call target.
+- Imports (FR115): one `imports` row per import statement, from the file, with the module as written in `detail.module` (a Java wildcard ends in `.*`, a Go alias is `detail.alias`). Each is unresolved with `outside_capability` (FR117), so a file with an import reports its imports as partial.
+- Heritage (FR116): a Java class `inherits` the class it extends and `implements` each interface it names, as do a Java enum and record; a Go struct `inherits` each type it embeds, with `detail.relation` `embedding`. Each row runs from the declaring type, at the supertype's name, with that name in `detail.name`, and is unresolved with `outside_capability` (FR117). A Java interface's `extends` and a Go interface's embedded interfaces are not recorded yet.
+
+What the tier records per language (FR118):
+
+| Language | Imports | Heritage | Calls |
+|---|---|---|---|
+| Go | yes, with module and alias | struct embedding | yes |
+| Java | yes, with module | `extends`, `implements` | yes |
+| Swift | statements, without the module | no | yes |
+| Bash, Kotlin, PHP, Ruby, Rust, Scala | no | no | yes |
+| C, C++ | no | no | no |
+| SQL | no | no | no; table references instead |
+| Prisma | no | no | no; model references instead |
 - Grammars: each is pinned by its package version and the hash of its WebAssembly, which join the adapter's identity. Swift, SQL and Prisma ship no WebAssembly, so `adapters/syntax/grammars/rebuild.mjs` builds them from their packages' source with the Tree-sitter CLI 0.27.2; the build is reproducible, and the syntax adapter's build refuses a grammar whose hash or version differs from `grammars/built.json`, or whose license `policy/licenses.json` does not allow. Each grammar's license text ships beside it, and `THIRD_PARTY_NOTICES.md` lists every grammar.
 - Swift: classes and actors, structs, enums, protocols, functions, methods and properties; members of an `extension X` are named `X.member`. Imports are unresolved import statements. Initializers, subscripts, enum cases and top-level `let` and `var` are not symbols.
 - SQL: `CREATE TABLE`, `VIEW` and `MATERIALIZED VIEW` are `table` symbols named by their schema-qualified name, and functions and procedures are functions. A table named in FROM, JOIN, UPDATE, INSERT INTO, DELETE FROM or a `REFERENCES` clause is a `references` candidate when the same file declares it, and unresolved otherwise. T-SQL bracket identifiers do not parse, so such names are skipped and the file reports partial.

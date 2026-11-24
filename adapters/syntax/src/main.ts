@@ -1,6 +1,6 @@
 // The Tree-sitter syntax tier (A6, A23): declarations and call sites for languages no semantic adapter covers, read through
 // each grammar's tags query. It never guesses a call's target: every call site is reported unresolved, with the name it calls.
-// An import is unresolved too, and a table a SQL statement names is a candidate only when the same file declares it. A Prisma
+// An import, and a supertype a type declares, is unresolved too, and a table a SQL statement names is a candidate only when the same file declares it. A Prisma
 // schema has no tags query: prisma.ts reads its models.
 import fs from 'node:fs'
 import path from 'node:path'
@@ -51,7 +51,8 @@ async function analyse(file: string) {
   // An extension's members are named after the type it extends, which it does not declare.
   const scopes: Array<{ node: Node; qualified: string }> = []
   const calls: Array<{ name: string; site: Range; node: Node }> = []
-  const imports: Node[] = []
+  const imports: Array<{ node: Node; detail?: Record<string, string> }> = []
+  const supertypes: Array<{ type: string; relation?: string; node: Node }> = []
   const tables: Array<{ name: Node; parts: string[] }> = []
   const locals: Array<{ node: Node; name: string }> = []
   for (const m of query.matches(tree.rootNode)) {
@@ -59,6 +60,21 @@ async function analyse(file: string) {
     const def = m.captures.find((c) => c.name.startsWith('definition.'))
     const role = (r: string) => m.captures.find((c) => c.name === r)?.node
     const ref = role('reference.call')
+    // An import statement, and a supertype a type names, need no @name: the module and the supertype are their own captures.
+    const statement = role('import')
+    if (statement) {
+      const spec = role('import.module'), alias = role('import.alias')
+      // A wildcard import's module runs to its `*`, as written.
+      const detail = spec ? { module: text.slice(spec.startIndex, (role('import.wildcard') ?? spec).endIndex).replace(/^["`](.*)["`]$/s, '$1'), ...(alias ? { alias: alias.text } : {}) } : undefined
+      imports.push({ node: statement, ...(detail ? { detail } : {}) })
+      continue
+    }
+    const heritage = m.captures.find((c) => /^(inherits|implements)(\.|$)/.test(c.name))
+    if (heritage) {
+      const [type, relation] = heritage.name.split('.')
+      supertypes.push({ type: type!, ...(relation ? { relation } : {}), node: heritage.node })
+      continue
+    }
     if (!name) continue
     if (def && KINDS[def.name.slice('definition.'.length)]) {
       const id = `${file}#${def.node.startIndex}`, kind = KINDS[def.name.slice('definition.'.length)]!
@@ -76,7 +92,6 @@ async function analyse(file: string) {
       const parts = dbName(name)
       if (parts) tables.push({ name, parts })
     } else if (role('scope')) scopes.push({ node: role('scope')!, qualified: name.text })
-    else if (role('import')) imports.push(role('import')!)
     else if (role('local')) locals.push({ node: role('local')!.parent!, name: name.text.toLowerCase() })
   }
   // A definition's qualified name is the module, then the definitions it sits inside, then its own name; a table keeps its own.
@@ -89,7 +104,9 @@ async function analyse(file: string) {
   }
   const enclosing = (n: Node) => defs.filter((d) => within(n, d.node) || d.node === n).sort((a, b) => b.node.startIndex - a.node.startIndex)[0]?.id ?? moduleId
   const relationships: Array<Record<string, unknown>> = calls.map((c) => ({ type: 'calls', origin: 'syntax', source: { symbol: enclosing(c.node) }, site: { path: file, range: c.site }, resolution: 'unresolved', reason: 'outside_capability', detail: { callee: c.name } }))
-  for (const i of imports) relationships.push({ type: 'imports', origin: 'syntax', source: { file }, site: { path: file, range: range(i) }, resolution: 'unresolved', reason: 'outside_capability' })
+  for (const i of imports) relationships.push({ type: 'imports', origin: 'syntax', source: { file }, site: { path: file, range: range(i.node) }, resolution: 'unresolved', reason: 'outside_capability', ...(i.detail ? { detail: i.detail } : {}) })
+  // A supertype is named, never resolved (FR117): the constrained-resolution slice binds it.
+  for (const h of supertypes) relationships.push({ type: h.type, origin: 'syntax', source: { symbol: enclosing(h.node) }, site: { path: file, range: range(h.node) }, resolution: 'unresolved', reason: 'outside_capability', detail: { name: h.node.text, ...(h.relation ? { relation: h.relation } : {}) } })
   // A table this file declares under the name a query uses is a candidate; any other is named and left unresolved.
   const references = tables.filter((t) => !locals.some((l) => t.parts.length === 1 && l.name === t.parts[0]!.toLowerCase() && within(t.name, l.node)))
   for (const t of references) {
