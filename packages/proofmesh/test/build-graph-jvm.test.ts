@@ -1,6 +1,8 @@
+import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { BUILT_IN } from '../src/indexer/languages.js'
 import { fixtureRepo, indexedDataDir, indexedRepo, rows, tmpDir, withSnapshot } from './helpers.js'
 
 let fixtureDir: Promise<string> | undefined
@@ -116,11 +118,14 @@ describe('FR151 FR152 FR153 FR158 the Maven module graph, read from pom.xml as t
     })
   }, 240000)
 
-  it('FR159 an entity declaration, a CDATA section and a comment holding markup are read as text and never expanded', async () => {
+  it('FR159 an entity declared in the DOCTYPE is never expanded: the name and a dependency keep the reference as written, and CDATA and a commented element are read as text', async () => {
     const { dataDir } = await indexedRepo({
-      'pom.xml': '<?xml version="1.0"?>\n<!DOCTYPE project [<!ENTITY a "aaaa"> <!ENTITY b "&a;&a;&a;&a;">]>\n<project>\n  <!-- <artifactId>commented</artifactId> -->\n  <groupId>g</groupId>\n  <artifactId><![CDATA[real]]></artifactId>\n  <description>&b; &amp; more</description>\n</project>\n',
+      'pom.xml': '<?xml version="1.0"?>\n<!DOCTYPE project [<!ENTITY a "aaaa"> <!ENTITY b "&a;&a;&a;&a;">]>\n<project>\n  <!-- <artifactId>commented</artifactId> -->\n  <groupId>g</groupId>\n  <artifactId>real&b;<![CDATA[<x>]]></artifactId>\n  <dependencies><dependency><groupId>x</groupId><artifactId>dep&a;</artifactId></dependency></dependencies>\n</project>\n',
     })
-    withSnapshot(dataDir, (db) => expect((projects(db) as Array<{ name: string }>).map((p) => p.name)).toEqual(['g:real']))
+    withSnapshot(dataDir, (db) => {
+      expect((projects(db) as Array<{ name: string }>).map((p) => p.name)).toEqual(['g:real&b;<x>'])
+      expect(rows(db, 'depends_on_package').map((r) => r.to)).toEqual(['maven:x:dep&a;'])
+    })
   }, 240000)
 })
 
@@ -276,6 +281,150 @@ describe('FR157 FR160 each source file is in the module of its nearest build fil
       expect((projects(db) as Array<{ name: string }>).map((p) => p.name)).toEqual(['g:root'])
       expect(db.prepare("select disposition from file where path = 'other/pom.xml'").get()).toEqual({ disposition: 'failed' })
     })
+  }, 240000)
+})
+
+const props = (o: Record<string, string>) => `  <properties>${Object.entries(o).map(([k, v]) => `<${k}>${v}</${k}>`).join('')}</properties>\n`
+const dep1 = (version: string) => `  <dependencies><dependency><groupId>x</groupId><artifactId>lib</artifactId><version>${version}</version></dependency></dependencies>\n`
+const partialSymbols = (db: Parameters<Parameters<typeof withSnapshot>[1]>[0], file: string) => JSON.parse((db.prepare('select capabilities from file where path = ?').get(file) as { capabilities: string }).capabilities).symbols
+const jvmRoot = '  <groupId>g</groupId>\n  <artifactId>a</artifactId>\n'
+
+describe('FR153 FR159 hostile and unusual build files cannot hang, crash or mislead the adapter', () => {
+  it('FR153 a property chain that fans out past the cap is left as written and the file is partial, and it finishes', async () => {
+    const chain = Object.fromEntries([0, 1, 2, 3].map((i) => [`p${i}`, i === 3 ? 'x' : ('${p' + (i + 1) + '}').repeat(30)]))
+    const { dataDir } = await indexedRepo({ 'pom.xml': pom(jvmRoot + props(chain) + dep1('${p0}')) })
+    withSnapshot(dataDir, (db) => {
+      expect(rows(db, 'depends_on_package').map((r) => [r.to, r.detail])).toEqual([['maven:x:lib', { version_expression: '${p0}' }]])
+      expect(partialSymbols(db, 'pom.xml')).toBe('partial')
+    })
+  }, 120000)
+
+  it('FR153 a property that refers to itself 3 times is left as written and the file is partial', async () => {
+    const { dataDir } = await indexedRepo({ 'pom.xml': pom(jvmRoot + props({ s: '${s}'.repeat(3) }) + dep1('${s}')) })
+    withSnapshot(dataDir, (db) => {
+      expect(rows(db, 'depends_on_package').map((r) => r.detail)).toEqual([{ version_expression: '${s}' }])
+      expect(partialSymbols(db, 'pom.xml')).toBe('partial')
+    })
+  }, 120000)
+
+  it('FR153 a property that refers to itself 30 times finishes, is left as written, and the file is partial', async () => {
+    const { dataDir } = await indexedRepo({ 'pom.xml': pom(jvmRoot + props({ s: '${s}'.repeat(30) }) + dep1('${s}')) })
+    withSnapshot(dataDir, (db) => {
+      expect(rows(db, 'depends_on_package').map((r) => r.detail)).toEqual([{ version_expression: '${s}' }])
+      expect(partialSymbols(db, 'pom.xml')).toBe('partial')
+    })
+  }, 120000)
+
+  it('FR153 a three-property cycle leaves the value exactly as written, not an arbitrary member of the cycle', async () => {
+    const { dataDir } = await indexedRepo({ 'pom.xml': pom(jvmRoot + props({ a: '${b}', b: '${c}', c: '${a}' }) + dep1('${a}')) })
+    withSnapshot(dataDir, (db) => expect(rows(db, 'depends_on_package').map((r) => r.detail)).toEqual([{ version_expression: '${a}' }]))
+  }, 120000)
+
+  it('FR153 names of Object.prototype are not properties: ${constructor} and ${toString} stay as written', async () => {
+    const { dataDir } = await indexedRepo({ 'pom.xml': pom(jvmRoot + dep1('${constructor}-${toString}')) })
+    withSnapshot(dataDir, (db) => expect(rows(db, 'depends_on_package').map((r) => r.detail)).toEqual([{ version_expression: '${constructor}-${toString}' }]))
+  }, 120000)
+
+  it('FR153 ${project.version} and ${project.parent.version} are the version the pom or its parent states; a missing parent and a parent cycle do not stop the read', async () => {
+    const { dataDir } = await indexedRepo({
+      'k/pom.xml': pom('  <artifactId>k</artifactId>\n  <dependencies><dependency><groupId>x</groupId><artifactId>one</artifactId><version>${project.version}</version></dependency><dependency><groupId>x</groupId><artifactId>two</artifactId><version>${project.parent.version}</version></dependency></dependencies>\n', '  <parent><groupId>g</groupId><artifactId>r</artifactId><version>7.1</version><relativePath>../nowhere/pom.xml</relativePath></parent>\n'),
+      'c1/pom.xml': pom('  <artifactId>c1</artifactId>\n' + dep1('${nope}'), '  <parent><groupId>g</groupId><artifactId>c2</artifactId><version>1</version><relativePath>../c2/pom.xml</relativePath></parent>\n'),
+      'c2/pom.xml': pom('  <artifactId>c2</artifactId>\n', '  <parent><groupId>g</groupId><artifactId>c1</artifactId><version>1</version><relativePath>../c1/pom.xml</relativePath></parent>\n'),
+    })
+    withSnapshot(dataDir, (db) => {
+      expect(rows(db, 'depends_on_package').map((r) => [r.from, r.to, r.detail])).toEqual([
+        ['g:c1', 'maven:x:lib', { version_expression: '${nope}' }],
+        ['g:k', 'maven:x:one', { version: '7.1' }],
+        ['g:k', 'maven:x:two', { version: '7.1' }],
+      ])
+    })
+  }, 120000)
+
+  it('FR159 a numeric character reference to no XML character fails that pom as invalid_xml, and the other build files are still read', async () => {
+    const { dataDir } = await indexedRepo({
+      'a/pom.xml': pom('  <groupId>g</groupId>\n  <artifactId>a&#x110000;</artifactId>\n'),
+      'b/pom.xml': pom('  <groupId>g</groupId>\n  <artifactId>b&#xD800;</artifactId>\n'),
+      'c/pom.xml': pom('  <groupId>g</groupId>\n  <artifactId>c&#0;</artifactId>\n'),
+      'd/pom.xml': pom('  <groupId>g</groupId>\n  <artifactId>d&#65;</artifactId>\n'),
+    })
+    withSnapshot(dataDir, (db) => {
+      expect(db.prepare("select path, disposition, disposition_detail from file where path like '%pom.xml' order by path").all()).toEqual([
+        { path: 'a/pom.xml', disposition: 'failed', disposition_detail: expect.stringMatching(/^invalid_xml:line 4\b/) },
+        { path: 'b/pom.xml', disposition: 'failed', disposition_detail: expect.stringMatching(/^invalid_xml:line 4\b/) },
+        { path: 'c/pom.xml', disposition: 'failed', disposition_detail: expect.stringMatching(/^invalid_xml:line 4\b/) },
+        { path: 'd/pom.xml', disposition: 'indexed', disposition_detail: null },
+      ])
+      expect((projects(db) as Array<{ name: string }>).map((p) => p.name)).toEqual(['g:dA'])
+    })
+  }, 240000)
+
+  it('FR159 elements nested past the depth cap fail that pom cleanly, and a pom just inside the cap is read', async () => {
+    const nest = (n: number) => '<project><groupId>g</groupId><artifactId>deep</artifactId>' + '<x>'.repeat(n) + '</x>'.repeat(n) + '</project>\n'
+    const { dataDir } = await indexedRepo({ 'ok/pom.xml': nest(150), 'deep/pom.xml': nest(250) })
+    withSnapshot(dataDir, (db) => {
+      expect(db.prepare("select path, disposition, disposition_detail from file where path like '%pom.xml' order by path").all()).toEqual([
+        { path: 'deep/pom.xml', disposition: 'failed', disposition_detail: expect.stringMatching(/^invalid_xml:line 1: elements nested deeper than 200/) },
+        { path: 'ok/pom.xml', disposition: 'indexed', disposition_detail: null },
+      ])
+    })
+  }, 240000)
+
+  it('FR154 an include in a comment or in a string declares nothing, in Groovy and in Kotlin', async () => {
+    const { dataDir } = await indexedRepo({
+      'settings.gradle': "// include ':commented'\n/* include ':blocked' */\ndef s = \"include ':string'\"\ninclude ':real'\n",
+      'k/settings.gradle.kts': '// include(":commented")\nval s = "include(\\":string\\")"\nval raw = """include(":raw")"""\ninclude(":real")\n',
+    })
+    withSnapshot(dataDir, (db) => {
+      expect((projects(db) as Array<{ name: string; path: string }>).map((p) => [p.name, p.path])).toEqual([[':real', 'k/settings.gradle.kts'], [':real', 'settings.gradle']])
+    })
+  }, 240000)
+
+  it('FR154 an include in a block, a closure or after a condition declares nothing and makes the settings partial; a top-level include still counts', async () => {
+    const { dataDir } = await indexedRepo({
+      'settings.gradle': "if (System.getenv('X')) {\n  include 'cond'\n}\n['a', 'b'].each { include it }\nif (true) include 'one'\npluginManagement { }\ninclude 'top'; include 'second'\n",
+    })
+    withSnapshot(dataDir, (db) => {
+      expect((projects(db) as Array<{ name: string }>).map((p) => p.name)).toEqual([':second', ':top'])
+      expect(partialSymbols(db, 'settings.gradle')).toBe('partial')
+    })
+  }, 240000)
+})
+
+describe('FR156 FR160 Gradle routing and the scripts nothing includes', () => {
+  it('FR160 settings.gradle.kts and build.gradle.kts are build manifests: indexed, and no Kotlin symbols come from them', async () => {
+    const { dataDir } = await indexedRepo({
+      'settings.gradle.kts': 'fun helper(): String = "x"\ninclude(":app")\n',
+      'app/build.gradle.kts': 'fun configure(): Int = 1\nclass Local\ndependencies {\n    implementation("g:a:1")\n}\n',
+      'app/Helper.kt': 'fun real(): Int = 2\n',
+    })
+    withSnapshot(dataDir, (db) => {
+      expect(db.prepare("select path, disposition, language from file where path like '%.kts' order by path").all()).toEqual([
+        { path: 'app/build.gradle.kts', disposition: 'indexed', language: 'build' },
+        { path: 'settings.gradle.kts', disposition: 'indexed', language: 'build' },
+      ])
+      // The positive control: Kotlin source still gets its symbols, so the absence of any from the scripts is not an empty index.
+      expect(db.prepare("select f.path, s.name from symbol s join file f on f.id = s.file_id where s.kind in ('function', 'class') order by f.path, s.name").all()).toEqual([{ path: 'app/Helper.kt', name: 'real' }])
+      expect(rows(db, 'depends_on_package').map((r) => r.to)).toEqual(['maven:g:a'])
+    })
+  }, 240000)
+
+  it('FR156 a build script no settings include owns is reported partial, with a diagnostic naming why, not skipped silently', async () => {
+    const { repo, dataDir } = await indexedRepo({
+      'settings.gradle': "include 'a'\n",
+      'a/build.gradle': "dependencies {\n    implementation 'g:a:1'\n}\n",
+      'orphan/build.gradle': "dependencies {\n    implementation 'g:orphan:1'\n}\n",
+    })
+    withSnapshot(dataDir, (db) => {
+      expect(partialSymbols(db, 'orphan/build.gradle')).toBe('partial')
+      expect(partialSymbols(db, 'a/build.gradle')).toBe('complete')
+      expect(rows(db, 'depends_on_package').map((r) => r.to)).toEqual(['maven:g:a'])
+    })
+    const entry = BUILT_IN.find((x) => x.id === 'build')!.entry()!
+    const req = (id: number, method: string, params: unknown) => JSON.stringify({ jsonrpc: '2.0', id, method, params })
+    const files = ['settings.gradle', 'a/build.gradle', 'orphan/build.gradle'].map((p) => ({ path: p, language: 'build' }))
+    const out = spawnSync(process.execPath, [entry], { input: [req(1, 'initialize', { workspace: repo, files }), req(2, 'workspace', {}), req(3, 'shutdown', {})].join('\n') + '\n', encoding: 'utf8' })
+    const workspace = out.stdout.split('\n').filter(Boolean).map((l) => JSON.parse(l)).find((m) => m.id === 2)
+    expect(workspace.result.diagnostics).toEqual([{ level: 'warning', path: 'orphan/build.gradle', message: expect.stringMatching(/no settings script includes a project in this directory/) }])
   }, 240000)
 })
 

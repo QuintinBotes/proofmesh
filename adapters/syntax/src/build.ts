@@ -115,7 +115,10 @@ let workspace = ''
 let manifests: string[] = []
 const results = new Map<string, { status: 'ok' | 'failed'; detail?: string; partial?: boolean }>()
 let computed: { symbols: Fact[]; relationships: Fact[] } | undefined
+/** Why a file reports partial, in the workspace response. */
+const diagnostics: Array<{ level: 'warning'; message: string; path: string }> = []
 
+const MAX_EXPANDED = 4096, MAX_SUBSTITUTIONS = 256
 const dirOf = (p: string) => (path.posix.dirname(p) === '.' ? '' : path.posix.dirname(p))
 const lineOf = (m: Manifest, offset: number) => { let lo = 0, hi = m.lines.length - 1; while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (m.lines[mid]! <= offset) lo = mid; else hi = mid - 1 } return lo + 1 }
 const rangeOf = (m: Manifest, start: number, end: number): Range => ({ start_byte: m.at[start]!, end_byte: Math.max(m.at[end]!, m.at[start]! + 1), start_line: lineOf(m, start), end_line: lineOf(m, Math.max(end - 1, start)) })
@@ -167,7 +170,7 @@ function compute(): { symbols: Fact[]; relationships: Fact[] } {
   const settings: Array<{ m: Manifest; notes: string[]; projects: Map<string, Project> }> = []
   const gradleBuilds: Array<{ m: Manifest; deps: GradleDep[]; notes: string[] }> = []
   const catalogs = new Map<string, Catalog>()
-  const partial = (file: string) => results.set(file, { ...results.get(file)!, partial: true })
+  const partial = (file: string, reason: string) => { results.set(file, { ...results.get(file)!, partial: true }); if (!diagnostics.some((d) => d.path === file && d.message === reason)) diagnostics.push({ level: 'warning', message: reason, path: file }) }
   const declare = (p: Omit<Project, 'id'>, idSuffix = '') => {
     const project = { ...p, id: `project:${p.manifest.path}${idSuffix}` }
     projects.push(project)
@@ -244,7 +247,7 @@ function compute(): { symbols: Fact[]; relationships: Fact[] } {
   }
   /** A dependency no static read can name: kept as an unresolved row at its line, never dropped and never guessed, and its file reports partial. */
   const dynamic = (source: Project, site: Range, manifest: Manifest, detail: Record<string, string>): Fact => {
-    partial(manifest.path)
+    partial(manifest.path, `a dependency of ${source.name} cannot be read statically (${Object.values(detail).join(' ')})`)
     return rel('depends_on_package', source, site, manifest, { resolution: 'unresolved', reason: 'dynamic_specifier', detail })
   }
   const pathDependency = (source: Project, site: Range, manifest: Manifest, name: string, written: string, from: string, eco: Project['eco']) => {
@@ -337,17 +340,25 @@ function compute(): { symbols: Fact[]; relationships: Fact[] } {
       const own = e.pom
       const project: Record<string, string | undefined> = { 'project.groupId': own.groupId ?? own.parent?.groupId, 'project.artifactId': own.artifactId, 'project.version': own.version ?? own.parent?.version, 'project.parent.groupId': own.parent?.groupId, 'project.parent.version': own.parent?.version }
       project['pom.groupId'] = project['project.groupId']; project['pom.version'] = project['project.version']; project['pom.artifactId'] = project['project.artifactId']
-      if (key in project) return project[key]
+      if (Object.hasOwn(project, key)) return project[key]
       for (let p: typeof e | undefined = e, n = 0; p && n < 20; p = parentOf(p), n++) if (Object.hasOwn(p.pom.properties, key)) return p.pom.properties[key]
       return undefined
     }
-    let out = s
-    for (let round = 0; round < 8 && out.includes('${'); round++) {
-      const next = out.replace(/\$\{([^}]+)\}/g, (whole, key: string) => lookup(key) ?? whole)
-      if (next === out) break
-      out = next
+    // Each name expands through the names it holds, so a cycle, or a chain that fans out past the caps, leaves the value as written and the file partial.
+    let substitutions = 0
+    const expand = (text: string, via: string[]): string => text.replace(/\$\{([^}]+)\}/g, (whole, key: string) => {
+      const value = lookup(key)
+      if (value === undefined) return whole
+      if (via.includes(key) || ++substitutions > MAX_SUBSTITUTIONS) throw new Error('cap')
+      const out = expand(value, [...via, key])
+      if (out.length > MAX_EXPANDED) throw new Error('cap')
+      return out
+    })
+    try { return expand(s, []) } catch (err) {
+      if ((err as Error).message !== 'cap') throw err
+      partial(e.m.path, `a \${...} expression cycles or expands past ${MAX_EXPANDED} characters, so it is left as written`)
+      return s
     }
-    return out
   }
   const managedVersion = (e: { m: Manifest; pom: Pom }, key: string): string | undefined => {
     for (let p: typeof e | undefined = e, n = 0; p && n < 20; p = parentOf(p), n++) if (p.pom.managed[key]) return interpolate(p, p.pom.managed[key]!)
@@ -378,12 +389,12 @@ function compute(): { symbols: Fact[]; relationships: Fact[] } {
   // Gradle: a build script belongs to the project of its directory in the nearest settings script that includes one there. Only declarative
   // statements are read, each marked inferred, and anything else is named dynamic; a script is never evaluated (FR079).
   const INFERRED = { inferred: 'gradle_script_pattern' }
-  for (const s of settings) if (s.notes.length) partial(s.m.path)
+  for (const s of settings) for (const n of new Set(s.notes)) partial(s.m.path, `settings not read: ${n}`)
   for (const { m, deps, notes } of gradleBuilds) {
     const owner = settings.filter((s) => [...s.projects.values()].some((p) => p.dir === m.dir)).sort((a, b) => b.m.dir.length - a.m.dir.length)[0]
     const source = owner && [...owner.projects.values()].find((p) => p.dir === m.dir)
-    if (!owner || !source) continue
-    if (notes.length) partial(m.path)
+    if (!owner || !source) { partial(m.path, 'no settings script includes a project in this directory, so its dependencies are not read'); continue }
+    for (const n of new Set(notes)) partial(m.path, `build script not read: ${n}`)
     const catalog = catalogs.get(owner.m.dir)
     const coordinate = (group: string, name: string, version: string | undefined, site: Range) => relationships.push(external(source, site, m, 'maven', `${group}:${name}`, version ?? '', INFERRED))
     for (const dep of deps) {
@@ -428,7 +439,7 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
       reply({ adapter: { id: 'build', version: VERSION, protocol_version: '1.0', languages: ['build'], toolchain: {} }, capabilities: { syntax: true, symbols: true, resolved_calls: false }, external_inputs: [] })
     } else if (req.method === 'workspace') {
       computed ??= compute()
-      reply({ ...computed, file_results: manifests.map(fileResult), diagnostics: [] })
+      reply({ ...computed, file_results: manifests.map(fileResult), diagnostics })
     } else if (req.method === 'analyze') {
       computed ??= compute()
       reply({ symbols: [], relationships: [], file_results: (req.params.paths as string[]).map(fileResult), diagnostics: [] })

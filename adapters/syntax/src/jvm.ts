@@ -8,7 +8,13 @@ export class ParseError extends Error { constructor(message: string, readonly of
 export type XNode = { name: string; start: number; end: number; text: string; children: XNode[] }
 const MAX_DEPTH = 200
 const ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" }
-const decode = (s: string) => s.replace(/&(#x[0-9a-fA-F]+|#\d+|\w+);/g, (m, e: string) => (e[0] === '#' ? String.fromCodePoint(e[1] === 'x' ? parseInt(e.slice(2), 16) : Number(e.slice(1))) : (ENTITIES[e] ?? m)))
+/** Character data with the five predefined entities and numeric references decoded; a reference to no XML character is not well-formed. */
+const decode = (s: string, at: number) => s.replace(/&(#x[0-9a-fA-F]+|#\d+|\w+);/g, (m, e: string) => {
+  if (e[0] !== '#') return ENTITIES[e] ?? m
+  const n = e[1] === 'x' ? parseInt(e.slice(2), 16) : Number(e.slice(1))
+  if (!(n === 9 || n === 10 || n === 13 || (n >= 0x20 && n <= 0xd7ff) || (n >= 0xe000 && n <= 0x10ffff && n !== 0xfffe && n !== 0xffff))) throw new ParseError(`${m} is not an XML character`, at)
+  return String.fromCodePoint(n)
+})
 
 /** The root element of an XML document. A DOCTYPE is skipped and never expanded, so no entity can grow the text. */
 export function parseXml(text: string): XNode {
@@ -18,7 +24,7 @@ export function parseXml(text: string): XNode {
   while (i < text.length) {
     const lt = text.indexOf('<', i)
     const chunk = text.slice(i, lt < 0 ? text.length : lt)
-    if (stack.length) stack.at(-1)!.text += decode(chunk)
+    if (stack.length) stack.at(-1)!.text += decode(chunk, i)
     else if (chunk.trim()) throw new ParseError('text outside the root element', i)
     if (lt < 0) break
     i = lt
@@ -146,8 +152,13 @@ export function readSettings(text: string): { includes: GradleInclude[]; notes: 
   const includes: GradleInclude[] = [], notes: string[] = []
   const re = /(?:^|[\s;{}])include(Flat|Build)?\b[ \t]*/g
   for (let m = re.exec(skeleton); m; m = re.exec(skeleton)) {
-    const from = m.index + m[0].length, end = statementEnd(skeleton, from)
+    const from = m.index + m[0].length, end = statementEnd(skeleton, from), at = m.index + m[0].indexOf('include')
     if (m[1]) { notes.push(`include${m[1]}`); continue }
+    // Only an include that is a statement of the script counts; one in a block or after a condition may never run.
+    const before = skeleton.slice(0, at), lineStart = Math.max(before.lastIndexOf('\n'), before.lastIndexOf(';')) + 1
+    let depth = 0
+    for (const c of before) { if (c === '{') depth++; else if (c === '}') depth-- }
+    if (depth > 0 || before.slice(lineStart).trim()) { notes.push('include in a block or after a condition'); continue }
     const lits = quoted(code, skeleton, from, end)
     // Anything between the literals other than punctuation (a variable, a spread, a call) is not read.
     let rest = skeleton.slice(from, end)
