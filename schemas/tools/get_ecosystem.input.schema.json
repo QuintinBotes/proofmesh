@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "tools/get_ecosystem.input.schema.json",
+  "title": "get_ecosystem input",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "workspace"
+  ],
+  "properties": {
+    "workspace": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._-]+$",
+      "description": "The workspace whose members and links to report (A29)."
+    },
+    "link_file_id": {
+      "type": "string",
+      "pattern": "^link_[0-9a-z]+$",
+      "description": "Pin a sealed link file; default is the latest sealed for the workspace."
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "timeout_ms": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_rows": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_depth": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "envelope": {
+      "enum": [
+        "full",
+        "compact"
+      ],
+      "description": "compact leaves out the snapshot-wide parts of the envelope (unresolved reasons, standing limitations) that an earlier answer from the same snapshot already gave; query-specific limits stay. Over MCP, answers after the first full one per snapshot are compact unless full is asked for."
+    }
+  },
+  "description": "The ecosystem overview of a workspace (A11): its repositories as nodes with their member snapshots, the cross-repository links between them by type with match confidence, and the client facts that matched nothing, as unresolved boundaries. Answers from the workspace's sealed link file; run `proofmesh workspace link <name>` to build one."
+}

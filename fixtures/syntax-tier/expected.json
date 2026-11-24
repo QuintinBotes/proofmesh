@@ -1,0 +1,786 @@
+{
+  "dispositions": {
+    "bash/run.sh": [
+      "indexed",
+      null
+    ],
+    "c/util.c": [
+      "indexed",
+      null
+    ],
+    "cpp/shapes.cpp": [
+      "indexed",
+      null
+    ],
+    "go/main.go": [
+      "indexed",
+      null
+    ],
+    "java/Main.java": [
+      "indexed",
+      null
+    ],
+    "kotlin/Main.kt": [
+      "indexed",
+      null
+    ],
+    "php/index.php": [
+      "indexed",
+      null
+    ],
+    "python/app.py": [
+      "indexed",
+      null
+    ],
+    "ruby/greeter.rb": [
+      "indexed",
+      null
+    ],
+    "rust/lib.rs": [
+      "indexed",
+      null
+    ],
+    "scala/Main.scala": [
+      "indexed",
+      null
+    ],
+    "sql/schema.sql": [
+      "indexed",
+      null
+    ],
+    "swift/Shop.swift": [
+      "indexed",
+      null
+    ]
+  },
+  "symbols": [
+    {
+      "kind": "module",
+      "qualified_name": "python/app",
+      "lines": [
+        1,
+        6
+      ],
+      "signature": null
+    },
+    {
+      "kind": "class",
+      "qualified_name": "python/app:Greeter",
+      "lines": [
+        1,
+        3
+      ],
+      "signature": null
+    },
+    {
+      "kind": "function",
+      "qualified_name": "python/app:Greeter.greet",
+      "lines": [
+        2,
+        3
+      ],
+      "signature": null
+    },
+    {
+      "kind": "function",
+      "qualified_name": "python/app:format_name",
+      "lines": [
+        5,
+        6
+      ],
+      "signature": null
+    },
+    {
+      "kind": "module",
+      "qualified_name": "java/Main",
+      "lines": [
+        1,
+        4
+      ],
+      "signature": null
+    },
+    {
+      "kind": "class",
+      "qualified_name": "java/Main:Main",
+      "lines": [
+        1,
+        4
+      ],
+      "signature": null
+    },
+    {
+      "kind": "method",
+      "qualified_name": "java/Main:Main.run",
+      "lines": [
+        2,
+        2
+      ],
+      "signature": null
+    },
+    {
+      "kind": "method",
+      "qualified_name": "java/Main:Main.helper",
+      "lines": [
+        3,
+        3
+      ],
+      "signature": null
+    },
+    {
+      "kind": "module",
+      "qualified_name": "go/main",
+      "lines": [
+        1,
+        5
+      ],
+      "signature": null
+    },
+    {
+      "kind": "function",
+      "qualified_name": "go/main:Run",
+      "lines": [
+        3,
+        3
+      ],
+      "signature": null
+    },
+    {
+      "kind": "function",
+      "qualified_name": "go/main:helper",
+      "lines": [
+        5,
+        5
+      ],
+      "signature": null
+    },
+    {
+      "kind": "module",
+      "qualified_name": "rust/lib",
+      "lines": [
+        1,
+        7
+      ],
+      "signature": null
+    },
+    {
+      "kind": "class",
+      "qualified_name": "rust/lib:Counter",
+      "lines": [
+        1,
+        1
+      ],
+      "signature": null
+    },
+    {
+      "kind": "method",
+      "qualified_name": "rust/lib:bump",
+      "lines": [
+        4,
+        4
+      ],
+      "signature": null
+    },
+    {
+      "kind": "function",
+      "qualified_name": "rust/lib:helper",
+      "lines": [
+        7,
+        7
+      ],
+      "signature": null
+    },
+    {
+      "kind": "module",
+      "qualified_name": "ruby/greeter",
+      "lines": [
+        1,
+        5
+      ],
+      "signature": null
+    },
+    {
+      "kind": "class",
+      "qualified_name": "ruby/greeter:Greeter",
+      "lines": [
+        1,
+        5
+      ],
+      "signature": null
+    },
+    {
+      "kind": "method",
+      "qualified_name": "ruby/greeter:Greeter.greet",
+      "lines": [
+        2,
+        4
+      ],
+      "signature": null
+    },
+    {
+      "kind": "module",
+      "qualified_name": "bash/run",
+      "lines": [
+        1,
+        4
+      ],
+      "signature": null
+    },
+    {
+      "kind": "function",
+      "qualified_name": "bash/run:greet",
+      "lines": [
+        1,
+        3
+      ],
+      "signature": null
+    },
+    {
+      "kind": "module",
+      "qualified_name": "kotlin/Main",
+      "lines": [
+        1,
+        5
+      ],
+      "signature": null
+    },
+    {
+      "kind": "class",
+      "qualified_name": "kotlin/Main:Greeter",
+      "lines": [
+        1,
+        3
+      ],
+      "signature": null
+    },
+    {
+      "kind": "function",
+      "qualified_name": "kotlin/Main:Greeter.greet",
+      "lines": [
+        2,
+        2
+      ],
+      "signature": null
+    },
+    {
+      "kind": "function",
+      "qualified_name": "kotlin/Main:helper",
+      "lines": [
+        5,
+        5
+      ],
+      "signature": null
+    },
+    {
+      "kind": "module",
+      "qualified_name": "c/util",
+      "lines": [
+        1,
+        2
+      ],
+      "signature": null
+    },
+    {
+      "kind": "function",
+      "qualified_name": "c/util:helper",
+      "lines": [
+        1,
+        1
+      ],
+      "signature": null
+    },
+    {
+      "kind": "function",
+      "qualified_name": "c/util:run",
+      "lines": [
+        2,
+        2
+      ],
+      "signature": null
+    },
+    {
+      "kind": "module",
+      "qualified_name": "cpp/shapes",
+      "lines": [
+        1,
+        3
+      ],
+      "signature": null
+    },
+    {
+      "kind": "class",
+      "qualified_name": "cpp/shapes:Shape",
+      "lines": [
+        1,
+        2
+      ],
+      "signature": null
+    },
+    {
+      "kind": "function",
+      "qualified_name": "cpp/shapes:area",
+      "lines": [
+        3,
+        3
+      ],
+      "signature": null
+    },
+    {
+      "kind": "module",
+      "qualified_name": "php/index",
+      "lines": [
+        1,
+        6
+      ],
+      "signature": null
+    },
+    {
+      "kind": "class",
+      "qualified_name": "php/index:Greeter",
+      "lines": [
+        2,
+        6
+      ],
+      "signature": null
+    },
+    {
+      "kind": "function",
+      "qualified_name": "php/index:Greeter.greet",
+      "lines": [
+        3,
+        5
+      ],
+      "signature": null
+    },
+    {
+      "kind": "module",
+      "qualified_name": "scala/Main",
+      "lines": [
+        1,
+        4
+      ],
+      "signature": null
+    },
+    {
+      "kind": "class",
+      "qualified_name": "scala/Main:Main",
+      "lines": [
+        1,
+        4
+      ],
+      "signature": null
+    },
+    {
+      "kind": "function",
+      "qualified_name": "scala/Main:Main.run",
+      "lines": [
+        2,
+        2
+      ],
+      "signature": null
+    },
+    {
+      "kind": "function",
+      "qualified_name": "scala/Main:Main.helper",
+      "lines": [
+        3,
+        3
+      ],
+      "signature": null
+    },
+    {
+      "kind": "module",
+      "qualified_name": "swift/Shop",
+      "lines": [
+        1,
+        34
+      ],
+      "signature": null
+    },
+    {
+      "kind": "interface",
+      "qualified_name": "swift/Shop:Pricing",
+      "lines": [
+        4,
+        7
+      ],
+      "signature": null
+    },
+    {
+      "kind": "property",
+      "qualified_name": "swift/Shop:Pricing.currency",
+      "lines": [
+        5,
+        5
+      ],
+      "signature": null
+    },
+    {
+      "kind": "method",
+      "qualified_name": "swift/Shop:Pricing.price",
+      "lines": [
+        6,
+        6
+      ],
+      "signature": null
+    },
+    {
+      "kind": "struct",
+      "qualified_name": "swift/Shop:Catalog",
+      "lines": [
+        9,
+        14
+      ],
+      "signature": null
+    },
+    {
+      "kind": "property",
+      "qualified_name": "swift/Shop:Catalog.currency",
+      "lines": [
+        10,
+        10
+      ],
+      "signature": null
+    },
+    {
+      "kind": "method",
+      "qualified_name": "swift/Shop:Catalog.price",
+      "lines": [
+        11,
+        13
+      ],
+      "signature": null
+    },
+    {
+      "kind": "class",
+      "qualified_name": "swift/Shop:Cart",
+      "lines": [
+        16,
+        23
+      ],
+      "signature": null
+    },
+    {
+      "kind": "property",
+      "qualified_name": "swift/Shop:Cart.shared",
+      "lines": [
+        17,
+        17
+      ],
+      "signature": null
+    },
+    {
+      "kind": "property",
+      "qualified_name": "swift/Shop:Cart.items",
+      "lines": [
+        18,
+        18
+      ],
+      "signature": null
+    },
+    {
+      "kind": "method",
+      "qualified_name": "swift/Shop:Cart.add",
+      "lines": [
+        19,
+        22
+      ],
+      "signature": null
+    },
+    {
+      "kind": "enum",
+      "qualified_name": "swift/Shop:Size",
+      "lines": [
+        25,
+        28
+      ],
+      "signature": null
+    },
+    {
+      "kind": "method",
+      "qualified_name": "swift/Shop:Size.label",
+      "lines": [
+        27,
+        27
+      ],
+      "signature": null
+    },
+    {
+      "kind": "method",
+      "qualified_name": "swift/Shop:Cart.clear",
+      "lines": [
+        31,
+        31
+      ],
+      "signature": null
+    },
+    {
+      "kind": "function",
+      "qualified_name": "swift/Shop:lookup",
+      "lines": [
+        34,
+        34
+      ],
+      "signature": null
+    },
+    {
+      "kind": "module",
+      "qualified_name": "sql/schema",
+      "lines": [
+        1,
+        26
+      ],
+      "signature": null
+    },
+    {
+      "kind": "table",
+      "qualified_name": "customers",
+      "lines": [
+        2,
+        5
+      ],
+      "signature": null
+    },
+    {
+      "kind": "table",
+      "qualified_name": "sales.orders",
+      "lines": [
+        7,
+        11
+      ],
+      "signature": null
+    },
+    {
+      "kind": "table",
+      "qualified_name": "big_orders",
+      "lines": [
+        13,
+        15
+      ],
+      "signature": null
+    },
+    {
+      "kind": "function",
+      "qualified_name": "sql/schema:order_total",
+      "lines": [
+        17,
+        19
+      ],
+      "signature": null
+    },
+    {
+      "kind": "function",
+      "qualified_name": "sql/schema:archive_orders",
+      "lines": [
+        21,
+        23
+      ],
+      "signature": null
+    }
+  ],
+  "calls": [
+    {
+      "from": "python/app:Greeter.greet",
+      "line": 3,
+      "site_text": "format_name(name)",
+      "resolution": "unresolved",
+      "reason": "outside_capability"
+    },
+    {
+      "from": "python/app:format_name",
+      "line": 6,
+      "site_text": "name.title()",
+      "resolution": "unresolved",
+      "reason": "outside_capability"
+    },
+    {
+      "from": "java/Main:Main.run",
+      "line": 2,
+      "site_text": "helper()",
+      "resolution": "unresolved",
+      "reason": "outside_capability"
+    },
+    {
+      "from": "go/main:Run",
+      "line": 3,
+      "site_text": "helper()",
+      "resolution": "unresolved",
+      "reason": "outside_capability"
+    },
+    {
+      "from": "rust/lib:bump",
+      "line": 4,
+      "site_text": "helper()",
+      "resolution": "unresolved",
+      "reason": "outside_capability"
+    },
+    {
+      "from": "ruby/greeter:Greeter.greet",
+      "line": 3,
+      "site_text": "format_name(name)",
+      "resolution": "unresolved",
+      "reason": "outside_capability"
+    },
+    {
+      "from": "bash/run:greet",
+      "line": 2,
+      "site_text": "echo \"hello\"",
+      "resolution": "unresolved",
+      "reason": "outside_capability"
+    },
+    {
+      "from": "bash/run",
+      "line": 4,
+      "site_text": "greet",
+      "resolution": "unresolved",
+      "reason": "outside_capability"
+    },
+    {
+      "from": "kotlin/Main:Greeter.greet",
+      "line": 2,
+      "site_text": "helper()",
+      "resolution": "unresolved",
+      "reason": "outside_capability"
+    },
+    {
+      "from": "php/index:Greeter.greet",
+      "line": 4,
+      "site_text": "$this->format($name)",
+      "resolution": "unresolved",
+      "reason": "outside_capability"
+    },
+    {
+      "from": "scala/Main:Main.run",
+      "line": 2,
+      "site_text": "helper()",
+      "resolution": "unresolved",
+      "reason": "outside_capability"
+    },
+    {
+      "from": "swift/Shop:Catalog.price",
+      "line": 12,
+      "site_text": "lookup(item)",
+      "resolution": "unresolved",
+      "reason": "outside_capability"
+    },
+    {
+      "from": "swift/Shop:Cart.shared",
+      "line": 17,
+      "site_text": "Cart()",
+      "resolution": "unresolved",
+      "reason": "outside_capability"
+    },
+    {
+      "from": "swift/Shop:Cart.add",
+      "line": 20,
+      "site_text": "items.append(item)",
+      "resolution": "unresolved",
+      "reason": "outside_capability"
+    },
+    {
+      "from": "swift/Shop:Cart.add",
+      "line": 21,
+      "site_text": "notify(item)",
+      "resolution": "unresolved",
+      "reason": "outside_capability"
+    },
+    {
+      "from": "swift/Shop:Size.label",
+      "line": 27,
+      "site_text": "describe(self)",
+      "resolution": "unresolved",
+      "reason": "outside_capability"
+    },
+    {
+      "from": "swift/Shop:Cart.clear",
+      "line": 31,
+      "site_text": "items.removeAll()",
+      "resolution": "unresolved",
+      "reason": "outside_capability"
+    },
+    {
+      "from": "sql/schema:order_total",
+      "line": 18,
+      "site_text": "sum(total)",
+      "resolution": "unresolved",
+      "reason": "outside_capability"
+    },
+    {
+      "from": "sql/schema",
+      "line": 26,
+      "site_text": "order_total(1)",
+      "resolution": "unresolved",
+      "reason": "outside_capability"
+    }
+  ],
+  "closed_world": "Symbols and calls are complete for this fixture. C and C++ tags queries name no calls. The imports and table references below are complete for the Swift and SQL files, the only ones whose queries name either.",
+  "imports_unresolved": [
+    {
+      "from": "swift/Shop.swift",
+      "line": 1,
+      "site_text": "import Foundation"
+    },
+    {
+      "from": "swift/Shop.swift",
+      "line": 2,
+      "site_text": "import struct Billing.Invoice"
+    }
+  ],
+  "table_references": [
+    {
+      "from": "sales.orders",
+      "line": 9,
+      "site_text": "customers",
+      "name": "customers",
+      "resolution": "candidate",
+      "candidate": "customers"
+    },
+    {
+      "from": "big_orders",
+      "line": 14,
+      "site_text": "sales.orders",
+      "name": "sales.orders",
+      "resolution": "candidate",
+      "candidate": "sales.orders"
+    },
+    {
+      "from": "big_orders",
+      "line": 15,
+      "site_text": "customers",
+      "name": "customers",
+      "resolution": "candidate",
+      "candidate": "customers"
+    },
+    {
+      "from": "sql/schema:order_total",
+      "line": 18,
+      "site_text": "sales.orders",
+      "name": "sales.orders",
+      "resolution": "candidate",
+      "candidate": "sales.orders"
+    },
+    {
+      "from": "sql/schema:archive_orders",
+      "line": 22,
+      "site_text": "sales.orders",
+      "name": "sales.orders",
+      "resolution": "candidate",
+      "candidate": "sales.orders"
+    },
+    {
+      "from": "sql/schema",
+      "line": 25,
+      "site_text": "customers",
+      "name": "customers",
+      "resolution": "candidate",
+      "candidate": "customers"
+    },
+    {
+      "from": "sql/schema",
+      "line": 26,
+      "site_text": "invoices",
+      "name": "invoices",
+      "resolution": "unresolved",
+      "reason": "outside_capability"
+    }
+  ]
+}

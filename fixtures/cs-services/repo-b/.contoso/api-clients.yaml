@@ -1,0 +1,8 @@
+# Service-to-service callers the orders service grants.
+clients:
+  - name: storefront-web
+    repository: storefront
+  - name: "Storefront-Api"
+  - name: reporting
+    service: reporting-service   # not a member of the workspace
+  - orders

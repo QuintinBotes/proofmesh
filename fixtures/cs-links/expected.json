@@ -1,0 +1,9 @@
+{
+  "links": [
+    { "type": "calls_endpoint", "rule": "http_route", "source_repository": "store", "source": "Store.Clients.IOrdersApi.GetOrder", "target_repository": "shop", "target": "GET api/Orders/{id}", "confidence": 1, "resolution": "resolved", "reason": null },
+    { "type": "calls_endpoint", "rule": "http_route", "source_repository": "store", "source": "Store.Clients.IInventoryApi.GetStock", "target_repository": null, "target": null, "confidence": 1, "resolution": "unresolved", "reason": "no_match" },
+    { "type": "messages", "rule": "messaging", "source_repository": "store", "source": "kafka:orders.placed", "target_repository": "shop", "target": "kafka:orders.placed", "confidence": 1, "resolution": "resolved", "reason": null },
+    { "type": "depends_on_package", "rule": "package", "source_repository": "store", "source": "Store.Clients", "target_repository": "shop", "target": "Shop.Contracts", "confidence": 0.9, "resolution": "resolved", "reason": null },
+    { "type": "depends_on_package", "rule": "package", "source_repository": "store", "source": "Store.Clients", "target_repository": null, "target": null, "confidence": 1, "resolution": "unresolved", "reason": "no_match" }
+  ]
+}

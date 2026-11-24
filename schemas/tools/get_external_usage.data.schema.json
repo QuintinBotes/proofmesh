@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "get_external_usage.data.schema.json",
+  "title": "get_external_usage data",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "groups",
+    "totals"
+  ],
+  "properties": {
+    "groups": {
+      "type": "array",
+      "description": "Most call sites first.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "key",
+          "module",
+          "call_sites",
+          "files",
+          "projects",
+          "external_ids",
+          "sample_sites"
+        ],
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "The module, type or member name."
+          },
+          "module": {
+            "type": "string"
+          },
+          "call_sites": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "files": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "projects": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "external_ids": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Distinct external symbols folded into the group."
+          },
+          "sample_sites": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "path",
+                "line"
+              ],
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "line": {
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "totals": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "call_sites",
+        "files",
+        "projects",
+        "groups"
+      ],
+      "description": "Over every matching call site, before row limits.",
+      "properties": {
+        "call_sites": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "files": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "projects": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "groups": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

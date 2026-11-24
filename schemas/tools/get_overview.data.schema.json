@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "get_overview.data.schema.json",
+  "title": "get_overview data",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "path",
+    "scope",
+    "children",
+    "links",
+    "omitted"
+  ],
+  "properties": {
+    "path": {
+      "type": "string"
+    },
+    "scope": {
+      "enum": [
+        "directory",
+        "file"
+      ]
+    },
+    "children": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "key",
+          "name",
+          "kind",
+          "symbols",
+          "matches",
+          "symbol_kind"
+        ],
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "directory",
+              "file",
+              "symbol"
+            ]
+          },
+          "symbols": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "matches": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "symbol_kind": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "links": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "from",
+          "to",
+          "count",
+          "by_type"
+        ],
+        "properties": {
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "by_type": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        }
+      }
+    },
+    "omitted": {
+      "type": "integer",
+      "minimum": 0
+    }
+  }
+}

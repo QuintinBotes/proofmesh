@@ -1,0 +1,683 @@
+{
+  "description": "Every acceptance criterion and requirement maps to the test files that prove it. pnpm check:traceability verifies that each file exists and names the criterion.",
+  "items": {
+    "AC01": [
+      "packages/proofmesh/test/cli.e2e.test.ts"
+    ],
+    "AC02": [
+      "packages/proofmesh/test/golden.test.ts"
+    ],
+    "AC03": [
+      "packages/proofmesh/test/golden.test.ts"
+    ],
+    "AC04": [
+      "packages/proofmesh/test/golden.test.ts"
+    ],
+    "AC05": [
+      "packages/proofmesh/test/golden.test.ts"
+    ],
+    "AC06": [
+      "packages/proofmesh/test/golden.test.ts"
+    ],
+    "AC07": [
+      "packages/proofmesh/test/golden.test.ts"
+    ],
+    "AC08": [
+      "packages/proofmesh/test/sealing.test.ts"
+    ],
+    "AC09": [
+      "packages/proofmesh/test/sealing.test.ts"
+    ],
+    "AC10": [
+      "packages/proofmesh/test/sealing.test.ts"
+    ],
+    "AC11": [
+      "packages/proofmesh/test/sealing.test.ts"
+    ],
+    "AC12": [
+      "packages/proofmesh/test/determinism.test.ts"
+    ],
+    "AC13": [
+      "packages/proofmesh/test/trace.test.ts"
+    ],
+    "AC14": [
+      "packages/proofmesh/test/trace.test.ts"
+    ],
+    "AC15": [
+      "packages/proofmesh/test/trace.test.ts"
+    ],
+    "AC16": [
+      "packages/proofmesh/test/trace.test.ts"
+    ],
+    "AC17": [
+      "packages/proofmesh/test/traversal.property.test.ts"
+    ],
+    "AC18": [
+      "packages/proofmesh/test/relationships.test.ts"
+    ],
+    "AC19": [
+      "packages/proofmesh/test/find.test.ts"
+    ],
+    "AC20": [
+      "packages/proofmesh/test/limits.test.ts"
+    ],
+    "AC21": [
+      "packages/proofmesh/test/evidence.test.ts"
+    ],
+    "AC22": [
+      "packages/proofmesh/test/mcp.contract.test.ts"
+    ],
+    "AC23": [
+      "packages/proofmesh/test/mcp.contract.test.ts"
+    ],
+    "AC24": [
+      "packages/proofmesh/test/http.test.ts"
+    ],
+    "AC25": [
+      "packages/proofmesh/test/http.test.ts"
+    ],
+    "AC26": [
+      "packages/proofmesh/test/adapter-host.test.ts"
+    ],
+    "AC27": [
+      "apps/observatory/test/scene.test.ts"
+    ],
+    "AC28": [
+      "e2e/trace.spec.ts"
+    ],
+    "AC29": [
+      "e2e/trace.spec.ts"
+    ],
+    "AC30": [
+      "e2e/security.spec.ts"
+    ],
+    "AC31": [
+      "e2e/a11y.spec.ts"
+    ],
+    "AC32": [
+      "policy/check-licenses.mjs",
+      "schemas/generate-types.mjs"
+    ],
+    "AC33": [
+      "packages/proofmesh/test/release.test.ts"
+    ],
+    "FR017": [
+      "packages/proofmesh/test/csharp.golden.test.ts"
+    ],
+    "FR018": [
+      "packages/proofmesh/test/csharp.golden.test.ts"
+    ],
+    "A3": [
+      "packages/proofmesh/test/csharp.golden.test.ts"
+    ],
+    "FR077": [
+      "packages/proofmesh/test/csharp.golden.test.ts",
+      "packages/proofmesh/test/csharp.dotnet-frameworks.test.ts",
+      "packages/proofmesh/test/python.test.ts",
+      "packages/proofmesh/test/terraform.test.ts"
+    ],
+    "FR079": [
+      "packages/proofmesh/test/csharp.golden.test.ts"
+    ],
+    "FR080": [
+      "packages/proofmesh/test/csharp.golden.test.ts"
+    ],
+    "FR081": [
+      "packages/proofmesh/test/cli.e2e.test.ts"
+    ],
+    "FR016": [
+      "apps/observatory/test/scene.test.ts",
+      "packages/proofmesh/test/csharp.dotnet-frameworks.test.ts",
+      "packages/proofmesh/test/csharp.frameworks.test.ts",
+      "packages/proofmesh/test/ownership.test.ts"
+    ],
+    "FR056": [
+      "packages/proofmesh/test/overview.test.ts",
+      "apps/observatory/test/map.test.ts",
+      "e2e/map.spec.ts"
+    ],
+    "A11": [
+      "apps/observatory/test/explore.test.ts",
+      "apps/observatory/test/galaxy.test.ts",
+      "apps/observatory/test/scene.test.ts",
+      "e2e/build.spec.ts",
+      "e2e/galaxy.spec.ts",
+      "e2e/views.spec.ts",
+      "packages/proofmesh/test/ecosystem.test.ts",
+      "apps/observatory/test/ecosystem.test.ts",
+      "e2e/ecosystem.spec.ts"
+    ],
+    "A14": [
+      "packages/proofmesh/test/cli.e2e.test.ts"
+    ],
+    "FR019": [
+      "packages/proofmesh/test/find-tests.test.ts",
+      "packages/proofmesh/test/impact.test.ts",
+      "packages/proofmesh/test/memory.test.ts",
+      "packages/proofmesh/test/overview.test.ts",
+      "packages/proofmesh/test/search-sources.test.ts",
+      "packages/proofmesh/test/compare.test.ts",
+      "packages/proofmesh/test/list-queries.test.ts",
+      "apps/observatory/test/diff.test.ts",
+      "e2e/diff.spec.ts"
+    ],
+    "NFR004": [
+      "packages/proofmesh/test/csharp.golden.test.ts",
+      "packages/proofmesh/test/incremental.test.ts"
+    ],
+    "FR027": [
+      "packages/proofmesh/test/claims.test.ts"
+    ],
+    "FR028": [
+      "packages/proofmesh/test/claims.test.ts"
+    ],
+    "FR030": [
+      "packages/proofmesh/test/claims.test.ts"
+    ],
+    "FR033": [
+      "packages/proofmesh/test/claims.test.ts"
+    ],
+    "NFR002": [
+      "packages/proofmesh/test/mcp-http.test.ts"
+    ],
+    "FR040": [
+      "packages/proofmesh/test/mcp-http.test.ts"
+    ],
+    "US12": [
+      "e2e/claims.spec.ts"
+    ],
+    "A2": [
+      "packages/proofmesh/test/csharp.golden.test.ts",
+      "packages/proofmesh/test/typescript-packages.test.ts",
+      "packages/proofmesh/test/python.test.ts"
+    ],
+    "A4": [
+      "apps/observatory/test/share.test.ts",
+      "packages/proofmesh/test/find.test.ts"
+    ],
+    "FR021": [
+      "packages/proofmesh/test/cursor.test.ts"
+    ],
+    "FR007": [
+      "packages/proofmesh/test/resume.test.ts"
+    ],
+    "FR012": [
+      "packages/proofmesh/test/freshness.test.ts"
+    ],
+    "FR013": [
+      "packages/proofmesh/test/freshness.test.ts"
+    ],
+    "US4": [
+      "packages/proofmesh/test/freshness.test.ts"
+    ],
+    "FR009": [
+      "packages/proofmesh/test/watch.test.ts"
+    ],
+    "FR008": [
+      "packages/proofmesh/test/incremental.test.ts"
+    ],
+    "FR014": [
+      "packages/proofmesh/test/incremental.test.ts"
+    ],
+    "SC004": [
+      "packages/proofmesh/test/incremental.test.ts"
+    ],
+    "A16": [
+      "packages/proofmesh/test/fact-cache.test.ts",
+      "packages/proofmesh/test/incremental.test.ts"
+    ],
+    "A19": [
+      "packages/proofmesh/test/discovery.test.ts"
+    ],
+    "A18": [
+      "packages/proofmesh/test/candidates.test.ts"
+    ],
+    "A17": [
+      "packages/proofmesh/test/services.test.ts"
+    ],
+    "FR078": [
+      "packages/proofmesh/test/react.test.ts",
+      "e2e/framework-evidence.spec.ts"
+    ],
+    "A20": [
+      "packages/proofmesh/test/react.test.ts"
+    ],
+    "FR064": [
+      "apps/observatory/test/exporting.test.ts",
+      "e2e/export.spec.ts"
+    ],
+    "FR052": [
+      "apps/observatory/test/exporting.test.ts",
+      "e2e/export.spec.ts",
+      "packages/proofmesh/test/bundle.test.ts"
+    ],
+    "A21": [
+      "packages/proofmesh/test/freshness.test.ts",
+      "packages/proofmesh/test/watch.test.ts"
+    ],
+    "FR061": [
+      "e2e/claims.spec.ts"
+    ],
+    "FR060": [
+      "e2e/framework-evidence.spec.ts"
+    ],
+    "FR059": [
+      "apps/observatory/test/galaxy.test.ts",
+      "apps/observatory/test/exporting.test.ts",
+      "e2e/galaxy.spec.ts"
+    ],
+    "SC011": [
+      "apps/observatory/test/exporting.test.ts",
+      "e2e/galaxy.spec.ts"
+    ],
+    "FR058": [
+      "apps/observatory/test/scene.test.ts",
+      "apps/observatory/test/galaxy.test.ts",
+      "e2e/trace.spec.ts"
+    ],
+    "NFR012": [
+      "e2e/accessibility.spec.ts",
+      "e2e/ecosystem.spec.ts"
+    ],
+    "SC013": [
+      "e2e/accessibility.spec.ts"
+    ],
+    "FR067": [
+      "e2e/accessibility.spec.ts"
+    ],
+    "A22": [
+      "packages/proofmesh/test/adapter-host.test.ts"
+    ],
+    "FR071": [
+      "packages/proofmesh/test/conformance.test.ts"
+    ],
+    "FR072": [
+      "packages/proofmesh/test/conformance.test.ts"
+    ],
+    "SC014": [
+      "packages/proofmesh/test/conformance.test.ts"
+    ],
+    "US18": [
+      "packages/proofmesh/test/adapter-install.test.ts",
+      "packages/proofmesh/test/conformance.test.ts"
+    ],
+    "A6": [
+      "packages/proofmesh/test/syntax-tier.test.ts"
+    ],
+    "A23": [
+      "packages/proofmesh/test/syntax-tier.test.ts"
+    ],
+    "A8": [
+      "packages/proofmesh/test/terraform.test.ts",
+      "packages/proofmesh/test/pulumi.test.ts",
+      "packages/proofmesh/test/csharp.pulumi.test.ts",
+      "packages/proofmesh/test/python.frameworks.test.ts",
+      "packages/proofmesh/test/cloud-links.test.ts"
+    ],
+    "A25": [
+      "packages/proofmesh/test/terraform.test.ts",
+      "packages/proofmesh/test/pulumi.test.ts"
+    ],
+    "A24": [
+      "packages/proofmesh/test/scip.test.ts"
+    ],
+    "A27": [
+      "packages/proofmesh/test/scip.test.ts"
+    ],
+    "A7": [
+      "packages/proofmesh/test/links.test.ts",
+      "packages/proofmesh/test/python-http.test.ts",
+      "packages/proofmesh/test/service-links.test.ts",
+      "packages/proofmesh/test/typescript.routes.test.ts"
+    ],
+    "A28": [
+      "packages/proofmesh/test/links.test.ts",
+      "packages/proofmesh/test/ecosystem.test.ts"
+    ],
+    "A9": [
+      "packages/proofmesh/test/table-reach.test.ts",
+      "packages/proofmesh/test/typeorm.test.ts",
+      "packages/proofmesh/test/python.frameworks.test.ts",
+      "packages/proofmesh/test/prisma.test.ts",
+      "packages/proofmesh/test/typescript.routes.test.ts"
+    ],
+    "A30": [
+      "packages/proofmesh/test/table-reach.test.ts"
+    ],
+    "A10": [
+      "packages/proofmesh/test/discover.test.ts",
+      "packages/proofmesh/test/service-links.test.ts"
+    ],
+    "FR063": [
+      "packages/proofmesh/test/compare.test.ts"
+    ],
+    "FR042": [
+      "packages/proofmesh/test/verification.test.ts"
+    ],
+    "FR043": [
+      "packages/proofmesh/test/verification.test.ts"
+    ],
+    "FR044": [
+      "packages/proofmesh/test/verification.test.ts"
+    ],
+    "FR045": [
+      "packages/proofmesh/test/verification.test.ts"
+    ],
+    "FR046": [
+      "packages/proofmesh/test/verification.test.ts"
+    ],
+    "FR047": [
+      "packages/proofmesh/test/verification.test.ts"
+    ],
+    "FR048": [
+      "packages/proofmesh/test/verification.test.ts"
+    ],
+    "FR032": [
+      "packages/proofmesh/test/bundle.test.ts"
+    ],
+    "FR050": [
+      "packages/proofmesh/test/backup.test.ts"
+    ],
+    "FR051": [
+      "packages/proofmesh/test/gc.test.ts"
+    ],
+    "A12": [
+      "packages/proofmesh/test/eval.test.ts"
+    ],
+    "A13": [
+      "packages/proofmesh/test/mcp-config.test.ts",
+      "packages/proofmesh/test/plugin.test.ts"
+    ],
+    "FR041": [
+      "packages/proofmesh/test/mcp-config.test.ts"
+    ],
+    "NFR013": [
+      "packages/proofmesh/test/release.test.ts"
+    ],
+    "FR070": [
+      "packages/proofmesh/test/release.test.ts"
+    ],
+    "FR073": [
+      "packages/proofmesh/test/release.test.ts"
+    ],
+    "NFR007": [
+      "packages/proofmesh/test/release.test.ts"
+    ],
+    "D12": [
+      "packages/proofmesh/test/release.test.ts"
+    ],
+    "FR010": [
+      "e2e/replay.spec.ts"
+    ],
+    "FR001": [
+      "packages/proofmesh/test/golden.test.ts"
+    ],
+    "FR002": [
+      "packages/proofmesh/test/coverage.test.ts"
+    ],
+    "FR003": [
+      "packages/proofmesh/test/coverage.test.ts"
+    ],
+    "FR004": [
+      "packages/proofmesh/test/coverage.test.ts"
+    ],
+    "FR005": [
+      "packages/proofmesh/test/coverage.test.ts"
+    ],
+    "FR006": [
+      "packages/proofmesh/test/coverage.test.ts"
+    ],
+    "FR011": [
+      "packages/proofmesh/test/sealing.test.ts"
+    ],
+    "FR015": [
+      "packages/proofmesh/test/limits.test.ts"
+    ],
+    "FR020": [
+      "packages/proofmesh/test/traversal.property.test.ts"
+    ],
+    "FR022": [
+      "packages/proofmesh/test/trace.test.ts"
+    ],
+    "FR023": [
+      "packages/proofmesh/test/golden.test.ts",
+      "packages/proofmesh/test/relationships.test.ts"
+    ],
+    "FR024": [
+      "packages/proofmesh/test/find-tests.test.ts"
+    ],
+    "FR025": [
+      "packages/proofmesh/test/evidence.test.ts"
+    ],
+    "FR026": [
+      "packages/proofmesh/test/table-reach.test.ts"
+    ],
+    "FR029": [
+      "packages/proofmesh/test/evidence.test.ts"
+    ],
+    "FR031": [
+      "packages/proofmesh/test/evidence.test.ts"
+    ],
+    "FR034": [
+      "packages/proofmesh/test/mcp-http.test.ts"
+    ],
+    "FR035": [
+      "packages/proofmesh/test/mcp.contract.test.ts"
+    ],
+    "FR036": [
+      "packages/proofmesh/test/contract.test.ts"
+    ],
+    "FR037": [
+      "packages/proofmesh/test/contract.test.ts"
+    ],
+    "FR038": [
+      "packages/proofmesh/test/mcp.contract.test.ts"
+    ],
+    "FR039": [
+      "packages/proofmesh/test/mcp.contract.test.ts"
+    ],
+    "FR049": [
+      "packages/proofmesh/test/release.test.ts"
+    ],
+    "FR053": [
+      "packages/proofmesh/test/local-only.test.ts"
+    ],
+    "FR054": [
+      "packages/proofmesh/test/local-only.test.ts"
+    ],
+    "FR055": [
+      "packages/proofmesh/test/observatory-parity.test.ts",
+      "apps/observatory/test/api.test.ts"
+    ],
+    "FR057": [
+      "apps/observatory/test/encoding.test.ts",
+      "e2e/legend.spec.ts"
+    ],
+    "FR065": [
+      "packages/proofmesh/test/http.test.ts",
+      "apps/observatory/test/visible.test.ts",
+      "e2e/hostile.spec.ts"
+    ],
+    "FR066": [
+      "packages/proofmesh/test/http.test.ts"
+    ],
+    "FR068": [
+      "e2e/legend.spec.ts",
+      "packages/proofmesh/test/http.test.ts"
+    ],
+    "FR069": [
+      "packages/proofmesh/test/release.test.ts"
+    ],
+    "FR075": [
+      "packages/proofmesh/test/fixtures-policy.test.ts",
+      "policy/check-fixtures.mjs"
+    ],
+    "FR076": [
+      "packages/proofmesh/test/contract.test.ts"
+    ],
+    "FR082": [
+      "policy/check-traceability.mjs"
+    ],
+    "FR089": [
+      "packages/proofmesh/test/file-imports.test.ts"
+    ],
+    "FR090": [
+      "packages/proofmesh/test/file-imports.test.ts"
+    ],
+    "FR091": [
+      "packages/proofmesh/test/file-imports.test.ts"
+    ],
+    "FR092": [
+      "packages/proofmesh/test/file-imports.test.ts"
+    ],
+    "FR093": [
+      "packages/proofmesh/test/file-imports.test.ts"
+    ],
+    "FR094": [
+      "packages/proofmesh/test/file-imports.test.ts",
+      "packages/proofmesh/test/coverage.test.ts"
+    ],
+    "FR095": [
+      "packages/proofmesh/test/lean.test.ts",
+      "packages/proofmesh/test/mcp.contract.test.ts"
+    ],
+    "FR096": [
+      "packages/proofmesh/test/lean.test.ts"
+    ],
+    "FR097": [
+      "packages/proofmesh/test/lean.test.ts"
+    ],
+    "FR098": [
+      "packages/proofmesh/test/lean.test.ts"
+    ],
+    "FR099": [
+      "packages/proofmesh/test/mcp.contract.test.ts"
+    ],
+    "FR100": [
+      "packages/proofmesh/test/lean.test.ts",
+      "packages/proofmesh/test/mcp.contract.test.ts",
+      "packages/proofmesh/test/claims.test.ts"
+    ],
+    "FR101": [
+      "packages/proofmesh/test/find-tests.test.ts",
+      "packages/proofmesh/test/test-reach.test.ts"
+    ],
+    "FR102": [
+      "packages/proofmesh/test/test-reach.test.ts"
+    ],
+    "FR103": [
+      "packages/proofmesh/test/test-reach.test.ts"
+    ],
+    "FR104": [
+      "packages/proofmesh/test/test-reach.test.ts"
+    ],
+    "FR105": [
+      "packages/proofmesh/test/test-reach.test.ts"
+    ],
+    "FR106": [
+      "packages/proofmesh/test/test-reach.test.ts"
+    ],
+    "FR107": [
+      "packages/proofmesh/test/test-reach.test.ts"
+    ],
+    "FR108": [
+      "packages/proofmesh/test/impact-completeness.test.ts"
+    ],
+    "FR109": [
+      "packages/proofmesh/test/impact-completeness.test.ts"
+    ],
+    "FR110": [
+      "packages/proofmesh/test/impact-completeness.test.ts"
+    ],
+    "FR111": [
+      "packages/proofmesh/test/impact-completeness.test.ts"
+    ],
+    "FR112": [
+      "packages/proofmesh/test/impact-completeness.test.ts"
+    ],
+    "FR113": [
+      "packages/proofmesh/test/impact-completeness.test.ts"
+    ],
+    "FR114": [
+      "packages/proofmesh/test/impact-completeness.test.ts"
+    ],
+    "A1": [
+      "packages/proofmesh/test/adapter-host.test.ts"
+    ],
+    "A5": [
+      "packages/proofmesh/test/golden.test.ts"
+    ],
+    "A31": [
+      "packages/proofmesh/test/csharp.references.test.ts"
+    ],
+    "A32": [
+      "packages/proofmesh/test/csharp.conventions.test.ts"
+    ],
+    "A33": [
+      "packages/proofmesh/test/query-source.test.ts"
+    ],
+    "A34": [
+      "packages/proofmesh/test/catalog-tools.test.ts"
+    ],
+    "SC001": [
+      "packages/proofmesh/test/golden.test.ts",
+      "packages/proofmesh/test/relationships.test.ts"
+    ],
+    "SC002": [
+      "packages/proofmesh/test/evidence.test.ts"
+    ],
+    "SC003": [
+      "packages/proofmesh/test/golden.test.ts"
+    ],
+    "SC005": [
+      "packages/proofmesh/test/mcp-http.test.ts"
+    ],
+    "SC007": [
+      "packages/proofmesh/test/claims.test.ts"
+    ],
+    "SC008": [
+      "packages/proofmesh/test/sealing.test.ts"
+    ],
+    "SC009": [
+      "packages/proofmesh/test/bundle.test.ts"
+    ],
+    "SC010": [
+      "policy/check-traceability.mjs"
+    ],
+    "SC012": [
+      "e2e/hostile.spec.ts"
+    ],
+    "SC015": [
+      "packages/proofmesh/test/csharp.golden.test.ts"
+    ],
+    "SC016": [
+      "packages/proofmesh/test/release.test.ts"
+    ],
+    "FR083": [
+      "packages/proofmesh/test/typescript.heritage.test.ts"
+    ],
+    "FR084": [
+      "packages/proofmesh/test/typescript.heritage.test.ts"
+    ],
+    "FR085": [
+      "packages/proofmesh/test/typescript.heritage.test.ts"
+    ],
+    "FR086": [
+      "packages/proofmesh/test/typescript.heritage.test.ts"
+    ],
+    "FR087": [
+      "packages/proofmesh/test/typescript.heritage.test.ts"
+    ],
+    "FR088": [
+      "packages/proofmesh/test/typescript.heritage.test.ts"
+    ]
+  },
+  "manual": {
+    "AC34": "Maintainer approves the Trace view screenshots written by e2e/trace.spec.ts (trace-dark.png, trace-light.png). Approved on 2026-11-12 (ADR revision 20); the baselines are in docs/proofmesh/milestones/ac34/.",
+    "AC35": "Integrator runs the private-codebase smoke run; results stay in eval/results/.",
+    "FR074": "No CI exists in this repository. When CI is added, a maintainer reviews that pull-request workflows run on pull_request (not pull_request_target), with read-only permissions and no secrets or release credentials; release signing runs only on tags (docs/proofmesh/release.md).",
+    "SC006": "A maintainer registers Proofmesh in Claude Code and in Codex with proofmesh mcp-config, asks both the same snapshot-pinned questions (bench/eval/samples/invoicing-questions.json), records the sessions, scores them with bench/eval/run.mjs, and confirms both cite the same snapshot id. Last run on 2026-11-12 on the final build, over fixtures/ts-invoicing (snapshot snap_7278727f7dee33d0928b30e7): headless Claude Code 2.1.322 (claude -p, only the Proofmesh MCP server and its tools) and Codex 0.163.0 (codex exec, read-only sandbox, the server passed with -c and its tools approved for that server only) answered the same three snapshot-pinned questions identically, citing the same snapshot id, and both answers equal the fixture oracle.",
+    "FR049.publication": "A maintainer publishes the signed npm packages and the OCI image, with checksums, SBOM, signatures, provenance and release notes, to the registries; publication is never automated.",
+    "SC016.tag": "A maintainer tags the release commit of the public fresh-history repository; CI builds, signs (keyless) and attests the artifacts from that tag, including the C# adapter."
+  }
+}

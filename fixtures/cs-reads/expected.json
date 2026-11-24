@@ -1,0 +1,80 @@
+{
+  "endpoint": "GET api/orders/{id}/summary",
+  "static_reads": [
+    {
+      "entity": "Shop.Data.Customer",
+      "property": "Name",
+      "read_by": [
+        "Shop.Api.Summaries.Describe"
+      ],
+      "depth": 3
+    },
+    {
+      "entity": "Shop.Data.Entity",
+      "property": "Created",
+      "read_by": [
+        "Shop.Api.Summaries.Describe"
+      ],
+      "depth": 3
+    },
+    {
+      "entity": "Shop.Data.Order",
+      "property": "CustomerId",
+      "read_by": [
+        "Shop.Api.Summaries.Describe"
+      ],
+      "depth": 3
+    },
+    {
+      "entity": "Shop.Data.Order",
+      "property": "Total",
+      "read_by": [
+        "Shop.Api.Summaries.Describe"
+      ],
+      "depth": 3
+    }
+  ],
+  "unresolved_calls": 1,
+  "comparison": {
+    "both": [
+      {
+        "entity": "Shop.Data.Entity",
+        "property": "Created"
+      },
+      {
+        "entity": "Shop.Data.Order",
+        "property": "Total"
+      }
+    ],
+    "static_only": [
+      {
+        "entity": "Shop.Data.Customer",
+        "property": "Name"
+      },
+      {
+        "entity": "Shop.Data.Order",
+        "property": "CustomerId"
+      }
+    ],
+    "observed_only": [
+      {
+        "entity": "Shop.Data.Order",
+        "property": "Discount"
+      }
+    ]
+  },
+  "table_reach": {
+    "table": "Customers",
+    "accessors": [
+      {
+        "qualified_name": "Shop.Data.ShopContext.Customers",
+        "readers": 1
+      }
+    ],
+    "reached_through_accessor": {
+      "kind": "endpoint",
+      "qualified_name": "GET api/customers/all",
+      "depth": 4
+    }
+  }
+}

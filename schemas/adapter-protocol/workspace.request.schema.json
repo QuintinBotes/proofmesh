@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "workspace.request.schema.json",
+  "title": "workspace.request",
+  "description": "Asks for the facts that do not belong to one analysed file, such as project structure and framework rules that read the whole workspace. The core asks once per index, before any analyze request, and never caches the answer. The answer has the shape of an analyze response.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {}
+}

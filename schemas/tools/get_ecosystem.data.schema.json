@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "tools/get_ecosystem.data.schema.json",
+  "title": "get_ecosystem data",
+  "description": "The ecosystem overview (A11): a workspace's repositories as nodes and the links between them as edges, from one sealed link file.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["workspace", "members", "links", "boundaries"],
+  "properties": {
+    "workspace": {
+      "type": "object", "additionalProperties": false, "required": ["name", "link_file_id", "sealed_at", "rules"],
+      "properties": {
+        "name": { "type": "string" },
+        "link_file_id": { "type": "string", "pattern": "^link_[0-9a-z]+$" },
+        "sealed_at": { "type": "string" },
+        "rules": { "type": "object", "additionalProperties": { "type": "string" }, "description": "Link rule versions that joined the link file's identity." }
+      }
+    },
+    "members": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false, "required": ["repository_id", "name", "snapshot_id", "current", "symbols", "files_indexed", "endpoints", "channels", "projects"],
+        "properties": {
+          "repository_id": { "type": "string" }, "name": { "type": "string" }, "snapshot_id": { "type": "string" },
+          "current": { "type": "boolean", "description": "False when the repository's published snapshot is newer than the one the link file was built from." },
+          "symbols": { "type": "integer", "minimum": 0 }, "files_indexed": { "type": "integer", "minimum": 0 },
+          "endpoints": { "type": "integer", "minimum": 0 }, "channels": { "type": "integer", "minimum": 0 }, "projects": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "links": {
+      "type": "array",
+      "description": "One row per ordered pair of members and link type.",
+      "items": {
+        "type": "object", "additionalProperties": false, "required": ["source_repository_id", "target_repository_id", "type", "resolved", "candidate", "min_confidence", "max_confidence", "sample"],
+        "properties": {
+          "source_repository_id": { "type": "string" }, "target_repository_id": { "type": "string" },
+          "type": { "enum": ["calls_endpoint", "messages", "depends_on_package", "calls_service", "deploys", "uses_resource"] },
+          "resolved": { "type": "integer", "minimum": 0 }, "candidate": { "type": "integer", "minimum": 0 },
+          "min_confidence": { "type": "number" }, "max_confidence": { "type": "number" },
+          "sample": {
+            "type": "array", "maxItems": 5,
+            "items": { "type": "object", "additionalProperties": false, "required": ["link_id", "source", "target", "confidence", "rule"],
+              "properties": { "link_id": { "type": "string" }, "source": { "type": "string", "description": "Qualified name of the source symbol." }, "target": { "type": ["string", "null"], "description": "Qualified name of the target symbol, or null for a repository-level link." }, "confidence": { "type": "number" }, "rule": { "type": "string" } } }
+          }
+        }
+      }
+    },
+    "boundaries": {
+      "type": "array",
+      "description": "Unresolved links: client facts that matched nothing in the workspace, by repository and type (A7).",
+      "items": {
+        "type": "object", "additionalProperties": false, "required": ["repository_id", "type", "count", "sample"],
+        "properties": {
+          "repository_id": { "type": "string" }, "type": { "enum": ["calls_endpoint", "messages", "depends_on_package", "calls_service", "deploys", "uses_resource"] }, "count": { "type": "integer", "minimum": 0 },
+          "sample": { "type": "array", "maxItems": 5, "items": { "type": "object", "additionalProperties": false, "required": ["link_id", "source", "reason"], "properties": { "link_id": { "type": "string" }, "source": { "type": "string" }, "reason": { "type": "string" } } } }
+        }
+      }
+    }
+  }
+}

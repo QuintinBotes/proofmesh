@@ -1,0 +1,164 @@
+{
+  "tables": [
+    {
+      "qualified_name": "Orders",
+      "name": "Orders",
+      "path": "src/Shop.Core/ShopContext.cs",
+      "line": 15
+    },
+    {
+      "qualified_name": "sales.Clients",
+      "name": "Clients",
+      "path": "src/Shop.Core/ShopContext.cs",
+      "line": 20
+    },
+    {
+      "qualified_name": "legacy_notes",
+      "name": "legacy_notes",
+      "path": "src/Shop.Core/ShopContext.cs",
+      "line": 10
+    },
+    {
+      "qualified_name": "Invoice",
+      "name": "Invoice",
+      "path": "src/Shop.Legacy/Contexts.cs",
+      "line": 13
+    },
+    {
+      "qualified_name": "billing.Refunds",
+      "name": "Refunds",
+      "path": "src/Shop.Legacy/Contexts.cs",
+      "line": 29
+    },
+    {
+      "qualified_name": "Payments",
+      "name": "Payments",
+      "path": "src/Shop.Legacy/Contexts.cs",
+      "line": 24
+    },
+    {
+      "qualified_name": "Shipment",
+      "name": "Shipment",
+      "path": "src/Shop.Core/ShopContext.cs",
+      "line": 22
+    },
+    {
+      "qualified_name": "tbl_Ledger",
+      "name": "tbl_Ledger",
+      "path": "src/Shop.Legacy/Contexts.cs",
+      "line": 36
+    },
+    {
+      "qualified_name": "promo.Voucher",
+      "name": "Voucher",
+      "path": "src/Shop.Legacy/Contexts.cs",
+      "line": 50
+    },
+    {
+      "qualified_name": "promo.Gift",
+      "name": "Gift",
+      "path": "src/Shop.Legacy/Contexts.cs",
+      "line": 64
+    },
+    {
+      "qualified_name": "promo.Bundle",
+      "name": "Bundle",
+      "path": "src/Shop.Archive/ArchiveContext.cs",
+      "line": 9
+    }
+  ],
+  "maps_to": [
+    {
+      "from": "Shop.Core.Order",
+      "to": "Orders",
+      "rule": "dbset_convention",
+      "line": 15,
+      "site_text": "public DbSet<Order> Orders { get; set; } = null!;"
+    },
+    {
+      "from": "Shop.Core.Customer",
+      "to": "sales.Clients",
+      "rule": "ToTable",
+      "line": 20,
+      "site_text": "builder.Entity<Customer>().ToTable(\"Clients\", \"sales\")"
+    },
+    {
+      "from": "Shop.Core.Note",
+      "to": "legacy_notes",
+      "rule": "Table",
+      "line": 10,
+      "site_text": "Table(\"legacy_notes\")"
+    },
+    {
+      "from": "Shop.Legacy.Invoice",
+      "to": "Invoice",
+      "rule": "dbset_convention",
+      "line": 13,
+      "site_text": "public DbSet<Invoice> Invoices { get; set; } = null!;"
+    },
+    {
+      "from": "Shop.Legacy.Refund",
+      "to": "billing.Refunds",
+      "rule": "ToTable",
+      "line": 29,
+      "site_text": "ToTable(\"Refunds\", \"billing\")"
+    },
+    {
+      "from": "Shop.Legacy.Payment",
+      "to": "Payments",
+      "rule": "dbset_convention",
+      "line": 24,
+      "site_text": "public DbSet<Payment> Payments { get; set; } = null!;"
+    },
+    {
+      "from": "Shop.Core.Shipment",
+      "to": "Shipment",
+      "rule": "entity_convention",
+      "line": 22,
+      "site_text": "builder.Entity<Shipment>()"
+    },
+    {
+      "from": "Shop.Legacy.Ledger",
+      "to": "tbl_Ledger",
+      "rule": "custom_convention",
+      "line": 36,
+      "site_text": "public DbSet<Ledger> Ledgers { get; set; } = null!;"
+    },
+    {
+      "from": "Shop.Legacy.Voucher",
+      "to": "promo.Voucher",
+      "rule": "custom_convention",
+      "line": 50,
+      "site_text": "public DbSet<Voucher> Vouchers { get; set; } = null!;"
+    },
+    {
+      "from": "Shop.Legacy.Gift",
+      "to": "promo.Gift",
+      "rule": "custom_convention",
+      "line": 64,
+      "site_text": "public DbSet<Gift> Gifts { get; set; } = null!;"
+    },
+    {
+      "from": "Shop.Archive.Bundle",
+      "to": "promo.Bundle",
+      "rule": "custom_convention",
+      "line": 9,
+      "site_text": "public DbSet<Bundle> Bundles { get; set; } = null!;"
+    }
+  ],
+  "maps_to_unresolved": [
+    {
+      "from": "Shop.Core.AuditEntry",
+      "reason": "outside_capability",
+      "rule": "ToTable",
+      "line": 21,
+      "site_text": "builder.Entity<AuditEntry>().ToTable(Prefix + \"Audit\")"
+    }
+  ],
+  "inferred_maps_to": [
+    "Shop.Archive.Bundle",
+    "Shop.Legacy.Gift",
+    "Shop.Legacy.Payment",
+    "Shop.Legacy.Voucher"
+  ]
+}

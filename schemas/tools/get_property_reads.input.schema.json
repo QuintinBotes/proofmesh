@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "get_property_reads.input.schema.json",
+  "title": "get_property_reads input",
+  "description": "Imported runtime property reads by endpoint or by entity, independent of table mapping (A30): which entity properties an endpoint was seen reading, which endpoints read a property, what the ORM loaded that no code used, and which mapped properties no import mentions. Observed in a window, never load from code. With an endpoint, also the static side: entity properties read on resolved paths from it (static reach, not load), the unresolved calls that bound that answer, and how it compares with imported application reads.",
+  "type": "object",
+  "additionalProperties": false,
+  "anyOf": [
+    {
+      "required": [
+        "endpoint"
+      ]
+    },
+    {
+      "required": [
+        "entity"
+      ]
+    }
+  ],
+  "properties": {
+    "repository_id": {
+      "type": "string",
+      "pattern": "^repo_[0-9a-z]+$",
+      "description": "Optional when exactly one repository is registered."
+    },
+    "snapshot_id": {
+      "oneOf": [
+        {
+          "type": "string",
+          "pattern": "^snap_[0-9a-z]+$"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Null pins the current published snapshot."
+    },
+    "endpoint": {
+      "type": "string",
+      "minLength": 1,
+      "description": "An endpoint qualified name, such as `GET api/Orders/{id}`."
+    },
+    "entity": {
+      "type": "string",
+      "minLength": 1,
+      "description": "An entity qualified name (runtime type or declaring type), such as `Shop.Data.Order`."
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "timeout_ms": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_rows": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_depth": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "freshness": {
+      "enum": [
+        "snapshot",
+        "strict"
+      ],
+      "description": "snapshot (default) answers from the published snapshot. strict first checks that the working tree is exactly what the snapshot was built from; if not, it starts an index and refuses with STALE_INPUT naming the changed files."
+    },
+    "envelope": {
+      "enum": [
+        "full",
+        "compact"
+      ],
+      "description": "compact leaves out the snapshot-wide parts of the envelope (unresolved reasons, standing limitations) that an earlier answer from the same snapshot already gave; query-specific limits stay. Over MCP, answers after the first full one per snapshot are compact unless full is asked for."
+    }
+  }
+}

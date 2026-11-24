@@ -1,0 +1,372 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "analyze.response.schema.json",
+  "title": "analyze.response",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "symbols",
+    "relationships",
+    "file_results",
+    "diagnostics"
+  ],
+  "properties": {
+    "symbols": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "local_id",
+          "path",
+          "kind",
+          "name",
+          "qualified_name",
+          "range",
+          "signature"
+        ],
+        "properties": {
+          "local_id": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "function",
+              "class",
+              "method",
+              "interface",
+              "type_alias",
+              "variable",
+              "module",
+              "struct",
+              "enum",
+              "property",
+              "field",
+              "constructor",
+              "namespace",
+              "project",
+              "package",
+              "endpoint",
+              "table",
+              "message",
+              "channel",
+              "job",
+              "feature_flag",
+              "config_key",
+              "team",
+              "service",
+              "resource",
+              "output",
+              "module_call"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "qualified_name": {
+            "type": "string"
+          },
+          "range": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "start_byte",
+              "end_byte",
+              "start_line",
+              "end_line"
+            ],
+            "properties": {
+              "start_byte": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "end_byte": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "start_line": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "end_line": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          },
+          "signature": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "relationships": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "type",
+          "origin",
+          "source",
+          "site",
+          "resolution"
+        ],
+        "properties": {
+          "type": {
+            "enum": [
+              "calls",
+              "imports",
+              "contains",
+              "inherits",
+              "implements",
+              "overrides",
+              "references",
+              "injects",
+              "registered_as",
+              "exposes",
+              "maps_to",
+              "runs",
+              "dispatches_to",
+              "handles",
+              "publishes",
+              "consumes",
+              "sends_to",
+              "listens_on",
+              "evaluates_flag",
+              "reads_config",
+              "depends_on",
+              "depends_on_package",
+              "owned_by",
+              "calls_service",
+              "renders",
+              "uses_hook",
+              "provides_context",
+              "uses_context"
+            ]
+          },
+          "origin": {
+            "enum": [
+              "syntax",
+              "semantic_resolver",
+              "configuration_adapter",
+              "framework_adapter",
+              "contract_match",
+              "runtime_observation",
+              "documentation",
+              "human_assertion",
+              "model_hypothesis"
+            ]
+          },
+          "source": {
+            "type": "object",
+            "additionalProperties": false,
+            "minProperties": 1,
+            "maxProperties": 1,
+            "properties": {
+              "symbol": {
+                "type": "string"
+              },
+              "file": {
+                "type": "string"
+              },
+              "external": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "module",
+                  "name"
+                ],
+                "properties": {
+                  "module": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "site": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "path",
+              "range"
+            ],
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "range": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "start_byte",
+                  "end_byte",
+                  "start_line",
+                  "end_line"
+                ],
+                "properties": {
+                  "start_byte": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "end_byte": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "start_line": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "end_line": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                }
+              }
+            }
+          },
+          "resolution": {
+            "enum": [
+              "resolved",
+              "resolved_external",
+              "candidate",
+              "ambiguous",
+              "unresolved"
+            ]
+          },
+          "target": {
+            "type": "object",
+            "additionalProperties": false,
+            "minProperties": 1,
+            "maxProperties": 1,
+            "properties": {
+              "symbol": {
+                "type": "string"
+              },
+              "file": {
+                "type": "string"
+              },
+              "external": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "module",
+                  "name"
+                ],
+                "properties": {
+                  "module": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "reason": {
+            "enum": [
+              "dynamic_element_access",
+              "untyped_receiver",
+              "unknown_name",
+              "chained_callee",
+              "import_unresolved",
+              "dynamic_specifier",
+              "not_indexed",
+              "dependency_missing",
+              "configuration_error",
+              "outside_capability"
+            ]
+          },
+          "candidates": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "detail": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Small adapter-specific attributes, such as a DI lifetime or an HTTP verb."
+          }
+        }
+      }
+    },
+    "file_results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "status",
+          "capabilities"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "failed"
+            ]
+          },
+          "detail": {
+            "type": "string"
+          },
+          "capabilities": {
+            "type": "object",
+            "additionalProperties": {
+              "enum": [
+                "complete",
+                "partial",
+                "unsupported",
+                "failed",
+                "not_run"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "diagnostics": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "level",
+          "message"
+        ],
+        "properties": {
+          "level": {
+            "enum": [
+              "info",
+              "warning",
+              "error"
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

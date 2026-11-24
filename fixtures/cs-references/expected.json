@@ -1,0 +1,220 @@
+{
+  "enum_members": [
+    {
+      "kind": "field",
+      "qualified_name": "Shop.OrderState.Open",
+      "lines": [
+        7,
+        7
+      ]
+    },
+    {
+      "kind": "field",
+      "qualified_name": "Shop.OrderState.Paid",
+      "lines": [
+        7,
+        7
+      ]
+    }
+  ],
+  "references": [
+    {
+      "from": "Shop.Order",
+      "to": "Shop.AuditedAttribute",
+      "use": "attribute",
+      "line": 17,
+      "site_text": "Audited"
+    },
+    {
+      "from": "Shop.Order.State",
+      "to": "Shop.OrderState",
+      "use": "type",
+      "line": 22,
+      "site_text": "OrderState"
+    },
+    {
+      "from": "Shop.OrderService.orders",
+      "to": "Shop.Order",
+      "use": "type",
+      "line": 28,
+      "site_text": "Order"
+    },
+    {
+      "from": "Shop.OrderService.Create",
+      "to": "Shop.Order",
+      "use": "create,type",
+      "line": 30,
+      "site_text": "Order"
+    },
+    {
+      "from": "Shop.OrderService.Create",
+      "to": "Shop.Order.Total",
+      "use": "write",
+      "line": 32,
+      "site_text": "Total"
+    },
+    {
+      "from": "Shop.OrderService.Create",
+      "to": "Shop.Order.State",
+      "use": "write",
+      "line": 32,
+      "site_text": "State"
+    },
+    {
+      "from": "Shop.OrderService.Create",
+      "to": "Shop.OrderState",
+      "use": "type",
+      "line": 32,
+      "site_text": "OrderState"
+    },
+    {
+      "from": "Shop.OrderService.Create",
+      "to": "Shop.OrderState.Open",
+      "use": "read",
+      "line": 32,
+      "site_text": "OrderState.Open"
+    },
+    {
+      "from": "Shop.OrderService.Create",
+      "to": "Shop.OrderService.orders",
+      "use": "read",
+      "line": 33,
+      "site_text": "orders"
+    },
+    {
+      "from": "Shop.OrderService.Pay",
+      "to": "Shop.Order",
+      "use": "nameof,type",
+      "line": 37,
+      "site_text": "Order"
+    },
+    {
+      "from": "Shop.OrderService.Pay",
+      "to": "Shop.Order.Lines",
+      "use": "nameof,read,read_write",
+      "line": 39,
+      "site_text": "order.Lines"
+    },
+    {
+      "from": "Shop.OrderService.Pay",
+      "to": "Shop.Limits",
+      "use": "type",
+      "line": 39,
+      "site_text": "Limits"
+    },
+    {
+      "from": "Shop.OrderService.Pay",
+      "to": "Shop.Limits.MaxLines",
+      "use": "read",
+      "line": 39,
+      "site_text": "Limits.MaxLines"
+    },
+    {
+      "from": "Shop.OrderService.Pay",
+      "to": "Shop.Order.State",
+      "use": "write",
+      "line": 40,
+      "site_text": "order.State"
+    },
+    {
+      "from": "Shop.OrderService.Pay",
+      "to": "Shop.OrderState",
+      "use": "type",
+      "line": 40,
+      "site_text": "OrderState"
+    },
+    {
+      "from": "Shop.OrderService.Pay",
+      "to": "Shop.OrderState.Paid",
+      "use": "read",
+      "line": 40,
+      "site_text": "OrderState.Paid"
+    },
+    {
+      "from": "Shop.OrderService.Pay",
+      "to": "Shop.Order.Total",
+      "use": "read",
+      "line": 42,
+      "site_text": "order.Total"
+    },
+    {
+      "from": "Shop.OrderService.Totals",
+      "to": "Shop.OrderService.orders",
+      "use": "read",
+      "line": 45,
+      "site_text": "orders"
+    },
+    {
+      "from": "Shop.OrderService.Totals",
+      "to": "Shop.OrderService.Total",
+      "use": "method_group",
+      "line": 45,
+      "site_text": "Total"
+    },
+    {
+      "from": "Shop.OrderService.Total",
+      "to": "Shop.Order",
+      "use": "type",
+      "line": 47,
+      "site_text": "Order"
+    },
+    {
+      "from": "Shop.OrderService.Total",
+      "to": "Shop.Order.Total",
+      "use": "read",
+      "line": 47,
+      "site_text": "order.Total"
+    }
+  ],
+  "unbound_call": {
+    "from": "Shop.OrderService.Broken",
+    "line": 49,
+    "site_text": "Missing.Thing.Do(1, 2)",
+    "resolution": "unresolved",
+    "reason": "unknown_name",
+    "detail": {
+      "callee": "Do",
+      "arity": "2",
+      "compiler_code": "CS0103"
+    }
+  },
+  "no_call_site_starts_with": "nameof(",
+  "external_usage_by_type": [
+    {
+      "key": "System.Collections.Generic.List<\u2026>",
+      "module": "System.Collections",
+      "call_sites": 2,
+      "files": 1,
+      "projects": 1,
+      "external_ids": 2
+    },
+    {
+      "key": "System.InvalidOperationException",
+      "module": "System.Runtime",
+      "call_sites": 1,
+      "files": 1,
+      "projects": 1,
+      "external_ids": 1
+    },
+    {
+      "key": "System.Linq.Enumerable",
+      "module": "System.Linq",
+      "call_sites": 1,
+      "files": 1,
+      "projects": 1,
+      "external_ids": 1
+    }
+  ],
+  "external_usage_unfolded_members": [
+    "System.Collections.Generic.List<Shop.Order>..ctor",
+    "System.Collections.Generic.List<Shop.Order>.Add",
+    "System.InvalidOperationException..ctor",
+    "System.Linq.Enumerable.Select"
+  ],
+  "impact_of_external": {
+    "external": "System.Linq.Enumerable.Select",
+    "dependents": [
+      "Shop.OrderService.Totals"
+    ]
+  }
+}

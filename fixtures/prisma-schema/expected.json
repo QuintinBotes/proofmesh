@@ -1,0 +1,368 @@
+{
+  "dispositions": {
+    "prisma/schema/main.prisma": [
+      "indexed",
+      null
+    ],
+    "prisma/schema/blog.prisma": [
+      "indexed",
+      null
+    ],
+    "services/audit/schema.prisma": [
+      "indexed",
+      null
+    ]
+  },
+  "symbols": [
+    {
+      "kind": "module",
+      "qualified_name": "prisma/schema/main",
+      "lines": [
+        1,
+        37
+      ],
+      "signature": null
+    },
+    {
+      "kind": "class",
+      "qualified_name": "prisma/schema/main:User",
+      "lines": [
+        13,
+        22
+      ],
+      "signature": "model User"
+    },
+    {
+      "kind": "table",
+      "qualified_name": "auth.users",
+      "lines": [
+        20,
+        20
+      ],
+      "signature": null
+    },
+    {
+      "kind": "class",
+      "qualified_name": "prisma/schema/main:Profile",
+      "lines": [
+        24,
+        30
+      ],
+      "signature": "model Profile"
+    },
+    {
+      "kind": "table",
+      "qualified_name": "auth.Profile",
+      "lines": [
+        24,
+        24
+      ],
+      "signature": null
+    },
+    {
+      "kind": "module",
+      "qualified_name": "prisma/schema/blog",
+      "lines": [
+        1,
+        25
+      ],
+      "signature": null
+    },
+    {
+      "kind": "class",
+      "qualified_name": "prisma/schema/blog:Post",
+      "lines": [
+        1,
+        9
+      ],
+      "signature": "model Post"
+    },
+    {
+      "kind": "table",
+      "qualified_name": "public.Post",
+      "lines": [
+        1,
+        1
+      ],
+      "signature": null
+    },
+    {
+      "kind": "class",
+      "qualified_name": "prisma/schema/blog:Tag",
+      "lines": [
+        11,
+        17
+      ],
+      "signature": "model Tag"
+    },
+    {
+      "kind": "table",
+      "qualified_name": "public.post_tags",
+      "lines": [
+        15,
+        15
+      ],
+      "signature": null
+    },
+    {
+      "kind": "class",
+      "qualified_name": "prisma/schema/blog:PostCount",
+      "lines": [
+        19,
+        25
+      ],
+      "signature": "view PostCount"
+    },
+    {
+      "kind": "table",
+      "qualified_name": "public.post_counts",
+      "lines": [
+        23,
+        23
+      ],
+      "signature": null
+    },
+    {
+      "kind": "module",
+      "qualified_name": "services/audit/schema",
+      "lines": [
+        1,
+        17
+      ],
+      "signature": null
+    },
+    {
+      "kind": "class",
+      "qualified_name": "services/audit/schema:Actor",
+      "lines": [
+        6,
+        11
+      ],
+      "signature": "model Actor"
+    },
+    {
+      "kind": "table",
+      "qualified_name": "actors",
+      "lines": [
+        10,
+        10
+      ],
+      "signature": null
+    },
+    {
+      "kind": "class",
+      "qualified_name": "services/audit/schema:AuditEvent",
+      "lines": [
+        13,
+        17
+      ],
+      "signature": "model AuditEvent"
+    },
+    {
+      "kind": "table",
+      "qualified_name": "AuditEvent",
+      "lines": [
+        13,
+        13
+      ],
+      "signature": null
+    }
+  ],
+  "calls": [],
+  "closed_world": "Symbols, tables, mappings and references are complete for this fixture; Prisma schemas have no calls.",
+  "tables": [
+    {
+      "qualified_name": "auth.users",
+      "name": "users",
+      "path": "prisma/schema/main.prisma",
+      "line": 20
+    },
+    {
+      "qualified_name": "auth.Profile",
+      "name": "Profile",
+      "path": "prisma/schema/main.prisma",
+      "line": 24
+    },
+    {
+      "qualified_name": "public.Post",
+      "name": "Post",
+      "path": "prisma/schema/blog.prisma",
+      "line": 1
+    },
+    {
+      "qualified_name": "public.post_tags",
+      "name": "post_tags",
+      "path": "prisma/schema/blog.prisma",
+      "line": 15
+    },
+    {
+      "qualified_name": "public.post_counts",
+      "name": "post_counts",
+      "path": "prisma/schema/blog.prisma",
+      "line": 23
+    },
+    {
+      "qualified_name": "actors",
+      "name": "actors",
+      "path": "services/audit/schema.prisma",
+      "line": 10
+    },
+    {
+      "qualified_name": "AuditEvent",
+      "name": "AuditEvent",
+      "path": "services/audit/schema.prisma",
+      "line": 13
+    }
+  ],
+  "maps_to": [
+    {
+      "from": "prisma/schema/main:User",
+      "to": "auth.users",
+      "rule": "prisma_map",
+      "line": 20,
+      "site_text": "@@map(\"users\")"
+    },
+    {
+      "from": "prisma/schema/main:Profile",
+      "to": "auth.Profile",
+      "rule": "prisma_convention",
+      "line": 24,
+      "site_text": "Profile"
+    },
+    {
+      "from": "prisma/schema/blog:Post",
+      "to": "public.Post",
+      "rule": "prisma_convention",
+      "line": 1,
+      "site_text": "Post"
+    },
+    {
+      "from": "prisma/schema/blog:Tag",
+      "to": "public.post_tags",
+      "rule": "prisma_map",
+      "line": 15,
+      "site_text": "@@map(name: \"post_tags\")"
+    },
+    {
+      "from": "prisma/schema/blog:PostCount",
+      "to": "public.post_counts",
+      "rule": "prisma_map",
+      "line": 23,
+      "site_text": "@@map(\"post_counts\")"
+    },
+    {
+      "from": "services/audit/schema:Actor",
+      "to": "actors",
+      "rule": "prisma_map",
+      "line": 10,
+      "site_text": "@@map(\"actors\")"
+    },
+    {
+      "from": "services/audit/schema:AuditEvent",
+      "to": "AuditEvent",
+      "rule": "prisma_convention",
+      "line": 13,
+      "site_text": "AuditEvent"
+    }
+  ],
+  "inferred_maps_to": [
+    "prisma/schema/blog:Post",
+    "prisma/schema/main:Profile",
+    "services/audit/schema:AuditEvent"
+  ],
+  "references": [
+    {
+      "from": "prisma/schema/main:User",
+      "to": "prisma/schema/main:Profile",
+      "field": "profile",
+      "line": 18,
+      "site_text": "profile Profile?"
+    },
+    {
+      "from": "prisma/schema/main:Profile",
+      "to": "prisma/schema/main:User",
+      "field": "user",
+      "line": 26,
+      "site_text": "user   User @relation(fields: [userId], references: [id])"
+    },
+    {
+      "from": "prisma/schema/blog:Post",
+      "to": "prisma/schema/blog:Tag",
+      "field": "tags",
+      "line": 6,
+      "site_text": "tags     Tag[]"
+    },
+    {
+      "from": "prisma/schema/blog:Tag",
+      "to": "prisma/schema/blog:Post",
+      "field": "posts",
+      "line": 13,
+      "site_text": "posts Post[]"
+    },
+    {
+      "from": "services/audit/schema:Actor",
+      "to": "services/audit/schema:AuditEvent",
+      "field": "events",
+      "line": 8,
+      "site_text": "events AuditEvent[]"
+    },
+    {
+      "from": "services/audit/schema:AuditEvent",
+      "to": "services/audit/schema:Actor",
+      "field": "actor",
+      "line": 15,
+      "site_text": "actor   Actor @relation(fields: [actorId], references: [id])"
+    }
+  ],
+  "references_unresolved": [
+    {
+      "from": "prisma/schema/blog:Post",
+      "reason": "outside_capability",
+      "field": "author",
+      "name": "User",
+      "line": 4,
+      "site_text": "author   User   @relation(fields: [authorId], references: [id])"
+    }
+  ],
+  "table_reach": [
+    {
+      "table": "users",
+      "tables": [
+        {
+          "qualified_name": "auth.users",
+          "path": "prisma/schema/main.prisma",
+          "entities": [
+            "prisma/schema/main:User"
+          ],
+          "reach": []
+        }
+      ]
+    },
+    {
+      "table": "public.post_tags",
+      "tables": [
+        {
+          "qualified_name": "public.post_tags",
+          "path": "prisma/schema/blog.prisma",
+          "entities": [
+            "prisma/schema/blog:Tag"
+          ],
+          "reach": []
+        }
+      ]
+    },
+    {
+      "table": "AuditEvent",
+      "tables": [
+        {
+          "qualified_name": "AuditEvent",
+          "path": "services/audit/schema.prisma",
+          "entities": [
+            "services/audit/schema:AuditEvent"
+          ],
+          "reach": []
+        }
+      ]
+    }
+  ]
+}

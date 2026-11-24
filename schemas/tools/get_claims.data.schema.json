@@ -1,0 +1,138 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "get_claims.data.schema.json",
+  "title": "get_claims data",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "claims"
+  ],
+  "properties": {
+    "claims": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "statement",
+          "proposition",
+          "created_at",
+          "latest"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "statement": {
+            "type": "string"
+          },
+          "proposition": {
+            "type": "object"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "latest": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "run_id",
+                  "snapshot_id",
+                  "verdict",
+                  "layers",
+                  "dependencies",
+                  "verified_at"
+                ],
+                "properties": {
+                  "run_id": {
+                    "type": "string"
+                  },
+                  "snapshot_id": {
+                    "type": "string"
+                  },
+                  "verdict": {
+                    "enum": [
+                      "supported",
+                      "refuted",
+                      "inconclusive",
+                      "invalid"
+                    ]
+                  },
+                  "layers": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "name",
+                        "outcome",
+                        "detail"
+                      ],
+                      "properties": {
+                        "name": {
+                          "enum": [
+                            "scope",
+                            "resolution",
+                            "semantic",
+                            "integrity",
+                            "replay",
+                            "independent",
+                            "execution"
+                          ]
+                        },
+                        "outcome": {
+                          "enum": [
+                            "pass",
+                            "fail",
+                            "not_run",
+                            "unsupported",
+                            "inconclusive",
+                            "unavailable"
+                          ]
+                        },
+                        "detail": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  },
+                  "dependencies": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "assertions",
+                      "evidence"
+                    ],
+                    "properties": {
+                      "assertions": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "evidence": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  },
+                  "verified_at": {
+                    "type": "string"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+}

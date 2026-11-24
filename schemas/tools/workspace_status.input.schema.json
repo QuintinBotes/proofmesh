@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "workspace_status.input.schema.json",
+  "title": "workspace_status input",
+  "description": "Inventory, dispositions, adapters, analysis mode and Git availability of the pinned snapshot.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "repository_id": {
+      "type": "string",
+      "pattern": "^repo_[0-9a-z]+$",
+      "description": "Optional when exactly one repository is registered."
+    },
+    "snapshot_id": {
+      "oneOf": [
+        {
+          "type": "string",
+          "pattern": "^snap_[0-9a-z]+$"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Null pins the current published snapshot."
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "timeout_ms": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_rows": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_depth": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "freshness": {
+      "enum": [
+        "snapshot",
+        "strict"
+      ],
+      "description": "snapshot (default) answers from the published snapshot. strict first checks that the working tree is exactly what the snapshot was built from; if not, it starts an index and refuses with STALE_INPUT naming the changed files."
+    },
+    "envelope": {
+      "enum": [
+        "full",
+        "compact"
+      ],
+      "description": "compact leaves out the snapshot-wide parts of the envelope (unresolved reasons, standing limitations) that an earlier answer from the same snapshot already gave; query-specific limits stay. Over MCP, answers after the first full one per snapshot are compact unless full is asked for."
+    },
+    "files": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Ask for file rows, narrowed by disposition and path prefix. Without it the answer has no file rows, only file_summary.",
+      "properties": {
+        "disposition": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "indexed",
+              "excluded_by_rule",
+              "unsupported",
+              "failed",
+              "pending"
+            ]
+          },
+          "minItems": 1
+        },
+        "path_prefix": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "cursor": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096,
+      "description": "The next_cursor of the previous page. It continues the same query on the same snapshot; it expires after an hour."
+    }
+  },
+  "required": []
+}

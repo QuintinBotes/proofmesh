@@ -1,0 +1,15 @@
+{
+  "dispositions": {
+    "lib.fake": ["indexed", null],
+    "main.fake": ["indexed", null]
+  },
+  "symbols": [
+    { "kind": "function", "qualified_name": "lib:helper", "lines": [1, 1], "signature": null },
+    { "kind": "function", "qualified_name": "main:main", "lines": [1, 1], "signature": null }
+  ],
+  "calls": [
+    { "from": "main:main", "line": 2, "site_text": "  call helper", "resolution": "resolved", "to": "lib:helper" },
+    { "from": "main:main", "line": 3, "site_text": "  call missing", "resolution": "unresolved", "reason": "unknown_name" }
+  ],
+  "closed_world": "The calls list is complete for this fixture."
+}

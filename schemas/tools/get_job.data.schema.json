@@ -1,0 +1,152 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "get_job.data.schema.json",
+  "title": "get_job data",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "job"
+  ],
+  "properties": {
+    "job": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "repository_id",
+        "state",
+        "requested_by",
+        "requested_at",
+        "started_at",
+        "finished_at",
+        "phase",
+        "done",
+        "total",
+        "result",
+        "error"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "repository_id": {
+          "type": "string"
+        },
+        "state": {
+          "enum": [
+            "queued",
+            "running",
+            "succeeded",
+            "failed",
+            "interrupted"
+          ]
+        },
+        "requested_by": {
+          "type": "string"
+        },
+        "requested_at": {
+          "type": "string"
+        },
+        "started_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "finished_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "phase": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "done": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "total": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "result": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "error": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "progress_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "When the job last reported progress: a running job whose progress_at stops moving is stuck, not slow."
+        },
+        "phase_started_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "When the current phase began."
+        },
+        "plan": {
+          "description": "Per adapter: incremental or full, how many files it re-analyses and how many replay cached facts; null until analysis starts.",
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "additionalProperties": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "mode",
+                  "analyse",
+                  "reuse"
+                ],
+                "properties": {
+                  "mode": {
+                    "enum": [
+                      "incremental",
+                      "full"
+                    ]
+                  },
+                  "analyse": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "reuse": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "elapsed_ms": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "Since the job started, or its whole run once finished."
+        }
+      }
+    }
+  }
+}

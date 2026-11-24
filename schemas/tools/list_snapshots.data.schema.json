@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "list_snapshots.data.schema.json",
+  "title": "list_snapshots data",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "repository_id",
+    "snapshots"
+  ],
+  "properties": {
+    "repository_id": {
+      "type": "string"
+    },
+    "snapshots": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "published_at",
+          "analysis_mode",
+          "current",
+          "git"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "published_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "analysis_mode": {
+            "type": "string"
+          },
+          "current": {
+            "type": "boolean"
+          },
+          "git": {
+            "description": "The git facts recorded with the snapshot, or null.",
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object"
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+}

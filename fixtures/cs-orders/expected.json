@@ -1,0 +1,351 @@
+{
+  "analysis_mode": "no_execution",
+  "dispositions": {
+    "Directory.Build.props": [
+      "indexed",
+      null
+    ],
+    "README.md": [
+      "unsupported",
+      "no_adapter:.md"
+    ],
+    "src/Orders.Core/Checkout.cs": [
+      "indexed",
+      null
+    ],
+    "src/Orders.Core/Decoy.cs": [
+      "indexed",
+      null
+    ],
+    "src/Orders.Core/IOrderService.cs": [
+      "indexed",
+      null
+    ],
+    "src/Orders.Core/OrderService.cs": [
+      "indexed",
+      null
+    ],
+    "src/Orders.Core/Orders.Core.csproj": [
+      "indexed",
+      null
+    ],
+    "src/Orders.Pricing/Orders.Pricing.csproj": [
+      "indexed",
+      null
+    ],
+    "src/Orders.Pricing/Pricing.cs": [
+      "indexed",
+      null
+    ],
+    "src/Orders.Pricing/Rounding.cs": [
+      "indexed",
+      null
+    ]
+  },
+  "symbols": [
+    {
+      "kind": "class",
+      "qualified_name": "Orders.Pricing.PriceCalculator",
+      "lines": [
+        3,
+        9
+      ],
+      "signature": null
+    },
+    {
+      "kind": "method",
+      "qualified_name": "Orders.Pricing.PriceCalculator.Calculate",
+      "lines": [
+        5,
+        8
+      ],
+      "signature": "decimal Calculate(decimal amount, int quantity)"
+    },
+    {
+      "kind": "interface",
+      "qualified_name": "Orders.Core.IOrderService",
+      "lines": [
+        3,
+        6
+      ],
+      "signature": null
+    },
+    {
+      "kind": "method",
+      "qualified_name": "Orders.Core.IOrderService.PlaceOrder",
+      "lines": [
+        5,
+        5
+      ],
+      "signature": "decimal PlaceOrder(decimal price, int quantity)"
+    },
+    {
+      "kind": "class",
+      "qualified_name": "Orders.Core.OrderService",
+      "lines": [
+        6,
+        16
+      ],
+      "signature": null
+    },
+    {
+      "kind": "method",
+      "qualified_name": "Orders.Core.OrderService.PlaceOrder",
+      "lines": [
+        8,
+        13
+      ],
+      "signature": "decimal PlaceOrder(decimal price, int quantity)"
+    },
+    {
+      "kind": "method",
+      "qualified_name": "Orders.Core.OrderService.Dispatch",
+      "lines": [
+        15,
+        15
+      ],
+      "signature": "object Dispatch(dynamic handler)"
+    },
+    {
+      "kind": "class",
+      "qualified_name": "Orders.Core.Checkout",
+      "lines": [
+        3,
+        6
+      ],
+      "signature": null
+    },
+    {
+      "kind": "method",
+      "qualified_name": "Orders.Core.Checkout.Buy",
+      "lines": [
+        5,
+        5
+      ],
+      "signature": "decimal Buy(IOrderService orders, decimal price)"
+    },
+    {
+      "kind": "module",
+      "qualified_name": "src/Orders.Core/Checkout",
+      "lines": [
+        1,
+        6
+      ],
+      "signature": null
+    },
+    {
+      "kind": "class",
+      "qualified_name": "Orders.Core.Decoy",
+      "lines": [
+        4,
+        7
+      ],
+      "signature": null
+    },
+    {
+      "kind": "method",
+      "qualified_name": "Orders.Core.Decoy.Calculate",
+      "lines": [
+        6,
+        6
+      ],
+      "signature": "decimal Calculate(decimal amount, int quantity)"
+    },
+    {
+      "kind": "module",
+      "qualified_name": "src/Orders.Pricing/Pricing",
+      "lines": [
+        1,
+        9
+      ],
+      "signature": null
+    },
+    {
+      "kind": "module",
+      "qualified_name": "src/Orders.Core/IOrderService",
+      "lines": [
+        1,
+        6
+      ],
+      "signature": null
+    },
+    {
+      "kind": "module",
+      "qualified_name": "src/Orders.Core/OrderService",
+      "lines": [
+        1,
+        16
+      ],
+      "signature": null
+    },
+    {
+      "kind": "module",
+      "qualified_name": "src/Orders.Core/Decoy",
+      "lines": [
+        1,
+        7
+      ],
+      "signature": null
+    },
+    {
+      "kind": "project",
+      "qualified_name": "Orders.Core",
+      "lines": [
+        1,
+        1
+      ],
+      "signature": null
+    },
+    {
+      "kind": "project",
+      "qualified_name": "Orders.Pricing",
+      "lines": [
+        1,
+        1
+      ],
+      "signature": null
+    },
+    {
+      "kind": "class",
+      "qualified_name": "Orders.Pricing.Rounding",
+      "lines": [
+        3,
+        7
+      ],
+      "signature": null
+    },
+    {
+      "kind": "method",
+      "qualified_name": "Orders.Pricing.Rounding.Record",
+      "lines": [
+        6,
+        6
+      ],
+      "signature": "void Record(decimal amount)"
+    },
+    {
+      "kind": "module",
+      "qualified_name": "src/Orders.Pricing/Rounding",
+      "lines": [
+        1,
+        7
+      ],
+      "signature": null
+    }
+  ],
+  "calls": [
+    {
+      "from": "Orders.Pricing.PriceCalculator.Calculate",
+      "line": 7,
+      "site_text": "Math.Round(amount * quantity, 2)",
+      "resolution": "resolved_external",
+      "external": {
+        "module": "System.Runtime",
+        "name": "System.Math.Round"
+      }
+    },
+    {
+      "from": "Orders.Core.OrderService.PlaceOrder",
+      "line": 10,
+      "site_text": "PriceCalculator.Calculate(price, quantity)",
+      "resolution": "resolved",
+      "to": "Orders.Pricing.PriceCalculator.Calculate"
+    },
+    {
+      "from": "Orders.Core.OrderService.PlaceOrder",
+      "line": 11,
+      "site_text": "new AuditClient()",
+      "resolution": "unresolved",
+      "reason": "dependency_missing"
+    },
+    {
+      "from": "Orders.Core.OrderService.PlaceOrder",
+      "line": 11,
+      "site_text": "new AuditClient().Send(total)",
+      "resolution": "unresolved",
+      "reason": "dependency_missing"
+    },
+    {
+      "from": "Orders.Core.Checkout.Buy",
+      "line": 5,
+      "site_text": "orders.PlaceOrder(price, 1)",
+      "resolution": "resolved",
+      "to": "Orders.Core.IOrderService.PlaceOrder"
+    },
+    {
+      "from": "Orders.Core.OrderService.Dispatch",
+      "line": 15,
+      "site_text": "handler.Run()",
+      "resolution": "unresolved",
+      "reason": "untyped_receiver"
+    },
+    {
+      "from": "Orders.Pricing.Rounding.Record",
+      "line": 6,
+      "site_text": "Ledger.Post(amount)",
+      "resolution": "unresolved",
+      "reason": "unknown_name"
+    }
+  ],
+  "structure": [
+    {
+      "type": "implements",
+      "from": "Orders.Core.OrderService",
+      "to": "Orders.Core.IOrderService",
+      "site_text": "IOrderService"
+    },
+    {
+      "type": "implements",
+      "from": "Orders.Core.OrderService.PlaceOrder",
+      "to": "Orders.Core.IOrderService.PlaceOrder",
+      "site_text": "PlaceOrder"
+    },
+    {
+      "type": "depends_on",
+      "from": "Orders.Core",
+      "to": "Orders.Pricing"
+    },
+    {
+      "type": "depends_on_package",
+      "from": "Orders.Core",
+      "external": {
+        "module": "nuget",
+        "name": "Contoso.Missing.Client"
+      },
+      "detail": {
+        "version": "1.0.0"
+      }
+    },
+    {
+      "type": "contains",
+      "from": "Orders.Core",
+      "to": "src/Orders.Core/Checkout"
+    },
+    {
+      "type": "contains",
+      "from": "Orders.Core",
+      "to": "src/Orders.Core/Decoy"
+    },
+    {
+      "type": "contains",
+      "from": "Orders.Core",
+      "to": "src/Orders.Core/IOrderService"
+    },
+    {
+      "type": "contains",
+      "from": "Orders.Core",
+      "to": "src/Orders.Core/OrderService"
+    },
+    {
+      "type": "contains",
+      "from": "Orders.Pricing",
+      "to": "src/Orders.Pricing/Pricing"
+    },
+    {
+      "type": "contains",
+      "from": "Orders.Pricing",
+      "to": "src/Orders.Pricing/Rounding"
+    }
+  ],
+  "closed_world": "calls and structure are complete for this fixture"
+}

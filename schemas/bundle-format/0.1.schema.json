@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "bundle-format/0.1.schema.json",
+  "title": "Proofmesh evidence bundle manifest 0.1",
+  "description": "A portable bundle: query envelopes and the evidence they cite, each hashed, checkable offline with no Proofmesh service (FR032). Source bytes are included only with consent (FR052).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "bundle_id", "created_at", "writer", "snapshot", "queries", "evidence", "manifest_sha256"],
+  "properties": {
+    "schema_version": { "const": "0.1" },
+    "bundle_id": { "type": "string", "pattern": "^pmb_[0-9a-f]{24}$" },
+    "created_at": { "type": "string" },
+    "writer": { "type": "string" },
+    "snapshot": {
+      "type": "object", "additionalProperties": false, "required": ["id", "repository_id", "analysis_mode", "identity_hash"],
+      "properties": { "id": { "type": "string" }, "repository_id": { "type": "string" }, "analysis_mode": { "enum": ["no_execution", "trusted_build"] }, "identity_hash": { "type": "string" } }
+    },
+    "queries": {
+      "type": "array",
+      "items": { "type": "object", "additionalProperties": false, "required": ["tool", "input_hash", "query_id", "file", "sha256"],
+        "properties": { "tool": { "type": "string" }, "input_hash": { "type": "string" }, "query_id": { "type": "string" }, "file": { "type": "string" }, "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" } } }
+    },
+    "evidence": {
+      "type": "array",
+      "items": { "type": "object", "additionalProperties": false, "required": ["id", "path", "start_line", "end_line", "start_byte", "end_byte", "object_hash", "slice_sha256", "file"],
+        "properties": {
+          "id": { "type": "string" }, "path": { "type": "string" }, "start_line": { "type": "integer" }, "end_line": { "type": "integer" }, "start_byte": { "type": "integer" }, "end_byte": { "type": "integer" },
+          "object_hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" }, "slice_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "file": { "type": ["string", "null"], "description": "The slice's bytes, present only when the person consented to include source." }
+        } }
+    },
+    "manifest_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$", "description": "sha256 of the canonical JSON of this manifest without this field." }
+  }
+}

@@ -1,0 +1,25 @@
+model Post {
+  id       Int    @id @default(autoincrement())
+  title    String
+  author   User   @relation(fields: [authorId], references: [id])
+  authorId Int    @map("author_id")
+  tags     Tag[]
+
+  @@schema("public")
+}
+
+model Tag {
+  name  String @id
+  posts Post[]
+
+  @@map(name: "post_tags")
+  @@schema("public")
+}
+
+view PostCount {
+  authorId Int @unique
+  posts    Int
+
+  @@map("post_counts")
+  @@schema("public")
+}

@@ -1,0 +1,9 @@
+{
+  "name": "ts-packages",
+  "private": true,
+  "dependencies": {
+    "@fx/util": "*",
+    "absent-lib": "^2.0.0",
+    "greeter": "^1.0.0"
+  }
+}

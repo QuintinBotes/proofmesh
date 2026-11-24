@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "list_snapshots.input.schema.json",
+  "title": "list_snapshots input",
+  "description": "The published snapshots of a repository, newest first, each with its analysis mode, publication time, git commit and ref, and which one is current: the snapshots a query can pin with snapshot_id. Answers from the catalog.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "repository_id": {
+      "type": "string",
+      "pattern": "^repo_[0-9a-z]+$",
+      "description": "Optional when exactly one repository is registered."
+    },
+    "envelope": {
+      "enum": [
+        "full",
+        "compact"
+      ],
+      "description": "compact leaves out the snapshot-wide parts of the envelope (unresolved reasons, standing limitations) that an earlier answer from the same snapshot already gave; query-specific limits stay. Over MCP, answers after the first full one per snapshot are compact unless full is asked for."
+    }
+  }
+}

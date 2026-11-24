@@ -1,0 +1,198 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "find_query_source.data.schema.json",
+  "title": "find_query_source data",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "parsed",
+    "candidates",
+    "considered",
+    "notes"
+  ],
+  "properties": {
+    "parsed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tables",
+        "columns",
+        "comments"
+      ],
+      "properties": {
+        "tables": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "schema",
+              "matched"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "schema": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "matched": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Table symbols of that name in the snapshot."
+              }
+            }
+          }
+        },
+        "columns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Columns the statement compares."
+        },
+        "comments": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "candidates": {
+      "type": "array",
+      "description": "Highest score first.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "kind",
+          "qualified_name",
+          "path",
+          "score",
+          "depth",
+          "evidence"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "endpoint",
+              "job"
+            ]
+          },
+          "qualified_name": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "score": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "depth": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Shortest static path length to one of the tables."
+          },
+          "evidence": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "tables",
+              "owner",
+              "columns",
+              "helpers"
+            ],
+            "properties": {
+              "tables": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "owner": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "A team owning the candidate whose name the comments mention."
+              },
+              "columns": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Entity properties read on its paths whose names match compared columns."
+              },
+              "helpers": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "note",
+                    "target"
+                  ],
+                  "properties": {
+                    "note": {
+                      "type": "string"
+                    },
+                    "target": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "considered": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Endpoints and jobs that reach any of the tables."
+    },
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "title",
+          "target",
+          "pattern"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "target": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "pattern": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

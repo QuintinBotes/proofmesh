@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "list_workspaces.input.schema.json",
+  "title": "list_workspaces input",
+  "description": "The named workspaces and their member repositories: the names get_ecosystem takes. Needs no repository_id; answers from the catalog.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "envelope": {
+      "enum": [
+        "full",
+        "compact"
+      ],
+      "description": "compact leaves out the snapshot-wide parts of the envelope (unresolved reasons, standing limitations) that an earlier answer from the same snapshot already gave; query-specific limits stay. Over MCP, answers after the first full one per snapshot are compact unless full is asked for."
+    }
+  }
+}

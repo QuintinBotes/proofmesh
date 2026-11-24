@@ -1,0 +1,6 @@
+<Project>
+  <Import Project="../../Directory.Build.props" />
+  <ItemGroup>
+    <PackageReference Remove="Contoso.Shared" />
+  </ItemGroup>
+</Project>

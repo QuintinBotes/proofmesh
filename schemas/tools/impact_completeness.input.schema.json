@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "impact_completeness.input.schema.json",
+  "title": "impact_completeness input",
+  "description": "What a change reaches, and which of it the diff or a test covers: every symbol the diff from base to head changed, each with every caller (dispatch included), implementer, overrider, subclass, reference and importer, each marked changed (in the diff), tested (a test executes it, by find_tests' call, transitive_call or dispatch evidence) or neither. A commit with no snapshot yet starts its index job and the answer is pending with the job id; call again when get_job reports it finished. A repository with no snapshot at all is refused, as by every tool: run request_index first. Test code is recognised by path and project naming; an edit of only whitespace or comments inside a symbol counts as modified.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "base"
+  ],
+  "properties": {
+    "repository_id": {
+      "type": "string",
+      "pattern": "^repo_[0-9a-z]+$",
+      "description": "Optional when exactly one repository is registered."
+    },
+    "base": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^[^-]",
+      "description": "The commit-ish the change starts from."
+    },
+    "head": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^[^-]",
+      "description": "The commit-ish the change ends at; omitted, the working tree, whose snapshot must be current."
+    },
+    "depth": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 5,
+      "description": "1 (default) lists the direct dependents; more follows callers of callers, each saying the caller it reaches the change through."
+    },
+    "include_tests": {
+      "type": "boolean",
+      "description": "List dependents in test code as rows too; by default a test is only the evidence that marks a row tested."
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "timeout_ms": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_rows": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_depth": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "envelope": {
+      "enum": [
+        "full",
+        "compact",
+        "lean"
+      ],
+      "description": "full (the default): the whole JSON envelope. compact: the JSON envelope without the snapshot-wide parts an earlier answer gave. lean: plain text, a header `# impact_completeness \u00b7 <n> rows \u00b7 <snapshot> current`, then a row `changed <name> <path>:<line> <added|modified|deleted> <status>` per changed symbol and below it `  <relation> <name> <path>:<line> <status>` per dependent at its site, a status being changed, neither, or `tested: <test> <path>:<line> <evidence> depth=<n>`, then `# ` lines: the summary, the limitations, and `# more: cursor <c>` when a next page exists."
+    },
+    "cursor": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096,
+      "description": "The next_cursor of the previous page. It continues the same query on the same snapshots; it expires after an hour."
+    }
+  }
+}

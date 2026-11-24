@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "error.schema.json",
+  "title": "ToolError",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "error"
+  ],
+  "properties": {
+    "error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "message"
+      ],
+      "properties": {
+        "code": {
+          "enum": [
+            "INVALID_ARGUMENT",
+            "UNAUTHORIZED",
+            "SCOPE_DENIED",
+            "NOT_FOUND",
+            "SNAPSHOT_UNAVAILABLE",
+            "STALE_INPUT",
+            "UNSTABLE_WORKTREE",
+            "EVIDENCE_UNAVAILABLE",
+            "INTEGRITY_FAILURE",
+            "BUDGET_EXCEEDED",
+            "ADAPTER_UNSUPPORTED",
+            "TRUST_REQUIRED",
+            "DEPENDENCY_UNAVAILABLE",
+            "APPROVAL_REQUIRED",
+            "APPROVAL_INVALID",
+            "CANCELLED",
+            "INTERNAL_ERROR"
+          ]
+        },
+        "message": {
+          "type": "string"
+        },
+        "details": {
+          "type": "object"
+        }
+      }
+    }
+  }
+}

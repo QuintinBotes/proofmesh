@@ -1,0 +1,261 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "trace_paths.data.schema.json",
+  "title": "trace_paths data",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "conclusion",
+    "paths",
+    "search",
+    "boundaries",
+    "nodes",
+    "relationships"
+  ],
+  "properties": {
+    "conclusion": {
+      "enum": [
+        "path_found",
+        "no_path_within_bounds",
+        "no_resolved_path",
+        "no_path_exhaustive"
+      ]
+    },
+    "paths": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "nodes",
+          "assertions"
+        ],
+        "properties": {
+          "nodes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "assertions": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^as_[0-9a-z]+$"
+            }
+          }
+        }
+      }
+    },
+    "search": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "levels",
+        "stopped_by",
+        "horizon",
+        "explored",
+        "explored_truncated"
+      ],
+      "properties": {
+        "levels": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "depth",
+              "frontier",
+              "expanded_edges"
+            ],
+            "properties": {
+              "depth": {
+                "type": "integer"
+              },
+              "frontier": {
+                "type": "integer"
+              },
+              "expanded_edges": {
+                "type": "integer"
+              }
+            }
+          }
+        },
+        "stopped_by": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "enum": [
+                "max_rows",
+                "max_depth",
+                "max_bytes",
+                "timeout"
+              ]
+            }
+          ]
+        },
+        "horizon": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "unexplored_edges"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "unexplored_edges": {
+                "type": "integer"
+              }
+            }
+          }
+        },
+        "explored": {
+          "type": "array",
+          "maxItems": 500,
+          "description": "Edges the search followed to discover nodes, in search order; at most 500.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "from",
+              "to",
+              "assertion_id",
+              "depth"
+            ],
+            "properties": {
+              "from": {
+                "type": "string"
+              },
+              "to": {
+                "type": "string"
+              },
+              "assertion_id": {
+                "type": "string"
+              },
+              "depth": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          }
+        },
+        "explored_truncated": {
+          "type": "boolean"
+        }
+      }
+    },
+    "boundaries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "assertion_id",
+          "type",
+          "reason",
+          "path",
+          "line",
+          "from_id"
+        ],
+        "properties": {
+          "assertion_id": {
+            "type": "string",
+            "pattern": "^as_[0-9a-z]+$"
+          },
+          "reason": {
+            "enum": [
+              "dynamic_element_access",
+              "untyped_receiver",
+              "unknown_name",
+              "chained_callee",
+              "import_unresolved",
+              "dynamic_specifier",
+              "not_indexed",
+              "dependency_missing",
+              "configuration_error",
+              "outside_capability",
+              "candidate",
+              "ambiguous"
+            ]
+          },
+          "path": {
+            "type": "string"
+          },
+          "line": {
+            "type": "integer"
+          },
+          "from_id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "nodes": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "name",
+          "qualified_name",
+          "path",
+          "start_line"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "qualified_name": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "start_line": {
+            "type": "integer"
+          }
+        }
+      }
+    },
+    "relationships": {
+      "type": "object",
+      "description": "Type, origin, and producing rule of every relationship on a path or explored by the search, keyed by assertion ID.",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "type",
+          "origin",
+          "rule"
+        ],
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "origin": {
+            "type": "string"
+          },
+          "rule": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

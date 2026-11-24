@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "search_sources.data.schema.json",
+  "title": "search_sources data",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "hits",
+    "files_scanned",
+    "files_total"
+  ],
+  "properties": {
+    "hits": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "line",
+          "text",
+          "symbol"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "line": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "text": {
+            "type": "string"
+          },
+          "symbol": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "kind",
+                  "qualified_name"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "qualified_name": {
+                    "type": "string"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    "files_scanned": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "files_total": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "notes": {
+      "type": "array",
+      "description": "Accepted notes with a pattern the searched text matches: the code each targets writes text like it, so a search for its callers can find what a text search cannot, such as a clause a helper adds.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "title",
+          "target",
+          "pattern"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "target": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The note's target or first referenced symbol, as kind:qualified name."
+          },
+          "pattern": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,117 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "get_verification.data.schema.json",
+  "title": "get_verification data",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "verification",
+    "output"
+  ],
+  "properties": {
+    "verification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "repository_id",
+        "snapshot_id",
+        "state",
+        "binding",
+        "binding_hash",
+        "prepared_by",
+        "prepared_at",
+        "expires_at",
+        "approved_by",
+        "approved_at",
+        "consumed_at",
+        "record",
+        "error",
+        "record_valid"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^vr_[0-9a-z]+$"
+        },
+        "repository_id": {
+          "type": "string"
+        },
+        "snapshot_id": {
+          "type": "string"
+        },
+        "state": {
+          "enum": [
+            "prepared",
+            "approved",
+            "consumed",
+            "finished",
+            "failed",
+            "expired"
+          ]
+        },
+        "binding": {
+          "type": "object",
+          "description": "Exactly what an approval binds (FR044): snapshot, recipe (argv, cwd, environment allowlist, network none, limits), toolchain, workspace and filesystem policy, expiry."
+        },
+        "binding_hash": {
+          "type": "string"
+        },
+        "prepared_by": {
+          "type": "string"
+        },
+        "prepared_at": {
+          "type": "string"
+        },
+        "expires_at": {
+          "type": "string"
+        },
+        "approved_by": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "approved_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "consumed_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "record": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "The signed run record: what ran, when, exit code, output hash, truncation, and the sandbox (process or container)."
+        },
+        "error": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "record_valid": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "Whether the run record's authentication code verifies with this installation's key; null before a run."
+        }
+      }
+    },
+    "output": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "The captured output, up to the recipe's cap, after a run."
+    }
+  }
+}

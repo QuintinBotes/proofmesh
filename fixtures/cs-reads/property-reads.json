@@ -1,0 +1,12 @@
+{
+  "schema_version": "0.3",
+  "source": "hand-written sample of an instrumented run",
+  "window": { "from": "2026-11-01T00:00:00Z", "to": "2026-11-08T00:00:00Z" },
+  "counts": [{ "subject": { "kind": "endpoint", "name": "GET api/orders/{id}/summary" }, "metric": "requests", "value": 40 }],
+  "property_reads": [
+    { "endpoint": "GET api/orders/{id}/summary", "entity": "Shop.Data.Order", "property": "Total", "read_kind": "application", "reads": 40 },
+    { "endpoint": "GET api/orders/{id}/summary", "entity": "Shop.Data.Order", "property": "Discount", "read_kind": "application", "reads": 2 },
+    { "endpoint": "GET api/orders/{id}/summary", "entity": "Shop.Data.Order", "declaring_type": "Shop.Data.Entity", "property": "Created", "read_kind": "application", "reads": 40 },
+    { "endpoint": "GET api/orders/{id}/summary", "entity": "Shop.Data.Order", "property": "Notes", "read_kind": "orm", "reads": 40 }
+  ]
+}

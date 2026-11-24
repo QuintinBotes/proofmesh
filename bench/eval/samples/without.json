@@ -1,0 +1,5 @@
+{ "session": "without", "answers": [
+  { "question_id": "q1", "answer": "invoiceTotal, found by grep.", "tool_calls": 4 },
+  { "question_id": "q2", "answer": "It formats a number as currency.", "tool_calls": 3 },
+  { "question_id": "q3", "answer": "", "tool_calls": 6 }
+] }

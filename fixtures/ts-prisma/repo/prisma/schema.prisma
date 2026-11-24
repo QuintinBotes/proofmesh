@@ -1,0 +1,39 @@
+// The shop's schema: users in the auth schema, orders and the audit trail in the sales schema.
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  schemas  = ["auth", "sales"]
+}
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["multiSchema"]
+}
+
+model User {
+  id     Int     @id @default(autoincrement())
+  email  String  @unique
+  // A closing brace } in a comment does not end the model.
+  motto  String  @default("} @@map(decoys)")
+  orders Order[]
+
+  @@map("users")
+  @@schema("auth")
+}
+
+model Order {
+  id     Int     @id @default(autoincrement())
+  total  Decimal
+  user   User    @relation(fields: [userId], references: [id])
+  userId Int
+
+  @@map(name: "orders")
+  @@schema("sales")
+}
+
+model AuditEntry {
+  id   Int    @id
+  note String
+
+  @@schema("sales")
+}

@@ -1,0 +1,293 @@
+{
+  "dispositions": {
+    "app.py": [
+      "indexed",
+      null
+    ],
+    "legacy.py": [
+      "indexed",
+      null
+    ],
+    "shop/__init__.py": [
+      "indexed",
+      null
+    ],
+    "shop/cart.py": [
+      "indexed",
+      null
+    ],
+    "shop/discounts.py": [
+      "indexed",
+      null
+    ],
+    "shop/pricing.py": [
+      "indexed",
+      null
+    ]
+  },
+  "symbols": [
+    {
+      "kind": "module",
+      "qualified_name": "app",
+      "lines": [
+        1,
+        6
+      ],
+      "signature": null
+    },
+    {
+      "kind": "function",
+      "qualified_name": "app:main",
+      "lines": [
+        4,
+        6
+      ],
+      "signature": "def main()"
+    },
+    {
+      "kind": "module",
+      "qualified_name": "legacy",
+      "lines": [
+        1,
+        2
+      ],
+      "signature": null
+    },
+    {
+      "kind": "function",
+      "qualified_name": "legacy:total",
+      "lines": [
+        1,
+        2
+      ],
+      "signature": "def total(items)"
+    },
+    {
+      "kind": "module",
+      "qualified_name": "shop/__init__",
+      "lines": [
+        1,
+        1
+      ],
+      "signature": null
+    },
+    {
+      "kind": "module",
+      "qualified_name": "shop/cart",
+      "lines": [
+        1,
+        19
+      ],
+      "signature": null
+    },
+    {
+      "kind": "class",
+      "qualified_name": "shop/cart:Cart",
+      "lines": [
+        6,
+        19
+      ],
+      "signature": "class Cart"
+    },
+    {
+      "kind": "method",
+      "qualified_name": "shop/cart:Cart.__init__",
+      "lines": [
+        7,
+        8
+      ],
+      "signature": "def __init__(self, items)"
+    },
+    {
+      "kind": "method",
+      "qualified_name": "shop/cart:Cart.checkout",
+      "lines": [
+        10,
+        13
+      ],
+      "signature": "def checkout(self)"
+    },
+    {
+      "kind": "method",
+      "qualified_name": "shop/cart:Cart.render",
+      "lines": [
+        15,
+        16
+      ],
+      "signature": "def render(self, amount)"
+    },
+    {
+      "kind": "method",
+      "qualified_name": "shop/cart:Cart.dynamic",
+      "lines": [
+        18,
+        19
+      ],
+      "signature": "def dynamic(self, name)"
+    },
+    {
+      "kind": "module",
+      "qualified_name": "shop/discounts",
+      "lines": [
+        1,
+        9
+      ],
+      "signature": null
+    },
+    {
+      "kind": "function",
+      "qualified_name": "shop/discounts:apply",
+      "lines": [
+        4,
+        5
+      ],
+      "signature": "def apply(amount)"
+    },
+    {
+      "kind": "function",
+      "qualified_name": "shop/discounts:fetch_rate",
+      "lines": [
+        8,
+        9
+      ],
+      "signature": "def fetch_rate()"
+    },
+    {
+      "kind": "module",
+      "qualified_name": "shop/pricing",
+      "lines": [
+        1,
+        2
+      ],
+      "signature": null
+    },
+    {
+      "kind": "function",
+      "qualified_name": "shop/pricing:total",
+      "lines": [
+        1,
+        2
+      ],
+      "signature": "def total(items)"
+    }
+  ],
+  "calls": [
+    {
+      "from": "shop/cart:Cart.checkout",
+      "line": 11,
+      "site_text": "total(self.items)",
+      "resolution": "resolved",
+      "to": "shop/pricing:total"
+    },
+    {
+      "from": "shop/cart:Cart.checkout",
+      "line": 12,
+      "site_text": "discounts.apply(amount)",
+      "resolution": "resolved",
+      "to": "shop/discounts:apply"
+    },
+    {
+      "from": "shop/cart:Cart.checkout",
+      "line": 13,
+      "site_text": "self.render(amount)",
+      "resolution": "resolved",
+      "to": "shop/cart:Cart.render"
+    },
+    {
+      "from": "shop/cart:Cart.render",
+      "line": 16,
+      "site_text": "json.dumps({\"amount\": amount})",
+      "resolution": "resolved_external",
+      "external": {
+        "module": "json",
+        "name": "dumps"
+      }
+    },
+    {
+      "from": "shop/cart:Cart.dynamic",
+      "line": 19,
+      "site_text": "getattr(self, name)",
+      "resolution": "resolved_external",
+      "external": {
+        "module": "builtins",
+        "name": "getattr"
+      }
+    },
+    {
+      "from": "shop/cart:Cart.dynamic",
+      "line": 19,
+      "site_text": "getattr(self, name)()",
+      "resolution": "unresolved",
+      "reason": "dynamic_element_access"
+    },
+    {
+      "from": "shop/pricing:total",
+      "line": 2,
+      "site_text": "sum(item.price for item in items)",
+      "resolution": "resolved_external",
+      "external": {
+        "module": "builtins",
+        "name": "sum"
+      }
+    },
+    {
+      "from": "shop/discounts:fetch_rate",
+      "line": 9,
+      "site_text": "requests.get(\"https://rates.example.com\")",
+      "resolution": "unresolved",
+      "reason": "dependency_missing"
+    },
+    {
+      "from": "shop/discounts:fetch_rate",
+      "line": 9,
+      "site_text": "requests.get(\"https://rates.example.com\").json()",
+      "resolution": "unresolved",
+      "reason": "dependency_missing"
+    },
+    {
+      "from": "app:main",
+      "line": 5,
+      "site_text": "Cart([])",
+      "resolution": "resolved",
+      "to": "shop/cart:Cart"
+    },
+    {
+      "from": "app:main",
+      "line": 6,
+      "site_text": "cart.checkout()",
+      "resolution": "resolved",
+      "to": "shop/cart:Cart.checkout"
+    }
+  ],
+  "imports": [
+    {
+      "from": "app.py",
+      "to": "shop/__init__.py",
+      "statement_lines": [
+        1
+      ]
+    },
+    {
+      "from": "shop/__init__.py",
+      "to": "shop/cart.py",
+      "statement_lines": [
+        1
+      ]
+    },
+    {
+      "from": "shop/cart.py",
+      "to": "shop/pricing.py",
+      "statement_lines": [
+        2
+      ]
+    },
+    {
+      "from": "shop/cart.py",
+      "to": "shop/discounts.py",
+      "statement_lines": [
+        3
+      ]
+    }
+  ],
+  "closed_world": "Symbols, calls and imports are complete for this fixture. requests is deliberately not installed."
+}

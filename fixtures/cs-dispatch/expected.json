@@ -1,0 +1,13 @@
+{
+  "subject": "Shop.Pricing.Price",
+  "inbound_calls": [
+    { "from": "Shop.Checkout.Total", "line": 17, "site_text": "Pricing.Price(sku)", "via": "Shop.IPricing.Price" },
+    { "from": "Shop.Report.Run", "line": 27, "site_text": "context.Pricing.Price(1)", "via": "Shop.IPricing.Price" }
+  ],
+  "boundaries_in_order": [
+    { "from": "Shop.Report.Missing", "line": 29, "reason": "unknown_name", "calls_name": true },
+    { "from": "Shop.Report.Loose", "line": 28, "reason": "untyped_receiver", "calls_name": true },
+    { "from": "Shop.Report.Other", "line": 30, "reason": "unknown_name", "calls_name": false }
+  ],
+  "boundaries_calling_name": 2
+}

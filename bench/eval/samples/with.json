@@ -1,0 +1,5 @@
+{ "session": "with", "answers": [
+  { "question_id": "q1", "answer": "invoiceTotal in packages/billing/src/invoice.ts sums the lines.", "tool_calls": 2, "tokens": 1800 },
+  { "question_id": "q2", "answer": "formatCurrency calls Intl.NumberFormat from the standard library.", "tool_calls": 1, "tokens": 900 },
+  { "question_id": "q3", "answer": "No caller: verify_claim reports no caller under a closed world for calls in this snapshot.", "tool_calls": 2, "tokens": 1200 }
+] }

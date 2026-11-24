@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "conventions/0.1.schema.json",
+  "title": "Proofmesh repository conventions 0.1",
+  "description": "Types only the repository can name, for rules that ship with an adapter: job base classes, feature flag keys, and the enum whose members name owning teams. Data, not code: registering a conventions file runs nothing. Type names are qualified, with or without type parameters.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version"],
+  "properties": {
+    "schema_version": { "const": "0.1" },
+    "csharp": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "jobs": {
+          "description": "Every concrete class deriving from a base type is a job that runs it.",
+          "type": "array",
+          "items": { "type": "object", "additionalProperties": false, "required": ["base_type"], "properties": { "base_type": { "type": "string", "minLength": 1 } } }
+        },
+        "feature_flags": {
+          "description": "Feature flag keys: string constants declared in a class, or members of a key type created with a constant key. Code reading a key evaluates the flag.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "minProperties": 1,
+            "properties": { "declared_in": { "type": "string", "minLength": 1 }, "key_type": { "type": "string", "minLength": 1 } }
+          }
+        },
+        "teams": {
+          "description": "An enum whose members name teams: code passing a member as an argument, optionally only to a parameter of the given name, is owned by that team.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["enum_type"],
+            "properties": { "enum_type": { "type": "string", "minLength": 1 }, "parameter": { "type": "string", "minLength": 1 } }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,305 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "get_property_reads.data.schema.json",
+  "title": "get_property_reads data",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "reads",
+    "loaded_not_used",
+    "unread_mapped_properties",
+    "static_reads",
+    "static_bound",
+    "comparison"
+  ],
+  "properties": {
+    "reads": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "source",
+          "window",
+          "endpoint",
+          "entity",
+          "declaring_type",
+          "property",
+          "read_kind",
+          "reads",
+          "calls",
+          "callers",
+          "symbol_id"
+        ],
+        "properties": {
+          "source": {
+            "type": "string"
+          },
+          "window": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "from",
+              "to"
+            ],
+            "properties": {
+              "from": {
+                "type": "string"
+              },
+              "to": {
+                "type": "string"
+              }
+            }
+          },
+          "endpoint": {
+            "type": "string"
+          },
+          "entity": {
+            "type": "string"
+          },
+          "property": {
+            "type": "string"
+          },
+          "reads": {
+            "type": "number"
+          },
+          "symbol_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The property symbol in the snapshot, or null when the snapshot has no such property."
+          },
+          "declaring_type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "read_kind": {
+            "enum": [
+              "orm",
+              "application"
+            ],
+            "description": "orm: loaded or tracked by the ORM, not necessarily used; application: read by code."
+          },
+          "calls": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "callers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "loaded_not_used": {
+      "type": "array",
+      "description": "Properties the ORM loaded on an endpoint that no application read touched in the window.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "endpoint",
+          "entity",
+          "property"
+        ],
+        "properties": {
+          "endpoint": {
+            "type": "string"
+          },
+          "entity": {
+            "type": "string"
+          },
+          "property": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "unread_mapped_properties": {
+      "type": "array",
+      "description": "Properties the snapshot declares on the entity that no import mentions; only when an entity was named.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "entity",
+          "property",
+          "symbol_id"
+        ],
+        "properties": {
+          "entity": {
+            "type": "string"
+          },
+          "property": {
+            "type": "string"
+          },
+          "symbol_id": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "static_reads": {
+      "type": "array",
+      "description": "With an endpoint: properties of mapped entities (their subtypes and base types) that code on a resolved path from the endpoint reads. Static reach, not load: an upper bound on executed branches, blind past unresolved calls and to reflection or serialization.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "entity",
+          "property",
+          "symbol_id",
+          "read_by",
+          "depth"
+        ],
+        "properties": {
+          "entity": {
+            "type": "string",
+            "description": "The type declaring the property."
+          },
+          "property": {
+            "type": "string"
+          },
+          "symbol_id": {
+            "type": "string"
+          },
+          "read_by": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Up to five members reached from the endpoint that read it."
+          },
+          "depth": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Hops from the endpoint to the nearest reader."
+          }
+        }
+      }
+    },
+    "static_bound": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "endpoints",
+            "methods",
+            "unresolved_calls",
+            "stopped_by"
+          ],
+          "properties": {
+            "endpoints": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "methods": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Symbols reached from the endpoints."
+            },
+            "unresolved_calls": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Calls from the reached code with no single resolved target: reads past them are not in static_reads."
+            },
+            "stopped_by": {
+              "enum": [
+                "max_depth",
+                "max_rows",
+                null
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "comparison": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "both",
+            "static_only",
+            "observed_only"
+          ],
+          "description": "With an endpoint that has both static reads and imported reads: properties by declaring type.",
+          "properties": {
+            "both": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "entity",
+                  "property"
+                ],
+                "properties": {
+                  "entity": {
+                    "type": "string"
+                  },
+                  "property": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "static_only": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "entity",
+                  "property"
+                ],
+                "properties": {
+                  "entity": {
+                    "type": "string"
+                  },
+                  "property": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "observed_only": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "entity",
+                  "property"
+                ],
+                "properties": {
+                  "entity": {
+                    "type": "string"
+                  },
+                  "property": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

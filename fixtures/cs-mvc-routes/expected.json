@@ -1,0 +1,274 @@
+{
+  "symbols": [
+    {
+      "kind": "endpoint",
+      "qualified_name": "ANY Admin/{tenant:guid}/Home/Index/{id?}",
+      "name": "ANY Admin/{tenant:guid}/Home/Index/{id?}",
+      "path": "src/Portal.Web/Program.cs",
+      "line": 5
+    },
+    {
+      "kind": "endpoint",
+      "qualified_name": "POST Admin/{tenant:guid}/Home/Save/{id?}",
+      "name": "POST Admin/{tenant:guid}/Home/Save/{id?}",
+      "path": "src/Portal.Web/Program.cs",
+      "line": 5
+    },
+    {
+      "kind": "endpoint",
+      "qualified_name": "GET Admin/{tenant:guid}/Reports/Summary/{id?}",
+      "name": "GET Admin/{tenant:guid}/Reports/Summary/{id?}",
+      "path": "src/Portal.Web/Program.cs",
+      "line": 5
+    },
+    {
+      "kind": "endpoint",
+      "qualified_name": "ANY Admin/{tenant:guid}/Error/NotFound/{id?}",
+      "name": "ANY Admin/{tenant:guid}/Error/NotFound/{id?}",
+      "path": "src/Portal.Web/Program.cs",
+      "line": 5
+    },
+    {
+      "kind": "endpoint",
+      "qualified_name": "ANY Admin/Home/Index/{id?}",
+      "name": "ANY Admin/Home/Index/{id?}",
+      "path": "src/Portal.Web/Program.cs",
+      "line": 6
+    },
+    {
+      "kind": "endpoint",
+      "qualified_name": "POST Admin/Home/Save/{id?}",
+      "name": "POST Admin/Home/Save/{id?}",
+      "path": "src/Portal.Web/Program.cs",
+      "line": 6
+    },
+    {
+      "kind": "endpoint",
+      "qualified_name": "GET Admin/Reports/Summary/{id?}",
+      "name": "GET Admin/Reports/Summary/{id?}",
+      "path": "src/Portal.Web/Program.cs",
+      "line": 6
+    },
+    {
+      "kind": "endpoint",
+      "qualified_name": "ANY Admin/Error/NotFound/{id?}",
+      "name": "ANY Admin/Error/NotFound/{id?}",
+      "path": "src/Portal.Web/Program.cs",
+      "line": 6
+    },
+    {
+      "kind": "endpoint",
+      "qualified_name": "ANY /",
+      "name": "ANY /",
+      "path": "src/Portal.Web/Program.cs",
+      "line": 7
+    },
+    {
+      "kind": "endpoint",
+      "qualified_name": "ANY {*url}",
+      "name": "ANY {*url}",
+      "path": "src/Portal.Web/Program.cs",
+      "line": 8
+    },
+    {
+      "kind": "endpoint",
+      "qualified_name": "GET api/things",
+      "name": "GET api/things",
+      "path": "src/Portal.Features/Controllers.cs",
+      "line": 22
+    }
+  ],
+  "relationships": [
+    {
+      "type": "exposes",
+      "from": "endpoint ANY Admin/{tenant:guid}/Home/Index/{id?}",
+      "to": "method HomeController.Index",
+      "detail": {
+        "rule": "conventional_route",
+        "route": "Tenant"
+      },
+      "line": 14,
+      "site_text": "public string Index() => \"home\";"
+    },
+    {
+      "type": "exposes",
+      "from": "endpoint ANY Admin/Home/Index/{id?}",
+      "to": "method HomeController.Index",
+      "detail": {
+        "rule": "conventional_route",
+        "route": "Admin"
+      },
+      "line": 14,
+      "site_text": "public string Index() => \"home\";"
+    },
+    {
+      "type": "exposes",
+      "from": "endpoint ANY /",
+      "to": "method HomeController.Index",
+      "detail": {
+        "rule": "conventional_route",
+        "route": "Root"
+      },
+      "line": 14,
+      "site_text": "public string Index() => \"home\";"
+    },
+    {
+      "type": "exposes",
+      "from": "endpoint POST Admin/{tenant:guid}/Home/Save/{id?}",
+      "to": "method HomeController.Save",
+      "detail": {
+        "rule": "conventional_route",
+        "route": "Tenant"
+      },
+      "line": 16,
+      "site_text": "HttpPost"
+    },
+    {
+      "type": "exposes",
+      "from": "endpoint POST Admin/Home/Save/{id?}",
+      "to": "method HomeController.Save",
+      "detail": {
+        "rule": "conventional_route",
+        "route": "Admin"
+      },
+      "line": 16,
+      "site_text": "HttpPost"
+    },
+    {
+      "type": "exposes",
+      "from": "endpoint GET Admin/{tenant:guid}/Reports/Summary/{id?}",
+      "to": "method Portal.Features.ReportsController.Summary",
+      "detail": {
+        "rule": "conventional_route",
+        "route": "Tenant"
+      },
+      "line": 7,
+      "site_text": "HttpGet"
+    },
+    {
+      "type": "exposes",
+      "from": "endpoint GET Admin/Reports/Summary/{id?}",
+      "to": "method Portal.Features.ReportsController.Summary",
+      "detail": {
+        "rule": "conventional_route",
+        "route": "Admin"
+      },
+      "line": 7,
+      "site_text": "HttpGet"
+    },
+    {
+      "type": "exposes",
+      "from": "endpoint ANY Admin/{tenant:guid}/Error/NotFound/{id?}",
+      "to": "method Portal.Features.ErrorController.NotFound",
+      "detail": {
+        "rule": "conventional_route",
+        "route": "Tenant"
+      },
+      "line": 16,
+      "site_text": "public string NotFound() => \"\";"
+    },
+    {
+      "type": "exposes",
+      "from": "endpoint ANY Admin/Error/NotFound/{id?}",
+      "to": "method Portal.Features.ErrorController.NotFound",
+      "detail": {
+        "rule": "conventional_route",
+        "route": "Admin"
+      },
+      "line": 16,
+      "site_text": "public string NotFound() => \"\";"
+    },
+    {
+      "type": "exposes",
+      "from": "endpoint ANY {*url}",
+      "to": "method Portal.Features.ErrorController.NotFound",
+      "detail": {
+        "rule": "conventional_route",
+        "route": "Missing"
+      },
+      "line": 16,
+      "site_text": "public string NotFound() => \"\";"
+    },
+    {
+      "type": "exposes",
+      "from": "endpoint GET api/things",
+      "to": "method Portal.Features.ThingsController.List",
+      "detail": {
+        "rule": "attribute_route"
+      },
+      "line": 22,
+      "site_text": "HttpGet"
+    },
+    {
+      "type": "exposes",
+      "from": "method HomeController.Index",
+      "reason": "outside_capability",
+      "detail": {
+        "rule": "conventional_route",
+        "route": "Configured",
+        "why": "the route template is not a compile-time constant"
+      },
+      "line": 14,
+      "site_text": "public string Index() => \"home\";"
+    },
+    {
+      "type": "exposes",
+      "from": "method HomeController.Save",
+      "reason": "outside_capability",
+      "detail": {
+        "rule": "conventional_route",
+        "route": "Configured",
+        "why": "the route template is not a compile-time constant"
+      },
+      "line": 16,
+      "site_text": "HttpPost"
+    },
+    {
+      "type": "exposes",
+      "from": "method Portal.Features.ReportsController.Summary",
+      "reason": "outside_capability",
+      "detail": {
+        "rule": "conventional_route",
+        "route": "Configured",
+        "why": "the route template is not a compile-time constant"
+      },
+      "line": 7,
+      "site_text": "HttpGet"
+    },
+    {
+      "type": "exposes",
+      "from": "method Portal.Features.ErrorController.NotFound",
+      "reason": "outside_capability",
+      "detail": {
+        "rule": "conventional_route",
+        "route": "Configured",
+        "why": "the route template is not a compile-time constant"
+      },
+      "line": 16,
+      "site_text": "public string NotFound() => \"\";"
+    },
+    {
+      "type": "exposes",
+      "from": "method Portal.Features.InvoicesController.Index",
+      "reason": "outside_capability",
+      "detail": {
+        "rule": "conventional_route",
+        "route": "Configured",
+        "why": "the route template is not a compile-time constant"
+      },
+      "line": 29,
+      "site_text": "public string Index() => \"\";"
+    },
+    {
+      "type": "exposes",
+      "from": "method OrphanController.Index",
+      "reason": "outside_capability",
+      "detail": {
+        "rule": "conventional_route",
+        "why": "no registered conventional route reaches the action"
+      },
+      "line": 8,
+      "site_text": "public string Index() => \"\";"
+    }
+  ]
+}

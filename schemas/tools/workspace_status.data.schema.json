@@ -1,0 +1,488 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "workspace_status.data.schema.json",
+  "title": "workspace_status data",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "repository",
+    "adapters",
+    "files",
+    "hubs",
+    "calls",
+    "file_summary",
+    "analysis"
+  ],
+  "properties": {
+    "repository": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name",
+        "git"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^repo_[0-9a-z]+$"
+        },
+        "name": {
+          "type": "string"
+        },
+        "git": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "available"
+          ],
+          "properties": {
+            "available": {
+              "type": "boolean"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "head": {
+              "type": "string"
+            },
+            "commit": {
+              "type": "string"
+            },
+            "ref": {
+              "type": "string"
+            },
+            "behind_remote": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "behind_ref": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "The remote branch behind_remote counts against, such as origin/main; null when the repository has no remote default branch."
+            },
+            "fetched_at": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "When that remote branch was last fetched; behind_remote is only as current as this."
+            }
+          }
+        }
+      }
+    },
+    "adapters": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "version",
+          "protocol_version",
+          "languages"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "protocol_version": {
+            "type": "string"
+          },
+          "languages": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "disposition",
+          "detail",
+          "language",
+          "capabilities"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "disposition": {
+            "enum": [
+              "indexed",
+              "excluded_by_rule",
+              "unsupported",
+              "failed",
+              "pending"
+            ]
+          },
+          "detail": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "language": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "capabilities": {
+            "type": "object",
+            "additionalProperties": {
+              "enum": [
+                "complete",
+                "partial",
+                "unsupported",
+                "failed",
+                "not_run"
+              ]
+            }
+          }
+        }
+      },
+      "description": "File rows, only when the input asks for them with files; otherwise empty, and file_summary says what the snapshot holds."
+    },
+    "hubs": {
+      "type": "array",
+      "maxItems": 12,
+      "description": "The most-referenced symbols by resolved inbound relationships, as starting points for exploration.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "kind",
+          "name",
+          "qualified_name",
+          "path",
+          "inbound"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "qualified_name": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "inbound": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      }
+    },
+    "jobs": {
+      "type": "array",
+      "description": "Index jobs of the repository that are queued or running, from MCP or the CLI, oldest first; poll one with get_job.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "repository_id",
+          "state",
+          "requested_by",
+          "requested_at",
+          "started_at",
+          "finished_at",
+          "phase",
+          "done",
+          "total",
+          "result",
+          "error"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "repository_id": {
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "queued",
+              "running",
+              "succeeded",
+              "failed",
+              "interrupted"
+            ]
+          },
+          "requested_by": {
+            "type": "string"
+          },
+          "requested_at": {
+            "type": "string"
+          },
+          "started_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "finished_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "phase": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "done": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "total": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "result": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "progress_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "When the job last reported progress: a running job whose progress_at stops moving is stuck, not slow."
+          },
+          "phase_started_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "When the current phase began."
+          },
+          "plan": {
+            "description": "Per adapter: incremental or full, how many files it re-analyses and how many replay cached facts; null until analysis starts.",
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "mode",
+                    "analyse",
+                    "reuse"
+                  ],
+                  "properties": {
+                    "mode": {
+                      "enum": [
+                        "incremental",
+                        "full"
+                      ]
+                    },
+                    "analyse": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "reuse": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          "elapsed_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Since the job started, or its whole run once finished."
+          }
+        }
+      }
+    },
+    "calls": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sites",
+        "unresolved",
+        "by_reason"
+      ],
+      "description": "Call sites in the snapshot, how many are unresolved, and why.",
+      "properties": {
+        "sites": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unresolved": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "by_reason": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer"
+          }
+        },
+        "dependency_missing_by_package": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "description": "dependency_missing call sites per package their project lacks, the 20 largest: a site counts once under each package its project lacks."
+        }
+      }
+    },
+    "file_summary": {
+      "type": "array",
+      "description": "Files by disposition, reason and extension, largest group first: what was indexed, excluded or unsupported, without a row per file.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "disposition",
+          "detail",
+          "extension",
+          "files"
+        ],
+        "properties": {
+          "disposition": {
+            "enum": [
+              "indexed",
+              "excluded_by_rule",
+              "unsupported",
+              "failed",
+              "pending"
+            ]
+          },
+          "detail": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "extension": {
+            "type": "string",
+            "description": "The file name's extension with its dot, or the whole name when it has none."
+          },
+          "files": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      }
+    },
+    "analysis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "config",
+        "generated_sources",
+        "dependencies"
+      ],
+      "description": "How the snapshot was analysed (FR004): discovery's rules, what happens to generated source, and each adapter's external inputs.",
+      "properties": {
+        "mode": {
+          "enum": [
+            "no_execution",
+            "trusted_build"
+          ]
+        },
+        "config": {
+          "description": "The discovery rules the snapshot was built with (excluded directories, the size limit for indexed files, symlinks, ignore files); null for a snapshot built before it was recorded.",
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object"
+            }
+          ]
+        },
+        "generated_sources": {
+          "type": "string",
+          "description": "The generated-source policy of the analysis mode."
+        },
+        "dependencies": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "adapter",
+              "analysis_mode",
+              "inputs_read",
+              "inputs_missing",
+              "missing"
+            ],
+            "properties": {
+              "adapter": {
+                "type": "string"
+              },
+              "analysis_mode": {
+                "type": "string"
+              },
+              "inputs_read": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "inputs_missing": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "missing": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Up to 20 missing external inputs."
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

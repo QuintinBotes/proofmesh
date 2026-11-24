@@ -1,0 +1,8 @@
+{
+  "tables": [
+    { "table": "Orders", "path": "src/Shop.Data/Entities.cs", "entities": ["Shop.Data.Order"], "reach": [{ "kind": "endpoint", "qualified_name": "GET api/Orders/{id}", "path": "src/Shop.Api/Controllers.cs", "depth": 4 }] },
+    { "table": "Shipments", "path": "src/Shop.Data/Entities.cs", "entities": ["Shop.Data.Shipment"], "reach": [{ "kind": "job", "qualified_name": "Shop.Api.ShipmentSync", "path": "src/Shop.Api/Jobs.cs", "depth": 4 }] },
+    { "table": "Archive", "path": "src/Shop.Data/Entities.cs", "entities": ["Shop.Data.ArchiveEntry"], "reach": [] }
+  ],
+  "depth_note": "Orders: table <- Order (1, and Order.Create as its member) <- OrderRepository.Load (2) <- OrdersController.Get (3) <- GET api/Orders/{id} exposes (4). Shipments: Shipment (1) <- ShipmentRepository.Pending (2) <- ShipmentSync.ExecuteAsync (3) <- the job that runs ShipmentSync (4)."
+}

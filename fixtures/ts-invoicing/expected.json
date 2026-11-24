@@ -1,0 +1,248 @@
+{
+  "dispositions": {
+    "README.md": [
+      "unsupported",
+      "no_adapter:.md"
+    ],
+    "tsconfig.json": [
+      "indexed",
+      null
+    ],
+    "packages/api/schema.graphql": [
+      "unsupported",
+      "no_adapter:.graphql"
+    ],
+    "packages/api/src/handler.ts": [
+      "indexed",
+      null
+    ],
+    "packages/billing/dist/invoice.js": [
+      "excluded_by_rule",
+      "**/dist/**"
+    ],
+    "packages/billing/src/index.ts": [
+      "indexed",
+      null
+    ],
+    "packages/billing/src/invoice.ts": [
+      "indexed",
+      null
+    ],
+    "packages/format/src/currency.ts": [
+      "indexed",
+      null
+    ],
+    "packages/format/src/index.ts": [
+      "indexed",
+      null
+    ],
+    "packages/legacy/src/format.ts": [
+      "indexed",
+      null
+    ]
+  },
+  "symbols": [
+    {
+      "kind": "function",
+      "qualified_name": "packages/format/src/currency:formatAmount",
+      "lines": [
+        1,
+        3
+      ],
+      "signature": "formatAmount(cents: number, currency: string): string"
+    },
+    {
+      "kind": "interface",
+      "qualified_name": "packages/billing/src/invoice:Line",
+      "lines": [
+        3,
+        5
+      ],
+      "signature": null
+    },
+    {
+      "kind": "function",
+      "qualified_name": "packages/billing/src/invoice:invoiceTotal",
+      "lines": [
+        7,
+        10
+      ],
+      "signature": "invoiceTotal(lines: Line[], currency: string): string"
+    },
+    {
+      "kind": "function",
+      "qualified_name": "packages/api/src/handler:handleInvoice",
+      "lines": [
+        3,
+        6
+      ],
+      "signature": "handleInvoice(request: { lines: { cents: number; }[]; }): string"
+    },
+    {
+      "kind": "variable",
+      "qualified_name": "packages/api/src/handler:handlers",
+      "lines": [
+        8,
+        8
+      ],
+      "signature": null
+    },
+    {
+      "kind": "function",
+      "qualified_name": "packages/api/src/handler:dispatch",
+      "lines": [
+        10,
+        12
+      ],
+      "signature": "dispatch(name: string, payload: unknown): unknown"
+    },
+    {
+      "kind": "function",
+      "qualified_name": "packages/legacy/src/format:formatAmount",
+      "lines": [
+        1,
+        4
+      ],
+      "signature": "formatAmount(value: number): string"
+    },
+    {
+      "kind": "module",
+      "qualified_name": "packages/format/src/currency",
+      "lines": [
+        1,
+        3
+      ],
+      "signature": null
+    },
+    {
+      "kind": "module",
+      "qualified_name": "packages/format/src/index",
+      "lines": [
+        1,
+        1
+      ],
+      "signature": null
+    },
+    {
+      "kind": "module",
+      "qualified_name": "packages/billing/src/invoice",
+      "lines": [
+        1,
+        10
+      ],
+      "signature": null
+    },
+    {
+      "kind": "module",
+      "qualified_name": "packages/billing/src/index",
+      "lines": [
+        1,
+        2
+      ],
+      "signature": null
+    },
+    {
+      "kind": "module",
+      "qualified_name": "packages/api/src/handler",
+      "lines": [
+        1,
+        12
+      ],
+      "signature": null
+    },
+    {
+      "kind": "module",
+      "qualified_name": "packages/legacy/src/format",
+      "lines": [
+        1,
+        4
+      ],
+      "signature": null
+    }
+  ],
+  "calls": [
+    {
+      "from": "packages/format/src/currency:formatAmount",
+      "line": 2,
+      "site_text": "(cents / 100).toFixed(2)",
+      "resolution": "resolved_external",
+      "external": {
+        "module": "lib.es5.d.ts",
+        "name": "Number.toFixed"
+      }
+    },
+    {
+      "from": "packages/billing/src/invoice:invoiceTotal",
+      "line": 8,
+      "site_text": "lines.reduce((sum, line) => sum + line.cents, 0)",
+      "resolution": "resolved_external",
+      "external": {
+        "module": "lib.es5.d.ts",
+        "name": "Array.reduce"
+      }
+    },
+    {
+      "from": "packages/billing/src/invoice:invoiceTotal",
+      "line": 9,
+      "site_text": "formatAmount(cents, currency)",
+      "resolution": "resolved",
+      "to": "packages/format/src/currency:formatAmount"
+    },
+    {
+      "from": "packages/api/src/handler:handleInvoice",
+      "line": 5,
+      "site_text": "invoiceTotal(request.lines, \"EUR\")",
+      "resolution": "resolved",
+      "to": "packages/billing/src/invoice:invoiceTotal"
+    },
+    {
+      "from": "packages/api/src/handler:dispatch",
+      "line": 11,
+      "site_text": "handlers[name](payload)",
+      "resolution": "unresolved",
+      "reason": "dynamic_element_access"
+    },
+    {
+      "from": "packages/legacy/src/format:formatAmount",
+      "line": 3,
+      "site_text": "value.toString()",
+      "resolution": "resolved_external",
+      "external": {
+        "module": "lib.es5.d.ts",
+        "name": "Number.toString"
+      }
+    }
+  ],
+  "imports": [
+    {
+      "from": "packages/format/src/index.ts",
+      "to": "packages/format/src/currency.ts",
+      "statement_lines": [
+        1
+      ]
+    },
+    {
+      "from": "packages/billing/src/invoice.ts",
+      "to": "packages/format/src/index.ts",
+      "statement_lines": [
+        1
+      ]
+    },
+    {
+      "from": "packages/billing/src/index.ts",
+      "to": "packages/billing/src/invoice.ts",
+      "statement_lines": [
+        1,
+        2
+      ]
+    },
+    {
+      "from": "packages/api/src/handler.ts",
+      "to": "packages/billing/src/index.ts",
+      "statement_lines": [
+        1
+      ]
+    }
+  ],
+  "closed_world": "The calls and imports lists are complete for this fixture. Any additional assertion is a failure."
+}

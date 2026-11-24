@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "get_external_usage.input.schema.json",
+  "title": "get_external_usage input",
+  "description": "How much of the repository calls code outside it: call sites per external module, type or member, with distinct files and projects and a few sample sites, for sizing a framework or library migration. Closed generic instantiations count together under their open definition unless fold_generics is false. Only calls that resolved to an external count; calls that did not bind name no target.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "repository_id": {
+      "type": "string",
+      "pattern": "^repo_[0-9a-z]+$",
+      "description": "Optional when exactly one repository is registered."
+    },
+    "snapshot_id": {
+      "oneOf": [
+        {
+          "type": "string",
+          "pattern": "^snap_[0-9a-z]+$"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Null pins the current published snapshot."
+    },
+    "module": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Only externals of this module: an assembly or package name, such as `EntityFramework`."
+    },
+    "name_prefix": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Only externals whose qualified name starts with this, such as a namespace or a type."
+    },
+    "group_by": {
+      "enum": [
+        "module",
+        "type",
+        "member"
+      ],
+      "description": "Default member."
+    },
+    "fold_generics": {
+      "type": "boolean",
+      "description": "Default true: `Config<Order>.Property` and `Config<Invoice>.Property` count as `Config<\u2026>.Property`."
+    },
+    "include_tests": {
+      "type": "boolean",
+      "description": "Default true. False leaves out call sites in test code, recognised by path."
+    },
+    "path_prefix": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Only call sites in files under this path."
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "timeout_ms": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_rows": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_depth": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "freshness": {
+      "enum": [
+        "snapshot",
+        "strict"
+      ],
+      "description": "snapshot (default) answers from the published snapshot. strict first checks that the working tree is exactly what the snapshot was built from; if not, it starts an index and refuses with STALE_INPUT naming the changed files."
+    },
+    "envelope": {
+      "enum": [
+        "full",
+        "compact"
+      ],
+      "description": "compact leaves out the snapshot-wide parts of the envelope (unresolved reasons, standing limitations) that an earlier answer from the same snapshot already gave; query-specific limits stay. Over MCP, answers after the first full one per snapshot are compact unless full is asked for."
+    }
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "name": "proofmesh-workspace",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "packageManager": "pnpm@10.14.0",
+  "scripts": {
+    "build": "pnpm --filter @proofmesh/adapter-typescript build && pnpm --filter @proofmesh/adapter-syntax build && pnpm --filter @proofmesh/observatory build && pnpm --filter proofmesh build",
+    "typecheck": "pnpm -r typecheck",
+    "update:all": "node scripts/update.mjs",
+    "test": "vitest run",
+    "test:e2e": "pnpm build && playwright test -c e2e/playwright.config.ts",
+    "check:licenses": "node policy/check-licenses.mjs",
+    "check:schemas": "node schemas/generate-types.mjs --check",
+    "check:traceability": "node policy/check-traceability.mjs",
+    "check:fixtures": "node policy/check-fixtures.mjs",
+    "verify": "pnpm build && pnpm typecheck && pnpm test && pnpm test:csharp && pnpm test:e2e && pnpm check:licenses && pnpm check:schemas && pnpm check:fixtures && pnpm check:traceability",
+    "test:csharp": "dotnet test adapters/csharp/test",
+    "conformance": "node policy/conformance.mjs",
+    "bench": "node bench/run.mjs",
+    "eval": "node bench/eval/run.mjs",
+    "release:pack": "node release/pack.mjs",
+    "release:image": "node release/image.mjs",
+    "release:sbom": "node release/sbom.mjs",
+    "release:provenance": "node release/provenance.mjs",
+    "release:sign": "node release/sign.mjs",
+    "release:verify": "node release/verify.mjs",
+    "release:notices": "node release/notices.mjs",
+    "release:export": "node release/export.mjs",
+    "release:scan": "node release/leak-scan.mjs",
+    "bench:observatory": "node bench/observatory/frames.mjs"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.14.0",
+    "@playwright/test": "^1.65.0",
+    "@types/node": "^26.6.6",
+    "ajv": "^8.20.0",
+    "esbuild": "^0.28.2",
+    "fast-check": "^4.10.2",
+    "graphology": "^0.26.0",
+    "graphology-types": "^0.24.8",
+    "json-schema-to-typescript": "^16.0.0",
+    "prettier": "^3.9.10",
+    "typescript": "^6.0.3",
+    "vitest": "^5.1.0"
+  }
+}

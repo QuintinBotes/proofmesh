@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "prepare_verification.input.schema.json",
+  "title": "prepare_verification input",
+  "description": "Prepares a verification recipe without running anything (FR043): pins the snapshot, argv, working directory, environment allowlist, limits and expiry into a binding a person must approve with `proofmesh verification approve <id>` and run with `proofmesh verification run <id>`. Refused unless a person enabled verification execution for this data directory.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "command"
+  ],
+  "properties": {
+    "repository_id": {
+      "type": "string",
+      "pattern": "^repo_[0-9a-z]+$",
+      "description": "Optional when exactly one repository is registered."
+    },
+    "snapshot_id": {
+      "oneOf": [
+        {
+          "type": "string",
+          "pattern": "^snap_[0-9a-z]+$"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Null pins the current published snapshot."
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "timeout_ms": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_rows": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_depth": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "freshness": {
+      "enum": [
+        "snapshot",
+        "strict"
+      ],
+      "description": "snapshot (default) answers from the published snapshot. strict first checks that the working tree is exactly what the snapshot was built from; if not, it starts an index and refuses with STALE_INPUT naming the changed files."
+    },
+    "command": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string"
+      },
+      "description": "The exact argv to run, from the workspace's working directory."
+    },
+    "cwd": {
+      "type": "string",
+      "default": ".",
+      "description": "Working directory inside the disposable workspace."
+    },
+    "env_allow": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z_][A-Z0-9_]*$"
+      },
+      "description": "Environment variables passed through from the launcher's environment; everything else is dropped. PATH always passes."
+    },
+    "timeout_s": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 86400
+    },
+    "max_memory_mb": {
+      "type": "integer",
+      "minimum": 64
+    },
+    "max_output_kb": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "expires_in_s": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 86400,
+      "description": "How long the approval may be given and used; default 900."
+    },
+    "envelope": {
+      "enum": [
+        "full",
+        "compact"
+      ],
+      "description": "compact leaves out the snapshot-wide parts of the envelope (unresolved reasons, standing limitations) that an earlier answer from the same snapshot already gave; query-specific limits stay. Over MCP, answers after the first full one per snapshot are compact unless full is asked for."
+    }
+  }
+}

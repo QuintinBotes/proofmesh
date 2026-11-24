@@ -1,0 +1,39 @@
+{
+  "tables": [
+    { "qualified_name": "order_lines", "name": "order_lines", "path": "store/models.py", "line": 5 },
+    { "qualified_name": "orders", "name": "orders", "path": "store/models.py", "line": 14 },
+    { "qualified_name": "refunds", "name": "refunds", "path": "store/models.py", "line": 25 }
+  ],
+  "variables": [
+    { "qualified_name": "store/models:order_lines", "start_line": 5, "end_line": 10 }
+  ],
+  "maps_to": [
+    { "from": "store/models:order_lines", "to": "order_lines", "rule": "table", "line": 5, "site_text": "Table(\n    \"order_lines\",\n    metadata,\n    Column(\"order_id\", ForeignKey(\"orders.id\")),\n    Column(\"sku\", String),\n)" },
+    { "from": "store/models:Order", "to": "orders", "rule": "tablename", "line": 14, "site_text": "__tablename__ = \"orders\"" },
+    { "from": "store/models:Refund", "to": "refunds", "rule": "tablename", "line": 25, "site_text": "__tablename__ = \"refunds\"" },
+    { "from": "store/models:OrderLine", "to": "order_lines", "rule": "table_attribute", "line": 31, "site_text": "__table__ = order_lines" }
+  ],
+  "maps_to_unresolved": [
+    { "from": "store/models:AuditEntry", "reason": "outside_capability", "rule": "tablename", "line": 39, "site_text": "__tablename__ = shard()" }
+  ],
+  "inferred_maps_to": [],
+  "inherits": [
+    { "from": "store/models:Order", "to": "store/db:Base", "line": 13, "site_text": "Base" },
+    { "from": "store/models:RushOrder", "to": "store/models:Order", "line": 20, "site_text": "Order" },
+    { "from": "store/models:Refund", "to": "store/models:Order", "line": 24, "site_text": "Order" },
+    { "from": "store/models:OrderLine", "to": "store/db:Base", "line": 30, "site_text": "Base" },
+    { "from": "store/models:AuditEntry", "to": "store/db:Base", "line": 38, "site_text": "Base" }
+  ],
+  "table_reach": [
+    { "table": "orders", "path": "store/models.py", "entities": [["store/models:Order", "maps_to"], ["store/models:Refund", "inherits"], ["store/models:RushOrder", "inherits"]], "reach": [
+      { "kind": "endpoint", "qualified_name": "POST api/orders", "path": "store/api.py", "depth": 4 },
+      { "kind": "endpoint", "qualified_name": "POST api/orders/{order_id}/checkout", "path": "store/api.py", "depth": 5 },
+      { "kind": "job", "qualified_name": "store/tasks:expedite", "path": "store/tasks.py", "depth": 5 }
+    ] },
+    { "table": "refunds", "path": "store/models.py", "entities": [["store/models:Refund", "maps_to"]], "reach": [] },
+    { "table": "order_lines", "path": "store/models.py", "entities": [["store/models:OrderLine", "maps_to"], ["store/models:order_lines", "maps_to"]], "reach": [] }
+  ],
+  "impact": {
+    "orders": [["store/models:Order", 1], ["store/models:Refund", 2], ["store/models:RushOrder", 2], ["store/service:place", 2], ["store/api:create_order", 3], ["store/service:checkout", 3], ["store/service:rush", 3], ["POST api/orders", 4], ["store/api:checkout_order", 4], ["store/tasks:expedite", 4], ["POST api/orders/{order_id}/checkout", 5], ["store/tasks:expedite", 5]]
+  }
+}

@@ -1,0 +1,27 @@
+bin/
+obj/
+artifacts/
+.audit/
+*.db
+*.db-shm
+*.db-wal
+.DS_Store
+eval/results/
+
+# Proofmesh workspace
+node_modules/
+/packages/*/dist/
+/adapters/*/dist/
+/apps/*/dist/
+/e2e/test-results/
+/e2e/playwright-report/
+
+# The CLI entry point is source, not a .NET build output.
+!/packages/proofmesh/bin/
+/bench/results/
+# Graph benchmark: ProofMesh's data directory and every generated result (truth.json alone is ~40 MB).
+/.bench-data/
+/bench/graph-bench/out/
+
+# Release artifacts are built locally and never committed.
+/release/out/

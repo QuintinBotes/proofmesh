@@ -1,0 +1,20 @@
+{
+  "find_symbols": {
+    "input": { "text": "area", "path_prefix": "src/shape.ts" },
+    "rows": ["Shape.area src/shape.ts:2 method"]
+  },
+  "relationships": [
+    { "subject": "src/shape:Shape", "type": "implements", "rows": ["Base src/base.ts:2", "Circle src/circle.ts:2"] },
+    { "subject": "src/shape:Named", "type": "implements", "rows": ["Square src/square.ts:2"] },
+    { "subject": "src/shape:Shape", "type": "inherits", "rows": ["Named src/shape.ts:4"] },
+    { "subject": "src/base:Base", "type": "inherits", "rows": ["Tile src/base.ts:5"] },
+    { "subject": "src/shape:Shape.area", "type": "calls", "rows": ["report src/report.ts:3", "totalArea src/total.ts:3"] },
+    { "subject": "src/circle:Circle.area", "type": "calls", "rows": ["circleArea src/direct.ts:3", "report src/report.ts:3 via Shape.area", "totalArea src/total.ts:3 via Shape.area"] },
+    { "subject": "src/square:Square.area", "type": "calls", "rows": ["report src/report.ts:3 via Shape.area", "totalArea src/total.ts:3 via Shape.area"] },
+    { "subject": "src/base:Tile.area", "type": "calls", "rows": ["report src/report.ts:3 via Shape.area", "totalArea src/total.ts:3 via Shape.area"] },
+    { "subject": "src/base:Base.area", "type": "calls", "rows": [] },
+    { "subject": "src/shape:Shape", "type": "references", "rows": ["Base src/base.ts:2", "Circle src/circle.ts:2", "report src/report.ts:2", "Named src/shape.ts:4", "totalArea src/total.ts:2"] }
+  ],
+  "impact": { "subject": "src/circle:Circle.area", "types": ["calls"], "max_depth": 1, "dependents": ["circleArea", "report", "totalArea"] },
+  "trace": { "source": "src/report:report", "target": "src/circle:Circle.area", "nodes": ["report", "Shape.area", "Circle.area"] }
+}

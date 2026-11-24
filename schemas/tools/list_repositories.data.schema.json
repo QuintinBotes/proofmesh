@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "list_repositories.data.schema.json",
+  "title": "list_repositories data",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "repositories"
+  ],
+  "properties": {
+    "repositories": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name",
+          "root",
+          "root_exists",
+          "snapshot"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^repo_[0-9a-z]+$"
+          },
+          "name": {
+            "type": "string"
+          },
+          "root": {
+            "type": "string"
+          },
+          "root_exists": {
+            "type": "boolean"
+          },
+          "snapshot": {
+            "description": "The current published snapshot, or null before the first index.",
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "published_at",
+                  "commit",
+                  "ref"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "published_at": {
+                    "type": "string"
+                  },
+                  "commit": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "ref": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+}

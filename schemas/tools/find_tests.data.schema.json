@@ -1,0 +1,176 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "find_tests.data.schema.json",
+  "title": "find_tests data",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "tests",
+    "totals",
+    "observed",
+    "stopped_by"
+  ],
+  "properties": {
+    "tests": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "kind",
+          "name",
+          "qualified_name",
+          "path",
+          "project",
+          "depth",
+          "line",
+          "evidence",
+          "chain"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "description": "The symbol's kind; file for an import_only row, which is the test file itself."
+          },
+          "name": {
+            "type": "string"
+          },
+          "qualified_name": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "depth": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "project": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "line": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The test's declaration line; for import_only, the line of the import statement."
+          },
+          "evidence": {
+            "enum": [
+              "call",
+              "transitive_call",
+              "dispatch",
+              "reference",
+              "import_only"
+            ],
+            "description": "How the graph knows the test reaches the subject, strongest first: call (the test calls or constructs it), transitive_call (through two or more resolved calls), dispatch (a call resolved to an interface or base member the subject implements or overrides), reference (the test reads or passes it without calling it), import_only (the test file imports it and nothing in the file calls or references it). A test is listed once, at its strongest evidence."
+          },
+          "via": {
+            "type": "string",
+            "description": "For dispatch, the interface or base member the call resolved to."
+          },
+          "chain": {
+            "type": "array",
+            "description": "The shortest chain of this evidence, from the test's call site to the subject at its declaration; empty for import_only.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "name",
+                "path",
+                "line"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "path": {
+                  "type": "string"
+                },
+                "line": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "totals": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tests",
+        "by_project",
+        "executing",
+        "not_executing"
+      ],
+      "properties": {
+        "tests": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Every row, on this page or not."
+        },
+        "by_project": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "count"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "count": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          }
+        },
+        "executing": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Rows whose evidence runs the subject: call, transitive_call, dispatch, or observed."
+        },
+        "not_executing": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Rows that only reference or import the subject."
+        }
+      }
+    },
+    "observed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "available",
+        "reason"
+      ],
+      "properties": {
+        "available": {
+          "type": "boolean"
+        },
+        "reason": {
+          "type": "string"
+        }
+      }
+    },
+    "stopped_by": {
+      "enum": [
+        "max_depth",
+        "node_budget",
+        null
+      ]
+    }
+  }
+}

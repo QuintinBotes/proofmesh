@@ -1,0 +1,29 @@
+{
+  "schema_version": "0.1",
+  "query_id": "q_0123456789abcdef",
+  "tool": "get_ecosystem",
+  "snapshot": { "id": "link_0f1e2d3c4b5a69788796a5b4", "repository_id": "ws_shop", "analysis_mode": "no_execution", "published_at": "2026-11-09T12:00:00.000Z", "members": [{ "repository_id": "repo_aaaaaaaaaaaaaaaaaaaaaaaa", "snapshot_id": "snap_aaaaaaaaaaaaaaaaaaaaaaaa" }, { "repository_id": "repo_bbbbbbbbbbbbbbbbbbbbbbbb", "snapshot_id": "snap_bbbbbbbbbbbbbbbbbbbbbbbb" }, { "repository_id": "repo_cccccccccccccccccccccccc", "snapshot_id": "snap_cccccccccccccccccccccccc" }] },
+  "freshness": { "mode": "snapshot", "status": "as_of_snapshot" },
+  "coverage": { "inventory_complete": true, "files_discovered": 61, "dispositions": { "indexed": 58, "excluded": 2, "unsupported": 1 }, "capabilities": {} },
+  "data": {
+    "workspace": { "name": "shop", "link_file_id": "link_0f1e2d3c4b5a69788796a5b4", "sealed_at": "2026-11-09T12:00:00.000Z", "rules": { "http_route": "1", "messaging": "1", "package": "1", "service_name": "1" } },
+    "members": [
+      { "repository_id": "repo_aaaaaaaaaaaaaaaaaaaaaaaa", "name": "storefront", "snapshot_id": "snap_aaaaaaaaaaaaaaaaaaaaaaaa", "current": true, "symbols": 420, "files_indexed": 31, "endpoints": 0, "channels": 1, "projects": 2 },
+      { "repository_id": "repo_bbbbbbbbbbbbbbbbbbbbbbbb", "name": "orders-api", "snapshot_id": "snap_bbbbbbbbbbbbbbbbbbbbbbbb", "current": true, "symbols": 980, "files_indexed": 22, "endpoints": 6, "channels": 1, "projects": 3 },
+      { "repository_id": "repo_cccccccccccccccccccccccc", "name": "contracts", "snapshot_id": "snap_cccccccccccccccccccccccc", "current": false, "symbols": 60, "files_indexed": 5, "endpoints": 0, "channels": 0, "projects": 1 }
+    ],
+    "links": [
+      { "source_repository_id": "repo_aaaaaaaaaaaaaaaaaaaaaaaa", "target_repository_id": "repo_bbbbbbbbbbbbbbbbbbbbbbbb", "type": "calls_endpoint", "resolved": 3, "candidate": 1, "min_confidence": 0.6, "max_confidence": 1, "sample": [{ "link_id": "lnk_1", "source": "Storefront.Clients.IOrdersApi.GetOrder", "target": "GET api/Orders/{id}", "confidence": 1, "rule": "http_route" }] },
+      { "source_repository_id": "repo_aaaaaaaaaaaaaaaaaaaaaaaa", "target_repository_id": "repo_bbbbbbbbbbbbbbbbbbbbbbbb", "type": "messages", "resolved": 1, "candidate": 0, "min_confidence": 1, "max_confidence": 1, "sample": [{ "link_id": "lnk_2", "source": "kafka:orders.placed", "target": "kafka:orders.placed", "confidence": 1, "rule": "messaging" }] },
+      { "source_repository_id": "repo_bbbbbbbbbbbbbbbbbbbbbbbb", "target_repository_id": "repo_cccccccccccccccccccccccc", "type": "depends_on_package", "resolved": 0, "candidate": 2, "min_confidence": 0.9, "max_confidence": 0.9, "sample": [{ "link_id": "lnk_3", "source": "Orders.Api", "target": "Shop.Contracts", "confidence": 0.9, "rule": "package" }] }
+    ],
+    "boundaries": [
+      { "repository_id": "repo_aaaaaaaaaaaaaaaaaaaaaaaa", "type": "calls_endpoint", "count": 2, "sample": [{ "link_id": "lnk_9", "source": "Storefront.Clients.IInventoryApi.GetStock", "reason": "no_match" }] }
+    ]
+  },
+  "evidence_ids": [],
+  "unresolved": { "count": 2, "scope": "query", "sample": [], "by_reason": { "no_match": 2 } },
+  "completion": { "truncated": false, "stop_reasons": [], "timed_out": false, "next_cursor": null },
+  "limits": { "requested": {}, "applied": { "timeout_ms": 10000, "max_rows": 200, "max_bytes": 262144, "max_depth": 6 } },
+  "limitations": []
+}

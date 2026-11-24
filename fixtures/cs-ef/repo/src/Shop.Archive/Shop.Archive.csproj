@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\Shop.Legacy\Shop.Legacy.csproj" />
+  </ItemGroup>
+</Project>

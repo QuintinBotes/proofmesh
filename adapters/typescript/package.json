@@ -1,0 +1,17 @@
+{
+  "name": "@proofmesh/adapter-typescript",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "main": "./dist/main.mjs",
+  "scripts": {
+    "build": "esbuild src/main.ts --bundle --platform=node --format=esm --target=node22 --external:typescript --outfile=dist/main.mjs --log-level=warning",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "typescript": "^6.0.3"
+  }
+}

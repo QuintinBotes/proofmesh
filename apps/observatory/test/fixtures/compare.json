@@ -1,0 +1,141 @@
+{
+  "schema_version": "0.1",
+  "query_id": "q_0123456789abcdef",
+  "tool": "compare_snapshots",
+  "snapshot": {
+    "id": "snap_head00000000000000000000",
+    "repository_id": "repo_000000000000",
+    "analysis_mode": "no_execution",
+    "published_at": "2026-11-09T10:00:00.000Z"
+  },
+  "freshness": {
+    "mode": "snapshot",
+    "status": "as_of_snapshot"
+  },
+  "coverage": {
+    "inventory_complete": true,
+    "files_discovered": 12,
+    "dispositions": {
+      "indexed": 11,
+      "unsupported": 1
+    },
+    "capabilities": {}
+  },
+  "data": {
+    "base": {
+      "snapshot_id": "snap_base00000000000000000000",
+      "published_at": "2026-11-08T10:00:00.000Z",
+      "symbols": 40,
+      "relationships": 60,
+      "unresolved": 4
+    },
+    "head": {
+      "snapshot_id": "snap_head00000000000000000000",
+      "published_at": "2026-11-09T10:00:00.000Z",
+      "symbols": 41,
+      "relationships": 63,
+      "unresolved": 3
+    },
+    "symbols": {
+      "counts": {
+        "added": 2,
+        "removed": 1,
+        "changed": 2
+      },
+      "added": [
+        {
+          "qualified_name": "packages/billing/src/invoice:invoiceTax",
+          "kind": "function",
+          "path": "packages/billing/src/invoice.ts"
+        },
+        {
+          "qualified_name": "packages/api/src/handler:Rates",
+          "kind": "class",
+          "path": "packages/api/src/handler.ts"
+        }
+      ],
+      "removed": [
+        {
+          "qualified_name": "packages/format/src/currency:legacyFormat",
+          "kind": "function",
+          "path": "packages/format/src/currency.ts"
+        }
+      ],
+      "changed": [
+        {
+          "qualified_name": "packages/billing/src/invoice:invoiceTotal",
+          "kind": "function",
+          "path": "packages/billing/src/invoice.ts",
+          "what": [
+            "signature"
+          ]
+        },
+        {
+          "qualified_name": "packages/api/src/handler:handleInvoice",
+          "kind": "function",
+          "path": "packages/api/src/handler.ts",
+          "what": [
+            "range",
+            "signature"
+          ]
+        }
+      ]
+    },
+    "relationships": {
+      "added": 5,
+      "removed": 2,
+      "by_type": {
+        "calls": {
+          "added": 4,
+          "removed": 2
+        },
+        "imports": {
+          "added": 1,
+          "removed": 0
+        }
+      }
+    },
+    "files": {
+      "added": [
+        "packages/api/src/rates.ts"
+      ],
+      "removed": [],
+      "changed": [
+        "packages/billing/src/invoice.ts",
+        "packages/api/src/handler.ts"
+      ],
+      "disposition_changes": [
+        {
+          "path": "packages/format/src/legacy.js",
+          "from": "indexed",
+          "to": "unsupported"
+        }
+      ]
+    }
+  },
+  "evidence_ids": [],
+  "unresolved": {
+    "count": 3,
+    "scope": "snapshot",
+    "sample": [],
+    "by_reason": {
+      "dependency_missing": 3
+    }
+  },
+  "completion": {
+    "truncated": false,
+    "stop_reasons": [],
+    "timed_out": false,
+    "next_cursor": null
+  },
+  "limits": {
+    "requested": {},
+    "applied": {
+      "timeout_ms": 10000,
+      "max_rows": 500,
+      "max_bytes": 1048576,
+      "max_depth": 6
+    }
+  },
+  "limitations": []
+}

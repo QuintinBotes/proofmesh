@@ -1,0 +1,3 @@
+# Provenance
+
+Project-authored for Proofmesh. Apache-2.0. No third-party code. One small file per language of the Tree-sitter syntax tier (A6). The expected facts in `expected.json` are written by hand from these files and each grammar's tags query: declarations as symbols, and every call site the query names as an unresolved call with reason `outside_capability`, because this tier never guesses a target. C and C++ have no call patterns in their tags queries, so their files have no calls. The Swift file's imports are unresolved import statements, and each table a SQL statement names is a reference: a candidate when the file declares that table, else unresolved; a common table expression's name is not a table.

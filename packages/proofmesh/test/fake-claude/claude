@@ -1,0 +1,9 @@
+#!/bin/sh
+# A stand-in for the Claude Code CLI: logs argv to $CLAUDE_LOG and answers like `claude -p --output-format json`, better with Proofmesh.
+if [ "$1" = "--version" ]; then echo "9.9.9 (Fake Code)"; exit 0; fi
+printf "%s" "$*" | tr "\n" " " >> "$CLAUDE_LOG"; echo >> "$CLAUDE_LOG"
+case "$*" in *FAIL*) echo "boom" >&2; exit 1;; esac
+case "$*" in
+  *mcp__proofmesh*) echo '{"type":"system","subtype":"init"}'; echo '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"mcp__proofmesh__find_symbols"}]}}'; echo '{"type":"assistant","message":{"content":[{"type":"text"}]}}'; echo '{"type":"result","subtype":"success","is_error":false,"num_turns":2,"result":"invoiceTotal, in packages/billing/src/invoice.ts.","usage":{"input_tokens":100,"cache_creation_input_tokens":10,"cache_read_input_tokens":1000,"output_tokens":50},"total_cost_usd":0.0125,"duration_ms":900}';;
+  *) echo '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Grep"},{"type":"tool_use","name":"Read"}]}}'; echo '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Grep"}]}}'; echo '{"type":"result","subtype":"success","is_error":false,"num_turns":6,"result":"It calls invoiceTotal.","usage":{"input_tokens":300,"cache_creation_input_tokens":0,"cache_read_input_tokens":4000,"output_tokens":90},"total_cost_usd":0.04,"duration_ms":3000}';;
+esac

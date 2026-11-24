@@ -1,0 +1,158 @@
+{
+  "description": "Which hand-written fixtures each first-party adapter must pass. pnpm conformance checks every fixture's provenance and oracle, then runs the tests that compare the adapter's facts with the oracle. The public kit for third-party adapters (protocol 1) is exercised by the linelang fixture; the links entry is the cross-repository contract adapter (A7).",
+  "adapters": {
+    "typescript": {
+      "fixtures": [
+        "ts-invoicing",
+        "ts-packages",
+        "ts-monorepo",
+        "ts-react",
+        "tests-reach",
+        "test-reach-kinds",
+        "change-reach",
+        "ts-pulumi",
+        "ts-module",
+        "ts-typeorm",
+        "ts-routes",
+        "ts-prisma",
+        "ts-heritage",
+        "ts-imports"
+      ],
+      "tests": [
+        "packages/proofmesh/test/golden.test.ts",
+        "packages/proofmesh/test/find-tests.test.ts",
+        "packages/proofmesh/test/test-reach.test.ts",
+        "packages/proofmesh/test/impact-completeness.test.ts",
+        "packages/proofmesh/test/pulumi.test.ts",
+        "packages/proofmesh/test/typeorm.test.ts",
+        "packages/proofmesh/test/typescript.routes.test.ts",
+        "packages/proofmesh/test/prisma.test.ts",
+        "packages/proofmesh/test/typescript.heritage.test.ts",
+        "packages/proofmesh/test/file-imports.test.ts"
+      ]
+    },
+    "csharp": {
+      "fixtures": [
+        "cs-orders",
+        "cs-linked",
+        "cs-transitive",
+        "cs-inherited",
+        "cs-ef",
+        "cs-frameworks",
+        "cs-mvc-routes",
+        "cs-sentinel",
+        "cs-references",
+        "cs-dispatch",
+        "cs-conventions",
+        "cs-reads",
+        "cs-query-source",
+        "cs-pulumi"
+      ],
+      "tests": [
+        "packages/proofmesh/test/csharp.golden.test.ts",
+        "packages/proofmesh/test/csharp.frameworks.test.ts",
+        "packages/proofmesh/test/csharp.dotnet-frameworks.test.ts",
+        "packages/proofmesh/test/csharp.mvc-routes.test.ts",
+        "packages/proofmesh/test/csharp.references.test.ts",
+        "packages/proofmesh/test/relationships.dispatch.test.ts",
+        "packages/proofmesh/test/csharp.conventions.test.ts",
+        "packages/proofmesh/test/property-reads.static.test.ts",
+        "packages/proofmesh/test/query-source.test.ts",
+        "packages/proofmesh/test/csharp.pulumi.test.ts",
+        "packages/proofmesh/test/service-links.test.ts"
+      ]
+    },
+    "codeowners": {
+      "fixtures": [
+        "ownership"
+      ],
+      "tests": [
+        "packages/proofmesh/test/ownership.test.ts"
+      ]
+    },
+    "python": {
+      "fixtures": [
+        "py-shop",
+        "py-http",
+        "py-sqlalchemy",
+        "py-django",
+        "py-pulumi",
+        "py-routes"
+      ],
+      "tests": [
+        "packages/proofmesh/test/python.test.ts",
+        "packages/proofmesh/test/python-http.test.ts",
+        "packages/proofmesh/test/python.frameworks.test.ts"
+      ]
+    },
+    "terraform": {
+      "fixtures": [
+        "tf-basics"
+      ],
+      "tests": [
+        "packages/proofmesh/test/terraform.test.ts"
+      ]
+    },
+    "syntax": {
+      "fixtures": [
+        "syntax-tier",
+        "prisma-schema"
+      ],
+      "tests": [
+        "packages/proofmesh/test/syntax-tier.test.ts",
+        "packages/proofmesh/test/prisma.test.ts"
+      ]
+    },
+    "scip": {
+      "fixtures": [
+        "scip-mixed"
+      ],
+      "tests": [
+        "packages/proofmesh/test/scip.test.ts"
+      ]
+    },
+    "tables": {
+      "fixtures": [
+        "cs-tables"
+      ],
+      "tests": [
+        "packages/proofmesh/test/table-reach.test.ts"
+      ]
+    },
+    "links": {
+      "fixtures": [
+        "cs-links",
+        "cs-services",
+        "cloud-links"
+      ],
+      "tests": [
+        "packages/proofmesh/test/links.test.ts",
+        "packages/proofmesh/test/service-links.test.ts",
+        "packages/proofmesh/test/cloud-links.test.ts"
+      ]
+    },
+    "kit": {
+      "fixtures": [
+        "linelang"
+      ],
+      "tests": [
+        "packages/proofmesh/test/conformance.test.ts",
+        "packages/proofmesh/test/adapter-install.test.ts"
+      ]
+    }
+  },
+  "behaviour_only": [
+    "cs-sentinel",
+    "ownership",
+    "tests-reach",
+    "test-reach-kinds",
+    "change-reach",
+    "ts-pulumi",
+    "py-http",
+    "scip-mixed",
+    "ts-packages",
+    "ts-monorepo",
+    "ts-react",
+    "ts-imports"
+  ]
+}

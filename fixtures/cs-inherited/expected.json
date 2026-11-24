@@ -1,0 +1,143 @@
+{
+  "analysis_mode": "no_execution",
+  "dispositions": {
+    "Directory.Build.props": [
+      "indexed",
+      null
+    ],
+    "src/App/App.csproj": [
+      "indexed",
+      null
+    ],
+    "src/App/Greeter.cs": [
+      "indexed",
+      null
+    ],
+    "src/Tools/Cli.cs": [
+      "indexed",
+      null
+    ],
+    "src/Tools/Directory.Build.props": [
+      "indexed",
+      null
+    ],
+    "src/Tools/Tools.csproj": [
+      "indexed",
+      null
+    ]
+  },
+  "symbols": [
+    {
+      "kind": "class",
+      "qualified_name": "App.Greeter",
+      "lines": [
+        3,
+        6
+      ],
+      "signature": null
+    },
+    {
+      "kind": "method",
+      "qualified_name": "App.Greeter.Hello",
+      "lines": [
+        5,
+        5
+      ],
+      "signature": "string Hello()"
+    },
+    {
+      "kind": "module",
+      "qualified_name": "src/App/Greeter",
+      "lines": [
+        1,
+        6
+      ],
+      "signature": null
+    },
+    {
+      "kind": "class",
+      "qualified_name": "Tools.Cli",
+      "lines": [
+        3,
+        6
+      ],
+      "signature": null
+    },
+    {
+      "kind": "method",
+      "qualified_name": "Tools.Cli.Run",
+      "lines": [
+        5,
+        5
+      ],
+      "signature": "void Run()"
+    },
+    {
+      "kind": "module",
+      "qualified_name": "src/Tools/Cli",
+      "lines": [
+        1,
+        6
+      ],
+      "signature": null
+    },
+    {
+      "kind": "project",
+      "qualified_name": "App",
+      "lines": [
+        1,
+        1
+      ],
+      "signature": null
+    },
+    {
+      "kind": "project",
+      "qualified_name": "Tools",
+      "lines": [
+        1,
+        1
+      ],
+      "signature": null
+    }
+  ],
+  "calls": [
+    {
+      "from": "App.Greeter.Hello",
+      "line": 5,
+      "site_text": "Contoso.Shared.Text.Upper(\"hi\")",
+      "resolution": "unresolved",
+      "reason": "dependency_missing"
+    },
+    {
+      "from": "Tools.Cli.Run",
+      "line": 5,
+      "site_text": "Missing.Thing.Do()",
+      "resolution": "unresolved",
+      "reason": "unknown_name"
+    }
+  ],
+  "structure": [
+    {
+      "type": "depends_on_package",
+      "from": "App",
+      "external": {
+        "module": "nuget",
+        "name": "Contoso.Shared"
+      },
+      "detail": {
+        "version": "2.0.0"
+      }
+    },
+    {
+      "type": "contains",
+      "from": "App",
+      "to": "src/App/Greeter"
+    },
+    {
+      "type": "contains",
+      "from": "Tools",
+      "to": "src/Tools/Cli"
+    }
+  ],
+  "closed_world": "calls and structure are complete for this fixture"
+}

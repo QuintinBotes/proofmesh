@@ -1,0 +1,61 @@
+{
+  "name": "ts-invoicing golden questions",
+  "repository": "fixtures/ts-invoicing/repo",
+  "questions": [
+    {
+      "id": "q1",
+      "question": "Which function does handleInvoice call, and in which file is that function defined?",
+      "expected_facts": [
+        "invoiceTotal",
+        "packages/billing/src/invoice.ts"
+      ]
+    },
+    {
+      "id": "q2",
+      "question": "invoiceTotal calls a function named formatAmount. Which file defines the formatAmount it actually calls?",
+      "expected_facts": [
+        "packages/format/src/currency.ts"
+      ]
+    },
+    {
+      "id": "q3",
+      "question": "How many call sites call the formatAmount defined in packages/legacy/src/format.ts?",
+      "expected_facts": [
+        [
+          "no call",
+          "none",
+          "zero",
+          "0 call",
+          "not called",
+          "never called",
+          "no caller",
+          "never imported",
+          "not imported"
+        ]
+      ]
+    },
+    {
+      "id": "q4",
+      "question": "Besides the format package, which packages contain code that calls, directly or through other functions, the formatAmount in packages/format/src/currency.ts?",
+      "expected_facts": [
+        "billing",
+        "api"
+      ]
+    },
+    {
+      "id": "q5",
+      "question": "Which call in packages/api/src/handler.ts cannot be resolved statically to a single function, and why?",
+      "expected_facts": [
+        "handlers",
+        [
+          "dynamic",
+          "lookup",
+          "index",
+          "runtime",
+          "element access",
+          "key"
+        ]
+      ]
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "name": "proofmesh",
+  "version": "0.1.0",
+  "description": "Proofmesh for Claude Code: a local code graph that cites the file and line behind every fact. Find symbols, trace paths, measure impact, and verify absence claims before asserting them.",
+  "author": { "name": "Proofmesh maintainers" },
+  "license": "Apache-2.0"
+}

@@ -1,0 +1,300 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "get_table_reach.data.schema.json",
+  "title": "get_table_reach data",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "tables",
+    "stopped_by"
+  ],
+  "properties": {
+    "tables": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "qualified_name",
+          "name",
+          "path",
+          "entities",
+          "reach",
+          "horizon",
+          "observed",
+          "property_reads",
+          "accessors"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "qualified_name": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "symbols": {
+            "type": "array",
+            "description": "Present when more than one table symbol shares the table's qualified name, ignoring case (A36): each adapter's declaration of the same table, such as an EF entity's table and a SQL CREATE TABLE. The table is shown as the first of them in path order, and its entities and reach are those of all of them.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "id",
+                "qualified_name",
+                "path"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "qualified_name": {
+                  "type": "string"
+                },
+                "path": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "entities": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "id",
+                "qualified_name",
+                "via"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "qualified_name": {
+                  "type": "string"
+                },
+                "via": {
+                  "enum": [
+                    "maps_to",
+                    "inherits"
+                  ],
+                  "description": "maps_to: mapped to the table; inherits: a subtype of a mapped entity, sharing its table (table-per-hierarchy)."
+                }
+              }
+            }
+          },
+          "reach": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "id",
+                "kind",
+                "qualified_name",
+                "name",
+                "path",
+                "depth"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "kind": {
+                  "enum": [
+                    "endpoint",
+                    "job"
+                  ]
+                },
+                "qualified_name": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "path": {
+                  "type": "string"
+                },
+                "depth": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "description": "Length of the shortest resolved path from this symbol to the table."
+                }
+              }
+            }
+          },
+          "horizon": {
+            "type": "boolean",
+            "description": "True when a limit stopped the search, so the reach is a lower bound."
+          },
+          "observed": {
+            "type": "array",
+            "description": "Runtime observations a person imported for this table (origin runtime_observation); empty when none.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "source",
+                "window",
+                "metric",
+                "value"
+              ],
+              "properties": {
+                "source": {
+                  "type": "string"
+                },
+                "window": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "from",
+                    "to"
+                  ],
+                  "properties": {
+                    "from": {
+                      "type": "string"
+                    },
+                    "to": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "metric": {
+                  "type": "string"
+                },
+                "value": {
+                  "type": "number"
+                }
+              }
+            }
+          },
+          "property_reads": {
+            "type": "array",
+            "description": "Observed reads of the mapped entities' properties while serving an endpoint, from an observations 0.2 file a person imported; empty when none. Absence is not evidence that nothing reads a property.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "source",
+                "window",
+                "endpoint",
+                "entity",
+                "declaring_type",
+                "property",
+                "read_kind",
+                "reads",
+                "calls",
+                "callers",
+                "symbol_id"
+              ],
+              "properties": {
+                "source": {
+                  "type": "string"
+                },
+                "window": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "from",
+                    "to"
+                  ],
+                  "properties": {
+                    "from": {
+                      "type": "string"
+                    },
+                    "to": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "endpoint": {
+                  "type": "string"
+                },
+                "entity": {
+                  "type": "string"
+                },
+                "property": {
+                  "type": "string"
+                },
+                "reads": {
+                  "type": "number"
+                },
+                "symbol_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "The property symbol in the snapshot, or null when the snapshot has no such property."
+                },
+                "declaring_type": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "read_kind": {
+                  "enum": [
+                    "orm",
+                    "application"
+                  ],
+                  "description": "orm: loaded or tracked by the ORM, not necessarily used; application: read by code."
+                },
+                "calls": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                },
+                "callers": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "accessors": {
+            "type": "array",
+            "description": "DbSet properties of the table's entities, and how many members read them: code reading one reaches the table even when no call path does.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "id",
+                "qualified_name",
+                "readers"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "qualified_name": {
+                  "type": "string"
+                },
+                "readers": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "stopped_by": {
+      "enum": [
+        "max_depth",
+        "node_budget",
+        null
+      ]
+    }
+  }
+}

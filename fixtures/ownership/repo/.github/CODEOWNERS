@@ -1,0 +1,3 @@
+# Effective: GitHub reads .github/CODEOWNERS first.
+*            @acme/all
+/src/api/    @acme/api

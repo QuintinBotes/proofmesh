@@ -1,0 +1,130 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "observations/0.2.schema.json",
+  "title": "Proofmesh runtime observations 0.2",
+  "description": "Observed counts per endpoint, table or channel, and observed entity property reads per endpoint, over a time window (A30). A person converts their own capture to this file; Proofmesh reads no vendor format and connects to no service.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "source",
+    "window",
+    "counts"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "0.2"
+    },
+    "source": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Where the numbers came from, such as the metrics system and query."
+    },
+    "window": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "from",
+        "to"
+      ],
+      "properties": {
+        "from": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "to": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "repository": {
+      "type": "string",
+      "description": "Optional: the repository name or id the counts belong to; refused if it names another."
+    },
+    "counts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "subject",
+          "metric",
+          "value"
+        ],
+        "properties": {
+          "subject": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "name"
+            ],
+            "properties": {
+              "kind": {
+                "enum": [
+                  "endpoint",
+                  "table",
+                  "channel"
+                ]
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "description": "The symbol's qualified name, such as `GET api/Orders/{id}`, `sales.Clients` or `kafka:orders.placed`."
+              }
+            }
+          },
+          "metric": {
+            "enum": [
+              "requests",
+              "rows_read",
+              "rows_written",
+              "messages"
+            ]
+          },
+          "value": {
+            "type": "number",
+            "minimum": 0
+          }
+        }
+      }
+    },
+    "property_reads": {
+      "type": "array",
+      "description": "Entity properties observed read while serving an endpoint, from an instrumented run: the input for moving a full entity fetch to a projection. Absence from this list is not evidence that nothing reads a property.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "endpoint",
+          "entity",
+          "property",
+          "reads"
+        ],
+        "properties": {
+          "endpoint": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The endpoint qualified name, such as `GET api/Orders/{id}`."
+          },
+          "entity": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The entity qualified name as the snapshot names it, such as `Shop.Data.Order`."
+          },
+          "property": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The property name on the entity."
+          },
+          "reads": {
+            "type": "number",
+            "minimum": 0,
+            "description": "How many requests read the property in the window."
+          }
+        }
+      }
+    }
+  }
+}

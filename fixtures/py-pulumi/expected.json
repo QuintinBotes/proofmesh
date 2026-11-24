@@ -1,0 +1,18 @@
+{
+  "resources": [
+    { "qualified_name": "__main__:Site::www", "name": "www", "signature": "resource \"Site\"", "start_line": 13, "end_line": 13 },
+    { "qualified_name": "__main__:aws.s3.Bucket::logs", "name": "logs", "signature": "resource \"aws.s3.Bucket\"", "start_line": 6, "end_line": 6 },
+    { "qualified_name": "__main__:aws.s3.BucketPolicy::logs-policy", "name": "logs-policy", "signature": "resource \"aws.s3.BucketPolicy\"", "start_line": 7, "end_line": 12 },
+    { "qualified_name": "web:aws.s3.Bucket::{name}-content", "name": "{name}-content", "signature": "resource \"aws.s3.Bucket\"", "start_line": 8, "end_line": 12 }
+  ],
+  "relationships": [
+    [9, "references", "__main__:aws.s3.BucketPolicy::logs-policy", "__main__:aws.s3.Bucket::logs", "logs.id"],
+    [10, "references", "__main__:aws.s3.BucketPolicy::logs-policy", "__main__:aws.s3.Bucket::logs", "logs.arn"],
+    [11, "depends_on", "__main__:aws.s3.BucketPolicy::logs-policy", "__main__:aws.s3.Bucket::logs", "logs"],
+    [13, "references", "__main__:Site::www", "__main__:aws.s3.Bucket::logs", "logs.bucket"]
+  ],
+  "references_capability": [
+    { "path": "__main__.py", "refs": "partial" },
+    { "path": "web.py", "refs": "unsupported" }
+  ]
+}

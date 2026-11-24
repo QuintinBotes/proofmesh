@@ -1,0 +1,55 @@
+{
+  "tables": [
+    { "qualified_name": "auth.users", "name": "users", "path": "prisma/schema.prisma", "line": 20 },
+    { "qualified_name": "sales.orders", "name": "orders", "path": "prisma/schema.prisma", "line": 30 },
+    { "qualified_name": "sales.AuditEntry", "name": "AuditEntry", "path": "prisma/schema.prisma", "line": 34 },
+    { "qualified_name": "sales.orders", "name": "orders", "path": "src/orders.ts", "line": 7 },
+    { "qualified_name": "auth.users", "name": "users", "path": "src/users.ts", "line": 4 },
+    { "qualified_name": "sales.AuditEntry", "name": "AuditEntry", "path": "src/users.ts", "line": 8 }
+  ],
+  "references": [
+    { "from": "src/orders:OrderService.place", "to": "sales.orders", "to_path": "src/orders.ts", "accessor": "order", "operation": "create", "line": 7, "site_text": "this.prisma.order.create" },
+    { "from": "src/users:listUsers", "to": "auth.users", "to_path": "src/users.ts", "accessor": "user", "operation": "findMany", "line": 4, "site_text": "prisma.user.findMany" },
+    { "from": "src/users:recentAudit", "to": "sales.AuditEntry", "to_path": "src/users.ts", "accessor": "auditEntry", "operation": "findMany", "line": 8, "site_text": "prisma.auditEntry.findMany" },
+    { "from": "src/worker/audit:AuditService.recent", "to": "sales.AuditEntry", "to_path": "src/users.ts", "accessor": "auditEntry", "operation": "findMany", "line": 7, "site_text": "this.prisma.auditEntry.findMany" },
+    { "from": "src/worker/audit:firstUser", "to": "auth.users", "to_path": "src/users.ts", "accessor": "user", "operation": "findFirst", "line": 14, "site_text": "audited.user.findFirst" }
+  ],
+  "references_unresolved": [
+    { "from": "src/users:countInvoices", "reason": "unknown_name", "accessor": "invoice", "operation": "count", "line": 12, "site_text": "prisma.invoice.count" }
+  ],
+  "table_reach": [
+    {
+      "ask": ["users", "auth.users"],
+      "tables": [
+        {
+          "qualified_name": "auth.users", "path": "prisma/schema.prisma",
+          "symbols": [{ "qualified_name": "auth.users", "path": "prisma/schema.prisma" }, { "qualified_name": "auth.users", "path": "src/users.ts" }],
+          "entities": ["prisma/schema:User"],
+          "reach": [{ "kind": "endpoint", "qualified_name": "GET api/users", "path": "src/routes.ts", "depth": 3 }]
+        }
+      ]
+    },
+    {
+      "ask": ["orders", "sales.orders"],
+      "tables": [
+        {
+          "qualified_name": "sales.orders", "path": "prisma/schema.prisma",
+          "symbols": [{ "qualified_name": "sales.orders", "path": "prisma/schema.prisma" }, { "qualified_name": "sales.orders", "path": "src/orders.ts" }],
+          "entities": ["prisma/schema:Order"],
+          "reach": [{ "kind": "endpoint", "qualified_name": "POST api/orders", "path": "src/routes.ts", "depth": 3 }]
+        }
+      ]
+    },
+    {
+      "ask": ["AuditEntry"],
+      "tables": [
+        {
+          "qualified_name": "sales.AuditEntry", "path": "prisma/schema.prisma",
+          "symbols": [{ "qualified_name": "sales.AuditEntry", "path": "prisma/schema.prisma" }, { "qualified_name": "sales.AuditEntry", "path": "src/users.ts" }],
+          "entities": ["prisma/schema:AuditEntry"],
+          "reach": []
+        }
+      ]
+    }
+  ]
+}

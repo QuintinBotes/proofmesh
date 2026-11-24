@@ -1,0 +1,28 @@
+{
+  "analysis_mode": "no_execution",
+  "dispositions": {
+    "Directory.Build.props": ["indexed", null],
+    "src/A/A.csproj": ["indexed", null],
+    "src/A/Shared.cs": ["indexed", null],
+    "src/B/B.csproj": ["indexed", null],
+    "src/B/Use.cs": ["indexed", null]
+  },
+  "symbols": [
+    {"kind": "class", "qualified_name": "Linked.Shared", "lines": [3, 6], "signature": null},
+    {"kind": "method", "qualified_name": "Linked.Shared.One", "lines": [5, 5], "signature": "int One()"},
+    {"kind": "class", "qualified_name": "Linked.Use", "lines": [3, 6], "signature": null},
+    {"kind": "method", "qualified_name": "Linked.Use.Two", "lines": [5, 5], "signature": "int Two()"},
+    {"kind": "module", "qualified_name": "src/A/Shared", "lines": [1, 6], "signature": null},
+    {"kind": "module", "qualified_name": "src/B/Use", "lines": [1, 6], "signature": null},
+    {"kind": "project", "qualified_name": "A", "lines": [1, 1], "signature": null},
+    {"kind": "project", "qualified_name": "B", "lines": [1, 1], "signature": null}
+  ],
+  "calls": [
+    {"from": "Linked.Use.Two", "line": 5, "site_text": "Shared.One()", "resolution": "resolved", "to": "Linked.Shared.One"}
+  ],
+  "structure": [
+    {"type": "contains", "from": "A", "to": "src/A/Shared"},
+    {"type": "contains", "from": "B", "to": "src/A/Shared"},
+    {"type": "contains", "from": "B", "to": "src/B/Use"}
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "tools/compare_snapshots.data.schema.json",
+  "title": "compare_snapshots data",
+  "description": "What changed between two sealed snapshots of one repository, matched by qualified name and kind for symbols and by path for files.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["base", "head", "symbols", "relationships", "files"],
+  "properties": {
+    "base": { "$ref": "#/$defs/side" },
+    "head": { "$ref": "#/$defs/side" },
+    "symbols": {
+      "type": "object", "additionalProperties": false, "required": ["added", "removed", "changed", "counts"],
+      "properties": {
+        "counts": { "type": "object", "additionalProperties": false, "required": ["added", "removed", "changed"], "properties": { "added": { "type": "integer" }, "removed": { "type": "integer" }, "changed": { "type": "integer" } } },
+        "added": { "type": "array", "items": { "$ref": "#/$defs/symbol" } },
+        "removed": { "type": "array", "items": { "$ref": "#/$defs/symbol" } },
+        "changed": { "type": "array", "items": { "allOf": [{ "$ref": "#/$defs/symbol" }, { "type": "object", "required": ["what"], "properties": { "what": { "type": "array", "items": { "enum": ["signature", "range", "path"] } } } }] } }
+      }
+    },
+    "relationships": {
+      "type": "object", "additionalProperties": false, "required": ["added", "removed", "by_type"],
+      "properties": {
+        "added": { "type": "integer" }, "removed": { "type": "integer" },
+        "by_type": { "type": "object", "additionalProperties": { "type": "object", "additionalProperties": false, "required": ["added", "removed"], "properties": { "added": { "type": "integer" }, "removed": { "type": "integer" } } } }
+      }
+    },
+    "files": {
+      "type": "object", "additionalProperties": false, "required": ["added", "removed", "changed", "disposition_changes"],
+      "properties": {
+        "added": { "type": "array", "items": { "type": "string" } }, "removed": { "type": "array", "items": { "type": "string" } }, "changed": { "type": "array", "items": { "type": "string" } },
+        "disposition_changes": { "type": "array", "items": { "type": "object", "additionalProperties": false, "required": ["path", "from", "to"], "properties": { "path": { "type": "string" }, "from": { "type": "string" }, "to": { "type": "string" } } } }
+      }
+    }
+  },
+  "$defs": {
+    "side": { "type": "object", "additionalProperties": false, "required": ["snapshot_id", "published_at", "symbols", "relationships", "unresolved"], "properties": { "snapshot_id": { "type": "string" }, "published_at": { "type": "string" }, "symbols": { "type": "integer" }, "relationships": { "type": "integer" }, "unresolved": { "type": "integer" } } },
+    "symbol": { "type": "object", "additionalProperties": true, "required": ["qualified_name", "kind", "path"], "properties": { "qualified_name": { "type": "string" }, "kind": { "type": "string" }, "path": { "type": "string" } } }
+  }
+}

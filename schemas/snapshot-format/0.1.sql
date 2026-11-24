@@ -1,0 +1,56 @@
+-- Proofmesh snapshot file, format 0.1. Sealed and immutable after publication; no timestamps or random values.
+CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL) STRICT;
+CREATE TABLE file (
+  id TEXT PRIMARY KEY, path TEXT NOT NULL UNIQUE, content_hash TEXT, size INTEGER NOT NULL,
+  language TEXT,
+  disposition TEXT NOT NULL CHECK (disposition IN ('indexed','excluded_by_rule','unsupported','failed','pending')),
+  disposition_detail TEXT,
+  capabilities TEXT NOT NULL CHECK (json_valid(capabilities)),
+  CHECK ((disposition = 'indexed') = (content_hash IS NOT NULL))
+) STRICT;
+CREATE TABLE evidence (
+  id TEXT PRIMARY KEY, file_id TEXT NOT NULL REFERENCES file(id), object_hash TEXT NOT NULL,
+  start_byte INTEGER NOT NULL, end_byte INTEGER NOT NULL, start_line INTEGER NOT NULL, end_line INTEGER NOT NULL,
+  source_kind TEXT NOT NULL CHECK (source_kind IN ('declaration','call_site','import_statement')),
+  extractor TEXT NOT NULL, extractor_version TEXT NOT NULL,
+  analysis_mode TEXT NOT NULL CHECK (analysis_mode IN ('no_execution','trusted_build')),
+  CHECK (start_byte >= 0 AND end_byte > start_byte AND end_line >= start_line)
+) STRICT;
+CREATE TABLE symbol (
+  id TEXT PRIMARY KEY, file_id TEXT NOT NULL REFERENCES file(id),
+  kind TEXT NOT NULL CHECK (kind IN ('function','class','method','interface','type_alias','variable','module')),
+  name TEXT NOT NULL, qualified_name TEXT NOT NULL,
+  start_byte INTEGER NOT NULL, end_byte INTEGER NOT NULL, start_line INTEGER NOT NULL, end_line INTEGER NOT NULL,
+  signature TEXT, stable_key TEXT NOT NULL, evidence_id TEXT NOT NULL REFERENCES evidence(id)
+) STRICT;
+CREATE TABLE external_symbol (id TEXT PRIMARY KEY, module TEXT NOT NULL, name TEXT NOT NULL) STRICT;
+CREATE TABLE assertion (
+  id TEXT PRIMARY KEY,
+  type TEXT NOT NULL CHECK (type IN ('calls','imports')),
+  origin TEXT NOT NULL CHECK (origin IN ('syntax','semantic_resolver')),
+  resolution TEXT NOT NULL CHECK (resolution IN ('resolved','resolved_external','candidate','ambiguous','unresolved')),
+  source_kind TEXT NOT NULL CHECK (source_kind IN ('symbol','file')), source_id TEXT NOT NULL,
+  target_kind TEXT CHECK (target_kind IN ('symbol','file','external')), target_id TEXT,
+  reason TEXT, adapter TEXT NOT NULL, adapter_version TEXT NOT NULL,
+  analysis_mode TEXT NOT NULL CHECK (analysis_mode IN ('no_execution','trusted_build')),
+  CHECK ((resolution IN ('resolved','resolved_external')) = (target_id IS NOT NULL)),
+  CHECK ((resolution = 'resolved_external') = (target_kind IS 'external')),
+  CHECK ((resolution IN ('resolved','resolved_external')) OR reason IS NOT NULL)
+) STRICT;
+CREATE TABLE assertion_evidence (
+  assertion_id TEXT NOT NULL REFERENCES assertion(id), evidence_id TEXT NOT NULL REFERENCES evidence(id),
+  PRIMARY KEY (assertion_id, evidence_id)
+) STRICT, WITHOUT ROWID;
+CREATE TABLE assertion_candidate (
+  assertion_id TEXT NOT NULL REFERENCES assertion(id), symbol_id TEXT NOT NULL REFERENCES symbol(id),
+  rank INTEGER NOT NULL, reason TEXT NOT NULL, PRIMARY KEY (assertion_id, symbol_id)
+) STRICT, WITHOUT ROWID;
+CREATE TABLE edge (
+  src TEXT NOT NULL, type TEXT NOT NULL, dst TEXT NOT NULL, resolution TEXT NOT NULL,
+  assertion_id TEXT NOT NULL REFERENCES assertion(id),
+  PRIMARY KEY (src, type, dst, assertion_id)
+) STRICT, WITHOUT ROWID;
+CREATE INDEX edge_by_dst ON edge (dst, type, src);
+CREATE INDEX assertion_by_source ON assertion (source_id, type);
+CREATE INDEX assertion_by_resolution ON assertion (resolution);
+CREATE VIRTUAL TABLE symbol_fts USING fts5(symbol_id UNINDEXED, name, qualified_name, tokenize = 'trigram');

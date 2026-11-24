@@ -1,0 +1,442 @@
+{
+ "symbols": [
+  {
+   "kind": "endpoint",
+   "qualified_name": "DELETE admin/cache",
+   "name": "DELETE admin/cache",
+   "path": "api/admin.py",
+   "line": 6
+  },
+  {
+   "kind": "endpoint",
+   "qualified_name": "GET health",
+   "name": "GET health",
+   "path": "api/main.py",
+   "line": 9
+  },
+  {
+   "kind": "endpoint",
+   "qualified_name": "GET api/orders/{order_id}/notes",
+   "name": "GET api/orders/{order_id}/notes",
+   "path": "api/notes.py",
+   "line": 6
+  },
+  {
+   "kind": "endpoint",
+   "qualified_name": "GET api/orders/{order_id}/notes/{*path}",
+   "name": "GET api/orders/{order_id}/notes/{*path}",
+   "path": "api/notes.py",
+   "line": 11
+  },
+  {
+   "kind": "endpoint",
+   "qualified_name": "GET api/orders/{order_id}",
+   "name": "GET api/orders/{order_id}",
+   "path": "api/orders.py",
+   "line": 11
+  },
+  {
+   "kind": "endpoint",
+   "qualified_name": "POST api/orders/add",
+   "name": "POST api/orders/add",
+   "path": "api/orders.py",
+   "line": 16
+  },
+  {
+   "kind": "endpoint",
+   "qualified_name": "POST api/orders/{order_id}/cancel",
+   "name": "POST api/orders/{order_id}/cancel",
+   "path": "api/orders.py",
+   "line": 21
+  },
+  {
+   "kind": "endpoint",
+   "qualified_name": "DELETE api/orders/{order_id}/cancel",
+   "name": "DELETE api/orders/{order_id}/cancel",
+   "path": "api/orders.py",
+   "line": 21
+  },
+  {
+   "kind": "endpoint",
+   "qualified_name": "ANY catalog/products",
+   "name": "ANY catalog/products",
+   "path": "catalog/urls.py",
+   "line": 6
+  },
+  {
+   "kind": "endpoint",
+   "qualified_name": "GET catalog/products/{pk:int}",
+   "name": "GET catalog/products/{pk:int}",
+   "path": "catalog/urls.py",
+   "line": 7
+  },
+  {
+   "kind": "endpoint",
+   "qualified_name": "POST catalog/products/{pk:int}",
+   "name": "POST catalog/products/{pk:int}",
+   "path": "catalog/urls.py",
+   "line": 7
+  },
+  {
+   "kind": "endpoint",
+   "qualified_name": "ANY catalog/search",
+   "name": "ANY catalog/search",
+   "path": "catalog/urls.py",
+   "line": 11
+  },
+  {
+   "kind": "endpoint",
+   "qualified_name": "ANY /",
+   "name": "ANY /",
+   "path": "mysite/urls.py",
+   "line": 6
+  },
+  {
+   "kind": "endpoint",
+   "qualified_name": "GET /",
+   "name": "GET /",
+   "path": "web/app.py",
+   "line": 9
+  },
+  {
+   "kind": "endpoint",
+   "qualified_name": "GET login",
+   "name": "GET login",
+   "path": "web/app.py",
+   "line": 14
+  },
+  {
+   "kind": "endpoint",
+   "qualified_name": "POST login",
+   "name": "POST login",
+   "path": "web/app.py",
+   "line": 14
+  },
+  {
+   "kind": "endpoint",
+   "qualified_name": "GET shop/items/{item_id:int}",
+   "name": "GET shop/items/{item_id:int}",
+   "path": "web/shop.py",
+   "line": 8
+  },
+  {
+   "kind": "endpoint",
+   "qualified_name": "GET shop/items",
+   "name": "GET shop/items",
+   "path": "web/shop.py",
+   "line": 13
+  },
+  {
+   "kind": "endpoint",
+   "qualified_name": "GET shop/files/{*name}",
+   "name": "GET shop/files/{*name}",
+   "path": "web/shop.py",
+   "line": 18
+  },
+  {
+   "kind": "job",
+   "qualified_name": "jobs/tasks:rebuild_index",
+   "name": "rebuild_index",
+   "path": "jobs/tasks.py",
+   "line": 7
+  },
+  {
+   "kind": "job",
+   "qualified_name": "jobs/tasks:export_orders",
+   "name": "export_orders",
+   "path": "jobs/tasks.py",
+   "line": 12
+  },
+  {
+   "kind": "job",
+   "qualified_name": "jobs/tasks:purge_sessions",
+   "name": "purge_sessions",
+   "path": "jobs/tasks.py",
+   "line": 17
+  },
+  {
+   "kind": "job",
+   "qualified_name": "jobs/tasks:send_digest",
+   "name": "send_digest",
+   "path": "jobs/tasks.py",
+   "line": 22
+  }
+ ],
+ "relationships": [
+  {
+   "type": "exposes",
+   "from": "endpoint DELETE admin/cache",
+   "to": "function api/admin:clear_cache",
+   "detail": {
+    "rule": "fastapi_route",
+    "inferred": "no include_router or register_blueprint the rules read mounts it, so it is taken as mounted at the root"
+   },
+   "line": 6,
+   "site_text": "router.delete(\"/cache\")"
+  },
+  {
+   "type": "exposes",
+   "from": "endpoint GET health",
+   "to": "function api/main:health",
+   "detail": {
+    "rule": "fastapi_route"
+   },
+   "line": 9,
+   "site_text": "app.get(\"/health\")"
+  },
+  {
+   "type": "exposes",
+   "from": "endpoint GET api/orders/{order_id}/notes",
+   "to": "function api/notes:list_notes",
+   "detail": {
+    "rule": "fastapi_route"
+   },
+   "line": 6,
+   "site_text": "router.get(\"\")"
+  },
+  {
+   "type": "exposes",
+   "from": "endpoint GET api/orders/{order_id}/notes/{*path}",
+   "to": "function api/notes:note_file",
+   "detail": {
+    "rule": "fastapi_route"
+   },
+   "line": 11,
+   "site_text": "router.get(\"/{path:path}\")"
+  },
+  {
+   "type": "exposes",
+   "from": "endpoint GET api/orders/{order_id}",
+   "to": "function api/orders:get_order",
+   "detail": {
+    "rule": "fastapi_route"
+   },
+   "line": 11,
+   "site_text": "router.get(\"/{order_id}\")"
+  },
+  {
+   "type": "exposes",
+   "from": "endpoint POST api/orders/add",
+   "to": "function api/orders:add_order",
+   "detail": {
+    "rule": "fastapi_route"
+   },
+   "line": 16,
+   "site_text": "router.post(\"/add\")"
+  },
+  {
+   "type": "exposes",
+   "from": "endpoint POST api/orders/{order_id}/cancel",
+   "to": "function api/orders:cancel_order",
+   "detail": {
+    "rule": "fastapi_route"
+   },
+   "line": 21,
+   "site_text": "router.api_route(\"/{order_id}/cancel\", methods=[\"POST\", \"DELETE\"])"
+  },
+  {
+   "type": "exposes",
+   "from": "endpoint DELETE api/orders/{order_id}/cancel",
+   "to": "function api/orders:cancel_order",
+   "detail": {
+    "rule": "fastapi_route"
+   },
+   "line": 21,
+   "site_text": "router.api_route(\"/{order_id}/cancel\", methods=[\"POST\", \"DELETE\"])"
+  },
+  {
+   "type": "exposes",
+   "from": "function api/orders:export_orders",
+   "reason": "outside_capability",
+   "detail": {
+    "rule": "fastapi_route",
+    "why": "the route is not a string literal"
+   },
+   "line": 26,
+   "site_text": "router.get(BASE + \"/all\")"
+  },
+  {
+   "type": "exposes",
+   "from": "endpoint ANY catalog/products",
+   "to": "function catalog/views:product_list",
+   "detail": {
+    "rule": "django_path"
+   },
+   "line": 6,
+   "site_text": "path(\"products/\", product_list)"
+  },
+  {
+   "type": "exposes",
+   "from": "endpoint GET catalog/products/{pk:int}",
+   "to": "method catalog/views:ProductDetail.get",
+   "detail": {
+    "rule": "django_path"
+   },
+   "line": 7,
+   "site_text": "path(\"products/<int:pk>/\", ProductDetail.as_view())"
+  },
+  {
+   "type": "exposes",
+   "from": "endpoint POST catalog/products/{pk:int}",
+   "to": "method catalog/views:ProductDetail.post",
+   "detail": {
+    "rule": "django_path"
+   },
+   "line": 7,
+   "site_text": "path(\"products/<int:pk>/\", ProductDetail.as_view())"
+  },
+  {
+   "type": "exposes",
+   "from": "endpoint ANY catalog/search",
+   "to": "class catalog/views:SearchView",
+   "detail": {
+    "rule": "django_path"
+   },
+   "line": 11,
+   "site_text": "path(\"search/\", SearchView.as_view())"
+  },
+  {
+   "type": "exposes",
+   "from": "function catalog/views:product_list",
+   "reason": "outside_capability",
+   "detail": {
+    "rule": "django_path",
+    "why": "no include() the rules read reaches this URLconf, and ROOT_URLCONF names another"
+   },
+   "line": 5,
+   "site_text": "path(\"old-products/\", product_list)"
+  },
+  {
+   "type": "exposes",
+   "from": "endpoint ANY /",
+   "to": "function mysite/views:home",
+   "detail": {
+    "rule": "django_path"
+   },
+   "line": 6,
+   "site_text": "path(\"\", views.home)"
+  },
+  {
+   "type": "exposes",
+   "from": "function mysite/views:legacy",
+   "reason": "outside_capability",
+   "detail": {
+    "rule": "django_re_path",
+    "why": "re_path takes a regular expression, which the rules do not read as a route"
+   },
+   "line": 8,
+   "site_text": "re_path(r\"^legacy/(?P<code>\\w+)/$\", views.legacy)"
+  },
+  {
+   "type": "exposes",
+   "from": "endpoint GET /",
+   "to": "function web/app:index",
+   "detail": {
+    "rule": "flask_route"
+   },
+   "line": 9,
+   "site_text": "app.route(\"/\")"
+  },
+  {
+   "type": "exposes",
+   "from": "endpoint GET login",
+   "to": "function web/app:login",
+   "detail": {
+    "rule": "flask_route"
+   },
+   "line": 14,
+   "site_text": "app.route(\"/login\", methods=[\"GET\", \"POST\"])"
+  },
+  {
+   "type": "exposes",
+   "from": "endpoint POST login",
+   "to": "function web/app:login",
+   "detail": {
+    "rule": "flask_route"
+   },
+   "line": 14,
+   "site_text": "app.route(\"/login\", methods=[\"GET\", \"POST\"])"
+  },
+  {
+   "type": "exposes",
+   "from": "endpoint GET shop/items/{item_id:int}",
+   "to": "function web/shop:item",
+   "detail": {
+    "rule": "flask_route"
+   },
+   "line": 8,
+   "site_text": "bp.route(\"/items/<int:item_id>\")"
+  },
+  {
+   "type": "exposes",
+   "from": "endpoint GET shop/items",
+   "to": "function web/shop:items",
+   "detail": {
+    "rule": "flask_route"
+   },
+   "line": 13,
+   "site_text": "bp.get(\"/items\")"
+  },
+  {
+   "type": "exposes",
+   "from": "endpoint GET shop/files/{*name}",
+   "to": "function web/shop:files",
+   "detail": {
+    "rule": "flask_route"
+   },
+   "line": 18,
+   "site_text": "bp.route(\"/files/<path:name>\")"
+  },
+  {
+   "type": "exposes",
+   "from": "function web/shop:sync",
+   "reason": "outside_capability",
+   "detail": {
+    "rule": "flask_route",
+    "why": "the methods are not string literals"
+   },
+   "line": 23,
+   "site_text": "bp.route(\"/sync\", methods=METHODS)"
+  },
+  {
+   "type": "runs",
+   "from": "job jobs/tasks:rebuild_index",
+   "to": "function jobs/tasks:rebuild_index",
+   "detail": {
+    "rule": "celery_task"
+   },
+   "line": 7,
+   "site_text": "app.task"
+  },
+  {
+   "type": "runs",
+   "from": "job jobs/tasks:export_orders",
+   "to": "function jobs/tasks:export_orders",
+   "detail": {
+    "rule": "celery_task"
+   },
+   "line": 12,
+   "site_text": "app.task(bind=True, max_retries=3)"
+  },
+  {
+   "type": "runs",
+   "from": "job jobs/tasks:purge_sessions",
+   "to": "function jobs/tasks:purge_sessions",
+   "detail": {
+    "rule": "shared_task"
+   },
+   "line": 17,
+   "site_text": "shared_task"
+  },
+  {
+   "type": "runs",
+   "from": "job jobs/tasks:send_digest",
+   "to": "function jobs/tasks:send_digest",
+   "detail": {
+    "rule": "shared_task"
+   },
+   "line": 22,
+   "site_text": "shared_task(name=\"jobs.digest\")"
+  }
+ ]
+}

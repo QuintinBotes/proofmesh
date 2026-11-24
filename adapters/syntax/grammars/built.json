@@ -1,0 +1,21 @@
+{
+  "description": "Grammars whose packages ship no WebAssembly. Each .wasm beside this file is built by rebuild.mjs from the package source pnpm-lock.yaml pins, with this Tree-sitter CLI, and build.mjs refuses one whose hash or package version differs from its record here.",
+  "tree-sitter": "0.27.2",
+  "grammars": {
+    "swift": {
+      "package": "tree-sitter-swift",
+      "version": "0.7.1",
+      "sha256": "24a6afb13db61ffd7d53dd848bbf684ec1c3aacea685a0857dcd1db673d28c7e"
+    },
+    "sql": {
+      "package": "@derekstride/tree-sitter-sql",
+      "version": "0.3.13",
+      "sha256": "3c7acad1cda9d565e6884e1d058a5b141c7b6b2983a3b2e4fb0f2ea2efe36ad8"
+    },
+    "prisma": {
+      "package": "tree-sitter-prisma",
+      "version": "1.6.0",
+      "sha256": "5df064fd975d5b8edaf907042097b7be10099261469564ed260101e5e4f67d90"
+    }
+  }
+}

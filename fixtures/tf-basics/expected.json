@@ -1,0 +1,248 @@
+{
+  "dispositions": {
+    "main.tf": [
+      "indexed",
+      null
+    ],
+    "modules/net/main.tf": [
+      "indexed",
+      null
+    ]
+  },
+  "symbols": [
+    {
+      "kind": "module",
+      "qualified_name": "main",
+      "lines": [
+        1,
+        40
+      ],
+      "signature": null
+    },
+    {
+      "kind": "variable",
+      "qualified_name": "root:var.env",
+      "lines": [
+        1,
+        3
+      ],
+      "signature": "variable"
+    },
+    {
+      "kind": "variable",
+      "qualified_name": "root:local.name",
+      "lines": [
+        6,
+        6
+      ],
+      "signature": "local"
+    },
+    {
+      "kind": "resource",
+      "qualified_name": "root:aws_s3_bucket.logs",
+      "lines": [
+        9,
+        11
+      ],
+      "signature": "resource \"aws_s3_bucket\""
+    },
+    {
+      "kind": "resource",
+      "qualified_name": "root:data.aws_iam_policy_document.logs",
+      "lines": [
+        13,
+        13
+      ],
+      "signature": "data \"aws_iam_policy_document\""
+    },
+    {
+      "kind": "resource",
+      "qualified_name": "root:aws_s3_bucket_policy.logs",
+      "lines": [
+        15,
+        19
+      ],
+      "signature": "resource \"aws_s3_bucket_policy\""
+    },
+    {
+      "kind": "module_call",
+      "qualified_name": "root:module.net",
+      "lines": [
+        21,
+        24
+      ],
+      "signature": "module \"./modules/net\""
+    },
+    {
+      "kind": "module_call",
+      "qualified_name": "root:module.dns",
+      "lines": [
+        26,
+        28
+      ],
+      "signature": "module \"terraform-aws-modules/route53/aws\""
+    },
+    {
+      "kind": "output",
+      "qualified_name": "root:output.bucket_arn",
+      "lines": [
+        30,
+        32
+      ],
+      "signature": "output"
+    },
+    {
+      "kind": "output",
+      "qualified_name": "root:output.subnet",
+      "lines": [
+        34,
+        36
+      ],
+      "signature": "output"
+    },
+    {
+      "kind": "output",
+      "qualified_name": "root:output.ghost",
+      "lines": [
+        38,
+        40
+      ],
+      "signature": "output"
+    },
+    {
+      "kind": "module",
+      "qualified_name": "modules/net/main",
+      "lines": [
+        1,
+        9
+      ],
+      "signature": null
+    },
+    {
+      "kind": "variable",
+      "qualified_name": "modules/net:var.cidr",
+      "lines": [
+        1,
+        1
+      ],
+      "signature": "variable"
+    },
+    {
+      "kind": "resource",
+      "qualified_name": "modules/net:aws_subnet.this",
+      "lines": [
+        3,
+        5
+      ],
+      "signature": "resource \"aws_subnet\""
+    },
+    {
+      "kind": "output",
+      "qualified_name": "modules/net:output.subnet_id",
+      "lines": [
+        7,
+        9
+      ],
+      "signature": "output"
+    }
+  ],
+  "relationships": [
+    {
+      "type": "references",
+      "from": "root:local.name",
+      "line": 6,
+      "site_text": "var.env",
+      "resolution": "resolved",
+      "to": "root:var.env"
+    },
+    {
+      "type": "references",
+      "from": "root:aws_s3_bucket.logs",
+      "line": 10,
+      "site_text": "local.name",
+      "resolution": "resolved",
+      "to": "root:local.name"
+    },
+    {
+      "type": "references",
+      "from": "root:aws_s3_bucket_policy.logs",
+      "line": 16,
+      "site_text": "aws_s3_bucket.logs.id",
+      "resolution": "resolved",
+      "to": "root:aws_s3_bucket.logs"
+    },
+    {
+      "type": "references",
+      "from": "root:aws_s3_bucket_policy.logs",
+      "line": 17,
+      "site_text": "data.aws_iam_policy_document.logs.json",
+      "resolution": "resolved",
+      "to": "root:data.aws_iam_policy_document.logs"
+    },
+    {
+      "type": "depends_on",
+      "from": "root:aws_s3_bucket_policy.logs",
+      "line": 18,
+      "site_text": "aws_s3_bucket.logs",
+      "resolution": "resolved",
+      "to": "root:aws_s3_bucket.logs"
+    },
+    {
+      "type": "depends_on",
+      "from": "root:module.net",
+      "line": 22,
+      "site_text": "source = \"./modules/net\"",
+      "resolution": "resolved",
+      "to": "modules/net/main"
+    },
+    {
+      "type": "depends_on",
+      "from": "root:module.dns",
+      "line": 27,
+      "site_text": "source = \"terraform-aws-modules/route53/aws\"",
+      "resolution": "unresolved",
+      "reason": "dependency_missing"
+    },
+    {
+      "type": "references",
+      "from": "root:output.bucket_arn",
+      "line": 31,
+      "site_text": "aws_s3_bucket.logs.arn",
+      "resolution": "resolved",
+      "to": "root:aws_s3_bucket.logs"
+    },
+    {
+      "type": "references",
+      "from": "root:output.subnet",
+      "line": 35,
+      "site_text": "module.net.subnet_id",
+      "resolution": "resolved",
+      "to": "modules/net:output.subnet_id"
+    },
+    {
+      "type": "references",
+      "from": "root:output.ghost",
+      "line": 39,
+      "site_text": "aws_instance.ghost.id",
+      "resolution": "unresolved",
+      "reason": "unknown_name"
+    },
+    {
+      "type": "references",
+      "from": "modules/net:aws_subnet.this",
+      "line": 4,
+      "site_text": "var.cidr",
+      "resolution": "resolved",
+      "to": "modules/net:var.cidr"
+    },
+    {
+      "type": "references",
+      "from": "modules/net:output.subnet_id",
+      "line": 8,
+      "site_text": "aws_subnet.this.id",
+      "resolution": "resolved",
+      "to": "modules/net:aws_subnet.this"
+    }
+  ],
+  "closed_world": "Symbols and relationships are complete for this fixture."
+}

@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "tools/compare_snapshots.input.schema.json",
+  "title": "compare_snapshots input",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "base_snapshot_id"
+  ],
+  "properties": {
+    "repository_id": {
+      "type": "string",
+      "pattern": "^repo_[0-9a-z]+$"
+    },
+    "base_snapshot_id": {
+      "type": "string",
+      "pattern": "^snap_[0-9a-z]+$",
+      "description": "The older snapshot, attached as a second sealed file (D03)."
+    },
+    "snapshot_id": {
+      "type": "string",
+      "pattern": "^snap_[0-9a-z]+$",
+      "description": "The newer snapshot; default is the repository's current one."
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "timeout_ms": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_rows": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_depth": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "envelope": {
+      "enum": [
+        "full",
+        "compact"
+      ],
+      "description": "compact leaves out the snapshot-wide parts of the envelope (unresolved reasons, standing limitations) that an earlier answer from the same snapshot already gave; query-specific limits stay. Over MCP, answers after the first full one per snapshot are compact unless full is asked for."
+    }
+  },
+  "description": "What changed between two sealed snapshots of one repository: symbols added, removed and changed (matched by kind and qualified name), relationships added and removed by type, and files added, removed, changed or re-dispositioned. The base snapshot is attached as a second read-only file; the envelope's snapshot is the head."
+}

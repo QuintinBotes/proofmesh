@@ -1,0 +1,23 @@
+# Allowlist: the image is built from the sources the build needs, never from whatever else sits in the working tree
+# (private evaluation results, workspace clones, data directories, build output, credentials).
+*
+!package.json
+!pnpm-lock.yaml
+!pnpm-workspace.yaml
+!tsconfig.base.json
+!global.json
+!LICENSE
+!NOTICE
+!THIRD_PARTY_NOTICES.md
+!packages/
+!adapters/
+!apps/
+!schemas/
+!policy/licenses.json
+**/node_modules
+adapters/**/bin
+**/obj
+**/dist
+**/TestResults
+**/test-results
+**/.DS_Store

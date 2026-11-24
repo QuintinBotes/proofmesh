@@ -1,0 +1,31 @@
+{
+  "name": "proofmesh",
+  "version": "0.1.0",
+  "description": "A code graph that shows its work.",
+  "license": "Apache-2.0",
+  "files": [
+    "bin",
+    "dist"
+  ],
+  "type": "module",
+  "bin": {
+    "proofmesh": "./bin/proofmesh.mjs"
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "@proofmesh/adapter-syntax": "workspace:*",
+    "@proofmesh/adapter-typescript": "workspace:*",
+    "ajv": "^8.20.0",
+    "better-sqlite3": "^13.0.3"
+  }
+}

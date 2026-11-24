@@ -1,0 +1,3 @@
+# Provenance
+
+Project-authored for Proofmesh. Apache-2.0. No third-party code. A client whose HTTP calls go through `get`/`push` wrappers, through a module constant, an f-string with a query string, an absolute URL, a route relative to a base URL (`settle()`) and `request("POST", path)` (`raw()`); `local()` passes a non-literal and `named()` a bare word, and each must yield no endpoint. A decorated FastAPI route and a route registration must yield no outbound endpoint: the decorated route, on a router nothing includes, is exposed as a server endpoint taken as mounted at the root, and the registration is not read. The expected facts are written by hand in `packages/proofmesh/test/python-http.test.ts`.

@@ -1,0 +1,17 @@
+{
+  "repo_note": "Targets are in the Orbit repository at commit 5bd5dffa (QuintinBotes/orbit). Paths are relative to the repository root.",
+  "questions": [
+    { "id": "Q1", "kind": "callers", "ask": "Who calls snapshotHash, and at which lines? (blast radius of changing its signature)", "target": { "file": "src/policy/snapshot.ts", "qname": "snapshotHash" } },
+    { "id": "Q2", "kind": "callers", "ask": "Who calls the method BudgetLedger.consume (called through instances)?", "target": { "file": "src/scheduling/budget.ts", "qname": "BudgetLedger.consume" } },
+    { "id": "Q3", "kind": "callers", "ask": "Who calls ProviderAdapter.startTask (an interface method: dispatch through the interface)?", "target": { "file": "src/adapters/types.ts", "qname": "ProviderAdapter.startTask" } },
+    { "id": "Q4", "kind": "implementations", "ask": "Which classes implement the ProviderAdapter interface?", "target": { "file": "src/adapters/types.ts", "qname": "ProviderAdapter" } },
+    { "id": "Q5", "kind": "importers", "ask": "Which files import src/core/hash.ts directly?", "target": { "file": "src/core/hash.ts" } },
+    { "id": "Q6", "kind": "dependents", "ask": "Which files depend on src/controller/run-store.ts, directly or transitively (module blast radius)?", "target": { "file": "src/controller/run-store.ts" } },
+    { "id": "Q7", "kind": "transitive_callers", "ask": "What reaches isAlive through calls, up to 3 hops (impact of changing it)?", "target": { "file": "src/core/proc.ts", "qname": "isAlive" }, "depth": 3 },
+    { "id": "Q8", "kind": "path", "ask": "How does hookMain reach snapshotHash (a call path)?", "source": { "file": "src/cli/hook.ts", "qname": "hookMain" }, "target": { "file": "src/policy/snapshot.ts", "qname": "snapshotHash" } },
+    { "id": "Q9", "kind": "type_users", "ask": "Which files use the PolicySnapshot type?", "target": { "file": "src/policy/types.ts", "qname": "PolicySnapshot" } },
+    { "id": "Q10", "kind": "dead_code", "ask": "Which top-level functions under src/ does nothing use (dead code candidates)?", "scope": "src/" },
+    { "id": "Q11", "kind": "cycles", "ask": "Which files under src/ are in an import cycle?", "scope": "src/" },
+    { "id": "Q12", "kind": "roots", "ask": "What are the entry points: modules under src/ that no other src/ module imports, statically or dynamically (the bundle entry src/cli/main.ts, the hook and shim mains, and unused barrels)?", "scope": "src/" }
+  ]
+}

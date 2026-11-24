@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "get_symbol.data.schema.json",
+  "title": "get_symbol data",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "symbol"
+  ],
+  "properties": {
+    "symbol": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "name",
+        "qualified_name",
+        "path",
+        "start_line",
+        "end_line",
+        "signature",
+        "evidence_id"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^sym_[0-9a-z]+$"
+        },
+        "kind": {
+          "enum": [
+            "function",
+            "class",
+            "method",
+            "interface",
+            "type_alias",
+            "variable",
+            "module",
+            "struct",
+            "enum",
+            "property",
+            "field",
+            "constructor",
+            "namespace",
+            "project",
+            "package",
+            "endpoint",
+            "table",
+            "message",
+            "channel",
+            "job",
+            "feature_flag",
+            "config_key",
+            "team",
+            "service"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "qualified_name": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "start_line": {
+          "type": "integer"
+        },
+        "end_line": {
+          "type": "integer"
+        },
+        "signature": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "evidence_id": {
+          "type": "string",
+          "pattern": "^ev_[0-9a-z]+$"
+        }
+      }
+    }
+  }
+}

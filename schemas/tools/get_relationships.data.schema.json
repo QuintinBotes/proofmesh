@@ -1,0 +1,279 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "get_relationships.data.schema.json",
+  "title": "get_relationships data",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "relationships",
+    "boundaries",
+    "totals"
+  ],
+  "properties": {
+    "relationships": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "assertion_id",
+          "type",
+          "direction",
+          "resolution",
+          "origin",
+          "other",
+          "site",
+          "reason",
+          "evidence_ids",
+          "detail"
+        ],
+        "properties": {
+          "assertion_id": {
+            "type": "string",
+            "pattern": "^as_[0-9a-z]+$"
+          },
+          "type": {
+            "enum": [
+              "calls",
+              "imports",
+              "contains",
+              "inherits",
+              "implements",
+              "overrides",
+              "references",
+              "injects",
+              "registered_as",
+              "exposes",
+              "maps_to",
+              "runs",
+              "dispatches_to",
+              "handles",
+              "publishes",
+              "consumes",
+              "sends_to",
+              "listens_on",
+              "evaluates_flag",
+              "reads_config",
+              "depends_on",
+              "depends_on_package",
+              "owned_by",
+              "calls_service",
+              "renders",
+              "uses_hook",
+              "provides_context",
+              "uses_context"
+            ]
+          },
+          "direction": {
+            "enum": [
+              "in",
+              "out"
+            ]
+          },
+          "resolution": {
+            "enum": [
+              "resolved",
+              "resolved_external",
+              "candidate",
+              "ambiguous",
+              "unresolved"
+            ]
+          },
+          "origin": {
+            "enum": [
+              "syntax",
+              "semantic_resolver",
+              "configuration_adapter",
+              "framework_adapter",
+              "contract_match",
+              "runtime_observation",
+              "documentation",
+              "human_assertion",
+              "model_hypothesis"
+            ]
+          },
+          "other": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "enum": [
+                  "symbol",
+                  "file",
+                  "external",
+                  "none"
+                ]
+              },
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "qualified_name": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "module": {
+                "type": "string"
+              },
+              "symbol_kind": {
+                "type": "string"
+              },
+              "start_line": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          },
+          "site": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "path",
+              "start_line",
+              "end_line"
+            ],
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "start_line": {
+                "type": "integer"
+              },
+              "end_line": {
+                "type": "integer"
+              }
+            }
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "evidence_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^ev_[0-9a-z]+$"
+            }
+          },
+          "detail": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "via": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "qualified_name"
+            ],
+            "description": "On an inbound row: the member the subject implements or overrides that the call or reference names, through which it may dispatch to the subject.",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "qualified_name": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "boundaries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "assertion_id",
+          "type",
+          "reason",
+          "path",
+          "line",
+          "from_id"
+        ],
+        "properties": {
+          "assertion_id": {
+            "type": "string",
+            "pattern": "^as_[0-9a-z]+$"
+          },
+          "reason": {
+            "enum": [
+              "dynamic_element_access",
+              "untyped_receiver",
+              "unknown_name",
+              "chained_callee",
+              "import_unresolved",
+              "dynamic_specifier",
+              "not_indexed",
+              "dependency_missing",
+              "configuration_error",
+              "outside_capability",
+              "candidate",
+              "ambiguous"
+            ]
+          },
+          "path": {
+            "type": "string"
+          },
+          "line": {
+            "type": "integer"
+          },
+          "from_id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "calls_name": {
+            "type": "boolean",
+            "description": "True when the unresolved site calls the subject's name."
+          }
+        }
+      }
+    },
+    "totals": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "in",
+        "out"
+      ],
+      "description": "Every matching relationship in each direction, before row and byte limits.",
+      "properties": {
+        "in": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "out": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "boundaries_calling_name": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Unresolved call sites in the snapshot that call the subject's name: likely callers the graph could not bind, counted past the row limit."
+        },
+        "out_external": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Outbound calls to code outside the repository that the default left out."
+        }
+      }
+    }
+  }
+}

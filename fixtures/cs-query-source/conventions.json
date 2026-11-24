@@ -1,0 +1,1 @@
+{ "schema_version": "0.1", "csharp": { "teams": [{ "enum_type": "Shop.Crews.Crew" }] } }

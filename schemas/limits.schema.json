@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "limits.schema.json",
+  "title": "Limits",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "timeout_ms": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "max_rows": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "max_bytes": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "max_depth": {
+      "type": "integer",
+      "minimum": 1
+    }
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "schema_version": "0.2",
+  "source": "sample instrumented run, property access capture",
+  "window": {
+    "from": "2026-11-01T00:00:00Z",
+    "to": "2026-11-08T00:00:00Z"
+  },
+  "counts": [
+    {
+      "subject": {
+        "kind": "endpoint",
+        "name": "GET api/Orders/{id}"
+      },
+      "metric": "requests",
+      "value": 950
+    }
+  ],
+  "property_reads": [
+    {
+      "endpoint": "GET api/Orders/{id}",
+      "entity": "Shop.Data.Order",
+      "property": "Id",
+      "reads": 950
+    },
+    {
+      "endpoint": "GET api/Orders/{id}",
+      "entity": "Shop.Data.Order",
+      "property": "Total",
+      "reads": 950
+    },
+    {
+      "endpoint": "GET api/Orders/{id}",
+      "entity": "Shop.Data.Order",
+      "property": "Discount",
+      "reads": 3
+    }
+  ]
+}

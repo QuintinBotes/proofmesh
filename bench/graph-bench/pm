@@ -1,0 +1,5 @@
+#!/bin/sh
+# ProofMesh CLI from this clone, with the benchmark's own data directory (never the default one).
+HERE="$(cd "$(dirname "$0")" && pwd)"
+ROOT="$(cd "$HERE/../.." && pwd)"
+exec node "$ROOT/packages/proofmesh/bin/proofmesh.mjs" --data-dir "${PM_DATA_DIR:-$ROOT/.bench-data}" "$@"

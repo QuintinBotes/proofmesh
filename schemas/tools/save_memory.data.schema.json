@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "save_memory.data.schema.json",
+  "title": "save_memory data",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "staleness",
+    "missing_refs"
+  ],
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "staleness": {
+      "const": "unaccepted"
+    },
+    "missing_refs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

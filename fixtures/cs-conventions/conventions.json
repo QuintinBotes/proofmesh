@@ -1,0 +1,8 @@
+{
+  "schema_version": "0.1",
+  "csharp": {
+    "jobs": [{ "base_type": "Ops.BackgroundTask" }],
+    "feature_flags": [{ "declared_in": "Ops.ToggleNames" }, { "key_type": "Ops.Toggle<T>" }],
+    "teams": [{ "enum_type": "Ops.Crew", "parameter": "crew" }]
+  }
+}

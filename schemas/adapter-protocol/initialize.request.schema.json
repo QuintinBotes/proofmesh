@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "initialize.request.schema.json",
+  "title": "initialize.request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "protocol_version",
+    "workspace",
+    "analysis_mode",
+    "files"
+  ],
+  "properties": {
+    "protocol_version": {
+      "type": "string",
+      "pattern": "^1\\.(0|[1-9][0-9]*)$",
+      "description": "Protocol 1: any 1.x is compatible. A minor version only adds optional fields, which the other side ignores when it does not know them (A22)."
+    },
+    "workspace": {
+      "type": "string"
+    },
+    "analysis_mode": {
+      "enum": [
+        "no_execution",
+        "trusted_build"
+      ]
+    },
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "content_hash",
+          "language"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "content_hash": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "language": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "config": {
+      "type": "object",
+      "description": "Adapter configuration from the repository settings, such as extension assemblies.",
+      "additionalProperties": true
+    },
+    "repository_root": {
+      "type": "string",
+      "description": "The repository's own directory, read-only. An adapter reads only its declared external inputs under it, such as installed packages in node_modules, and never sources: those come from the captured workspace."
+    }
+  }
+}

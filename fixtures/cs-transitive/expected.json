@@ -1,0 +1,38 @@
+{
+  "analysis_mode": "no_execution",
+  "dispositions": {
+    "Directory.Build.props": ["indexed", null],
+    "src/App/App.csproj": ["indexed", null],
+    "src/App/Use.cs": ["indexed", null],
+    "src/Core/Core.csproj": ["indexed", null],
+    "src/Core/Thing.cs": ["indexed", null],
+    "src/Lib/Lib.csproj": ["indexed", null],
+    "src/Lib/Wrapper.cs": ["indexed", null]
+  },
+  "symbols": [
+    {"kind": "class", "qualified_name": "App.Use", "lines": [3, 6], "signature": null},
+    {"kind": "method", "qualified_name": "App.Use.Go", "lines": [5, 5], "signature": "int Go()"},
+    {"kind": "class", "qualified_name": "Core.Thing", "lines": [3, 6], "signature": null},
+    {"kind": "method", "qualified_name": "Core.Thing.Make", "lines": [5, 5], "signature": "int Make()"},
+    {"kind": "class", "qualified_name": "Lib.Wrapper", "lines": [3, 6], "signature": null},
+    {"kind": "method", "qualified_name": "Lib.Wrapper.Twice", "lines": [5, 5], "signature": "int Twice()"},
+    {"kind": "module", "qualified_name": "src/App/Use", "lines": [1, 6], "signature": null},
+    {"kind": "module", "qualified_name": "src/Core/Thing", "lines": [1, 6], "signature": null},
+    {"kind": "module", "qualified_name": "src/Lib/Wrapper", "lines": [1, 6], "signature": null},
+    {"kind": "project", "qualified_name": "App", "lines": [1, 1], "signature": null},
+    {"kind": "project", "qualified_name": "Core", "lines": [1, 1], "signature": null},
+    {"kind": "project", "qualified_name": "Lib", "lines": [1, 1], "signature": null}
+  ],
+  "calls": [
+    {"from": "App.Use.Go", "line": 5, "site_text": "Core.Thing.Make()", "resolution": "resolved", "to": "Core.Thing.Make"},
+    {"from": "App.Use.Go", "line": 5, "site_text": "Lib.Wrapper.Twice()", "resolution": "resolved", "to": "Lib.Wrapper.Twice"},
+    {"from": "Lib.Wrapper.Twice", "line": 5, "site_text": "Core.Thing.Make()", "resolution": "resolved", "to": "Core.Thing.Make"}
+  ],
+  "structure": [
+    {"type": "depends_on", "from": "App", "to": "Lib"},
+    {"type": "depends_on", "from": "Lib", "to": "Core"},
+    {"type": "contains", "from": "App", "to": "src/App/Use"},
+    {"type": "contains", "from": "Core", "to": "src/Core/Thing"},
+    {"type": "contains", "from": "Lib", "to": "src/Lib/Wrapper"}
+  ]
+}

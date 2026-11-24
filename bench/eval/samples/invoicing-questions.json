@@ -1,0 +1,8 @@
+{
+  "name": "ts-invoicing golden questions",
+  "questions": [
+    { "id": "q1", "question": "Which function computes an invoice total?", "expected_facts": ["invoiceTotal"] },
+    { "id": "q2", "question": "What does formatCurrency depend on?", "expected_facts": ["Intl.NumberFormat"] },
+    { "id": "q3", "question": "Is there any caller of the deprecated legacyTotal?", "expected_facts": ["no caller", "closed world"] }
+  ]
+}

@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\Orders.Pricing\Orders.Pricing.csproj" />
+    <PackageReference Include="Contoso.Missing.Client" Version="1.0.0" />
+  </ItemGroup>
+</Project>

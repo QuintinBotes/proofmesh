@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "verify_claim.data.schema.json",
+  "title": "verify_claim data",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "claim_id",
+    "run_id",
+    "statement",
+    "proposition",
+    "verdict",
+    "layers",
+    "dependencies"
+  ],
+  "properties": {
+    "claim_id": {
+      "type": "string"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "statement": {
+      "type": "string"
+    },
+    "proposition": {
+      "type": "object"
+    },
+    "verdict": {
+      "enum": [
+        "supported",
+        "refuted",
+        "inconclusive",
+        "invalid"
+      ]
+    },
+    "layers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "outcome",
+          "detail"
+        ],
+        "properties": {
+          "name": {
+            "enum": [
+              "scope",
+              "resolution",
+              "semantic",
+              "integrity",
+              "replay",
+              "independent",
+              "execution"
+            ]
+          },
+          "outcome": {
+            "enum": [
+              "pass",
+              "fail",
+              "not_run",
+              "unsupported",
+              "inconclusive",
+              "unavailable"
+            ]
+          },
+          "detail": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "dependencies": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "assertions",
+        "evidence"
+      ],
+      "properties": {
+        "assertions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

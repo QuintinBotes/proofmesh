@@ -1,0 +1,14 @@
+{
+  "resources": [
+    { "qualified_name": "src/Shop.Infra/Program:Site::www", "name": "www", "signature": "resource \"Site\"", "start_line": 12, "end_line": 12 },
+    { "qualified_name": "src/Shop.Infra/Program:aws.s3.Bucket::logs", "name": "logs", "signature": "resource \"aws.s3.Bucket\"", "start_line": 6, "end_line": 6 },
+    { "qualified_name": "src/Shop.Infra/Program:aws.s3.BucketPolicy::logs-policy", "name": "logs-policy", "signature": "resource \"aws.s3.BucketPolicy\"", "start_line": 7, "end_line": 11 },
+    { "qualified_name": "src/Shop.Infra/Site:aws.s3.Bucket::{name}-content", "name": "{name}-content", "signature": "resource \"aws.s3.Bucket\"", "start_line": 14, "end_line": 14 }
+  ],
+  "facts": [
+    [9, "references", "src/Shop.Infra/Program:aws.s3.BucketPolicy::logs-policy", "src/Shop.Infra/Program:aws.s3.Bucket::logs", "logs.Id"],
+    [10, "references", "src/Shop.Infra/Program:aws.s3.BucketPolicy::logs-policy", "src/Shop.Infra/Program:aws.s3.Bucket::logs", "logs.Arn"],
+    [11, "depends_on", "src/Shop.Infra/Program:aws.s3.BucketPolicy::logs-policy", "src/Shop.Infra/Program:aws.s3.Bucket::logs", "logs"],
+    [12, "references", "src/Shop.Infra/Program:Site::www", "src/Shop.Infra/Program:aws.s3.Bucket::logs", "logs.BucketName"]
+  ]
+}

@@ -1,0 +1,185 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "analyze_impact.data.schema.json",
+  "title": "analyze_impact data",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "subjects",
+    "types",
+    "dependents",
+    "totals",
+    "stopped_by",
+    "subject_members"
+  ],
+  "properties": {
+    "subjects": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "types": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "dependents": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "kind",
+          "name",
+          "qualified_name",
+          "path",
+          "project",
+          "depth"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "qualified_name": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "depth": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "project": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "site": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "path",
+              "start_line"
+            ],
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "start_line": {
+                "type": "integer",
+                "minimum": 1
+              }
+            },
+            "description": "For a file reached through imports (kind file): the import statement that reached it."
+          }
+        }
+      }
+    },
+    "totals": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dependents",
+        "by_depth",
+        "by_project",
+        "by_area",
+        "by_team"
+      ],
+      "properties": {
+        "dependents": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "by_depth": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer"
+          }
+        },
+        "by_project": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "count"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "count": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          }
+        },
+        "by_area": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "count"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "count": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          }
+        },
+        "by_team": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "count"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "count": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          }
+        }
+      }
+    },
+    "stopped_by": {
+      "enum": [
+        "max_depth",
+        "node_budget",
+        null
+      ]
+    },
+    "subject_members": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Members nested in type subjects, included as starting points because calls reach a type through them."
+    }
+  }
+}

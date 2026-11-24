@@ -1,0 +1,715 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { callTool, establishSession, fetchGalaxy, fetchWorkspaces, galaxySymbolId, listSnapshots, replaying, setReplay, setRepository, ToolError, type SnapshotInfo, type Workspace } from './api'
+import { DiffView } from './DiffView'
+import { overlay as diffOverlay, type CompareData } from './diff'
+import { fogText, Galaxy, manyLinks, MOVING_LINK_LIMIT } from './Galaxy'
+import { ClaimsView } from './ClaimsView'
+import { areaFog, legendAreas, matchIndices, parseGalaxy, rankMatches, shortName, type GalaxyData } from './galaxyData'
+import { GraphView } from './GraphView'
+import { toNeighbourhood, type RelationshipsEnvelope } from './explore'
+import { areaColor, toMap, type Overview } from './map'
+import { defaultSelection, evidenceFor, LINK_WORDS, pairs, RELATION_COLOURS, RELATION_WORDS, relations, toEcosystem, type Ecosystem, type Relation } from './ecosystem'
+import { FRAMEWORK_TYPES, glyph, toScene, type TraceEnvelope } from './scene'
+import { visible } from './visible'
+import { share } from './share'
+import { areasSvg, caveatLines, NO_MEANING, offlineHtml, pngWithText, sceneSvg, sceneTable, type Caveats, type Source } from './exporting'
+
+type Sym = { id: string; kind: string; name: string; qualified_name: string; path: string; start_line: number; signature: string | null }
+type Evidence = { title: string; facts: Array<[string, string]>; integrity: string; text: string | null }
+type Hub = { id: string; kind: string; name: string; qualified_name: string; inbound: number }
+
+const EXPLORE_TYPES = ['calls', 'inherits', 'implements', 'overrides', ...FRAMEWORK_TYPES]
+const param = (name: string) => new URLSearchParams(window.location.search).get(name)
+const VIEW_NAMES: Record<string, string> = { galaxy: 'Galaxy', map: 'Map', explore: 'Explore', trace: 'Trace a path', claims: 'Claims', diff: 'Diff', ecosystem: 'Ecosystem' }
+
+/** Saves bytes as a file the person downloads; nothing is sent anywhere. */
+function download(name: string, blob: Blob): void {
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(blob)
+  a.download = name
+  a.click()
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000)
+}
+
+/** Draws an SVG into a PNG of the same size, in the browser. */
+async function svgToPng(svg: string): Promise<Uint8Array> {
+  const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }))
+  try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => { const i = new Image(); i.onload = () => resolve(i); i.onerror = () => reject(new Error('the drawing could not be rendered')); i.src = url })
+    const canvas = document.createElement('canvas')
+    canvas.width = img.naturalWidth
+    canvas.height = img.naturalHeight
+    canvas.getContext('2d')!.drawImage(img, 0, 0)
+    const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('the image could not be encoded'))), 'image/png'))
+    return new Uint8Array(await blob.arrayBuffer())
+  } finally { URL.revokeObjectURL(url) }
+}
+const focusFromUrl = () => param('focus')
+
+function Picker({ label, value, onPick }: { label: string; value: Sym | null; onPick: (s: Sym) => void }) {
+  const [text, setText] = useState('')
+  const [hits, setHits] = useState<Sym[]>([])
+  const [more, setMore] = useState(false)
+  useEffect(() => {
+    if (text.trim().length < 2) { setHits([]); return }
+    const t = setTimeout(() => callTool('find_symbols', { text: text.trim(), limits: { max_rows: 20 } }).then((r) => { setHits(r.data.symbols); setMore(r.completion.truncated) }).catch(() => setHits([])), 150)
+    return () => clearTimeout(t)
+  }, [text])
+  const id = `picker-${label.toLowerCase()}`
+  return (
+    <div className="picker">
+      <label htmlFor={id}>{label}</label>
+      <input id={id} value={text} onChange={(e) => setText(e.target.value)} placeholder="Search symbols" autoComplete="off" spellCheck={false} />
+      {value && <div className="picked" data-testid={`${id}-value`}>{visible(value.qualified_name)}</div>}
+      {hits.length > 0 && (
+        <ul className="hits" role="listbox" aria-label={`${label} candidates`}>
+          {hits.map((h) => (
+            <li key={h.id}>
+              <button type="button" onClick={() => { onPick(h); setHits([]); setText('') }}>
+                <b>{visible(h.name)}</b> <span className="dim">{h.kind} · {visible(h.qualified_name)} · {visible(h.path)}:{h.start_line}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {hits.length > 0 && more && <p className="dim" role="note">The first {hits.length} matches; type more to narrow them.</p>}
+    </div>
+  )
+}
+
+/** The Galaxy's one-line summary; areas holding only files the graph cannot see are counted apart, never as empty (FR059). */
+function galaxySummary(g: GalaxyData): string {
+  const seen = g.areas.filter((a) => a.count > 0).length, hidden = g.areas.length - seen
+  return `${g.n.toLocaleString('en')} symbols in ${seen} areas, ${(g.links.length / 2).toLocaleString('en')} links${hidden ? `; ${hidden} more area${hidden === 1 ? ' holds' : 's hold'} files the graph cannot see` : ''}. Search, pick an area, or click a point.`
+}
+
+export function App() {
+  const [error, setError] = useState<string | null>(null)
+  const [status, setStatus] = useState<any>(null)
+  const [source, setSource] = useState<Sym | null>(null)
+  const [target, setTarget] = useState<Sym | null>(null)
+  const [depth, setDepth] = useState(6)
+  const [followFramework, setFollowFramework] = useState(false)
+  const [mode, setMode] = useState<'galaxy' | 'map' | 'explore' | 'trace' | 'claims' | 'diff' | 'ecosystem'>(() => (focusFromUrl() ? 'explore' : param('map') !== null ? 'map' : 'galaxy'))
+  // Replay (FR010): the published snapshots, and the one every query is pinned to when it is not the current one.
+  const [snapshots, setSnapshots] = useState<SnapshotInfo[]>([])
+  const [replay, setReplayState] = useState<string | null>(null)
+  // Diff (FR019): the comparison shown, and its overlay on the Galaxy while the Galaxy shows its head snapshot.
+  const [diff, setDiff] = useState<{ data: CompareData; truncated: boolean } | null>(null)
+  const [diffBase, setDiffBase] = useState('')
+  const [workspaces, setWorkspaces] = useState<Workspace[] | null>(null)
+  const [workspace, setWorkspace] = useState<string>('')
+  const [ecosystem, setEcosystem] = useState<Ecosystem | null>(null)
+  // The member the ecosystem view colours the others by, and whose links it shows; null until a workspace loads.
+  const [selected, setSelected] = useState<string | null>(null)
+  const ecosystemRef = useRef<Ecosystem | null>(null)
+  useEffect(() => { ecosystemRef.current = ecosystem; setSelected(ecosystem ? defaultSelection(ecosystem) : null) }, [ecosystem])
+  // The repository drilled into from the ecosystem view; every other view then shows only it (A11).
+  const [drilled, setDrilled] = useState<string | null>(null)
+  const [galaxy, setGalaxy] = useState<GalaxyData | null>(null)
+  const [galaxyArea, setGalaxyArea] = useState<number | null>(null)
+  const galaxyAsked = useRef(false)
+  useEffect(() => {
+    // '/' jumps to search, as in most code browsers.
+    const onKey = (e: KeyboardEvent) => { if (e.key === '/' && !(e.target instanceof HTMLInputElement)) { e.preventDefault(); document.getElementById('search')?.focus() } }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+  const [query, setQuery] = useState(() => param('q') ?? '')
+  const [map, setMap] = useState<{ overview: Overview; text: string; matches: Sym[] } | null>(null)
+  const mapTicket = useRef(0)
+  const searchTimer = useRef<number | undefined>(undefined)
+  const [focus, setFocus] = useState<Sym | null>(null)
+  const [hood, setHood] = useState<RelationshipsEnvelope | null>(null)
+  const [loading, setLoading] = useState(false)
+  // Counts finished queries, so tests and assistive tech can tell a new answer from the previous one.
+  const [answered, setAnswered] = useState(0)
+  const [trace, setTrace] = useState<TraceEnvelope & Record<string, any> | null>(null)
+  const [traced, setTraced] = useState<{ source: string; target: string } | null>(null)
+  const [tableView, setTableView] = useState(false)
+  const [noWebGl, setNoWebGl] = useState(false)
+  const [evidence, setEvidence] = useState<Evidence | null>(null)
+  // Consent covers the source shown when it was given, so it lapses whenever the evidence panel changes (FR052).
+  const [includeSource, setIncludeSource] = useState(false)
+  useEffect(() => setIncludeSource(false), [evidence])
+  // Evidence belongs to the view that opened it; another view starts without it.
+  useEffect(() => setEvidence(null), [mode])
+  const reducedMotion = useMemo(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches, [])
+
+  const report = useCallback((e: unknown) => {
+    setError(e instanceof ToolError && e.status === 401 ? 'No valid session: the link expired (links last 10 minutes), was already used, or the server restarted. Run "proofmesh view" and open the new link it prints.' : String((e as Error)?.message ?? e))
+  }, [])
+
+  const runTrace = async () => {
+    if (!source || !target) return
+    setEvidence(null)
+    setLoading(true)
+    try {
+      const types = followFramework ? ['calls', ...FRAMEWORK_TYPES] : ['calls']
+      const env = await callTool('trace_paths', { source_id: source.id, target_id: target.id, types, limits: { max_depth: depth } })
+      setTraced({ source: source.id, target: target.id })
+      setTrace(env)
+      setTableView(false)
+      setError(null)
+    } catch (e) {
+      setTrace(null)
+      report(e)
+    } finally {
+      setLoading(false)
+      setAnswered((n) => n + 1)
+    }
+  }
+  const scene = useMemo(() => mode === 'galaxy' || mode === 'claims' ? null : mode === 'ecosystem' ? (ecosystem ? toEcosystem(ecosystem, selected) : null) : mode === 'trace'
+    ? (trace && traced ? toScene(trace, traced.source, traced.target) : null)
+    : mode === 'map' ? (map ? toMap(map.overview, map.text || null) : null)
+    : (hood && focus ? toNeighbourhood(hood, focus) : null), [mode, trace, traced, hood, focus, map, ecosystem, selected])
+
+  // The workspace list is read each time the tab opens, so one created meanwhile appears without a reload.
+  useEffect(() => { if (mode === 'ecosystem') fetchWorkspaces().then(setWorkspaces).catch(() => setWorkspaces([])) }, [mode])
+  /** Loads a workspace's overview from its sealed link file; nothing about any member is fetched. push adds a history entry. */
+  const loadEcosystem = useCallback(async (name: string, push = true) => {
+    setWorkspace(name)
+    setEcosystem(null)
+    if (push) window.history.pushState(null, '', name ? `?workspace=${encodeURIComponent(name)}` : window.location.pathname)
+    if (!name) return
+    setLoading(true)
+    try { setEcosystem((await callTool('get_ecosystem', { workspace: name })).data as Ecosystem); setError(null) } catch (e) { report(e) } finally { setLoading(false); setAnswered((n) => n + 1) }
+  }, [report])
+  /** Drill-down: from here on every query names this repository only; the member list is never refetched. Back returns to the overview. */
+  const drillInto = useCallback(async (repositoryId: string, push = true) => {
+    if (push) window.history.pushState(null, '', `?workspace=${encodeURIComponent(param('workspace') ?? '')}&repository=${encodeURIComponent(repositoryId)}`)
+    setRepository(repositoryId)
+    setDrilled(repositoryId)
+    setGalaxy(null); galaxyAsked.current = false
+    setMap(null); setFocus(null); setHood(null); setTrace(null); setTraced(null); setSource(null); setTarget(null); setEvidence(null)
+    setLoading(true)
+    try { setStatus(await callTool('workspace_status', { limits: { max_rows: 1 } })); setError(null); setMode('galaxy') } catch (e) { report(e) } finally { setLoading(false); setAnswered((n) => n + 1) }
+  }, [report])
+
+  const showCode = useCallback(async (sym: Sym & { evidence_id: string }) => {
+    const ev = (await callTool('read_evidence', { evidence_ids: [sym.evidence_id] })).data.evidence[0]
+    setEvidence({
+      title: sym.qualified_name,
+      facts: [['kind', sym.kind], ['file', `${ev.path}:${ev.start_line}–${ev.end_line}`], ['extractor', `${ev.extractor} ${ev.extractor_version}`], ['analysis', ev.analysis_mode], ['hash', ev.object_hash.slice(0, 12)]],
+      integrity: ev.integrity.status, text: ev.text,
+    })
+  }, [])
+  const openSymbol = useCallback(async (id: string) => {
+    if (id.startsWith('stub:') || id.startsWith('ext_')) return
+    try {
+      await showCode((await callTool('get_symbol', { symbol_id: id })).data.symbol)
+    } catch (e) { report(e) }
+  }, [report, showCode])
+
+  /** Centres Explore on a symbol; push adds a history entry so Back returns to the previous one. */
+  const loadFocus = useCallback(async (id: string, push = true) => {
+    setLoading(true)
+    try {
+      const [s, env] = await Promise.all([
+        callTool('get_symbol', { symbol_id: id }),
+        callTool('get_relationships', { subject_id: id, direction: 'both', types: EXPLORE_TYPES, include_external: true, limits: { max_rows: 200, max_bytes: 1048576 } }),
+      ])
+      const sym = s.data.symbol
+      setFocus(sym)
+      setHood(env as RelationshipsEnvelope)
+      setTableView(false)
+      setMode('explore')
+      setError(null)
+      if (push) window.history.pushState({ focus: id }, '', `?focus=${encodeURIComponent(id)}`)
+      await showCode(sym)
+    } catch (e) { report(e) } finally { setLoading(false); setAnswered((n) => n + 1) }
+  }, [report, showCode])
+
+  /** Shows the areas under a path, or with text only those holding a match, plus the matching symbols for the table. */
+  const loadMap = useCallback(async (path: string, text: string, push = true, show = true) => {
+    const ticket = ++mapTicket.current
+    setLoading(true)
+    try {
+      const [o, m] = await Promise.all([
+        callTool('get_overview', { ...(path ? { path } : {}), ...(text ? { text } : {}), limits: { max_rows: 150 } }),
+        text ? callTool('find_symbols', { text, limits: { max_rows: 100 } }) : Promise.resolve(null),
+      ])
+      // Typing fires several searches; only the newest one may change the screen.
+      if (ticket !== mapTicket.current) return
+      // Files appear as areas, so the symbol list leaves out their module symbols, as the match counts do.
+      setMap({ overview: o.data as Overview, text, matches: m ? (m.data.symbols as Sym[]).filter((x) => x.kind !== 'module') : [] })
+      // Only a load the person asked for switches view; the first one must not pull them off a tab they chose meanwhile.
+      if (show) setMode('map')
+      setError(null)
+      if (push) window.history.pushState(null, '', `?map=${encodeURIComponent((o.data as Overview).path)}${text ? `&q=${encodeURIComponent(text)}` : ''}`)
+    } catch (e) {
+      if (ticket === mapTicket.current) report(e)
+    } finally {
+      if (ticket === mapTicket.current) { setLoading(false); setAnswered((n) => n + 1) }
+    }
+  }, [report])
+  const search = (text: string, now = false) => {
+    setQuery(text)
+    // The galaxy holds every name already, so it filters in the browser without asking the server.
+    if (mode === 'galaxy') { setGalaxyArea(null); return }
+    window.clearTimeout(searchTimer.current)
+    searchTimer.current = window.setTimeout(() => loadMap('', text.trim()), now ? 0 : 250)
+  }
+
+  useEffect(() => {
+    document.body.dataset.motion = reducedMotion ? 'reduced' : 'full'
+    // A link to one repository of a workspace (`?workspace=W&repository=R`) opens drilled into it, with the overview behind Back.
+    const deep = () => { const w = param('workspace'), r = param('repository'); return w !== null && r ? { w, r } : null }
+    const connect = () => deep()
+      ? establishSession().then(() => { const { w, r } = deep()!; loadEcosystem(w, false); return drillInto(r, false) }).catch(report)
+      : establishSession()
+      .then(() => callTool('workspace_status', { limits: { max_rows: 1 } }))
+      .then((s) => { setStatus(s); setError(null); listSnapshots().then(setSnapshots).catch(report); const f = focusFromUrl(); if (f) loadFocus(f, false); else loadMap(param('map') ?? '', param('q') ?? '', false, false) })
+      // Several repositories registered: there is no single one to show until a person picks a workspace member.
+      .catch((e) => { if (e instanceof ToolError && e.code === 'INVALID_ARGUMENT' && /repository_id is required/.test(e.message)) { setMode('ecosystem'); setError(null) } else report(e) })
+    const onPop = () => {
+      const f = focusFromUrl(), w = param('workspace'), r = param('repository')
+      if (w !== null && r) { setWorkspace(w); drillInto(r, false) }
+      else if (w !== null) { setMode('ecosystem'); if (ecosystemRef.current?.workspace.name !== w) loadEcosystem(w, false) }
+      else if (f) loadFocus(f, false)
+      else { setQuery(param('q') ?? ''); loadMap(param('map') ?? '', param('q') ?? '', false) }
+    }
+    connect()
+    // A new launch link opened in this tab changes only the fragment, which does not reload the page.
+    window.addEventListener('hashchange', connect)
+    window.addEventListener('popstate', onPop)
+    return () => { window.removeEventListener('hashchange', connect); window.removeEventListener('popstate', onPop) }
+  }, [reducedMotion, report, loadFocus, loadMap, drillInto, loadEcosystem])
+  useEffect(() => {
+    if (mode !== 'galaxy' || !status || galaxyAsked.current) return
+    galaxyAsked.current = true
+    setLoading(true)
+    fetchGalaxy().then((b) => { setGalaxy(parseGalaxy(b)); setError(null) }).catch(report).finally(() => { setLoading(false); setAnswered((n) => n + 1) })
+  }, [mode, status, report])
+  const galaxyMatches = useMemo(() => (galaxy && mode === 'galaxy' ? matchIndices(galaxy, query) : []), [galaxy, mode, query])
+  const galaxyOverlay = useMemo(() => (galaxy && diff && diff.data.head.snapshot_id === galaxy.snapshotId ? diffOverlay(galaxy, diff.data) : null), [galaxy, diff])
+
+  /** Pins every query to a published snapshot, or back to the current one, and starts the views over on it. */
+  const pin = useCallback(async (id: string | null) => {
+    const next = id && snapshots.find((s) => s.id === id && !s.current) ? id : null
+    setReplay(next); setReplayState(next)
+    setGalaxy(null); galaxyAsked.current = false
+    setMap(null); setHood(null); setFocus(null); setTrace(null); setTraced(null); setEvidence(null)
+    try {
+      setStatus(await callTool('workspace_status', { limits: { max_rows: 1 } }))
+      if (mode === 'map' || mode === 'explore') await loadMap('', query.trim(), false, false)
+      else setAnswered((n) => n + 1)
+    } catch (e) { report(e) }
+  }, [snapshots, mode, query, loadMap, report])
+  const current = snapshots.find((s) => s.current)
+  const compare = async () => {
+    if (!diffBase) return
+    setLoading(true)
+    try {
+      const head = replaying() ?? current?.id
+      const env = await callTool('compare_snapshots', { base_snapshot_id: diffBase, ...(head ? { snapshot_id: head } : {}) })
+      setDiff({ data: env.data as CompareData, truncated: Boolean(env.completion?.truncated) })
+      setError(null)
+    } catch (e) { setDiff(null); report(e) } finally { setLoading(false); setAnswered((n) => n + 1) }
+  }
+  const openByName = async (qualifiedName: string) => {
+    try {
+      const hit = (await callTool('find_symbols', { text: qualifiedName.split(':').pop()!.split('.').pop()!, limits: { max_rows: 50 } })).data.symbols.find((s: Sym) => s.qualified_name === qualifiedName)
+      if (hit) { setMode('explore'); await loadFocus(hit.id) } else setError(`${qualifiedName} is not in this snapshot`)
+    } catch (e) { report(e) }
+  }
+
+  /** What an export of the current view draws and carries inside it (FR064); source only with consent (FR052). */
+  const exportable = useMemo(() => {
+    if (!status || mode === 'claims' || (mode === 'galaxy' ? !galaxy : !scene)) return null
+    const file = evidence?.facts.find(([k]) => k === 'file')?.[1]
+    const at = file ? /^(.*):(\d+)/.exec(file) : null
+    const source: Source = includeSource && evidence?.text && at ? { path: at[1]!, startLine: Number(at[2]), text: evidence.text } : null
+    const calls = status.data.calls
+    const searching = query.trim().length >= 2
+    const caveats: Caveats = {
+      view: VIEW_NAMES[mode]!, repository: status.data.repository.name, snapshotId: status.snapshot.id, analysisMode: status.snapshot.analysis_mode,
+      scope: mode === 'galaxy' ? (searching ? `names matching “${query.trim()}”` : 'the whole snapshot')
+        : mode === 'map' ? `${map?.overview.path || 'the repository root'}${map?.text ? `, matching “${map.text}”` : ''}`
+        : mode === 'explore' ? `relationships of ${focus?.qualified_name ?? ''}`
+        : `paths from ${scene!.nodes.find((n) => n.role === 'source')?.qualifiedName ?? ''} to ${scene!.nodes.find((n) => n.role === 'target' || n.role === 'unreached-target')?.qualifiedName ?? ''}`,
+      limits: mode === 'galaxy' ? ['symbols are summarised by area; individual symbols and links are not drawn'] : [
+        ...(scene!.badges.length ? [`${scene!.badges.length} node${scene!.badges.length === 1 ? '' : 's'} at the horizon where expansion stopped`] : []),
+        ...(scene!.stubs.length ? [`${scene!.stubs.length} unresolved boundar${scene!.stubs.length === 1 ? 'y' : 'ies'} drawn`] : []),
+        ...(mode === 'trace' && scene!.conclusion ? [scene!.conclusion] : []),
+      ],
+      coverage: calls ? [`${share(calls.unresolved, calls.sites)} of ${calls.sites.toLocaleString('en')} call sites unresolved`] : [],
+    }
+    if (mode === 'galaxy') {
+      const counts = new Map<number, number>()
+      for (const i of galaxyMatches) counts.set(galaxy!.area[i]!, (counts.get(galaxy!.area[i]!) ?? 0) + 1)
+      const areas = galaxy!.areas.map((a, i) => {
+        const f = areaFog(a)
+        return { name: a.name, count: a.count, ...(searching ? { matches: counts.get(i) ?? 0 } : {}), ...(f.haze || f.ring || f.excluded ? { fog: fogText(a) } : {}) }
+      })
+      return { caveats, source, svg: areasSvg(areas, caveats, source), table: { head: ['area', 'symbols', 'matches', 'coverage'], rows: areas.map((a) => [a.name, String(a.count), a.matches === undefined ? '' : String(a.matches), a.fog ?? 'complete']) } }
+    }
+    return { caveats, source, svg: sceneSvg(scene!, caveats, source), table: sceneTable(scene!) }
+  }, [status, mode, galaxy, scene, evidence, includeSource, query, map, focus, galaxyMatches])
+  const fileStem = exportable ? `proofmesh-${exportable.caveats.view.toLowerCase().replace(/\W+/g, '-')}-${exportable.caveats.snapshotId}` : ''
+  // While searching, the legend lists only the areas that hold matches, with their match counts.
+  const legend = useMemo(() => (galaxy ? legendAreas(galaxy, query.trim().length >= 2 ? galaxyMatches : [], 40) : { shown: [], total: 0 }), [galaxy, galaxyMatches, query])
+  const openPoint = useCallback(async (index: number) => {
+    try { await loadFocus(await galaxySymbolId(index)) } catch (e) { report(e) }
+  }, [loadFocus, report])
+
+  const onNode = useCallback((id: string) => {
+    if (mode === 'ecosystem') { if (!id.startsWith('stub:')) setSelected(id); return }
+    if (mode === 'map') {
+      const child = map?.overview.children.find((c) => c.key === id)
+      if (child?.kind === 'symbol') loadFocus(id)
+      else if (child) loadMap(id, map!.text)
+      return
+    }
+    if (mode === 'trace' || id === focus?.id) openSymbol(id)
+    else if (!id.startsWith('stub:') && !id.startsWith('ext_')) loadFocus(id)
+  }, [mode, focus, map, openSymbol, loadFocus, loadMap])
+
+  const openEdge = async (sourceId: string, assertionId: string) => {
+    const rels = (await callTool('get_relationships', { subject_id: sourceId, direction: 'out', types: EXPLORE_TYPES, include_external: true })).data.relationships
+    const rel = rels.find((r: any) => r.assertion_id === assertionId)
+    if (!rel) return report(new Error('That relationship is not in this snapshot any more.'))
+    const ev = (await callTool('read_evidence', { evidence_ids: rel.evidence_ids })).data.evidence[0]
+    setEvidence({
+      title: `${rel.type} · ${rel.resolution}`,
+      facts: [['origin', rel.origin], ['file', `${ev.path}:${ev.start_line}`], ['extractor', `${ev.extractor} ${ev.extractor_version}`], ['analysis', ev.analysis_mode], ['hash', ev.object_hash.slice(0, 12)]],
+      integrity: ev.integrity.status, text: ev.text,
+    })
+  }
+
+  const cov = status?.coverage
+  return (
+    <div className="app">
+      <header className="top">
+        <div className="brand"><span className="mark" aria-hidden="true">◎</span> PROOFMESH <span className="dim">OBSERVATORY</span></div>
+        <div className="tabs" role="tablist" aria-label="Mode">
+          <button type="button" role="tab" aria-selected={mode === 'galaxy'} onClick={() => setMode('galaxy')}>Galaxy</button>
+          <button type="button" role="tab" aria-selected={mode === 'map'} onClick={() => { setMode('map'); if (!map) loadMap('', query.trim()) }}>Map</button>
+          <button type="button" role="tab" aria-selected={mode === 'explore'} onClick={() => setMode('explore')}>Explore</button>
+          <button type="button" role="tab" aria-selected={mode === 'trace'} onClick={() => setMode('trace')}>Trace a path</button>
+          <button type="button" role="tab" aria-selected={mode === 'claims'} onClick={() => setMode('claims')}>Claims</button>
+          <button type="button" role="tab" aria-selected={mode === 'diff'} onClick={() => setMode('diff')}>Diff</button>
+          <button type="button" role="tab" aria-selected={mode === 'ecosystem'} onClick={() => setMode('ecosystem')}>Ecosystem</button>
+        </div>
+        <input id="search" className="search" type="search" aria-label="Search" value={query} placeholder="Search names, namespaces, areas…  ( / )" autoComplete="off" spellCheck={false}
+          onChange={(e) => search(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') search(query, true) }} />
+        {status && (
+          <div className="crumbs">
+            <b>{visible(status.data.repository.name)}</b> · {new Date(status.snapshot.published_at).toLocaleDateString()} · {status.snapshot.analysis_mode === 'no_execution' ? 'no execution' : 'trusted build'}
+            <span className="snap" title={status.snapshot.id}>{status.snapshot.id.slice(0, 13)}</span>
+          </div>
+        )}
+        {snapshots.length > 1 && (
+          <label className="dim">Snapshot <select className="snapshots" aria-label="Snapshot" value={replay ?? current?.id ?? ''} onChange={(e) => void pin(e.target.value)}>
+            {snapshots.map((s) => <option key={s.id} value={s.id}>{s.id.slice(0, 13)} · {s.published_at ? new Date(s.published_at).toLocaleString() : ''}{s.current ? ' (current)' : ''}</option>)}
+          </select></label>
+        )}
+      </header>
+      {replay && status && (
+        <div className="banner" role="status" data-testid="replay-banner">
+          Replaying snapshot <span className="snap" title={replay}>{replay.slice(0, 13)}</span> published {new Date(status.snapshot.published_at).toLocaleString()}. Every view shows that snapshot.
+          <button type="button" onClick={() => void pin(null)}>Back to current</button>
+        </div>
+      )}
+      {error && <div className="error" role="alert">{error}</div>}
+      <aside className="left" aria-label="Controls">
+        {mode === 'ecosystem' && (
+          <section aria-label="Workspace">
+            <label htmlFor="workspace">Workspace</label>
+            <select id="workspace" value={workspace} onChange={(e) => loadEcosystem(e.target.value)}>
+              <option value="">{workspaces === null ? 'Loading…' : workspaces.length ? 'Choose a workspace' : 'No workspaces; create one with proofmesh workspace add'}</option>
+              {workspaces?.map((w) => <option key={w.name} value={w.name}>{w.name} ({w.members.length})</option>)}
+            </select>
+            {ecosystem && <p className="dim" role="note">Link file {ecosystem.workspace.link_file_id.slice(0, 13)}, sealed {new Date(ecosystem.workspace.sealed_at).toLocaleDateString()}. Rules: {Object.entries(ecosystem.workspace.rules).map(([r, v]) => `${r} ${v}`).join(', ')}.</p>}
+          </section>
+        )}
+        {drilled && mode !== 'ecosystem' && <p className="notice" role="status">Showing one repository of workspace {workspace}. <button type="button" onClick={() => { setMode('ecosystem'); window.history.pushState(null, '', `?workspace=${encodeURIComponent(workspace)}`) }}>Back to the ecosystem</button></p>}
+        {mode === 'galaxy' ? (
+          galaxy && (
+            <section aria-label="Areas">
+              <h2>Areas</h2>
+              <ul className="legend-areas">
+                {legend.shown.map(({ index: i, name, count }) => (
+                  <li key={name}>
+                    <button type="button" aria-pressed={galaxyArea === i} onClick={() => { setQuery(''); setGalaxyArea(galaxyArea === i ? null : i) }}>
+                      <span className="chip" style={{ background: areaColor(i), color: areaColor(i) }} /><span className="name" title={name}>{visible(name)}</span><span className="count">{count.toLocaleString('en')}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              {legend.total > legend.shown.length && <p className="dim" role="note">The {legend.shown.length} largest of {legend.total} areas; the table lists them all.</p>}
+            </section>
+          )
+        ) : mode === 'map' ? (
+          map && (
+            <nav className="crumbs-nav" aria-label="Location">
+              <button type="button" onClick={() => loadMap('', map.text)}>repository</button>
+              {map.overview.path.split('/').filter(Boolean).map((seg, i, all) => (
+                <span key={i}> / <button type="button" onClick={() => loadMap(all.slice(0, i + 1).join('/'), map.text)}>{visible(seg)}</button></span>
+              ))}
+            </nav>
+          )
+        ) : mode === 'explore' ? (
+          <>
+            {focus && (
+              <section className="focus-card" aria-label="Focus">
+                <div className="dim">{focus.kind}</div>
+                <b>{visible(focus.qualified_name)}</b>
+                <div className="dim">{visible(focus.path)}:{focus.start_line}</div>
+                <button type="button" onClick={() => { setSource(focus); setMode('trace') }}>Trace a path from here</button>
+              </section>
+            )}
+          </>
+        ) : mode === 'trace' ? (
+          <>
+            <Picker label="Source" value={source} onPick={setSource} />
+            <Picker label="Target" value={target} onPick={setTarget} />
+            <label htmlFor="depth">Depth <output htmlFor="depth">{depth}</output></label>
+            <input id="depth" type="range" min={1} max={12} value={depth} onChange={(e) => setDepth(Number(e.target.value))} />
+            <label className="check"><input type="checkbox" checked={followFramework} onChange={(e) => setFollowFramework(e.target.checked)} /> Follow framework relationships</label>
+            <button type="button" className="primary" disabled={!source || !target} onClick={runTrace}>Trace</button>
+          </>
+        ) : null}
+        {cov && (
+          <details className="snapshot">
+            <summary>Snapshot coverage</summary>
+          <section aria-label="Coverage">
+            <dl className="stats">
+              <dt>files</dt><dd>{cov.files_discovered}</dd>
+              <dt>indexed</dt><dd>{cov.dispositions.indexed}</dd>
+              <dt>excluded</dt><dd>{cov.dispositions.excluded_by_rule}</dd>
+              <dt>unsupported</dt><dd>{cov.dispositions.unsupported}</dd>
+              <dt>call sites</dt><dd>{status.data.calls.sites.toLocaleString('en')}</dd>
+              <dt>unresolved calls</dt><dd>{share(status.data.calls.unresolved, status.data.calls.sites)}</dd>
+            </dl>
+            <dl className="stats reasons" aria-label="Unresolved calls by reason">
+              {Object.entries(status.data.calls.by_reason as Record<string, number>).sort((x, y) => y[1] - x[1]).map(([reason, n]) => [<dt key={`${reason}t`}>{reason.replace(/_/g, ' ')}</dt>, <dd key={`${reason}d`}>{share(n, status.data.calls.unresolved)}</dd>])}
+            </dl>
+          </section>
+          </details>
+        )}
+      </aside>
+      <main className="center" aria-label="Trace" data-loading={loading}>
+        {/* Diff is a table of its own, so the graph-or-table switch has nothing to switch there. */}
+        {mode !== 'diff' && (
+          <div className="switch" role="group" aria-label="View">
+            <button type="button" aria-pressed={!tableView && !noWebGl} disabled={noWebGl} onClick={() => setTableView(false)}>Graph</button>
+            <button type="button" aria-pressed={tableView || noWebGl} onClick={() => setTableView(true)}>Table</button>
+          </div>
+        )}
+        {noWebGl && <div className="notice" role="status">WebGL is not available here, so Observatory shows the table view.</div>}
+        {mode === 'claims' && <ClaimsView onError={report} />}
+        {mode === 'diff' && (
+          <>
+            <div className="diff-filters" role="group" aria-label="Compare">
+              <label>Base <select className="snapshots" id="diff-base" value={diffBase} onChange={(e) => setDiffBase(e.target.value)}>
+                <option value="">choose an older snapshot</option>
+                {snapshots.filter((s) => s.id !== (replay ?? current?.id)).map((s) => <option key={s.id} value={s.id}>{s.id.slice(0, 13)} · {s.published_at ? new Date(s.published_at).toLocaleString() : ''}</option>)}
+              </select></label>
+              <span className="dim">Head: {(replay ?? current?.id ?? '').slice(0, 13)}{replay ? ' (replayed)' : ' (current)'}</span>
+              <button type="button" disabled={!diffBase} onClick={() => void compare()}>Compare</button>
+            </div>
+            {diff && <DiffView data={diff.data} truncated={diff.truncated} onOpen={(q) => void openByName(q)} />}
+            {!diff && snapshots.length < 2 && <p className="dim" role="note">Only one snapshot is published; index again after a change to compare.</p>}
+          </>
+        )}
+        {mode === 'galaxy' && galaxy && !noWebGl && !tableView && <Galaxy data={galaxy} query={query} focusArea={galaxyArea} onOpen={openPoint} onClear={() => { setQuery(''); setGalaxyArea(null) }} overlay={galaxyOverlay} />}
+        {mode === 'galaxy' && galaxyOverlay && <p className="dim diff-legend" role="note"><span><i className="sw added" />added since {diff!.data.base.snapshot_id.slice(0, 13)}</span><span><i className="sw changed" />changed</span><span>removed symbols are in the Diff table</span></p>}
+        {mode === 'galaxy' && galaxy && (tableView || noWebGl) && (
+          <section className="table-view" aria-label="Galaxy table">
+            <table>
+              <caption>{query.trim().length >= 2 ? `Symbols matching “${query.trim()}”${galaxyMatches.length > 200 ? ', first 200' : ''}` : 'Areas'}</caption>
+              {query.trim().length >= 2 ? (
+                <tbody>
+                  {rankMatches(galaxy, galaxyMatches, query).slice(0, 200).map((i) => (
+                    <tr key={i}><td>{visible(shortName(galaxy.names[i]!))}</td><td>{galaxy.kinds[galaxy.kind[i]!]}</td><td>{visible(galaxy.names[i]!)}</td><td><button type="button" onClick={() => openPoint(i)}>Explore</button></td></tr>
+                  ))}
+                </tbody>
+              ) : (
+                <>
+                  <thead><tr><th>Area</th><th>Symbols</th><th>Files analysed</th><th>Not analysed</th><th>Excluded</th><th>Unresolved calls</th><th>Why not analysed</th><th /></tr></thead>
+                  <tbody>
+                    {galaxy.areas.map((a, i) => (
+                      <tr key={a.name}>
+                        <td>{visible(a.name)}</td><td>{a.count.toLocaleString('en')}</td><td>{a.files.indexed.toLocaleString('en')}</td>
+                        <td>{areaFog(a).unanalysed.toLocaleString('en')}</td><td>{a.files.excluded.toLocaleString('en')}</td>
+                        <td>{a.calls.sites ? `${share(a.calls.unresolved, a.calls.sites)} of ${a.calls.sites.toLocaleString('en')}` : 'no call sites'}</td>
+                        <td>{visible(a.gaps.map(([reason, n]) => `${reason} ${n.toLocaleString('en')}`).join(', '))}</td>
+                        <td>{a.count > 0 && <button type="button" onClick={() => { setGalaxyArea(i); setTableView(false) }}>Show</button>}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </>
+              )}
+            </table>
+          </section>
+        )}
+        {mode !== 'galaxy' && scene && !noWebGl && !tableView && <GraphView scene={scene} reducedMotion={reducedMotion} onNode={onNode} onWebGlFailure={() => setNoWebGl(true)} />}
+        {scene && mode === 'map' && map && (tableView || noWebGl) && (
+          <section className="table-view" aria-label="Map table">
+            <table>
+              <caption>{map.text ? `Areas holding “${map.text}”` : 'Areas'}</caption>
+              <thead><tr><th>Name</th><th>Kind</th><th>{map.text ? 'Matches' : 'Symbols'}</th><th /></tr></thead>
+              <tbody>
+                {map.overview.children.map((c) => (
+                  <tr key={c.key}>
+                    <td>{visible(c.name)}</td><td>{c.kind === 'symbol' ? c.symbol_kind : c.kind}</td><td>{(map.text ? c.matches ?? 0 : c.symbols).toLocaleString('en')}</td>
+                    <td><button type="button" onClick={() => onNode(c.key)}>{c.kind === 'symbol' ? 'Explore' : 'Open'}</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {map.matches.length > 0 && (
+              <table>
+                <caption>Matching symbols{map.matches.length >= 100 ? ', first 100' : ''}</caption>
+                <thead><tr><th>Name</th><th>Kind</th><th>Qualified name</th><th>Location</th><th /></tr></thead>
+                <tbody>
+                  {map.matches.map((m) => (
+                    <tr key={m.id}>
+                      <td>{visible(m.name)}</td><td>{m.kind}</td><td>{visible(m.qualified_name)}</td><td>{visible(m.path)}:{m.start_line}</td>
+                      <td><button type="button" onClick={() => loadFocus(m.id)}>Explore</button></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </section>
+        )}
+        {mode === 'ecosystem' && !ecosystem && !loading && <p className="hint">Pick a workspace to see its repositories and the links between them.</p>}
+        {ecosystem && mode === 'ecosystem' && (tableView || noWebGl) && (
+          <section className="table-view" aria-label="Ecosystem table">
+            <table>
+              <caption>Repositories of {ecosystem.workspace.name}</caption>
+              <thead><tr><th>Repository</th><th>Symbols</th><th>Files analysed</th><th>Endpoints</th><th>Channels</th><th>Projects</th><th>Snapshot</th><th /></tr></thead>
+              <tbody>
+                {[...ecosystem.members].sort((a, b) => (a.name < b.name ? -1 : 1)).map((m) => (
+                  <tr key={m.repository_id} data-current={m.current}>
+                    <td><button type="button" className="link" aria-pressed={selected === m.repository_id} onClick={() => setSelected(m.repository_id)}>{visible(m.name)}</button></td><td>{m.symbols.toLocaleString('en')}</td><td>{m.files_indexed.toLocaleString('en')}</td><td>{m.endpoints}</td><td>{m.channels}</td><td>{m.projects}</td>
+                    <td>{m.snapshot_id.slice(0, 13)}{m.current ? '' : ' (a newer snapshot exists)'}</td>
+                    <td><button type="button" onClick={() => drillInto(m.repository_id)}>Open</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <table>
+              <caption>Links between repositories</caption>
+              <thead><tr><th>From</th><th>To</th><th>Kinds</th><th>Resolved</th><th>Candidate</th><th>Confidence</th></tr></thead>
+              <tbody>
+                {pairs(ecosystem).map((p) => {
+                  const name = (id: string) => ecosystem.members.find((m) => m.repository_id === id)?.name ?? id
+                  return <tr key={`${p.source}>${p.target}`}><td>{visible(name(p.source))}</td><td>{visible(name(p.target))}</td><td>{p.types.map((t) => LINK_WORDS[t]).join('; ')}</td><td>{p.resolved}</td><td>{p.candidate}</td><td>{p.min === p.max ? p.max : `${p.min}–${p.max}`}</td></tr>
+                })}
+              </tbody>
+            </table>
+            {ecosystem.boundaries.length > 0 && (
+              <ul className="stubs" aria-label="Unresolved boundaries">
+                {ecosystem.boundaries.map((b) => <li key={`${b.repository_id}:${b.type}`}>{visible(ecosystem.members.find((m) => m.repository_id === b.repository_id)?.name ?? b.repository_id)}: {b.count} {b.type} matched nothing in the workspace{b.sample[0] ? `, such as ${visible(b.sample[0].source)} (${b.sample[0].reason})` : ''}</li>)}
+              </ul>
+            )}
+          </section>
+        )}
+        {scene && mode !== 'map' && mode !== 'ecosystem' && (tableView || noWebGl) && (
+          <section className="table-view" aria-label="Trace table">
+            <table>
+              <caption>{mode === 'trace' ? 'Traced nodes in order' : 'Symbol and its neighbours'}</caption>
+              <thead><tr><th>#</th><th>Role</th><th>Symbol</th><th>Location</th><th>Evidence</th></tr></thead>
+              <tbody>
+                {scene.nodes.filter((n) => n.role !== 'stub').map((n, i) => (
+                  <tr key={n.id} data-role={n.role}>
+                    <td>{i + 1}</td><td>{n.role}</td><td>{visible(n.qualifiedName)}</td><td>{visible(n.path)}:{n.line}</td>
+                    <td>
+                      <button type="button" onClick={() => openSymbol(n.id)}>Show evidence</button>
+                      {mode === 'explore' && (n.role === 'caller' || n.role === 'callee') && <button type="button" onClick={() => loadFocus(n.id)}>Explore</button>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {scene.edges.filter((e) => e.assertionId).length > 0 && (
+              <ul className="edges" aria-label="Edges">
+                {scene.edges.filter((e) => e.assertionId).map((e) => (
+                  <li key={e.id}>{visible(scene.nodes.find((n) => n.id === e.source)!.label)} → {visible(scene.nodes.find((n) => n.id === e.target)!.label)} · {e.style} <button type="button" onClick={() => openEdge(e.source, e.assertionId!)}>Show evidence</button></li>
+                ))}
+              </ul>
+            )}
+            {scene.stubs.length > 0 && <ul className="stubs" aria-label="Unresolved boundaries">{scene.stubs.map((s) => <li key={s.id}>Unresolved call ({s.reason}) at line {s.line}</li>)}</ul>}
+            {scene.badges.length > 0 && <ul className="horizon" aria-label="Horizon">{scene.badges.map((b) => <li key={b.nodeId}>{visible(scene.nodes.find((n) => n.id === b.nodeId)!.qualifiedName)}: {b.text}</li>)}</ul>}
+          </section>
+        )}
+        {!scene && !error && mode === 'trace' && <p className="hint">Pick a source and a target symbol, then Trace.</p>}
+        {!scene && !error && mode === 'explore' && (
+          <section className="start" aria-label="Start exploring">
+            <h2>Start exploring</h2>
+            <p className="dim">Search for any symbol on the left, or start from one of the most-referenced symbols in this snapshot.</p>
+            <ul>
+              {(status?.data.hubs as Hub[] | undefined)?.map((h) => (
+                <li key={h.id}>
+                  <button type="button" onClick={() => loadFocus(h.id)}>
+                    <b>{glyph(h.kind)}{visible(h.name)}</b> <span className="dim">{h.kind} · {visible(h.qualified_name)} · {h.inbound} incoming</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+      </main>
+      {mode === 'ecosystem' && ecosystem && selected && !evidence && (() => {
+        const ev = evidenceFor(ecosystem, selected), rel = relations(ecosystem, selected)
+        const row = (l: ReturnType<typeof evidenceFor>['outgoing'][number], dir: string) => (
+          <li key={`${dir}${l.other}${l.type}`}>
+            <b>{dir} {visible(l.other)}</b> <span className="dim">{LINK_WORDS[l.type]} · {l.resolved} resolved, {l.candidate} candidate · confidence {l.min === l.max ? l.max : `${l.min}–${l.max}`}</span>
+            <ul>{l.sample.map((x) => <li key={x.link_id}>{visible(x.source)} → {visible(x.target ?? 'nothing')} <span className="dim">({x.rule}, {x.confidence})</span></li>)}</ul>
+          </li>
+        )
+        return (
+          <aside className="right" aria-label="Repository evidence">
+            <h2 className="ev-title">{visible(ev.name)}</h2>
+            <p className="dim">Links from the sealed link file {ecosystem.workspace.link_file_id.slice(0, 13)}; the other repositories are coloured by their relation to this one.</p>
+            <ul className="stubs" aria-label={`Links of ${ev.name}`}>
+              {ev.outgoing.map((l) => row(l, 'to'))}
+              {ev.incoming.map((l) => row(l, 'from'))}
+              {ev.outgoing.length + ev.incoming.length === 0 && <li>No links to or from another member.</li>}
+              {ev.boundaries.map((b) => <li key={b.type}><b>{b.count} {b.type} matched nothing</b><ul>{b.sample.map((x) => <li key={x.link_id}>{visible(x.source)} <span className="dim">({x.reason})</span></li>)}</ul></li>)}
+            </ul>
+            <p className="dim">{ecosystem.members.filter((m) => m.repository_id !== selected).map((m) => `${m.name}: ${RELATION_WORDS[rel.get(m.repository_id)!]}`).join('; ')}</p>
+            <button type="button" onClick={() => drillInto(selected)}>Open only {visible(ev.name)}</button>
+          </aside>
+        )
+      })()}
+      {evidence && (
+        <aside className="right" aria-label="Evidence">
+          <button type="button" className="close" aria-label="Close evidence" onClick={() => setEvidence(null)}>×</button>
+          <h2 className="ev-title">{visible(evidence.title)}</h2>
+          <dl className="stats">{evidence.facts.map(([k, v]) => [<dt key={`${k}t`}>{k}</dt>, <dd key={`${k}d`}>{visible(v)}</dd>])}</dl>
+          <p className={`integrity ${evidence.integrity}`}>integrity: {evidence.integrity === 'verified' ? '✓ verified' : evidence.integrity}</p>
+          <pre className="source" data-testid="evidence-text">{evidence.text === null ? 'Source unavailable: the evidence object failed its integrity check or is missing.' : visible(evidence.text)}</pre>
+        </aside>
+      )}
+      <section className="legend" aria-label="Legend">
+        {mode === 'galaxy' && <div className="dim">Every symbol is a point, coloured by its area and sized by its connections; lines are resolved relationships. Scroll to zoom, drag to pan.{galaxy && manyLinks(galaxy) ? ` With more than ${MOVING_LINK_LIMIT.toLocaleString('en')} links, they rest while the view moves.` : ''}</div>}
+        {mode === 'ecosystem' && <div className="dim">Each node is a repository, sized by its symbols; a label ending “newer snapshot exists” was linked from a snapshot that is no longer its current one. Lines are links between repositories, thicker for more; an amber line has candidates only. Short amber stubs are client facts that matched nothing in the workspace. Click a repository to see its links and colour the others by their relation to it; open it from there.
+          <div>{(Object.keys(RELATION_COLOURS) as Relation[]).map((r) => <span key={r}><span className="sw" style={{ background: RELATION_COLOURS[r] }} /> {RELATION_WORDS[r]} </span>)}</div></div>}
+        {mode === 'map' && <div className="dim">Each node is an area, file or symbol, sized by its symbols, or by its matches while searching. Lines are resolved relationships between them, thicker for more. Click a node to open it.</div>}
+        {mode === 'explore' && <div className="dim">Incoming on the left, outgoing on the right. Click a node to explore from it; click the centre to read its code. Back returns to the previous symbol.</div>}
+        {(mode === 'trace' || mode === 'explore') && <>
+        <span className="sw resolved" /> {mode === 'trace' ? 'resolved call on the path' : 'resolved call'} <span className="sw framework" /> framework rule <span className="sw explored" /> explored by the search <span className="sw external" /> resolved outside the repository <span className="sw unresolved" /> unresolved boundary <span className="ring" /> horizon
+        <div className="dim">A line names its type unless it is a call, its rule or any origin other than the semantic resolver, and any resolution short of resolved; an unresolved site ends in a stub naming why.</div></>}
+        {mode === 'trace' && <div className="dim">Edges run left to right in search order.</div>}
+        {mode !== 'claims' && mode !== 'diff' && <div className="dim">{NO_MEANING}</div>}
+        {exportable && (
+          <div className="export" role="group" aria-label="Export this view">
+            <button type="button" onClick={() => download(`${fileStem}.html`, new Blob([offlineHtml(exportable.svg, exportable.caveats, exportable.table, exportable.source)], { type: 'text/html' }))}>Export page</button>
+            <button type="button" onClick={async () => {
+              try {
+                const png = pngWithText(await svgToPng(exportable.svg), 'proofmesh:caveats', caveatLines(exportable.caveats, exportable.source).join('\n'))
+                download(`${fileStem}.png`, new Blob([png as BlobPart], { type: 'image/png' }))
+              } catch (e) { report(e) }
+            }}>Export image</button>
+            {evidence?.text && <label><input type="checkbox" checked={includeSource} onChange={(e) => setIncludeSource(e.target.checked)} /> include the source shown in the evidence panel</label>}
+          </div>
+        )}
+      </section>
+      <footer className="bottom" aria-live="polite" aria-busy={loading} data-answered={answered} data-testid="conclusion">{loading ? 'Loading…' : mode === 'galaxy' ? (galaxy ? (query.trim().length === 1 ? 'Type at least two characters to search.' : query.trim().length >= 2 ? `“${query.trim()}”: showing the ${galaxyMatches.length.toLocaleString('en')} matching symbols; click one to explore it.` : galaxyArea !== null ? `${galaxy.areas[galaxyArea]!.name}: ${galaxy.areas[galaxyArea]!.count.toLocaleString('en')} symbols. Click a point to explore it.` : galaxySummary(galaxy)) : '') : scene ? scene.conclusion : ''}</footer>
+    </div>
+  )
+}

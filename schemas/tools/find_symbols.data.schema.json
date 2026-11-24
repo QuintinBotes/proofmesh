@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "find_symbols.data.schema.json",
+  "title": "find_symbols data",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "symbols"
+  ],
+  "properties": {
+    "symbols": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "kind",
+          "name",
+          "qualified_name",
+          "path",
+          "start_line",
+          "end_line",
+          "signature"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^sym_[0-9a-z]+$"
+          },
+          "kind": {
+            "enum": [
+              "function",
+              "class",
+              "method",
+              "interface",
+              "type_alias",
+              "variable",
+              "module",
+              "struct",
+              "enum",
+              "property",
+              "field",
+              "constructor",
+              "namespace",
+              "project",
+              "package",
+              "endpoint",
+              "table",
+              "message",
+              "channel",
+              "job",
+              "feature_flag",
+              "config_key",
+              "team",
+              "service"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "qualified_name": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "start_line": {
+            "type": "integer"
+          },
+          "end_line": {
+            "type": "integer"
+          },
+          "signature": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

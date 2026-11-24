@@ -1,0 +1,537 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "envelope.schema.json",
+  "title": "Envelope",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "query_id",
+    "tool",
+    "snapshot",
+    "freshness",
+    "coverage",
+    "data",
+    "evidence_ids",
+    "unresolved",
+    "completion",
+    "limits",
+    "limitations"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "0.1"
+    },
+    "query_id": {
+      "type": "string",
+      "pattern": "^q_[0-9a-z]{16}$"
+    },
+    "tool": {
+      "enum": [
+        "workspace_status",
+        "list_repositories",
+        "list_snapshots",
+        "list_workspaces",
+        "find_symbols",
+        "get_symbol",
+        "get_relationships",
+        "trace_paths",
+        "read_evidence",
+        "get_overview",
+        "analyze_impact",
+        "find_tests",
+        "search_sources",
+        "get_memory",
+        "verify_claim",
+        "request_index",
+        "get_job",
+        "get_claims",
+        "save_memory",
+        "get_table_reach",
+        "get_property_reads",
+        "get_external_usage",
+        "find_query_source",
+        "compare_snapshots",
+        "list_queries",
+        "get_ecosystem",
+        "prepare_verification",
+        "get_verification",
+        "impact_completeness"
+      ]
+    },
+    "snapshot": {
+      "description": "The sealed snapshot or link file that answered; null for a catalog tool, which answers from the list of registered repositories.",
+      "anyOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "id",
+            "repository_id",
+            "analysis_mode",
+            "published_at"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "pattern": "^(snap|link)_[0-9a-z]+$"
+            },
+            "repository_id": {
+              "type": "string",
+              "pattern": "^(repo_[0-9a-z]+|ws_[A-Za-z0-9._-]+)$"
+            },
+            "analysis_mode": {
+              "enum": [
+                "no_execution",
+                "trusted_build"
+              ]
+            },
+            "published_at": {
+              "type": "string"
+            },
+            "members": {
+              "type": "array",
+              "description": "For a workspace tool: the member snapshots the link file was built from.",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "repository_id",
+                  "snapshot_id"
+                ],
+                "properties": {
+                  "repository_id": {
+                    "type": "string",
+                    "pattern": "^repo_[0-9a-z]+$"
+                  },
+                  "snapshot_id": {
+                    "type": "string",
+                    "pattern": "^snap_[0-9a-z]+$"
+                  }
+                }
+              }
+            },
+            "commit": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "The commit the snapshot was built from, when the repository root is a git worktree."
+            },
+            "ref": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "The branch checked out when the snapshot was built, or \"detached\"."
+            },
+            "behind_remote": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "description": "Commits HEAD was behind refs/remotes/origin/HEAD as of the last fetch, read from local refs only; null when unknown."
+            },
+            "behind_ref": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "The remote branch behind_remote counts against, such as origin/main; null when the repository has no remote default branch."
+            },
+            "fetched_at": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "When that remote branch was last fetched; behind_remote is only as current as this."
+            }
+          },
+          "description": "The sealed file the answer came from: a repository snapshot, or for a workspace tool the link file, whose members are the snapshots it was built from (A28)."
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "freshness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "status"
+      ],
+      "properties": {
+        "mode": {
+          "enum": [
+            "snapshot",
+            "strict"
+          ]
+        },
+        "status": {
+          "enum": [
+            "as_of_snapshot",
+            "current",
+            "catalog"
+          ]
+        },
+        "checked_at": {
+          "type": "string",
+          "description": "When strict freshness read the working tree."
+        },
+        "boundary": {
+          "type": "string",
+          "description": "What the strict check covered."
+        }
+      }
+    },
+    "coverage": {
+      "description": "What the snapshot covers; null for a catalog tool, and in a compact envelope, where the first answer from the snapshot gave it.",
+      "anyOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "inventory_complete",
+            "files_discovered",
+            "dispositions",
+            "capabilities"
+          ],
+          "properties": {
+            "inventory_complete": {
+              "type": "boolean"
+            },
+            "files_discovered": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "dispositions": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "indexed",
+                "excluded_by_rule",
+                "unsupported",
+                "failed",
+                "pending"
+              ],
+              "properties": {
+                "indexed": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "excluded_by_rule": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "unsupported": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "failed": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "pending": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            },
+            "capabilities": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "text",
+                "syntax",
+                "symbols",
+                "imports",
+                "references",
+                "resolved_calls",
+                "framework"
+              ],
+              "properties": {
+                "text": {
+                  "enum": [
+                    "complete",
+                    "partial",
+                    "unsupported",
+                    "failed",
+                    "not_run"
+                  ]
+                },
+                "syntax": {
+                  "enum": [
+                    "complete",
+                    "partial",
+                    "unsupported",
+                    "failed",
+                    "not_run"
+                  ]
+                },
+                "symbols": {
+                  "enum": [
+                    "complete",
+                    "partial",
+                    "unsupported",
+                    "failed",
+                    "not_run"
+                  ]
+                },
+                "imports": {
+                  "enum": [
+                    "complete",
+                    "partial",
+                    "unsupported",
+                    "failed",
+                    "not_run"
+                  ]
+                },
+                "references": {
+                  "enum": [
+                    "complete",
+                    "partial",
+                    "unsupported",
+                    "failed",
+                    "not_run"
+                  ]
+                },
+                "resolved_calls": {
+                  "enum": [
+                    "complete",
+                    "partial",
+                    "unsupported",
+                    "failed",
+                    "not_run"
+                  ]
+                },
+                "framework": {
+                  "enum": [
+                    "complete",
+                    "partial",
+                    "unsupported",
+                    "failed",
+                    "not_run"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Tool-specific; validated by schemas/tools/<tool>.data.schema.json."
+    },
+    "evidence_ids": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^ev_[0-9a-z]+$"
+      }
+    },
+    "unresolved": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "count",
+        "scope",
+        "sample",
+        "by_reason"
+      ],
+      "properties": {
+        "count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "scope": {
+          "enum": [
+            "query",
+            "snapshot"
+          ]
+        },
+        "sample": {
+          "type": "array",
+          "maxItems": 20,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "assertion_id",
+              "reason",
+              "file",
+              "line"
+            ],
+            "properties": {
+              "assertion_id": {
+                "type": "string",
+                "pattern": "^as_[0-9a-z]+$"
+              },
+              "reason": {
+                "enum": [
+                  "dynamic_element_access",
+                  "untyped_receiver",
+                  "unknown_name",
+                  "chained_callee",
+                  "import_unresolved",
+                  "dynamic_specifier",
+                  "not_indexed",
+                  "dependency_missing",
+                  "configuration_error",
+                  "outside_capability"
+                ]
+              },
+              "file": {
+                "type": "string"
+              },
+              "line": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          }
+        },
+        "by_reason": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "propertyNames": {
+            "enum": [
+              "dynamic_element_access",
+              "untyped_receiver",
+              "unknown_name",
+              "chained_callee",
+              "import_unresolved",
+              "dynamic_specifier",
+              "not_indexed",
+              "dependency_missing",
+              "configuration_error",
+              "outside_capability",
+              "no_match",
+              "ambiguous"
+            ]
+          },
+          "description": "Unresolved sites by reason; no_match and ambiguous are the reasons of cross-repository links (A7)."
+        }
+      }
+    },
+    "completion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "truncated",
+        "stop_reasons",
+        "timed_out",
+        "next_cursor"
+      ],
+      "properties": {
+        "truncated": {
+          "type": "boolean"
+        },
+        "stop_reasons": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "max_rows",
+              "max_depth",
+              "max_bytes",
+              "timeout"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "timed_out": {
+          "type": "boolean"
+        },
+        "next_cursor": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Continues a truncated list (find_symbols, get_relationships) on the same snapshot; null when there is nothing more or the tool does not page."
+        }
+      }
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requested",
+        "applied"
+      ],
+      "properties": {
+        "requested": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "timeout_ms": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "max_rows": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "max_bytes": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "max_depth": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        },
+        "applied": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "timeout_ms": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "max_rows": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "max_bytes": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "max_depth": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "required": [
+            "timeout_ms",
+            "max_rows",
+            "max_bytes",
+            "max_depth"
+          ]
+        }
+      }
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "envelope": {
+      "enum": [
+        "full",
+        "compact",
+        "lean"
+      ],
+      "description": "compact: the snapshot-wide parts an earlier answer from this snapshot gave are left out (coverage, unresolved reasons, standing limitations, requested limits); the query's own limits and limitations stay. Pass envelope full, or call workspace_status, to see them again. lean: the answer sent is the text rendered from this envelope; see the tool's envelope input."
+    }
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "tables": [
+    { "qualified_name": "billing_invoice", "name": "billing_invoice", "path": "billing/models/invoice.py", "line": 4 },
+    { "qualified_name": "catalog_tag", "name": "catalog_tag", "path": "shop/models.py", "line": 31 },
+    { "qualified_name": "sales_orders", "name": "sales_orders", "path": "shop/models.py", "line": 19 },
+    { "qualified_name": "shop_customer", "name": "shop_customer", "path": "shop/models.py", "line": 11 },
+    { "qualified_name": "shop_giftorder", "name": "shop_giftorder", "path": "shop/models.py", "line": 27 }
+  ],
+  "variables": [],
+  "maps_to": [
+    { "from": "billing/models/invoice:Invoice", "to": "billing_invoice", "rule": "django_convention", "line": 4, "site_text": "Invoice" },
+    { "from": "shop/models:Customer", "to": "shop_customer", "rule": "django_convention", "line": 11, "site_text": "Customer" },
+    { "from": "shop/models:Order", "to": "sales_orders", "rule": "db_table", "line": 19, "site_text": "db_table = \"sales_orders\"" },
+    { "from": "shop/models:GiftOrder", "to": "shop_giftorder", "rule": "django_convention", "line": 27, "site_text": "GiftOrder" },
+    { "from": "shop/models:Tag", "to": "catalog_tag", "rule": "django_convention", "line": 31, "site_text": "Tag" }
+  ],
+  "maps_to_unresolved": [],
+  "inferred_maps_to": ["billing/models/invoice:Invoice", "shop/models:Customer", "shop/models:GiftOrder"],
+  "inherits": [
+    { "from": "shop/models:Customer", "to": "shop/models:TimeStamped", "line": 11, "site_text": "TimeStamped" },
+    { "from": "shop/models:Order", "to": "shop/models:TimeStamped", "line": 15, "site_text": "TimeStamped" },
+    { "from": "shop/models:OpenOrder", "to": "shop/models:Order", "line": 22, "site_text": "Order" },
+    { "from": "shop/models:GiftOrder", "to": "shop/models:Order", "line": 27, "site_text": "Order" }
+  ],
+  "table_reach": [
+    { "table": "sales_orders", "path": "shop/models.py", "entities": [["shop/models:Order", "maps_to"], ["shop/models:GiftOrder", "inherits"], ["shop/models:OpenOrder", "inherits"]], "reach": [{ "kind": "endpoint", "qualified_name": "POST shop/gifts", "path": "shop/urls.py", "depth": 5 }] },
+    { "table": "shop_giftorder", "path": "shop/models.py", "entities": [["shop/models:GiftOrder", "maps_to"]], "reach": [{ "kind": "endpoint", "qualified_name": "POST shop/gifts", "path": "shop/urls.py", "depth": 4 }] },
+    { "table": "shop_customer", "path": "shop/models.py", "entities": [["shop/models:Customer", "maps_to"]], "reach": [{ "kind": "endpoint", "qualified_name": "ANY shop/customers", "path": "shop/urls.py", "depth": 3 }] },
+    { "table": "catalog_tag", "path": "shop/models.py", "entities": [["shop/models:Tag", "maps_to"]], "reach": [] },
+    { "table": "billing_invoice", "path": "billing/models/invoice.py", "entities": [["billing/models/invoice:Invoice", "maps_to"]], "reach": [] }
+  ],
+  "impact": {
+    "sales_orders": [["shop/models:Order", 1], ["shop/models:Order.Meta", 1], ["shop/models:GiftOrder", 2], ["shop/models:OpenOrder", 2], ["shop/models:OpenOrder.Meta", 2], ["shop/views:send_gift", 3], ["shop/views:GiftView.post", 4], ["POST shop/gifts", 5]],
+    "shop_customer": [["shop/models:Customer", 1], ["shop/views:register", 2], ["ANY shop/customers", 3]]
+  }
+}

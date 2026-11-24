@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "read_evidence.data.schema.json",
+  "title": "read_evidence data",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "evidence"
+  ],
+  "properties": {
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "path",
+          "start_line",
+          "end_line",
+          "start_byte",
+          "end_byte",
+          "object_hash",
+          "source_kind",
+          "extractor",
+          "extractor_version",
+          "analysis_mode",
+          "integrity",
+          "text"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^ev_[0-9a-z]+$"
+          },
+          "path": {
+            "type": "string"
+          },
+          "start_line": {
+            "type": "integer"
+          },
+          "end_line": {
+            "type": "integer"
+          },
+          "start_byte": {
+            "type": "integer"
+          },
+          "end_byte": {
+            "type": "integer"
+          },
+          "object_hash": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "source_kind": {
+            "enum": [
+              "declaration",
+              "call_site",
+              "import_statement",
+              "reference_site",
+              "configuration"
+            ]
+          },
+          "extractor": {
+            "type": "string"
+          },
+          "extractor_version": {
+            "type": "string"
+          },
+          "analysis_mode": {
+            "enum": [
+              "no_execution",
+              "trusted_build"
+            ]
+          },
+          "integrity": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "status"
+            ],
+            "properties": {
+              "status": {
+                "enum": [
+                  "verified",
+                  "failed",
+                  "unavailable"
+                ]
+              },
+              "actual_hash": {
+                "type": "string"
+              }
+            }
+          },
+          "text": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

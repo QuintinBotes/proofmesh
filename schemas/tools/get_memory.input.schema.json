@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "get_memory.input.schema.json",
+  "title": "get_memory input",
+  "description": "Curated memory notes about the code: decisions, gotchas, invariants, domains, ownership. Filter by a symbol the notes reference or by text. Each note says whether the code it describes changed since a person accepted it.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "repository_id": {
+      "type": "string",
+      "pattern": "^repo_[0-9a-z]+$",
+      "description": "Optional when exactly one repository is registered."
+    },
+    "snapshot_id": {
+      "oneOf": [
+        {
+          "type": "string",
+          "pattern": "^snap_[0-9a-z]+$"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Null pins the current published snapshot."
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "timeout_ms": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_rows": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_depth": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "symbol_id": {
+      "oneOf": [
+        {
+          "type": "string",
+          "pattern": "^sym_[0-9a-z]+$"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "path"
+          ],
+          "description": "A symbol by name and file, in place of its id.",
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The name a lean row shows (BudgetLedger.consume), or the plain name (consume); it must name one symbol in the file."
+            },
+            "path": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The repository-relative path of the file that declares the symbol."
+            }
+          }
+        }
+      ],
+      "description": "Or { name, path }: the symbol of that name in that file; an ambiguous name is refused with the candidates."
+    },
+    "path": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Notes that reference this file's module symbol. A file by its repository-relative path, meaning the file itself and its module symbol; .., an absolute path inside the repository and backslashes are normalised. A path the snapshot does not index is INVALID_ARGUMENT naming its disposition."
+    },
+    "query": {
+      "type": "string",
+      "minLength": 2
+    },
+    "freshness": {
+      "enum": [
+        "snapshot",
+        "strict"
+      ],
+      "description": "snapshot (default) answers from the published snapshot. strict first checks that the working tree is exactly what the snapshot was built from; if not, it starts an index and refuses with STALE_INPUT naming the changed files."
+    },
+    "envelope": {
+      "enum": [
+        "full",
+        "compact"
+      ],
+      "description": "compact leaves out the snapshot-wide parts of the envelope (unresolved reasons, standing limitations) that an earlier answer from the same snapshot already gave; query-specific limits stay. Over MCP, answers after the first full one per snapshot are compact unless full is asked for."
+    }
+  }
+}

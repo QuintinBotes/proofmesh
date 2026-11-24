@@ -1,0 +1,119 @@
+{
+  "symbols": [
+    {
+      "kind": "job",
+      "qualified_name": "Ops.InvoiceExportJob",
+      "name": "InvoiceExportJob",
+      "path": "src/Ops/Jobs.cs",
+      "line": 14
+    },
+    {
+      "kind": "job",
+      "qualified_name": "Ops.ReindexJob",
+      "name": "ReindexJob",
+      "path": "src/Ops/Jobs.cs",
+      "line": 25
+    },
+    {
+      "kind": "feature_flag",
+      "qualified_name": "legacy-export",
+      "name": "legacy-export",
+      "path": "src/Ops/Flags.cs",
+      "line": 10
+    },
+    {
+      "kind": "feature_flag",
+      "qualified_name": "fast-search",
+      "name": "fast-search",
+      "path": "src/Ops/Flags.cs",
+      "line": 11
+    },
+    {
+      "kind": "feature_flag",
+      "qualified_name": "batch-size",
+      "name": "batch-size",
+      "path": "src/Ops/Flags.cs",
+      "line": 12
+    },
+    {
+      "kind": "team",
+      "qualified_name": "Ops.Crew.Billing",
+      "name": "Billing",
+      "path": "src/Ops/Crews.cs",
+      "line": 3
+    },
+    {
+      "kind": "team",
+      "qualified_name": "Ops.Crew.Search",
+      "name": "Search",
+      "path": "src/Ops/Crews.cs",
+      "line": 3
+    }
+  ],
+  "relationships": [
+    {
+      "type": "runs",
+      "from": "Ops.InvoiceExportJob",
+      "to": "Ops.InvoiceExportJob",
+      "line": 14,
+      "site_text": "BackgroundTask<int>",
+      "rule": "job_base"
+    },
+    {
+      "type": "runs",
+      "from": "Ops.ReindexJob",
+      "to": "Ops.ReindexJob",
+      "line": 25,
+      "site_text": "BackgroundTask",
+      "rule": "job_base"
+    },
+    {
+      "type": "evaluates_flag",
+      "from": "Ops.InvoiceExportJob.Execute",
+      "to": "legacy-export",
+      "line": 20,
+      "site_text": "LegacyExport",
+      "rule": "flag_key"
+    },
+    {
+      "type": "evaluates_flag",
+      "from": "Ops.InvoiceExportJob.Execute",
+      "to": "fast-search",
+      "line": 21,
+      "site_text": "FastSearch",
+      "rule": "flag_key"
+    },
+    {
+      "type": "evaluates_flag",
+      "from": "Ops.ReindexJob.Execute",
+      "to": "batch-size",
+      "line": 27,
+      "site_text": "BatchSize",
+      "rule": "flag_key"
+    },
+    {
+      "type": "owned_by",
+      "from": "Ops.InvoiceExportJob",
+      "to": "Ops.Crew.Billing",
+      "line": 13,
+      "site_text": "Crew.Billing",
+      "rule": "team_argument"
+    },
+    {
+      "type": "owned_by",
+      "from": "Ops.InvoiceExportJob.Execute",
+      "to": "Ops.Crew.Billing",
+      "line": 20,
+      "site_text": "crew: Crew.Billing",
+      "rule": "team_argument"
+    },
+    {
+      "type": "owned_by",
+      "from": "Ops.ReindexJob.Execute",
+      "to": "Ops.Crew.Search",
+      "line": 27,
+      "site_text": "Crew.Search",
+      "rule": "team_argument"
+    }
+  ]
+}

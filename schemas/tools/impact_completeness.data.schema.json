@@ -1,0 +1,313 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "impact_completeness.data.schema.json",
+  "title": "impact_completeness data",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "base",
+    "head",
+    "pending",
+    "changed",
+    "totals"
+  ],
+  "properties": {
+    "base": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "commit",
+        "snapshot_id"
+      ],
+      "properties": {
+        "commit": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Null for the working tree."
+        },
+        "snapshot_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "head": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "commit",
+        "snapshot_id"
+      ],
+      "properties": {
+        "commit": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Null for the working tree."
+        },
+        "snapshot_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "pending": {
+      "type": "array",
+      "description": "A side with no snapshot yet, and the index job started for it; while any is pending the answer lists nothing.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "commit",
+          "job_id"
+        ],
+        "properties": {
+          "commit": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Null for the working tree."
+          },
+          "job_id": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "changed": {
+      "type": "array",
+      "description": "The changed symbols, by path and line: the innermost symbol of each changed line, a module when a top-level statement other than an import or export changed.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name",
+          "path",
+          "line",
+          "change",
+          "status",
+          "test",
+          "dependents"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "line": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The declaration, in the base snapshot for a deleted symbol."
+          },
+          "change": {
+            "enum": [
+              "added",
+              "modified",
+              "deleted"
+            ]
+          },
+          "status": {
+            "enum": [
+              "tested",
+              "neither"
+            ]
+          },
+          "test": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "path",
+              "line",
+              "evidence",
+              "depth",
+              "changed"
+            ],
+            "description": "The nearest test that executes it, as find_tests lists it; null unless the status is tested.",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "line": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "evidence": {
+                "enum": [
+                  "call",
+                  "transitive_call",
+                  "dispatch",
+                  "observed"
+                ]
+              },
+              "depth": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "changed": {
+                "type": "boolean",
+                "description": "The diff changes the test itself."
+              }
+            }
+          },
+          "dependents": {
+            "type": "array",
+            "description": "By relation (calls, implements, overrides, inherits, references, imports), then path and line; from the base snapshot for a deleted symbol.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "id",
+                "name",
+                "path",
+                "line",
+                "relation",
+                "via",
+                "status",
+                "test"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "path": {
+                  "type": "string"
+                },
+                "line": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "description": "The site: the call, heritage clause, reference or import."
+                },
+                "relation": {
+                  "enum": [
+                    "calls",
+                    "implements",
+                    "overrides",
+                    "inherits",
+                    "references",
+                    "imports"
+                  ]
+                },
+                "via": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "The member a dispatched call names, or the caller a caller of callers reaches the change through."
+                },
+                "status": {
+                  "enum": [
+                    "changed",
+                    "tested",
+                    "neither"
+                  ]
+                },
+                "test": {
+                  "type": [
+                    "object",
+                    "null"
+                  ],
+                  "additionalProperties": false,
+                  "required": [
+                    "name",
+                    "path",
+                    "line",
+                    "evidence",
+                    "depth",
+                    "changed"
+                  ],
+                  "description": "The nearest test that executes it, as find_tests lists it; null unless the status is tested.",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "path": {
+                      "type": "string"
+                    },
+                    "line": {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    "evidence": {
+                      "enum": [
+                        "call",
+                        "transitive_call",
+                        "dispatch",
+                        "observed"
+                      ]
+                    },
+                    "depth": {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    "changed": {
+                      "type": "boolean",
+                      "description": "The diff changes the test itself."
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "totals": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "changed_symbols",
+        "dependents",
+        "changed",
+        "tested",
+        "neither"
+      ],
+      "description": "Over every changed symbol, on this page or not; changed, tested and neither count the dependents.",
+      "properties": {
+        "changed_symbols": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "dependents": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "changed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "tested": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "neither": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

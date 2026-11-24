@@ -1,0 +1,29 @@
+{
+  "services": [
+    { "qualified_name": "catalog-api", "name": "catalog-api", "path": "src/Shop.Storefront/Program.cs", "line": 14 },
+    { "qualified_name": "orders-service", "name": "orders-service", "path": "src/Shop.Storefront/Program.cs", "line": 6 }
+  ],
+  "calls_service": [
+    { "from": "Registration.AddCatalog", "to": "catalog-api", "rule": "http_client_name", "line": 14, "site_text": "services.AddHttpClient<ICatalogClient, CatalogClient>(CatalogClient.Name)" },
+    { "from": "src/Shop.Storefront/Program", "to": "orders-service", "rule": "http_client_name", "line": 6, "site_text": "services.AddHttpClient(\"orders-service\", client => client.Timeout = TimeSpan.FromSeconds(5))" },
+    { "from": "src/Shop.Storefront/Program", "to": "orders-service", "rule": "http_client_name", "line": 7, "site_text": "services.AddHttpClient<ReportsClient>(\"orders-service\")" }
+  ],
+  "calls_service_unresolved": [
+    { "from": "src/Shop.Storefront/Program", "reason": "outside_capability", "rule": "http_client_name", "line": 8, "site_text": "services.AddHttpClient(Environment.GetEnvironmentVariable(\"PAYMENTS_CLIENT\") ?? \"payments\")" }
+  ],
+  "service_terms": [
+    { "kind": "service", "term": "catalog-api" },
+    { "kind": "service", "term": "orders-service" }
+  ],
+  "service_name_links": [
+    { "source_repository": "storefront", "source": "Registration.AddCatalog", "target_repository": null, "confidence": 1, "resolution": "unresolved", "reason": "no_match" },
+    { "source_repository": "storefront", "source": "src/Shop.Storefront/Program", "target_repository": "orders", "confidence": 0.7, "resolution": "resolved", "reason": null },
+    { "source_repository": "storefront", "source": "src/Shop.Storefront/Program", "target_repository": "orders", "confidence": 0.7, "resolution": "resolved", "reason": null }
+  ],
+  "registry": "orders:.contoso/api-clients.yaml",
+  "service_registry_links": [
+    { "source_repository": "orders", "source": ".contoso/api-clients.yaml#reporting", "target_repository": null, "confidence": 1, "resolution": "unresolved", "reason": "no_match" },
+    { "source_repository": "storefront", "source": ".contoso/api-clients.yaml#Storefront-Api", "target_repository": "orders", "confidence": 0.8, "resolution": "resolved", "reason": null },
+    { "source_repository": "storefront", "source": ".contoso/api-clients.yaml#storefront-web", "target_repository": "orders", "confidence": 1, "resolution": "resolved", "reason": null }
+  ]
+}

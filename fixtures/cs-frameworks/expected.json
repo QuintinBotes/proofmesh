@@ -1,0 +1,109 @@
+{
+  "symbols": [
+    {"kind": "endpoint", "qualified_name": "GET api/Orders/{id}", "name": "GET api/Orders/{id}", "path": "src/Shop.Api/Controllers.cs", "line": 13},
+    {"kind": "endpoint", "qualified_name": "POST api/Orders", "name": "POST api/Orders", "path": "src/Shop.Api/Controllers.cs", "line": 16},
+    {"kind": "endpoint", "qualified_name": "DELETE api/Orders/{id}", "name": "DELETE api/Orders/{id}", "path": "src/Shop.Api/Controllers.cs", "line": 19},
+    {"kind": "endpoint", "qualified_name": "GET api/Orders/List", "name": "GET api/Orders/List", "path": "src/Shop.Api/Controllers.cs", "line": 22},
+    {"kind": "endpoint", "qualified_name": "GET api/Orders", "name": "GET api/Orders", "path": "src/Shop.Api/Controllers.cs", "line": 25},
+    {"kind": "endpoint", "qualified_name": "POST api/Orders/search", "name": "POST api/Orders/search", "path": "src/Shop.Api/Controllers.cs", "line": 26},
+    {"kind": "endpoint", "qualified_name": "GET legacy/orders", "name": "GET legacy/orders", "path": "src/Shop.Api/Controllers.cs", "line": 29},
+    {"kind": "endpoint", "qualified_name": "HEAD legacy/orders", "name": "HEAD legacy/orders", "path": "src/Shop.Api/Controllers.cs", "line": 29},
+    {"kind": "endpoint", "qualified_name": "ANY api/Orders", "name": "ANY api/Orders", "path": "src/Shop.Api/Controllers.cs", "line": 34},
+    {"kind": "endpoint", "qualified_name": "GET status", "name": "GET status", "path": "src/Shop.Api/Controllers.cs", "line": 44},
+    {"kind": "endpoint", "qualified_name": "GET api/v1/Invoices", "name": "GET api/v1/Invoices", "path": "src/Shop.Api/Controllers.cs", "line": 66},
+    {"kind": "endpoint", "qualified_name": "GET override", "name": "GET override", "path": "src/Shop.Api/Controllers.cs", "line": 73},
+    {"kind": "endpoint", "qualified_name": "GET health", "name": "GET health", "path": "src/Shop.Api/Program.cs", "line": 31},
+    {"kind": "endpoint", "qualified_name": "POST api/orders", "name": "POST api/orders", "path": "src/Shop.Api/Program.cs", "line": 33},
+    {"kind": "endpoint", "qualified_name": "DELETE api/v2/orders/{id}", "name": "DELETE api/v2/orders/{id}", "path": "src/Shop.Api/Program.cs", "line": 34},
+    {"kind": "endpoint", "qualified_name": "GET inventory/{sku}", "name": "GET inventory/{sku}", "path": "src/Shop.Clients/Clients.cs", "line": 8},
+    {"kind": "endpoint", "qualified_name": "POST inventory/{sku}/labels", "name": "POST inventory/{sku}/labels", "path": "src/Shop.Clients/Clients.cs", "line": 11},
+    {"kind": "job", "qualified_name": "Shop.Application.ReceiptMailer", "name": "ReceiptMailer", "path": "src/Shop.Application/Workers.cs", "line": 8},
+    {"kind": "job", "qualified_name": "Shop.Application.CacheWarmer", "name": "CacheWarmer", "path": "src/Shop.Application/Workers.cs", "line": 13},
+    {"kind": "job", "qualified_name": "Shop.Application.InventoryPoller", "name": "InventoryPoller", "path": "src/Shop.Application/Workers.cs", "line": 21},
+    {"kind": "config_key", "qualified_name": "Payments", "name": "Payments", "path": "src/Shop.Api/Program.cs", "line": 21},
+    {"kind": "config_key", "qualified_name": "ConnectionStrings:Orders", "name": "ConnectionStrings:Orders", "path": "src/Shop.Api/Program.cs", "line": 22},
+    {"kind": "config_key", "qualified_name": "Features:Search", "name": "Features:Search", "path": "src/Shop.Api/Program.cs", "line": 23},
+    {"kind": "config_key", "qualified_name": "Payments:Retries", "name": "Payments:Retries", "path": "src/Shop.Api/Program.cs", "line": 24},
+    {"kind": "config_key", "qualified_name": "Payments:Currency", "name": "Payments:Currency", "path": "src/Shop.Api/Program.cs", "line": 26},
+    {"kind": "config_key", "qualified_name": "Payments:ApiKey", "name": "Payments:ApiKey", "path": "src/Shop.Application/Services.cs", "line": 35},
+    {"kind": "channel", "qualified_name": "kafka:orders.placed", "name": "orders.placed", "path": "src/Shop.Application/Workers.cs", "line": 30},
+    {"kind": "channel", "qualified_name": "kafka:orders.cancelled", "name": "orders.cancelled", "path": "src/Shop.Application/Workers.cs", "line": 32}
+  ],
+  "relationships": {
+    "dependency_injection": [
+      {"type": "registered_as", "from": "class Shop.Application.OrderRepository", "to": "interface Shop.Application.IOrderRepository", "detail": {"rule": "AddScoped", "lifetime": "Scoped"}, "line": 12, "site_text": "services.AddScoped<IOrderRepository, OrderRepository>()"},
+      {"type": "registered_as", "from": "class Shop.Application.Pricing", "to": "interface Shop.Application.IPricing", "detail": {"rule": "AddScoped", "lifetime": "Scoped"}, "line": 13, "site_text": "services.AddScoped(typeof(IPricing), typeof(Pricing))"},
+      {"type": "registered_as", "from": "class Shop.Application.OrderService", "to": "class Shop.Application.OrderService", "detail": {"rule": "AddTransient", "lifetime": "Transient"}, "line": 14, "site_text": "services.AddTransient<OrderService>()"},
+      {"type": "registered_as", "from": "class Shop.Application.SystemClock", "to": "interface Shop.Application.IClock", "detail": {"rule": "AddSingleton", "lifetime": "Singleton"}, "line": 15, "site_text": "services.AddSingleton<IClock>(sp => new SystemClock())"},
+      {"type": "registered_as", "from": "class Shop.Application.SequentialIds", "to": "interface Shop.Application.IIdGenerator", "detail": {"rule": "AddSingleton", "lifetime": "Singleton"}, "line": 16, "site_text": "services.AddSingleton<IIdGenerator>(new SequentialIds())"},
+      {"type": "registered_as", "from": "interface Shop.Application.IFeatureToggles", "reason": "outside_capability", "detail": {"rule": "AddSingleton", "lifetime": "Singleton", "why": "the instance or factory has no concrete class type"}, "line": 17, "site_text": "services.AddSingleton<IFeatureToggles>(sp => Toggles.Create())"},
+      {"type": "registered_as", "from": "class Shop.Application.EmailNotifier", "to": "interface Shop.Application.INotifier", "detail": {"rule": "TryAddTransient", "lifetime": "Transient"}, "line": 18, "site_text": "services.TryAddTransient<INotifier, EmailNotifier>()"},
+      {"type": "registered_as", "from": "class Shop.Clients.InventoryClient", "to": "interface Shop.Clients.IInventoryClient", "detail": {"rule": "AddHttpClient", "lifetime": "Transient"}, "line": 19, "site_text": "services.AddHttpClient<IInventoryClient, InventoryClient>()"},
+      {"type": "registered_as", "from": "class Shop.Application.AuditLog", "to": "interface Shop.Application.IAuditLog", "detail": {"rule": "AddScoped", "lifetime": "Scoped"}, "line": 20, "site_text": "services.AddScoped<IAuditLog>(sp => { var clock = new SystemClock(); return new AuditLog(clock); })"},
+      {"type": "injects", "from": "class Shop.Application.Pricing", "to": "interface Shop.Application.IIdGenerator", "detail": {"rule": "constructor"}, "line": 23, "site_text": "IIdGenerator ids"},
+      {"type": "injects", "from": "class Shop.Application.EmailNotifier", "to": "interface Shop.Application.IClock", "detail": {"rule": "constructor"}, "line": 27, "site_text": "IClock clock"},
+      {"type": "injects", "from": "class Shop.Application.EmailNotifier", "to": "interface Shop.Application.IFeatureToggles", "detail": {"rule": "constructor"}, "line": 27, "site_text": "IFeatureToggles toggles"},
+      {"type": "injects", "from": "class Shop.Application.OrderService", "to": "interface Shop.Application.IOrderRepository", "detail": {"rule": "constructor"}, "line": 29, "site_text": "IOrderRepository repository"},
+      {"type": "injects", "from": "class Shop.Application.OrderService", "to": "interface Shop.Application.IClock", "detail": {"rule": "constructor"}, "line": 29, "site_text": "IClock clock"}
+    ],
+    "aspnet_core": [
+      {"type": "exposes", "from": "endpoint GET api/Orders/{id}", "to": "method Shop.Api.OrdersController.Get", "detail": {"rule": "attribute_route"}, "line": 13, "site_text": "HttpGet(\"{id}\")"},
+      {"type": "exposes", "from": "endpoint POST api/Orders", "to": "method Shop.Api.OrdersController.Place", "detail": {"rule": "attribute_route"}, "line": 16, "site_text": "HttpPost"},
+      {"type": "exposes", "from": "endpoint DELETE api/Orders/{id}", "to": "method Shop.Api.OrdersController.Cancel", "detail": {"rule": "attribute_route"}, "line": 19, "site_text": "HttpDelete(\"{id}\")"},
+      {"type": "exposes", "from": "endpoint GET api/Orders/List", "to": "method Shop.Api.OrdersController.ListAsync", "detail": {"rule": "attribute_route"}, "line": 22, "site_text": "HttpGet(\"[action]\")"},
+      {"type": "exposes", "from": "endpoint GET api/Orders", "to": "method Shop.Api.OrdersController.Search", "detail": {"rule": "attribute_route"}, "line": 25, "site_text": "HttpGet"},
+      {"type": "exposes", "from": "endpoint POST api/Orders/search", "to": "method Shop.Api.OrdersController.Search", "detail": {"rule": "attribute_route"}, "line": 26, "site_text": "HttpPost(\"search\")"},
+      {"type": "exposes", "from": "endpoint GET legacy/orders", "to": "method Shop.Api.OrdersController.Legacy", "detail": {"rule": "attribute_route"}, "line": 29, "site_text": "Route(\"~/legacy/orders\")"},
+      {"type": "exposes", "from": "endpoint HEAD legacy/orders", "to": "method Shop.Api.OrdersController.Legacy", "detail": {"rule": "attribute_route"}, "line": 29, "site_text": "Route(\"~/legacy/orders\")"},
+      {"type": "exposes", "from": "endpoint ANY api/Orders", "to": "method Shop.Api.OrdersController.Notify", "detail": {"rule": "attribute_route"}, "line": 34, "site_text": "public Task Notify(Guid id) => mediator.Publish(new OrderPlaced(id));"},
+      {"type": "exposes", "from": "endpoint GET status", "to": "method Shop.Api.StatusApi.Get", "detail": {"rule": "attribute_route"}, "line": 44, "site_text": "HttpGet"},
+      {"type": "exposes", "from": "endpoint GET api/v1/Invoices", "to": "method Shop.Api.InvoicesController.List", "detail": {"rule": "attribute_route"}, "line": 66, "site_text": "HttpGet"},
+      {"type": "exposes", "from": "endpoint GET override", "to": "method Shop.Api.CreditsController.List", "detail": {"rule": "attribute_route"}, "line": 73, "site_text": "HttpGet"},
+      {"type": "exposes", "from": "method Shop.Api.HomeController.Index", "reason": "outside_capability", "detail": {"rule": "attribute_route", "why": "the action is conventionally routed"}, "line": 50, "site_text": "public string Index() => \"home\";"},
+      {"type": "exposes", "from": "method Shop.Api.ReportsController.Summary", "reason": "outside_capability", "detail": {"rule": "attribute_route", "why": "the route uses a token the rules do not model"}, "line": 56, "site_text": "HttpGet"},
+      {"type": "exposes", "from": "endpoint GET health", "to": "module src/Shop.Api/Program", "detail": {"rule": "minimal_api"}, "line": 31, "site_text": "app.MapGet(\"/health\", () => \"ok\")"},
+      {"type": "exposes", "from": "endpoint POST api/orders", "to": "method OrderEndpoints.Place", "detail": {"rule": "minimal_api"}, "line": 33, "site_text": "api.MapPost(\"/orders\", OrderEndpoints.Place)"},
+      {"type": "exposes", "from": "endpoint DELETE api/v2/orders/{id}", "to": "module src/Shop.Api/Program", "detail": {"rule": "minimal_api"}, "line": 34, "site_text": "api.MapGroup(\"v2\").MapDelete(\"/orders/{id}\", (int id) => id)"},
+      {"type": "exposes", "from": "module src/Shop.Api/Program", "reason": "outside_capability", "detail": {"rule": "minimal_api", "why": "the route is not a compile-time constant"}, "line": 35, "site_text": "app.MapGet(args[1], () => \"dynamic\")"}
+    ],
+    "refit": [
+      {"type": "dispatches_to", "from": "method Shop.Clients.IInventoryApi.GetStock", "to": "endpoint GET inventory/{sku}", "detail": {"direction": "outbound", "rule": "refit"}, "line": 8, "site_text": "Get(\"/inventory/{sku}?fields=stock\")"},
+      {"type": "dispatches_to", "from": "method Shop.Clients.IInventoryApi.Label", "to": "endpoint POST inventory/{sku}/labels", "detail": {"direction": "outbound", "rule": "refit"}, "line": 11, "site_text": "Post(\"/inventory/{sku}/labels\")"},
+      {"type": "dispatches_to", "from": "method Shop.Clients.IOrdersApi.GetOrder", "to": "endpoint GET api/Orders/{id}", "detail": {"direction": "outbound", "rule": "refit"}, "line": 17, "site_text": "Get(\"/api/Orders/{id}\")"}
+    ],
+    "mediatr": [
+      {"type": "handles", "from": "class Shop.Application.PlaceOrderHandler", "to": "class Shop.Application.PlaceOrder", "detail": {"rule": "IRequestHandler"}, "line": 12, "site_text": "IRequestHandler<PlaceOrder, Guid>"},
+      {"type": "handles", "from": "class Shop.Application.EmailOnOrderPlaced", "to": "class Shop.Application.OrderPlaced", "detail": {"rule": "INotificationHandler"}, "line": 17, "site_text": "INotificationHandler<OrderPlaced>"},
+      {"type": "handles", "from": "class Shop.Application.AuditOnOrderPlaced", "to": "class Shop.Application.OrderPlaced", "detail": {"rule": "INotificationHandler"}, "line": 22, "site_text": "INotificationHandler<OrderPlaced>"},
+      {"type": "dispatches_to", "from": "method Shop.Api.OrdersController.Place", "to": "class Shop.Application.PlaceOrderHandler", "detail": {"rule": "Send"}, "line": 17, "site_text": "mediator.Send(command)"},
+      {"type": "dispatches_to", "from": "method Shop.Api.OrdersController.Notify", "to": "class Shop.Application.EmailOnOrderPlaced", "detail": {"rule": "Publish"}, "line": 34, "site_text": "mediator.Publish(new OrderPlaced(id))"},
+      {"type": "dispatches_to", "from": "method Shop.Api.OrdersController.Notify", "to": "class Shop.Application.AuditOnOrderPlaced", "detail": {"rule": "Publish"}, "line": 34, "site_text": "mediator.Publish(new OrderPlaced(id))"},
+      {"type": "dispatches_to", "from": "method Shop.Api.OrdersController.Cancel", "reason": "outside_capability", "detail": {"rule": "Send", "why": "no handler of the request type is declared in the repository"}, "line": 20, "site_text": "mediator.Send(new CancelOrder(id))"},
+      {"type": "dispatches_to", "from": "method Shop.Api.OrdersController.Forward", "reason": "outside_capability", "detail": {"rule": "Send", "why": "the request type is not statically known"}, "line": 37, "site_text": "mediator.Send(request)"}
+    ],
+    "hosted_services": [
+      {"type": "runs", "from": "job Shop.Application.ReceiptMailer", "to": "class Shop.Application.ReceiptMailer", "detail": {"rule": "BackgroundService"}, "line": 8, "site_text": "BackgroundService"},
+      {"type": "runs", "from": "job Shop.Application.CacheWarmer", "to": "class Shop.Application.CacheWarmer", "detail": {"rule": "IHostedService"}, "line": 13, "site_text": "IHostedService"},
+      {"type": "runs", "from": "job Shop.Application.InventoryPoller", "to": "class Shop.Application.InventoryPoller", "detail": {"rule": "BackgroundService"}, "line": 21, "site_text": "PollingWorker"}
+    ],
+    "configuration": [
+      {"type": "reads_config", "from": "class Shop.Application.PaymentOptions", "to": "config_key Payments", "detail": {"rule": "Configure"}, "line": 21, "site_text": "services.Configure<PaymentOptions>(configuration.GetSection(\"Payments\"))"},
+      {"type": "reads_config", "from": "module src/Shop.Api/Program", "to": "config_key Payments", "detail": {"rule": "GetSection"}, "line": 21, "site_text": "configuration.GetSection(\"Payments\")"},
+      {"type": "reads_config", "from": "module src/Shop.Api/Program", "to": "config_key ConnectionStrings:Orders", "detail": {"rule": "GetConnectionString"}, "line": 22, "site_text": "configuration.GetConnectionString(\"Orders\")"},
+      {"type": "reads_config", "from": "module src/Shop.Api/Program", "to": "config_key Features:Search", "detail": {"rule": "indexer"}, "line": 23, "site_text": "configuration[\"Features:Search\"]"},
+      {"type": "reads_config", "from": "module src/Shop.Api/Program", "to": "config_key Payments:Retries", "detail": {"rule": "GetValue"}, "line": 24, "site_text": "configuration.GetSection(\"Payments\").GetValue<int>(\"Retries\")"},
+      {"type": "reads_config", "from": "module src/Shop.Api/Program", "to": "config_key Payments", "detail": {"rule": "GetSection"}, "line": 24, "site_text": "configuration.GetSection(\"Payments\")"},
+      {"type": "reads_config", "from": "module src/Shop.Api/Program", "to": "config_key Payments", "detail": {"rule": "GetSection"}, "line": 25, "site_text": "configuration.GetSection(\"Payments\")"},
+      {"type": "reads_config", "from": "module src/Shop.Api/Program", "to": "config_key Payments:Currency", "detail": {"rule": "GetValue"}, "line": 26, "site_text": "payments.GetValue<string>(\"Currency\")"},
+      {"type": "reads_config", "from": "module src/Shop.Api/Program", "reason": "outside_capability", "detail": {"rule": "indexer", "why": "the key is not a compile-time constant"}, "line": 28, "site_text": "configuration[args[0]]"},
+      {"type": "reads_config", "from": "method Shop.Application.PaymentGateway.ApiKey", "to": "config_key Payments:ApiKey", "detail": {"rule": "indexer"}, "line": 35, "site_text": "configuration.GetSection(\"Payments\")[\"ApiKey\"]"},
+      {"type": "reads_config", "from": "method Shop.Application.PaymentGateway.ApiKey", "to": "config_key Payments", "detail": {"rule": "GetSection"}, "line": 35, "site_text": "configuration.GetSection(\"Payments\")"}
+    ],
+    "kafka": [
+      {"type": "publishes", "from": "method Shop.Application.OrderEvents.PublishPlacedAsync", "to": "channel kafka:orders.placed", "detail": {"rule": "ProduceAsync"}, "line": 30, "site_text": "producer.ProduceAsync(Placed, new Message<string, string> { Key = id, Value = id })"},
+      {"type": "publishes", "from": "method Shop.Application.OrderEvents.PublishCancelled", "to": "channel kafka:orders.cancelled", "detail": {"rule": "Produce"}, "line": 32, "site_text": "producer.Produce(\"orders.cancelled\", new Message<string, string> { Key = id, Value = id })"},
+      {"type": "publishes", "from": "method Shop.Application.OrderEvents.PublishTo", "reason": "outside_capability", "detail": {"rule": "Produce", "why": "the topic is not a compile-time constant string"}, "line": 34, "site_text": "producer.Produce(topic, new Message<string, string> { Key = id, Value = id })"},
+      {"type": "consumes", "from": "method Shop.Application.ShippingListener.Start", "to": "channel kafka:orders.placed", "detail": {"rule": "Subscribe"}, "line": 39, "site_text": "consumer.Subscribe(\"orders.placed\")"}
+    ]
+  }
+}

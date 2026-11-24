@@ -1,0 +1,56 @@
+import fs from 'node:fs'
+import path from 'node:path'
+import { sha256 } from '../core/hash.js'
+import { ProofmeshError } from '../core/errors.js'
+import { EXCLUDED_DIRS, discover, type Discovered } from './discovery.js'
+import { BUILT_IN_REGISTRY, type Registry } from './languages.js'
+
+/** Files excluded for where they sit, under a path git ignores or a default excluded directory, are build output and local state (A21). */
+const LOCATION_RULES = new Set<string | null>(['gitignore', ...EXCLUDED_DIRS.map((d) => `**/${d}/**`)])
+
+/**
+ * The repository part of snapshot identity: every discovered path with its content hash when captured, or its disposition. Files
+ * excluded for their location stay in the inventory but not here, so a build writing its output never makes a snapshot stale (A21).
+ */
+export const manifestHash = (discovered: Discovered[], hashOf: (p: string) => string | undefined): string =>
+  sha256(discovered.filter((d) => !(d.status === 'excluded' && LOCATION_RULES.has(d.detail)))
+    .map((d) => `${d.path}\t${hashOf(d.path) ?? '-'}\t${d.status === 'capture' ? 'capture' : `${d.status}:${d.detail}`}`).join('\n'))
+
+export type Change = { path: string; change: 'added' | 'modified' | 'deleted' }
+
+/** The working tree as the indexer would capture it now. A file that vanishes while it is read makes the tree unstable. */
+export function workingTree(root: string, registry: Registry = BUILT_IN_REGISTRY): { manifest: string; hashes: Map<string, string> } {
+  const discovered = discover(root, registry)
+  const hashes = new Map<string, string>()
+  for (const d of discovered) {
+    if (d.status !== 'capture') continue
+    try {
+      hashes.set(d.path, sha256(fs.readFileSync(path.join(root, d.path))))
+    } catch {
+      throw new ProofmeshError('UNSTABLE_WORKTREE', `${d.path} changed while the working tree was read; retry when it is quiet`, { detail: 'file_vanished', path: d.path })
+    }
+  }
+  return { manifest: manifestHash(discovered, (p) => hashes.get(p)), hashes }
+}
+
+/** Captured files that differ between a snapshot (path to content hash, null when its content was not kept) and the tree now. */
+export function changes(captured: Map<string, string | null>, now: Map<string, string>): Change[] {
+  const out: Change[] = []
+  for (const [p, hash] of now) {
+    if (!captured.has(p)) out.push({ path: p, change: 'added' })
+    else if (captured.get(p) !== hash) out.push({ path: p, change: 'modified' })
+  }
+  for (const p of captured.keys()) if (!now.has(p)) out.push({ path: p, change: 'deleted' })
+  return out.sort((a, b) => (a.path < b.path ? -1 : 1))
+}
+
+/** Captured files whose content changed between capture and the end of analysis (FR013). */
+export function unstable(root: string, captured: Array<{ path: string; hash: string }>): string[] {
+  return captured.filter((c) => {
+    try {
+      return sha256(fs.readFileSync(path.join(root, c.path))) !== c.hash
+    } catch {
+      return true
+    }
+  }).map((c) => c.path)
+}

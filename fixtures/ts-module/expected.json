@@ -1,0 +1,16 @@
+{
+  "dispositions": {
+    "src/app.ts": ["indexed", null],
+    "tsconfig.json": ["indexed", null]
+  },
+  "symbols": [
+    { "kind": "module", "qualified_name": "src/app", "lines": [1, 9], "signature": null },
+    { "kind": "function", "qualified_name": "src/app:greet", "lines": [1, 1], "signature": "greet(name: string): string" },
+    { "kind": "function", "qualified_name": "src/app:shout", "lines": [3, 5], "signature": "shout(text: string): string" },
+    { "kind": "variable", "qualified_name": "src/app:limit", "lines": [7, 7], "signature": null }
+  ],
+  "calls": [
+    { "from": "src/app", "line": 9, "site_text": "greet(\"module\")", "resolution": "resolved", "to": "src/app:greet" }
+  ],
+  "closed_world": "The symbols and calls lists are complete for this fixture."
+}

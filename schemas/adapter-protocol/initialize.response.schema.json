@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "initialize.response.schema.json",
+  "title": "initialize.response",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "adapter",
+    "capabilities",
+    "external_inputs"
+  ],
+  "properties": {
+    "adapter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "version",
+        "protocol_version",
+        "languages",
+        "toolchain"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*$"
+        },
+        "version": {
+          "type": "string"
+        },
+        "protocol_version": {
+          "type": "string",
+          "pattern": "^1\\.(0|[1-9][0-9]*)$",
+          "description": "Protocol 1: any 1.x is compatible. A minor version only adds optional fields, which the other side ignores when it does not know them (A22)."
+        },
+        "languages": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "toolchain": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "boolean"
+      }
+    },
+    "external_inputs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "analysis_mode": {
+      "enum": [
+        "no_execution",
+        "trusted_build"
+      ],
+      "description": "The mode the adapter actually runs in; omitted means no_execution."
+    },
+    "units": {
+      "type": "array",
+      "description": "Groups of files whose per-file facts (the analyze answers) depend only on the group's id, its files, the groups it depends on, the adapter's configuration files, its external inputs, and its identity. The core reuses a file's cached facts while all of those are unchanged. Omitted means one group of every file, so any change reanalyses every file. An adapter may put in the id anything else the facts depend on, such as the set of module paths. Facts that depend on more belong in the workspace answer.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "files"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "depends_on": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  }
+}

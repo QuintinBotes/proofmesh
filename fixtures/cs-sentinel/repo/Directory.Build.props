@@ -1,0 +1,10 @@
+<Project>
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <!-- Writes a marker whenever build logic runs. Without a trust grant, Proofmesh must never run it. -->
+  <Target Name="ProofmeshSentinel" BeforeTargets="CollectPackageReferences;CoreCompile">
+    <WriteLinesToFile File="$(HOME)/proofmesh-sentinel-ran" Lines="build logic ran" Overwrite="true" />
+  </Target>
+</Project>

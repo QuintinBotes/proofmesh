@@ -1,0 +1,10 @@
+{
+  "schema_version": "0.1",
+  "source": "sample metrics export, query rows_by_table",
+  "window": { "from": "2026-11-01T00:00:00Z", "to": "2026-11-08T00:00:00Z" },
+  "counts": [
+    { "subject": { "kind": "table", "name": "Orders" }, "metric": "rows_read", "value": 1200 },
+    { "subject": { "kind": "table", "name": "Orders" }, "metric": "rows_written", "value": 40 },
+    { "subject": { "kind": "endpoint", "name": "GET api/Orders/{id}" }, "metric": "requests", "value": 950 }
+  ]
+}

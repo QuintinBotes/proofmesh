@@ -1,0 +1,45 @@
+{
+  "endpoints": [
+    { "qualified_name": "DELETE api/orders/{orderId}", "path": "src/routes/orders.ts", "line": 10 },
+    { "qualified_name": "GET admin/reports/daily", "path": "src/routes/admin.ts", "line": 7 },
+    { "qualified_name": "GET api/orders", "path": "src/routes/orders.ts", "line": 7 },
+    { "qualified_name": "GET api/orders/{orderId}", "path": "src/routes/orders.ts", "line": 8 },
+    { "qualified_name": "GET health", "path": "src/app.ts", "line": 14 },
+    { "qualified_name": "GET inventory/{sku}", "path": "src/inventory/inventory.controller.ts", "line": 10 },
+    { "qualified_name": "GET status", "path": "src/inventory/inventory.controller.ts", "line": 37 },
+    { "qualified_name": "POST api/orders", "path": "src/routes/orders.ts", "line": 9 },
+    { "qualified_name": "POST inventory", "path": "src/inventory/inventory.controller.ts", "line": 15 },
+    { "qualified_name": "PUT inventory/{sku}/count", "path": "src/inventory/inventory.controller.ts", "line": 20 },
+    { "qualified_name": "PUT inventory/{sku}/recount", "path": "src/inventory/inventory.controller.ts", "line": 20 }
+  ],
+  "exposes": [
+    { "from": "DELETE api/orders/{orderId}", "to": "src/routes/orders", "rule": "express_route", "line": 10, "site_text": "router.delete('/:orderId(\\\\d+)', guard(cancel))" },
+    { "from": "GET admin/reports/daily", "to": "src/reports:daily", "rule": "express_route", "line": 7, "site_text": "reports.get('/daily', daily)" },
+    { "from": "GET api/orders", "to": "src/routes/orders:router.get('/')", "rule": "express_route", "line": 7, "site_text": "router.get('/', (_req, res) => res.json(listOrders()))" },
+    { "from": "GET api/orders/{orderId}", "to": "src/routes/orders:show", "rule": "express_route", "line": 8, "site_text": "router.get('/:orderId', show)" },
+    { "from": "GET health", "to": "src/app:app.get('/health')", "rule": "express_route", "line": 14, "site_text": "app.get('/health', (_req, res) => res.send('ok'))" },
+    { "from": "GET inventory/{sku}", "to": "src/inventory/inventory.controller:InventoryController.level", "rule": "nestjs_route", "line": 10, "site_text": "Get(':sku')" },
+    { "from": "GET status", "to": "src/inventory/inventory.controller:StatusController.status", "rule": "nestjs_route", "line": 37, "site_text": "Get('status')" },
+    { "from": "POST api/orders", "to": "src/routes/orders:router.post('/')", "rule": "express_route", "line": 9, "site_text": "router.post('/', authenticate, (req, res) => res.status(201).json(placeOrder(req.body)))" },
+    { "from": "POST inventory", "to": "src/inventory/inventory.controller:InventoryController.receive", "rule": "nestjs_route", "line": 15, "site_text": "Post()" },
+    { "from": "PUT inventory/{sku}/count", "to": "src/inventory/inventory.controller:InventoryController.count", "rule": "nestjs_route", "line": 20, "site_text": "Put([':sku/count', ':sku/recount'])" },
+    { "from": "PUT inventory/{sku}/recount", "to": "src/inventory/inventory.controller:InventoryController.count", "rule": "nestjs_route", "line": 20, "site_text": "Put([':sku/count', ':sku/recount'])" }
+  ],
+  "exposes_unresolved": [
+    { "from": "src/inventory/inventory.controller:InventoryController.retire", "reason": "outside_capability", "rule": "nestjs_route", "why": "the route path is not a string literal", "line": 25, "site_text": "Delete(RETIRED)" },
+    { "from": "src/reports:weekly", "reason": "outside_capability", "rule": "express_route", "why": "the route path is not a string literal", "line": 8, "site_text": "reports.get('/' + PERIOD, weekly)" },
+    { "from": "src/routes/legacy:legacy.get('/orders/:orderId')", "reason": "outside_capability", "rule": "express_route", "why": "a mount prefix is not a string literal", "line": 5, "site_text": "legacy.get('/orders/:orderId', (req, res) => res.json(getOrder(req.params.orderId)))" },
+    { "from": "src/routes/legacy:spare.get('/orders')", "reason": "outside_capability", "rule": "express_route", "why": "no application mounts the router where the rules can read it", "line": 8, "site_text": "spare.get('/orders', (_req, res) => res.json([]))" }
+  ],
+  "inline_handlers": [
+    { "qualified_name": "src/app:app.get('/health')", "path": "src/app.ts", "line": 14 },
+    { "qualified_name": "src/routes/legacy:legacy.get('/orders/:orderId')", "path": "src/routes/legacy.ts", "line": 5 },
+    { "qualified_name": "src/routes/legacy:spare.get('/orders')", "path": "src/routes/legacy.ts", "line": 8 },
+    { "qualified_name": "src/routes/orders:router.get('/')", "path": "src/routes/orders.ts", "line": 7 },
+    { "qualified_name": "src/routes/orders:router.post('/')", "path": "src/routes/orders.ts", "line": 9 }
+  ],
+  "links": [
+    { "type": "calls_endpoint", "rule": "http_route", "source_repository": "store", "source": "Store.Clients.IInventoryApi.GetStock", "target_repository": "shop", "target": "GET inventory/{sku}", "confidence": 1, "resolution": "resolved", "reason": null },
+    { "type": "calls_endpoint", "rule": "http_route", "source_repository": "store", "source": "Store.Clients.IOrdersApi.GetOrder", "target_repository": "shop", "target": "GET api/orders/{orderId}", "confidence": 1, "resolution": "resolved", "reason": null }
+  ]
+}

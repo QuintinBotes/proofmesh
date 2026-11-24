@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "list_repositories.input.schema.json",
+  "title": "list_repositories input",
+  "description": "The registered repositories, with the id every other tool takes as repository_id, the root, whether the root still exists, the current snapshot and its commit. Needs no repository_id: call it first when several repositories are registered.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "envelope": {
+      "enum": [
+        "full",
+        "compact"
+      ],
+      "description": "compact leaves out the snapshot-wide parts of the envelope (unresolved reasons, standing limitations) that an earlier answer from the same snapshot already gave; query-specific limits stay. Over MCP, answers after the first full one per snapshot are compact unless full is asked for."
+    }
+  }
+}

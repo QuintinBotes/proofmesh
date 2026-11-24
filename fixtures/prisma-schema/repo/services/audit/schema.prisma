@@ -1,0 +1,17 @@
+datasource db {
+  provider = "sqlite"
+  url      = "file:./audit.db"
+}
+
+model Actor {
+  id     Int          @id
+  events AuditEvent[]
+
+  @@map("actors")
+}
+
+model AuditEvent {
+  id      Int   @id
+  actor   Actor @relation(fields: [actorId], references: [id])
+  actorId Int
+}

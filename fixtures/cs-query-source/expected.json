@@ -1,0 +1,9 @@
+{
+  "sql": "SELECT [o].[Id], [o].[State] FROM [dbo].[Orders] AS [o] WHERE [o].[State] = @p0 AND @p1 = @p1 /* origin: Billing */",
+  "parsed": { "tables": [{ "name": "Orders", "schema": "dbo", "matched": ["Orders"] }], "columns": ["State"], "comments": ["origin: Billing"] },
+  "candidates": [
+    { "kind": "endpoint", "qualified_name": "GET api/orders/open", "score": 12, "evidence": { "tables": ["Orders"], "owner": "Shop.Crews.Crew.Billing", "columns": ["Shop.Data.Order.State"], "helpers": [{ "note": "sql-tag-clause", "target": "method:Shop.Data.Trellis.Twine" }] } },
+    { "kind": "endpoint", "qualified_name": "GET api/reports/{id}/total", "score": 4, "evidence": { "tables": ["Orders"], "owner": null, "columns": [], "helpers": [] } }
+  ],
+  "search": { "text": "@p1 = @p1", "notes": ["sql-tag-clause"] }
+}

@@ -1,0 +1,146 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "tools/list_queries.data.schema.json",
+  "title": "list_queries data",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "tools",
+    "contract",
+    "records"
+  ],
+  "properties": {
+    "tools": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "description",
+          "input_schema",
+          "data_schema",
+          "paged",
+          "workspace_scoped",
+          "capability"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "input_schema": {
+            "type": "string"
+          },
+          "data_schema": {
+            "type": "string"
+          },
+          "paged": {
+            "type": "boolean"
+          },
+          "workspace_scoped": {
+            "type": "boolean"
+          },
+          "capability": {
+            "enum": [
+              "read",
+              "management",
+              "execution"
+            ],
+            "description": "read answers from snapshots and the catalog; management asks the workspace to start or keep something (an index job, a note proposal, a prepared verification); execution runs repository code, which no tool does: a person runs an approved verification with the CLI."
+          }
+        }
+      }
+    },
+    "contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The version of every public contract this server speaks; COMPATIBILITY.md states the policy for each.",
+      "required": [
+        "envelope",
+        "snapshot_format",
+        "link_format",
+        "adapter_protocol",
+        "bundle_format",
+        "catalog_migration"
+      ],
+      "properties": {
+        "envelope": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+$",
+          "description": "envelope.schema.json and the tool schemas under it."
+        },
+        "snapshot_format": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+$",
+          "description": "schemas/snapshot-format/<version>.sql."
+        },
+        "link_format": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+$",
+          "description": "schemas/link-format/<version>.sql."
+        },
+        "adapter_protocol": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+$",
+          "description": "schemas/adapter-protocol; every adapter of the same major version is accepted."
+        },
+        "bundle_format": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+$",
+          "description": "schemas/bundle-format/<version>.schema.json."
+        },
+        "catalog_migration": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "The newest schemas/catalog/NNNN.sql migration."
+        }
+      }
+    },
+    "records": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "query_id",
+          "tool",
+          "repository_id",
+          "snapshot_id",
+          "requested_at",
+          "duration_ms",
+          "truncated",
+          "input_hash"
+        ],
+        "properties": {
+          "query_id": {
+            "type": "string"
+          },
+          "tool": {
+            "type": "string"
+          },
+          "repository_id": {
+            "type": "string"
+          },
+          "snapshot_id": {
+            "type": "string"
+          },
+          "requested_at": {
+            "type": "string"
+          },
+          "duration_ms": {
+            "type": "integer"
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "input_hash": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}
