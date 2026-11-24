@@ -27,8 +27,9 @@ describe('request_index and get_job: background indexing with progress', () => {
     expect(done.result.snapshot_id).toBe((tool(d, 'workspace_status', { limits: { max_rows: 1 } }) as any).snapshot.id)
     // #36: the plan said it was incremental and how much it re-analysed; the finished job keeps real counts and its timing.
     // The TypeScript adapter analyses the program as one unit, so an edit re-analyses all six files: a full run, and the plan says so.
-    expect(done.plan).toEqual({ typescript: { mode: 'full', analyse: 6, reuse: 0 } })
-    expect(done.result.reuse).toEqual({ reused: 0, analysed: 6 })
+    // The build adapter (FR129) also reads the unchanged package.json, whose cached file result is replayed.
+    expect(done.plan).toEqual({ build: { mode: 'incremental', analyse: 0, reuse: 1 }, typescript: { mode: 'full', analyse: 6, reuse: 0 } })
+    expect(done.result.reuse).toEqual({ reused: 1, analysed: 6 })
     expect({ done: done.done, total: done.total }).toEqual({ done: done.result.counts.indexed, total: done.result.counts.indexed })
     expect(done.progress_at).toEqual(expect.any(String))
     expect(done.elapsed_ms).toBeGreaterThanOrEqual(0)

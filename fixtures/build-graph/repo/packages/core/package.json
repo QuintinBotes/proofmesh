@@ -1,0 +1,7 @@
+{
+  "name": "@acme/core",
+  "version": "1.0.0",
+  "scripts": {
+    "preinstall": "node -e \"require('fs').writeFileSync('MARKER-preinstall', 'ran')\""
+  }
+}
