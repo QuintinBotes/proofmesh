@@ -347,7 +347,7 @@ class FactWriter {
       edge: db.prepare('insert into edge (src, type, dst, resolution, assertion_id) values (?, ?, ?, ?, ?)'),
       external: db.prepare('insert or ignore into external_symbol (id, module, name) values (?, ?, ?)'),
       candidate: db.prepare('insert or ignore into assertion_candidate (assertion_id, symbol_id, rank, reason) values (?, ?, ?, ?)'),
-      moduleOf: db.prepare("select s.id from symbol s where s.file_id = ? and s.kind = 'module' limit 1"),
+      moduleOf: db.prepare("select s.id from symbol s where s.file_id = ? and s.kind = 'module' order by s.id limit 1"),
     }
   }
 

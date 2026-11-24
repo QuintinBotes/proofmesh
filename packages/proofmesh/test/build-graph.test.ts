@@ -189,3 +189,144 @@ describe('FR129 a manifest reaches the build adapter and every adapter that read
     })
   }, 240000)
 })
+
+const edges = (db: Database.Database, type = 'depends_on') => rows(db, type).map((r) => [r.from, r.to, r.resolution, r.reason, r.line] as const)
+
+describe('FR125 FR126 FR127 FR128 workspaces and path dependencies the way npm and pnpm read them', () => {
+  it('FR126 a pnpm-workspace.yaml lists the members, with ** matching zero or more directories, braces, and ! exclusions; other dependencies are packages', async () => {
+    const { dataDir } = await indexedRepo({
+      'package.json': json({ private: true }),
+      'pnpm-workspace.yaml': "packages:\n  - 'apps/*'   # the apps\n  - \"libs/**/core\"\n  - 'tools/{x,y}'\n  - '!apps/skip'\nother: true\n",
+      'apps/web/package.json': json({ name: 'web', dependencies: { 'lib-core': 'workspace:*', util: '^1.0.0', 'skip-pkg': '^1.0.0', tx: '^1.0.0', tz: '^1.0.0' } }),
+      'apps/skip/package.json': json({ name: 'skip-pkg' }),
+      'libs/core/package.json': json({ name: 'util' }),
+      'libs/a/core/package.json': json({ name: 'lib-core' }),
+      'tools/x/package.json': json({ name: 'tx' }),
+      'tools/z/package.json': json({ name: 'tz' }),
+    })
+    withSnapshot(dataDir, (db) => {
+      expect(rows(db, 'depends_on').map((r) => [r.from, r.to, r.resolution]).sort()).toEqual([['web', 'lib-core', 'resolved'], ['web', 'tx', 'resolved'], ['web', 'util', 'resolved']])
+      expect(rows(db, 'depends_on_package').map((r) => [r.from, r.to]).sort()).toEqual([['web', 'npm:skip-pkg'], ['web', 'npm:tz']])
+    })
+  }, 240000)
+
+  it('FR126 the array form of workspaces takes ! exclusions too', async () => {
+    const { dataDir } = await indexedRepo({
+      'package.json': json({ private: true, workspaces: ['pkgs/*', '!pkgs/skip'] }),
+      'pkgs/x/package.json': json({ name: 'x', dependencies: { y: '^1.0.0', w: '^1.0.0' } }),
+      'pkgs/y/package.json': json({ name: 'y' }),
+      'pkgs/skip/package.json': json({ name: 'w' }),
+    })
+    withSnapshot(dataDir, (db) => {
+      expect(rows(db, 'depends_on').map((r) => [r.from, r.to])).toEqual([['x', 'y']])
+      expect(rows(db, 'depends_on_package').map((r) => [r.from, r.to])).toEqual([['x', 'npm:w']])
+    })
+  }, 240000)
+
+  it('FR126 without any workspace list a workspace: dependency means a named package of the repository', async () => {
+    const { dataDir } = await indexedRepo({
+      'a/package.json': json({ name: 'a', dependencies: { b: 'workspace:^', gone: 'workspace:*' } }),
+      'b/package.json': json({ name: 'b' }),
+    })
+    withSnapshot(dataDir, (db) => {
+      expect(edges(db)).toEqual([['a', 'b', 'resolved', null, 4], ['a', null, 'unresolved', 'dependency_missing', 5]])
+      expect(rows(db, 'depends_on_package')).toEqual([])
+    })
+  }, 240000)
+
+  it('FR127 a file: or link: dependency on a project is a dependency on it; on a tarball or a directory that is no project it is a package; outside the repository it is missing', async () => {
+    const { dataDir } = await indexedRepo({
+      'app/package.json': json({ name: 'app', dependencies: { sib: 'file:../sib', ball: 'file:./vendor/ball.tgz', plain: 'link:../plain', far: 'file:../../far' } }),
+      'sib/package.json': json({ name: 'sib' }),
+      'plain/readme.txt': 'no manifest here\n',
+    })
+    withSnapshot(dataDir, (db) => {
+      expect(rows(db, 'depends_on').map((r) => [r.from, r.to, r.resolution, r.reason, r.detail])).toEqual([
+        ['app', null, 'unresolved', 'dependency_missing', { name: 'far', path: '../../far' }],
+        ['app', 'sib', 'resolved', null, null],
+      ])
+      expect(rows(db, 'depends_on_package').map((r) => [r.to, r.detail])).toEqual([['npm:ball', { version: 'file:./vendor/ball.tgz' }], ['npm:plain', { version: 'link:../plain' }]])
+    })
+  }, 240000)
+})
+
+describe('FR126 FR129 tsconfig references, with comments and trailing commas', () => {
+  it('FR126 a reference resolves to the referenced directory\'s own project, and to none when its package.json names nothing', async () => {
+    const { dataDir } = await indexedRepo({
+      'package.json': json({ name: 'root' }),
+      'a/package.json': json({ name: 'a' }),
+      'a/tsconfig.json': '// the app\n{\n  /* options */\n  "compilerOptions": { "strict": true, },\n  "references": [\n    { "path": "../c", }, // named\n    { "path": "../b/tsconfig.json" },\n  ],\n}\n',
+      'b/package.json': json({ type: 'module' }),
+      'c/package.json': json({ name: 'c' }),
+    })
+    withSnapshot(dataDir, (db) => {
+      expect(rows(db, 'depends_on').map((r) => [r.from, r.to, r.resolution, r.reason, r.detail, r.line])).toEqual([
+        ['a', 'c', 'resolved', null, null, 6],
+        ['a', null, 'unresolved', 'dependency_missing', { path: '../b/tsconfig.json' }, 7],
+      ])
+    })
+  }, 240000)
+
+  it('FR126 FR129 tsconfig extends is not read: it adds no dependency', async () => {
+    const { dataDir } = await indexedRepo({
+      'a/package.json': json({ name: 'a' }),
+      'a/tsconfig.json': json({ extends: '../b/tsconfig.base.json' }),
+      'b/package.json': json({ name: 'b' }),
+      'b/tsconfig.base.json': json({}),
+    })
+    withSnapshot(dataDir, (db) => expect(rows(db, 'depends_on')).toEqual([]))
+  }, 240000)
+})
+
+describe('FR125 FR126 go.mod and go.work as Go reads them', () => {
+  it('FR126 a go.work alone satisfies a require; block forms, indirect comments, a local replace block and a versioned replace are read; a nested go.mod owns its files', async () => {
+    const { dataDir } = await indexedRepo({
+      'go.work': 'go 1.22\n\nuse (\n\t./a\n\t./b\n)\n',
+      'a/go.mod': 'module example.com/a\n\ngo 1.22\n\nrequire (\n\texample.com/b v0.0.0\n\texample.com/ext v1.2.3 // indirect\n\texample.com/old v1.0.0\n\texample.com/c v0.0.0\n)\n\nreplace (\n\texample.com/c => ../c\n)\n\nreplace example.com/old v1.0.0 => example.com/new v2.0.0\n',
+      'a/a.go': 'package a\n\nfunc A() {}\n',
+      'a/inner/go.mod': 'module example.com/a/inner\n',
+      'a/inner/in.go': 'package inner\n\nfunc In() {}\n',
+      'b/go.mod': 'module example.com/b\n',
+      'c/go.mod': 'module example.com/c\n',
+    })
+    withSnapshot(dataDir, (db) => {
+      expect(edges(db)).toEqual([['example.com/a', 'example.com/b', 'resolved', null, 6], ['example.com/a', 'example.com/c', 'resolved', null, 9]])
+      expect(rows(db, 'depends_on_package').map((r) => [r.to, r.detail, r.line])).toEqual([['go:example.com/ext', { version: 'v1.2.3' }, 7], ['go:example.com/old', { version: 'v1.0.0' }, 8]])
+      expect(db.prepare("select f.path, p.qualified_name as project from assertion a join symbol p on p.id = a.source_id join symbol m on m.id = a.target_id join file f on f.id = m.file_id where a.type = 'contains' order by f.path").all()).toEqual([
+        { path: 'a/a.go', project: 'example.com/a' }, { path: 'a/inner/in.go', project: 'example.com/a/inner' },
+      ])
+    })
+  }, 240000)
+
+  it('FR126 a go.mod under testdata or vendor, and a package.json under either, declare no project', async () => {
+    const { dataDir } = await indexedRepo({
+      'svc/go.mod': 'module example.com/svc\n',
+      'svc/main.go': 'package main\n\nfunc main() {}\n',
+      'svc/testdata/go.mod': 'module example.com/fixture\n',
+      'svc/testdata/x.go': 'package x\n\nfunc X() {}\n',
+      'vendor/v/package.json': json({ name: 'vendored' }),
+    })
+    withSnapshot(dataDir, (db) => {
+      expect((db.prepare("select qualified_name from symbol where kind = 'project'").all() as Array<{ qualified_name: string }>).map((r) => r.qualified_name)).toEqual(['example.com/svc'])
+      expect(db.prepare("select f.path from assertion a join symbol m on m.id = a.target_id join file f on f.id = m.file_id where a.type = 'contains' order by f.path").all()).toEqual([{ path: 'svc/main.go' }, { path: 'svc/testdata/x.go' }])
+    })
+  }, 240000)
+})
+
+describe('FR125 a named package.json changes no answer other than the project a file belongs to', () => {
+  const files = {
+    'package.json': json({ name: 'pkg' }),
+    'src/a.ts': 'export function f(): number {\n  return 1\n}\n',
+    'src/b.ts': "import { f } from './a'\n\nexport function g(): number {\n  return f()\n}\n",
+    'src/a.test.ts': "import { f } from './a'\n\nexport function checksF(): number {\n  return f()\n}\n",
+  }
+  it('FR125 analyze_impact keeps its dependents and groups them under the project; find_tests keeps its tests and states the project', async () => {
+    const { dataDir } = await indexedRepo(files)
+    const id = symbolId(dataDir, 'src/a:f')
+    const impact = tool(dataDir, 'analyze_impact', { subject_ids: [id] }).data as { totals: { by_project: Array<{ name: string; count: number }> }; dependents: Array<{ qualified_name: string; project: string | null }> }
+    expect(impact.dependents.map((d) => [d.qualified_name, d.project])).toEqual([['src/a.test:checksF', 'pkg'], ['src/b:g', 'pkg']])
+    expect(impact.totals.by_project).toEqual([{ name: 'pkg', count: 2 }])
+    const tests = tool(dataDir, 'find_tests', { subject_ids: [id] }).data as { tests: Array<{ qualified_name: string; project: string | null; depth: number }> }
+    expect(tests.tests.map((t) => [t.qualified_name, t.project, t.depth])).toEqual([['src/a.test:checksF', 'pkg', 1]])
+  }, 240000)
+})

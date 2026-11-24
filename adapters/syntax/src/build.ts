@@ -123,8 +123,25 @@ const rangeOf = (m: Manifest, start: number, end: number): Range => ({ start_byt
 const resolveFrom = (dir: string, p: string) => path.posix.normalize(path.posix.join(dir || '.', p.replace(/\\/g, '/'))).replace(/^\.$/, '').replace(/\/$/, '')
 const outside = (p: string) => p === '..' || p.startsWith('../') || path.posix.isAbsolute(p)
 
-/** A workspaces glob as a pattern on a repository-relative directory: `*` stays within a segment, `**` crosses them. */
-const globRegex = (g: string) => new RegExp('^' + g.replace(/^\.\//, '').replace(/\/+$/, '').split('/').map((seg) => (seg === '**' ? '.*' : seg.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '[^/]*').replace(/\?/g, '[^/]'))).join('/') + '$')
+/** `{a,b}` alternatives of a glob, expanded innermost first. */
+const braces = (g: string): string[] => { const m = /\{([^{}]*)\}/.exec(g); return m ? m[1]!.split(',').flatMap((alt) => braces(g.slice(0, m.index) + alt + g.slice(m.index + m[0].length))) : [g] }
+/** A workspaces glob as a pattern on a repository-relative directory: `*` stays within a segment, `**` crosses them (`a/**\/b` also matches `a/b`), `{x,y}` is either. */
+const globRegex = (g: string) => new RegExp('^(?:' + braces(g.replace(/^\.\//, '').replace(/\/+$/, '')).map((one) => one.split(/(\*\*\/|\*\*|\*|\?)/).map((t) => (t === '**/' ? '(?:.*/)?' : t === '**' ? '.*' : t === '*' ? '[^/]*' : t === '?' ? '[^/]' : t.replace(/[.+^${}()|[\]\\]/g, '\\$&'))).join('')).join('|') + ')$')
+
+/** The `packages:` globs of a pnpm-workspace.yaml, read as lines: a list under the key, quotes optional, no other YAML. */
+function pnpmPackages(text: string): string[] {
+  const out: string[] = []
+  let inList = false
+  for (const raw of text.split('\n')) {
+    const line = raw.replace(/\s+#.*$/, '').trimEnd()
+    if (!line.trim() || line.trim().startsWith('#')) continue
+    if (/^packages\s*:\s*$/.test(line)) { inList = true; continue }
+    const item = /^\s*-\s*(['"]?)(.*?)\1\s*$/.exec(line)
+    if (inList && item) out.push(item[2]!)
+    else if (!/^\s/.test(line)) inList = false
+  }
+  return out
+}
 
 function load(file: string): Manifest {
   const text = fs.readFileSync(path.join(workspace, file), 'utf8')
@@ -145,6 +162,7 @@ function compute(): { symbols: Fact[]; relationships: Fact[] } {
   const tsconfigs: Array<{ m: Manifest; root: JNode }> = []
   const gos = new Map<string, { m: Manifest; directives: Directive[]; project?: Project }>()
   const works: Array<{ m: Manifest; directives: Directive[] }> = []
+  const pnpm: Array<{ dir: string; patterns: string[] }> = []
   const declare = (p: Omit<Project, 'id'>) => {
     const project = { ...p, id: `project:${p.manifest.path}` }
     projects.push(project)
@@ -157,9 +175,13 @@ function compute(): { symbols: Fact[]; relationships: Fact[] } {
     let m: Manifest | undefined
     try {
       m = load(file)
-      if (base === 'go.mod' || base === 'go.work') {
+      // Fixtures and vendored copies are not part of the module graph; the file is still read, and fails if it does not parse.
+      const ignored = /(^|\/)(testdata|vendor)\//.test(file)
+      if (base === 'pnpm-workspace.yaml') pnpm.push({ dir: m.dir, patterns: pnpmPackages(m.text) })
+      else if (base === 'go.mod' || base === 'go.work') {
         const directives = parseGoFile(m.text)
-        if (base === 'go.work') works.push({ m, directives })
+        if (ignored) { /* not a module of this repository */ }
+        else if (base === 'go.work') works.push({ m, directives })
         else {
           const decl = directives.find((d) => d.keyword === 'module' && d.args[0])
           const entry: { m: Manifest; directives: Directive[]; project?: Project } = { m, directives }
@@ -170,9 +192,9 @@ function compute(): { symbols: Fact[]; relationships: Fact[] } {
         const root = parseJson(m.text)
         if (base === 'package.json') {
           const name = member(root, 'name')
-          if (name?.value.kind === 'string' && name.value.value) declare({ eco: 'npm', manifest: m, dir: m.dir, name: name.value.value, range: rangeOf(m, name.start, name.value.end) })
-          npm.set(m.dir, { m, root })
-        } else tsconfigs.push({ m, root })
+          if (!ignored && name?.value.kind === 'string' && name.value.value) declare({ eco: 'npm', manifest: m, dir: m.dir, name: name.value.value, range: rangeOf(m, name.start, name.value.end) })
+          if (!ignored) npm.set(m.dir, { m, root })
+        } else if (!ignored) tsconfigs.push({ m, root })
       }
       results.set(file, { status: 'ok' })
     } catch (e) { fail(file, e, m, base.startsWith('go.') ? `invalid_${base.replace('.', '_')}` : 'invalid_json') }
@@ -200,15 +222,16 @@ function compute(): { symbols: Fact[]; relationships: Fact[] } {
     return dependsOn(source, site, manifest, hit && hit !== source ? [hit] : [], { name, path: written })
   }
 
-  // npm: a workspace member is a named package.json under a pattern of a root's `workspaces`, minus its `!` patterns.
+  // npm: a workspace member is a named package.json under a pattern of a root's `workspaces` or a pnpm-workspace.yaml's `packages`, minus its `!` patterns.
   const members = new Set<Project>()
-  for (const [dir, { root }] of npm) {
-    const ws = member(root, 'workspaces')?.value
-    const patterns = ws?.kind === 'array' ? strings(ws) : strings(member(ws, 'packages')?.value)
+  const lists = [...[...npm].map(([dir, { root }]) => { const ws = member(root, 'workspaces')?.value; return { dir, patterns: ws?.kind === 'array' ? strings(ws) : strings(member(ws, 'packages')?.value) } }), ...pnpm]
+  for (const { dir, patterns } of lists) {
     const globs = (negated: boolean) => patterns.filter((g) => g.startsWith('!') === negated).map((g) => globRegex(path.posix.join(dir || '.', negated ? g.slice(1) : g)))
     const positive = globs(false), no = globs(true)
     for (const p of projects) if (p.eco === 'npm' && p.dir !== dir && positive.some((r) => r.test(p.dir)) && !no.some((r) => r.test(p.dir))) members.add(p)
   }
+  // Without any workspace list a `workspace:` dependency can only mean a named package of the repository.
+  const noList = !lists.some((l) => l.patterns.length)
   for (const p of projects.filter((x) => x.eco === 'npm')) {
     const { m, root } = npm.get(p.dir)!
     for (const section of ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies']) {
@@ -216,8 +239,15 @@ function compute(): { symbols: Fact[]; relationships: Fact[] } {
       for (const dep of deps?.kind === 'object' ? deps.members! : []) {
         if (dep.value.kind !== 'string') continue
         const site = rangeOf(m, dep.start, dep.value.end), spec = dep.value.value!
-        if (/^(file|link):/.test(spec)) { relationships.push(pathDependency(p, site, m, dep.key, spec.replace(/^(file|link):/, ''), p.dir, 'npm')); continue }
-        const named = [...members].filter((x) => x.name === dep.key)
+        if (/^(file|link):/.test(spec)) {
+          // A directory that is a project is a dependency on it; a tarball or a directory that is not one is a package, and a path outside the repository is missing.
+          const written = spec.replace(/^(file|link):/, ''), target = resolveFrom(p.dir, written)
+          if (!outside(target) && !exactAt(target, 'npm')) relationships.push(external(p, site, m, 'npm', dep.key, spec))
+          else relationships.push(pathDependency(p, site, m, dep.key, written, p.dir, 'npm'))
+          continue
+        }
+        const pool = noList && spec.startsWith('workspace:') ? projects.filter((x) => x.eco === 'npm') : [...members]
+        const named = pool.filter((x) => x.name === dep.key)
         if (named.length || spec.startsWith('workspace:')) relationships.push(dependsOn(p, site, m, named.filter((x) => x !== p), { name: dep.key }))
         else relationships.push(external(p, site, m, 'npm', dep.key, spec))
       }
@@ -232,7 +262,8 @@ function compute(): { symbols: Fact[]; relationships: Fact[] } {
       const written = member(ref, 'path')?.value
       if (written?.kind !== 'string') continue
       const target = resolveFrom(m.dir, written.value!.endsWith('.json') ? path.posix.dirname(written.value!) : written.value!)
-      const hit = outside(target) ? undefined : projectAt(target)
+      // The referenced directory's own project: one whose package.json names nothing leaves the edge unresolved, not attributed to an enclosing project.
+      const hit = outside(target) ? undefined : exactAt(target)
       if (hit === source) continue
       relationships.push(dependsOn(source, rangeOf(m, ref.start, ref.end), m, hit ? [hit] : [], { path: written.value! }))
     }

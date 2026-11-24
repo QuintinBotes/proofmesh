@@ -687,7 +687,8 @@
       "packages/proofmesh/test/build-graph.test.ts"
     ],
     "FR125": [
-      "packages/proofmesh/test/build-graph.test.ts"
+      "packages/proofmesh/test/build-graph.test.ts",
+      "packages/proofmesh/test/impact-completeness.test.ts"
     ],
     "FR126": [
       "packages/proofmesh/test/build-graph.test.ts"
