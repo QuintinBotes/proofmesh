@@ -20,7 +20,9 @@ const now = () => new Date().toISOString()
 export const CATALOG_MIGRATIONS = fs.readdirSync(path.join(schemasDir(), 'catalog')).map((f) => /^(\d{4})\.sql$/.exec(f)?.[1]).filter((v): v is string => !!v).map(Number).sort((a, b) => a - b)
 export const CATALOG_VERSION = CATALOG_MIGRATIONS[CATALOG_MIGRATIONS.length - 1]!
 /** A SCIP index a person named (A24): the hash of the index file, and of each file it covers as the tree stood then (A27). */
-export type ScipIndexRecord = { name: string; path: string; sha256: string; tool: string; files: Record<string, { hash: string; language: string }>; added_by: string; added_at: string }
+/** How an index came to be when Proofmesh ran the indexer itself (A38): what ran, under which grant, and how isolated. */
+export type ScipRun = { indexer: string; version: string; digest: string; grant_id: string; isolation: 'container' | 'process'; module_cache: string }
+export type ScipIndexRecord = { name: string; path: string; sha256: string; tool: string; files: Record<string, { hash: string; language: string }>; added_by: string; added_at: string; run: ScipRun | null }
 export type LinkFileRecord = { id: string; workspace: string; digest: string; members: Array<{ repository_id: string; snapshot_id: string }>; sealed_at: string }
 export type Observation = { source: string; window_from: string; window_to: string; subject_kind: 'endpoint' | 'table' | 'channel'; subject_name: string; metric: string; value: number; imported_by: string; imported_at: string }
 export type PropertyRead = { source: string; window_from: string; window_to: string; endpoint: string; entity: string; property: string; reads: number; read_kind: 'orm' | 'application'; declaring_type: string | null; calls: number | null; callers: string | null; imported_by: string; imported_at: string }
@@ -204,6 +206,11 @@ export class Catalog {
 
   revokeTrust(repositoryId: string): number {
     return this.db.prepare('update trust_grant set revoked_at = ? where repository_id = ? and revoked_at is null').run(now(), repositoryId).changes
+  }
+
+  /** A grant by id, revoked or not: an index a run produced under it is trusted only while the grant is not revoked (A38). */
+  trustGrant(id: string): TrustGrant | undefined {
+    return this.db.prepare('select * from trust_grant where id = ?').get(id) as TrustGrant | undefined
   }
 
   activeTrust(repositoryId: string): TrustGrant | undefined {
@@ -403,10 +410,10 @@ export class Catalog {
   }
 
   /** Naming a SCIP index for a repository; only the CLI calls this, for a person. Naming it again replaces it. */
-  addScip(repositoryId: string, s: Omit<ScipIndexRecord, 'added_by' | 'added_at'>, addedBy: string): ScipIndexRecord {
-    this.db.prepare(`insert into scip_index (repository_id, name, path, sha256, tool, files, added_by, added_at) values (?, ?, ?, ?, ?, ?, ?, ?)
-      on conflict(repository_id, name) do update set path = excluded.path, sha256 = excluded.sha256, tool = excluded.tool, files = excluded.files, added_by = excluded.added_by, added_at = excluded.added_at`)
-      .run(repositoryId, s.name, s.path, s.sha256, s.tool, JSON.stringify(s.files), addedBy, now())
+  addScip(repositoryId: string, s: Omit<ScipIndexRecord, 'added_by' | 'added_at' | 'run'> & { run?: ScipRun }, addedBy: string): ScipIndexRecord {
+    this.db.prepare(`insert into scip_index (repository_id, name, path, sha256, tool, files, added_by, added_at, run) values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      on conflict(repository_id, name) do update set path = excluded.path, sha256 = excluded.sha256, tool = excluded.tool, files = excluded.files, added_by = excluded.added_by, added_at = excluded.added_at, run = excluded.run`)
+      .run(repositoryId, s.name, s.path, s.sha256, s.tool, JSON.stringify(s.files), addedBy, now(), s.run ? JSON.stringify(s.run) : null)
     return this.scipIndexes(repositoryId).find((x) => x.name === s.name)!
   }
 
@@ -416,7 +423,7 @@ export class Catalog {
 
   scipIndexes(repositoryId: string): ScipIndexRecord[] {
     return (this.db.prepare('select * from scip_index where repository_id = ? order by name').all(repositoryId) as Array<Record<string, string>>).map((r) => ({
-      name: r.name!, path: r.path!, sha256: r.sha256!, tool: r.tool!, files: JSON.parse(r.files!), added_by: r.added_by!, added_at: r.added_at!,
+      name: r.name!, path: r.path!, sha256: r.sha256!, tool: r.tool!, files: JSON.parse(r.files!), added_by: r.added_by!, added_at: r.added_at!, run: r.run ? JSON.parse(r.run) : null,
     }))
   }
 

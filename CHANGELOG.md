@@ -4,6 +4,12 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 ## Unreleased
 
+Pinned SCIP indexers for a trusted repository (closes #23, option B; amends A24 as A38; FR224 to FR227):
+
+- `proofmesh scip run <repository> [--language L]` refuses with `TRUST_REQUIRED` without a build-evaluation grant (printing the grant command and the indexer command to run by hand) and starts nothing. With the grant it runs scip-go, scip-java or rust-analyzer (build scripts and procedural macros off), whose executable must have the pinned digest, in a disposable copy of the current snapshot: no shell, an allowlisted environment, a private HOME, dependencies from a declared module cache only, SIGKILL on a time or memory limit, capped output, `--container` for `--network none`. Partial output is discarded, never named. No MCP or HTTP tool can start a run.
+- The index records the indexer, version, digest and grant (catalog migration 0019); its facts carry `trusted_build` and its identity is part of snapshot identity. `proofmesh repo untrust` stops it being read: files return to their usual tier with unchanged keys and the census names `scip_revoked:<index>:<grant>`.
+- Not done: the indexer table ships no sha256 for any platform, so a run needs the installed build pinned in `<data dir>/indexers.json` until a maintainer records the vendors' digests; the table's versions are to be confirmed. The container run is covered by its argv only (no Docker in the test), and the module cache is declared by offline settings per indexer, not enforced without `--container`.
+
 Syntax-tier structure, Kotlin, Rust, PHP and Ruby (#59, part 1):
 
 - The syntax tier records each Kotlin `import`, Rust `use` (a grouped one with `detail.names`, also inside a function body) and `mod x;`, PHP `use` clause and Ruby `require` or `require_relative` of a string as an unresolved `imports` row, and each Kotlin supertype, Rust `impl Trait for Type` and trait bound, PHP `extends` and `implements`, and Ruby superclass and `include` as an unresolved `inherits` or `implements` row from the declaring type (FR221 to FR223). The Rosetta gaps for these languages now state that the rows exist and have no target. Swift, Scala, C, C++ and Bash follow in part 2.

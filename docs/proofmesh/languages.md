@@ -144,7 +144,7 @@ The build adapter reads `pom.xml`, `settings.gradle(.kts)`, `build.gradle(.kts)`
 
 ## SCIP indexes a person produces
 
-A person who runs a SCIP indexer can name its output: `proofmesh scip add <repository> <index.scip>`. Proofmesh reads the file and never runs an indexer (A24).
+A person who runs a SCIP indexer can name its output: `proofmesh scip add <repository> <index.scip>`. Proofmesh reads the file and, for a repository that is not trusted for build evaluation, never runs an indexer (A24).
 
 - An index covers only files no semantic adapter analyses, so it upgrades the syntax tier and languages with no adapter (A27).
 - Symbols: each definition, with its kind and signature as the indexer recorded them, named by its SCIP descriptors. A definition's span is the indexer's enclosing range; when the index records none, it is the syntax tier's span of the declaration that holds the name, so a line inside the body has an enclosing symbol (FR121).
@@ -154,6 +154,15 @@ A person who runs a SCIP indexer can name its output: `proofmesh scip add <repos
 - Imports (FR163): each import statement the syntax tier reads is resolved through the index's occurrence of the package or type it names, to the file that holds the package's lowest-path definition, or to `<ecosystem>:<package>` (Go's standard library is `go:std`); a statement with no occurrence is `unresolved`, and the file's `imports` is `partial`. The occurrences inside the statement stay `references` rows. Where the syntax tier lacks the language, or cannot be reached, `resolved_calls` and `imports` are `unsupported`; the files of a batch it does not answer in time are `partial` (FR170).
 - Memory (FR164): the index is read a document at a time and only each routed document's definitions stay in memory, so memory grows with the number of definitions, not the size of the index. `proofmesh scip add` reads it the same way. The metadata must come before the documents, as every indexer writes it. A length that no file could hold is refused before a buffer is made, and a document read again after the index file changed is refused.
 - Staleness: Proofmesh records each covered file's content when the index is named. A file edited after that, or every file of an index whose own file changed, goes back to its usual adapter, and its disposition says `scip_stale:<name>` until the person produces the index again and names it again.
+
+### Running a pinned indexer (A38)
+
+For a repository trusted with `proofmesh repo trust <repository> --build-evaluation`, `proofmesh scip run <repository> [--language L] [--container IMAGE@sha256:...] [--module-cache DIR] [--timeout S] [--max-memory MB]` runs the indexer for the language (scip-go for Go, scip-java for Java, Kotlin and Scala, rust-analyzer for Rust with build scripts and procedural macros off) and names the result. Without the grant it refuses with `TRUST_REQUIRED`, prints the grant command and the indexer command you could run yourself, and runs nothing; no MCP tool can start a run.
+
+- The indexer must be installed (Proofmesh never downloads one; a missing one fails with the install command) and its executable must have the digest pinned for it. The indexer table ships the versions; a platform with no shipped digest runs once you pin the build you installed in `<data dir>/indexers.json`: `{"scip-go": {"version": "v0.1.26", "sha256": "<hex>"}}`. The failure message prints the digest of what it found.
+- It runs on a disposable copy of the current snapshot, so the working tree is untouched, with no shell, an allowlisted environment (`PATH`, a private `HOME`, the indexer's offline settings), dependencies read only from the module cache (default `<data dir>/module-cache`), a time limit (`--timeout`, default 1800 s) and a memory limit (`--max-memory`, default 4096 MB) that stop it with SIGKILL, and its output capped. A stopped or failed run's partial output is discarded and never named.
+- Without `--container` the run is a plain process: network and filesystem policy are not enforced, and the command says so. With `--container` (an image pinned by digest that holds the indexer) it runs with `--network none` and the cache read-only.
+- The index records the indexer, version, digest, grant and isolation (`proofmesh scip list`). Facts from it carry analysis mode `trusted_build`, shown as for any build evaluation. After `proofmesh repo untrust`, the index is not read: its files return to their usual tier with unchanged keys, and the census gives `scip_revoked:<index>:<grant>` as the reason.
 
 ## Test recognition (FR191 to FR200)
 
@@ -210,7 +219,7 @@ A tier gives a row, or states under `not_at_tier` why it cannot; a row neither g
 - A file whose language only its shebang or content gives is routed to that language when the syntax tier reads it, so an extensionless bash script is Shell and its functions are symbols. A script in a language a semantic adapter reads, such as Python, still waits for its extension.
 - `tier` is the tier that read most of the row's files: `precise:<adapter>`, `scip:<index>`, `syntax` or `none`, and `tiers` lists each with its file count. Each indexed source file records its tier as the `tier` key of its capabilities. Files left out by rule are counted under `excluded`, by rule, and are in no tier.
 - `capabilities` counts the row's files at each level (`complete`, `partial`, `unsupported`, `failed`, `not_run`) for `symbols`, `imports`, `references` and `resolved_calls`; each capability's counts sum to `files`.
-- `reason` says why the row's weakest files stop where they do (`no_precise_tier`, `no_grammar`, `not_code`, `adapter_unavailable:<id>`, `scip_stale:<index>`, `unknown_language`, `binary`, `excluded`), and `remedy` is advice from the table below. The census runs nothing and installs nothing; a SCIP indexer runs only in a repository you trust.
+- `reason` says why the row's weakest files stop where they do (`no_precise_tier`, `no_grammar`, `not_code`, `adapter_unavailable:<id>`, `scip_stale:<index>`, `scip_revoked:<index>:<grant>`, `unknown_language`, `binary`, `excluded`), and `remedy` is advice from the table below. The census runs nothing and installs nothing; a SCIP indexer runs only in a repository you trust.
 
 ### Remedies
 
