@@ -66,11 +66,7 @@
             { "role": "circleArea", "row": "Rosetta.Shapes.Totals.CircleArea Shapes.cs:31 depth=1 calls" },
             { "role": "total", "row": "Rosetta.Shapes.Totals.Total Shapes.cs:27 depth=1 calls" },
             { "role": "report", "row": "Rosetta.Reports.Report.Make Report.cs:7 depth=2 calls" },
-            { "role": "totalOfTwo", "row": "Rosetta.Tests.ShapesTests.TotalOfTwo ShapesTests.cs:9 depth=2 calls" },
-            {
-              "row": "Rosetta.Shapes.Square.Area Shapes.cs:19 depth=1 implements",
-              "known_defect": "known defect: analyze_impact lists a sibling implementation of the same interface member as a dependent of Circle.Area"
-            }
+            { "role": "totalOfTwo", "row": "Rosetta.Tests.ShapesTests.TotalOfTwo ShapesTests.cs:9 depth=2 calls" }
           ]
         },
         "find_tests": {

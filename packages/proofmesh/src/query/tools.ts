@@ -1100,7 +1100,8 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     const outFilter = hideExternal ? " and not (resolution = 'resolved_external' and type = 'calls')" : ''
     const tp = types.map(() => '?').join(','), rp = resolutions.map(() => '?').join(',')
     // With include_tests false, a row whose other side lives in test code is left out in SQL, so paging stays a slice of one order.
-    const notTest = (side: string) => input.include_tests === false ? ` and coalesce((select pm_is_test(f.path, ${rolesSql(ctx.db)}) from symbol s join file f on f.id = s.file_id where s.id = ${side}), 0) = 0` : ''
+    // An importer's source is the file itself, so a file id is looked up as well as a symbol id.
+    const notTest = (side: string) => input.include_tests === false ? ` and coalesce((select pm_is_test(f.path, ${rolesSql(ctx.db)}) from symbol s join file f on f.id = s.file_id where s.id = ${side}), (select pm_is_test(f.path) from file f where f.id = ${side}), 0) = 0` : ''
     type A = { id: string; type: string; origin: string; resolution: string; source_kind: string; source_id: string; target_kind: string | null; target_id: string | null; reason: string | null; detail: string | null }
     const all: Array<A & { direction: 'in' | 'out' }> = []
     // Outgoing then incoming, each by assertion ID: fetching offset + cap of each keeps every page a slice of one total order.

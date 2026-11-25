@@ -4,6 +4,11 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 ## Unreleased
 
+Test importers and sibling implementations (closes #67, #68):
+
+- `get_relationships` with `include_tests` false now leaves out an importer row whose source is a test file; the filter looked up a symbol, and an importer's source is the file (FR221).
+- `analyze_impact` on one implementation of an interface or base member no longer lists a sibling implementation as a dependent; callers of the member and dispatch callers are still reached (FR222). The four Rosetta known-defect rows these fixed (TypeScript imports and impact, Python imports, C# impact) are now plain expected rows.
+
 Rosetta suite (closes #20, SC-1 for the ten languages at the tiers they have; SC-2 is a rule for later slices):
 
 - `fixtures/rosetta/` holds one small program in each of ten languages (TypeScript, Python, C#, Go, Java, Rust, PHP, Ruby, Kotlin, C++), a hand-written `expected.json` per language and tier, and a `contract.json` of the eight calls. `packages/proofmesh/test/rosetta.test.ts` asks every language the same calls and compares the lean rows with the tier that analysed it (FR211 to FR216, FR219).
