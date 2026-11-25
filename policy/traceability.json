@@ -859,6 +859,36 @@
     ],
     "FR180": [
       "packages/proofmesh/test/constrained.test.ts"
+    ],
+    "FR181": [
+      "packages/proofmesh/test/basis.test.ts"
+    ],
+    "FR182": [
+      "packages/proofmesh/test/basis.test.ts"
+    ],
+    "FR183": [
+      "packages/proofmesh/test/basis.test.ts"
+    ],
+    "FR184": [
+      "packages/proofmesh/test/basis.test.ts"
+    ],
+    "FR185": [
+      "packages/proofmesh/test/basis.test.ts"
+    ],
+    "FR186": [
+      "packages/proofmesh/test/basis.test.ts"
+    ],
+    "FR187": [
+      "packages/proofmesh/test/basis.test.ts"
+    ],
+    "FR188": [
+      "packages/proofmesh/test/basis.test.ts"
+    ],
+    "FR189": [
+      "packages/proofmesh/test/basis.test.ts"
+    ],
+    "FR190": [
+      "packages/proofmesh/test/basis.test.ts"
     ]
   },
   "manual": {

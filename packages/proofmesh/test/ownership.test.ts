@@ -47,7 +47,7 @@ describe('FR016 a symbol inherits the owners recorded on its file module', () =>
     const { dataDir } = await indexedDataDir(fixtureRepo('ownership'))
     const env = tool(dataDir, 'get_relationships', { subject_id: symbolId(dataDir, 'src/api/b:b'), types: ['owned_by'] })
     expect((env.data.relationships as any[]).map((r) => [r.direction, r.type, r.other.name])).toEqual([['out', 'owned_by', '@acme/api']])
-    expect(env.data.totals).toEqual({ in: 0, out: 1 })
+    expect(env.data.totals).toEqual({ in: 0, out: 1, by_basis: { observed: 1, inferred: 0 } })
     expect(env.limitations).toContain('Ownership is recorded on the file module; the owned_by rows are the owners of this symbol\'s file.')
   })
 })

@@ -22,11 +22,11 @@ export type Model = {
 /** The rows' own words, kept, plus what this pass adds. */
 const withDetail = (rel: Rel, extra: Record<string, string>): Rel['detail'] => ({ ...(rel.detail ?? {}), ...extra })
 
-/** The row, bound to its targets: one is a candidate, several are ambiguous with the first CAP of them. The rule and the basis are on the row (FR171). */
-export function bind(rel: Rel, targets: Sym[], rule: string, how: { ambiguous?: boolean; inferred?: string } = {}): Rel {
+/** The row, bound to its targets: one is a candidate, several are ambiguous with the first CAP of them. The rule is on the row, and the row reads as inferred through its resolution (FR171, FR188). */
+export function bind(rel: Rel, targets: Sym[], rule: string, how: { ambiguous?: boolean } = {}): Rel {
   const seen = [...new Map(targets.map((t) => [t.local_id, t])).values()]
   const { reason: _reason, ...rest } = rel
-  const detail = withDetail(rel, { rule, inferred: how.inferred ?? 'name_match', ...(seen.length > CAP ? { more: String(seen.length - CAP) } : {}) })
+  const detail = withDetail(rel, { rule, ...(seen.length > CAP ? { more: String(seen.length - CAP) } : {}) })
   return { ...rest, resolution: seen.length === 1 && !how.ambiguous ? 'candidate' : 'ambiguous', candidates: seen.slice(0, CAP).map((t) => t.local_id), detail }
 }
 
