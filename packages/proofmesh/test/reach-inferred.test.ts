@@ -15,7 +15,8 @@ type Dep = { name: string; qualified_name: string; depth: number; basis: string 
 type Impact = { dependents: Dep[]; totals: { dependents: number; by_basis: { observed: number; inferred: number } } }
 const impact = (d: string, id: string | string[], input: Record<string, unknown> = {}) => tool(d, 'analyze_impact', { subject_ids: Array.isArray(id) ? id : [id], ...input })
 const names = (env: { data: unknown }) => (env.data as Impact).dependents.map((x) => [x.qualified_name, x.depth, x.basis])
-const sha = (e: { data: unknown; limitations: unknown }) => createHash('sha256').update(JSON.stringify({ d: e.data, l: e.limitations })).digest('hex').slice(0, 16)
+// Ids are hashes that depend on where the repository sits, so the digest leaves them out.
+const sha = (e: { data: unknown; limitations: unknown }) => createHash('sha256').update(JSON.stringify({ d: e.data, l: e.limitations }).replace(/\b[a-z]+_[0-9a-f]{16,}\b/g, '<id>')).digest('hex').slice(0, 16)
 const git = (cwd: string, ...args: string[]) => execFileSync('git', ['-c', 'user.name=Test', '-c', 'user.email=test@example.com', '-c', 'commit.gpgsign=false', ...args], { cwd, encoding: 'utf8' }).trim()
 
 let constrained: string
@@ -57,15 +58,15 @@ describe('FR204 FR201 issue 21 scenario 3: an answer for a subject a precise tie
     const { dataDir: a } = await indexedDataDir(fixtureRepo('ts-invoicing'))
     const f = symbolId(a, 'packages/format/src/currency:formatAmount'), h = symbolId(a, 'packages/api/src/handler:handleInvoice')
     for (const [name, input, pinned] of [
-      ['analyze_impact', { subject_ids: [f] }, '17b584e23a1638ff'],
+      ['analyze_impact', { subject_ids: [f] }, 'c8a1ecabfbad4f62'],
       ['find_tests', { subject_ids: [f] }, '14229cabf3e620c9'],
-      ['trace_paths', { source_id: h, target_id: f }, 'df851449e2a9d61f'],
+      ['trace_paths', { source_id: h, target_id: f }, 'b5f3834127f771d9'],
     ] as const) {
       expect(sha(tool(a, name, input))).toBe(pinned)
       expect(sha(tool(a, name, { ...input, include_inferred: false }))).toBe(pinned)
     }
     const { dataDir: m } = await indexedDataDir(fixtureRepo('ts-module'))
-    expect(sha(tool(m, 'analyze_impact', { subject_ids: [symbolId(m, 'src/app:greet')] }))).toBe('b9d877d2e87c553c')
+    expect(sha(tool(m, 'analyze_impact', { subject_ids: [symbolId(m, 'src/app:greet')] }))).toBe('401d5ce28ffbfa2a')
   }, 240000)
 
   it('FR201 auto follows candidate edges only where every subject\'s file was analysed by the syntax tier alone', async () => {
