@@ -24,4 +24,27 @@ describe('FR226 the Python adapter records overrides, so a call through a base c
     const { dataDir } = await indexedRepo({ 'm.py': 'class L:\n    def go(self): ...\n\n\nclass R:\n    def go(self): ...\n    def other(self): ...\n\n\nclass Both(L, R):\n    def go(self): ...\n    def other(self): ...\n' })
     expect(overrides(dataDir)).toEqual(['m:Both.go -> m:L.go resolved semantic_resolver', 'm:Both.go -> m:R.go resolved semantic_resolver', 'm:Both.other -> m:R.other resolved semantic_resolver'])
   }, 240000)
+  it('a generic base (Base[int]) is the class it subscripts, so its methods are overridden', async () => {
+    const { dataDir } = await indexedRepo({ 'm.py': 'from typing import Generic, TypeVar\n\nT = TypeVar("T")\n\n\nclass Base(Generic[T]):\n    def run(self): ...\n\n\nclass Child(Base[int]):\n    def run(self): ...\n' })
+    expect(overrides(dataDir)).toEqual(['m:Child.run -> m:Base.run resolved semantic_resolver'])
+  }, 240000)
+
+  it('a private name is mangled with its class, so it overrides nothing, and a dunder name is not mangled', async () => {
+    const { dataDir } = await indexedRepo({ 'm.py': 'class A:\n    def __hidden(self): ...\n    def __len__(self): ...\n\n\nclass B(A):\n    def __hidden(self): ...\n    def __len__(self): ...\n' })
+    expect(overrides(dataDir)).toEqual(['m:B.__len__ -> m:A.__len__ resolved semantic_resolver'])
+  }, 240000)
+
+  it('a static method and a property are never overridden, however the decorator is spelled or imported', async () => {
+    const { dataDir } = await indexedRepo({
+      'm.py': 'import builtins\nimport functools\nfrom builtins import property as prop, staticmethod as sm\n\n\nclass A:\n    def run(self): ...\n    @builtins.staticmethod\n    def s1(): ...\n    @sm\n    def s2(): ...\n    @functools.cached_property\n    def p1(self): ...\n    @prop\n    def p2(self): ...\n    @builtins.property\n    def p3(self): ...\n\n\nclass B(A):\n    def run(self): ...\n    @builtins.staticmethod\n    def s1(): ...\n    @sm\n    def s2(): ...\n    @functools.cached_property\n    def p1(self): ...\n    @prop\n    def p2(self): ...\n    @builtins.property\n    def p3(self): ...\n',
+    })
+    expect(overrides(dataDir)).toEqual(['m:B.run -> m:A.run resolved semantic_resolver'])
+  }, 240000)
+
+  it('a call through the root reaches an override ten levels down', async () => {
+    const classes = Array.from({ length: 10 }, (_, i) => `class C${i}${i ? `(C${i - 1})` : ''}:\n    def run(self): ...\n`).join('\n\n')
+    const { dataDir } = await indexedRepo({ 'm.py': `${classes}\n\ndef use(c: C0):\n    c.run()\n` })
+    const r = tool(dataDir, 'get_relationships', { subject_id: symbolId(dataDir, 'm:C9.run'), direction: 'in' }).data as { relationships: Rel[] }
+    expect(r.relationships.filter((x) => x.type === 'calls').map((x) => [x.other.qualified_name, x.via?.qualified_name])).toEqual([['m:use', 'm:C0.run']])
+  }, 240000)
 })

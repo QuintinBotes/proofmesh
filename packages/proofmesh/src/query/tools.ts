@@ -492,7 +492,8 @@ const UNRESOLVED_SHOWN = 10
 export function dispatchedFrom(db: Database.Database, subject: string): Map<string, string> {
   const via = new Map<string, string>()
   let frontier = [subject]
-  for (let depth = 0; depth < 8 && frontier.length; depth++) {
+  // No depth cap: the visited set ends a cycle, and an override chain is as deep as the class hierarchy.
+  while (frontier.length) {
     const rows = db.prepare(`select target_id from assertion where source_id in (${frontier.map(() => '?').join(',')}) and type in ('implements', 'overrides') and resolution = 'resolved' and target_kind = 'symbol'`).all(...frontier) as Array<{ target_id: string }>
     frontier = [...new Set(rows.map((r) => r.target_id))].filter((id) => id !== subject && !via.has(id))
     for (const id of frontier) via.set(id, id)
