@@ -8,6 +8,7 @@ import readline from 'node:readline'
 import { Parser, Query, type Node } from 'web-tree-sitter'
 import { byteOffsets, grammarsDir, language, lastLine, manifest, parser, send, toolchain, type Range } from './common.js'
 import { prismaFacts } from './prisma.js'
+import { callFacts } from './scope.js'
 
 const VERSION = '0.1.0'
 const SYNTAX_LANGUAGES = Object.keys(manifest).filter((l) => l !== 'hcl')
@@ -80,7 +81,7 @@ async function analyse(file: string, callees = false) {
   const defs: Array<{ id: string; node: Node; qualified: string }> = []
   // An extension's members are named after the type it extends, which it does not declare.
   const scopes: Array<{ node: Node; qualified: string }> = []
-  const calls: Array<{ name: string; site: Range; node: Node; at: Range }> = []
+  const calls: Array<{ name: string; site: Range; node: Node; at: Range; facts: Record<string, string> }> = []
   const imports: Array<{ node: Node; detail?: Record<string, string> }> = []
   const supertypes: Array<{ type: string; relation?: string; node: Node }> = []
   const tables: Array<{ name: Node; parts: string[] }> = []
@@ -89,13 +90,15 @@ async function analyse(file: string, callees = false) {
     const name = m.captures.find((c) => c.name === 'name')?.node
     const def = m.captures.find((c) => c.name.startsWith('definition.'))
     const role = (r: string) => m.captures.find((c) => c.name === r)?.node
-    const ref = role('reference.call')
+    // A Java `new T()` is a call of T, and the only reference.class the tags query matches on an object creation (a superclass is the other).
+    const created = role('reference.class')?.type === 'object_creation_expression' ? role('reference.class') : undefined
+    const ref = role('reference.call') ?? created
     // An import statement, and a supertype a type names, need no @name: the module and the supertype are their own captures.
     const statement = role('import')
     if (statement) {
       const spec = role('import.module'), alias = role('import.alias')
       // A wildcard import's module runs to its `*`, as written.
-      const detail = spec ? { module: text.slice(spec.startIndex, (role('import.wildcard') ?? spec).endIndex).replace(/^["`](.*)["`]$/s, '$1'), ...(alias ? { alias: alias.text } : {}) } : undefined
+      const detail = spec ? { module: text.slice(spec.startIndex, (role('import.wildcard') ?? spec).endIndex).replace(/^["`](.*)["`]$/s, '$1'), ...(alias ? { alias: alias.text } : {}), ...(lang === 'java' && /^import\s+static\b/.test(statement.text) ? { static: 'true' } : {}) } : undefined
       imports.push({ node: statement, ...(detail ? { detail } : {}) })
       continue
     }
@@ -118,7 +121,9 @@ async function analyse(file: string, callees = false) {
       symbols.push({ local_id: id, path: file, kind, name: parts?.at(-1) ?? name.text, qualified_name: parts?.join('.') ?? '', range: range(def.node), signature: null })
     } else if (ref) {
       const [first, last] = name.startIndex <= ref.startIndex ? [name, ref] : [ref, name]
-      calls.push({ name: name.text, site: range(first, last.endIndex >= first.endIndex ? last : first), node: ref, at: range(name) })
+      // A Java call's arguments are the capture; the invocation is their parent.
+      const call = lang === 'java' && ref.type === 'argument_list' ? ref.parent! : ref
+      calls.push({ name: name.text, site: range(first, last.endIndex >= first.endIndex ? last : first), node: ref, at: range(name), facts: callFacts(lang, call, name) })
     } else if (role('reference.table')) {
       const parts = dbName(name)
       if (parts) tables.push({ name, parts })
@@ -153,7 +158,7 @@ async function analyse(file: string, callees = false) {
     if (rest.length > 1) for (const n of rest) n.s.qualified_name = `${n.s.qualified_name}(${n.types})`
   }
   const enclosing = (n: Node) => defs.filter((d) => within(n, d.node) || d.node === n).sort((a, b) => b.node.startIndex - a.node.startIndex)[0]?.id ?? moduleId
-  const relationships: Array<Record<string, unknown>> = calls.map((c) => ({ type: 'calls', origin: 'syntax', source: { symbol: enclosing(c.node) }, site: { path: file, range: c.site }, resolution: 'unresolved', reason: 'outside_capability', detail: { callee: c.name, ...(callees ? { callee_start: String(c.at.start_byte), callee_end: String(c.at.end_byte) } : {}) } }))
+  const relationships: Array<Record<string, unknown>> = calls.map((c) => ({ type: 'calls', origin: 'syntax', source: { symbol: enclosing(c.node) }, site: { path: file, range: c.site }, resolution: 'unresolved', reason: 'outside_capability', detail: { callee: c.name, ...c.facts, ...(callees ? { callee_start: String(c.at.start_byte), callee_end: String(c.at.end_byte) } : {}) } }))
   for (const i of imports) relationships.push({ type: 'imports', origin: 'syntax', source: { file }, site: { path: file, range: range(i.node) }, resolution: 'unresolved', reason: 'outside_capability', ...(i.detail ? { detail: i.detail } : {}) })
   // A supertype is named, never resolved (FR117): the constrained-resolution slice binds it.
   for (const h of supertypes) relationships.push({ type: h.type, origin: 'syntax', source: { symbol: enclosing(h.node) }, site: { path: file, range: range(h.node) }, resolution: 'unresolved', reason: 'outside_capability', detail: { name: h.node.text, ...(h.relation ? { relation: h.relation } : {}) } })

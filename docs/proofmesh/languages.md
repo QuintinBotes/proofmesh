@@ -62,9 +62,9 @@ Static HCL through Tree-sitter. Proofmesh never runs `terraform init`, so remote
 Tree-sitter grammars on WebAssembly (A6, A23) for Java, Go, Rust, Ruby, PHP, C, C++, Bash, Scala, Kotlin, Swift and SQL, and for Prisma schemas.
 
 - Symbols: the declarations each grammar's tags query finds.
-- Calls: every call site, unresolved with `outside_capability`, with the callee's name as detail. The syntax tier never claims a call target.
-- Imports (FR115): one `imports` row per import statement, from the file, with the module as written in `detail.module` (a Java wildcard ends in `.*`, a Go alias is `detail.alias`). Each is unresolved with `outside_capability` (FR117), so a file in Go or Java reports its imports as partial, with or without an import statement, and nothing reports them complete. A Java static import, and a Go dot or blank import, is recorded like any other, not told apart.
-- Heritage (FR116): a Java class `inherits` the class it extends and `implements` each interface it names, as do a Java enum and record; a Go struct `inherits` each type it embeds, with `detail.relation` `embedding`. Each row runs from the declaring type, at the supertype's name, with that name in `detail.name`, and is unresolved with `outside_capability` (FR117). A Java interface's `extends` and a Go interface's embedded interfaces are not recorded yet.
+- Calls: every call site, with the callee's name as detail, unresolved with `outside_capability` unless constrained name matching binds it (below). The syntax tier never claims a call target as `resolved`. A Java `new T()` is a call of `T`. In Go and Java the detail also holds `qualifier` (the identifiers written before the name), `receiver` `expression` (when the operand is not a plain name), `shadowed` `local` (when a variable, parameter or field of that name is in scope) and `form` `new`.
+- Imports (FR115): one `imports` row per import statement, from the file, with the module as written in `detail.module` (a Java wildcard ends in `.*`, a Go alias is `detail.alias`). Each is unresolved with `outside_capability` (FR117) unless constrained name matching binds it (below), so a file in Go or Java reports its imports as partial, with or without an import statement, and nothing reports them complete. A Java static import carries `detail.static` `true`, and a Go dot or blank import has `detail.alias` `.` or `_`.
+- Heritage (FR116): a Java class `inherits` the class it extends and `implements` each interface it names, as do a Java enum and record; a Go struct `inherits` each type it embeds, with `detail.relation` `embedding`. Each row runs from the declaring type, at the supertype's name, with that name in `detail.name`, and is unresolved with `outside_capability` (FR117) unless constrained name matching binds it (below). A Java interface's `extends` and a Go interface's embedded interfaces are not recorded yet.
 
 - Names (FR146): every symbol's qualified name is the one the SCIP importer also gives it. Java, Kotlin, Scala and PHP start from the declared package or namespace (Scala's nested and chained packages and PHP's several namespaces are each declaration's own); every other language starts from the file path. A Go method is named under its receiver type, a Rust method under its `impl` type and, in a trait impl, the trait (`X.<Display>.fmt`), and a C++ member defined outside its class under that class. Overloads of one name in a file take their parameter types, as written. Limitation: a C or C++ prototype is merged into its definition only inside one file, so a prototype in a header and its definition in a `.c` file stay two symbols, one per file.
 
@@ -83,6 +83,32 @@ What the tier records per language (FR118):
 - Swift: classes and actors, structs, enums, protocols, functions, methods and properties; members of an `extension X` are named `X.member`. Imports are unresolved import statements. Initializers, subscripts, enum cases and top-level `let` and `var` are not symbols.
 - SQL: `CREATE TABLE`, `VIEW` and `MATERIALIZED VIEW` are `table` symbols named by their schema-qualified name, and functions and procedures are functions. A table named in FROM, JOIN, UPDATE, INSERT INTO, DELETE FROM or a `REFERENCES` clause is a `references` candidate when the same file declares it, and unresolved otherwise. T-SQL bracket identifiers do not parse, so such names are skipped and the file reports partial.
 - Prisma (A9): each model and view is a class that `maps_to` a `table` symbol: the name `@@map` gives (rule `prisma_map`) or else the model's own (rule `prisma_convention`, marked `inferred`), qualified by `@@schema`. A field whose type is a model in the same file is a resolved `references`; a relation to a model another file declares is unresolved. Prisma Client calls in TypeScript reach these tables (see the TypeScript section).
+
+## The syntax tier: constrained name matching in Go and Java
+
+The syntax tier never knows a call's target, so for Go and Java a pass over the whole workspace binds a name only where the language's own rules allow it (FR171 to FR180). It reads facts the other adapters recorded, the build graph (which module holds each file, which modules each declares a dependency on), each file's package and imports, and the modifier on each declaration, and it runs on every index, so an incremental index equals a clean one. A name match is never `resolved`: one reachable target is a `candidate`, several are `ambiguous`, and every such row says `detail.inferred` `name_match` and names its rule in `detail.rule`, so no edge is made of it and a reader can tell it from a compiler's answer. A row no rule can judge keeps the row the tier wrote.
+
+- Modules (FR172): no row binds to a module the source's module has no `depends_on` to. A name only such a module holds is `unresolved` with `dependency_missing` and `detail.undeclared` naming the project. Files that no build manifest contains see each other.
+- Cap (FR176): a site lists at most five candidates, ranked by rule (same file, import, same package, wildcard), then path and position; with more it is `ambiguous`, lists the first five and gives the rest as `detail.more`.
+- Kinds (FR175): `new T()` binds only types and a method call only methods.
+
+| rule | what it binds |
+|---|---|
+| `go_package_member` | `pkg.Name(...)` to the exported function `Name` of the package the import names; an embedded `pkg.T` to its exported type. An unexported or missing name is `unresolved` `unknown_name` with `detail.visibility` |
+| `go_same_package` | a bare call to a function of the same package (the same directory and package clause; a test file's own declarations stay in test files), an embedded `T` to a type of it |
+| `go_dot_import` | a bare call to an exported function of a dot-imported package; a blank import binds nothing |
+| `go_method_name` | `x.M(...)` on a receiver of unknown type to the methods named `M` of the current package and the exported ones of the imported packages. A variable that hides the name or the package is `detail.shadowed` `local` |
+| `go_import_path` | an import whose path lies in a module of the repository the importer declares a dependency on is `resolved` to the lowest-path non-test file of the package; no name is matched, so it is not `inferred` (FR177) |
+| `java_same_file`, `java_import`, `java_same_package`, `java_wildcard_import` | a simple type name, in that order; a single-type import hides a same-package type of the name. They bind `extends` (a class), `implements` (an interface), `new T()` and the type of `T.m()`; a Java import by name is a `candidate` with `java_import` |
+| `java_same_class` | `m()` and `this.m()` to the innermost enclosing type that has the method, its own or inherited |
+| `java_inherited` | `super.m()`, and `T.m()` where `T` only inherits the method |
+| `java_static_import` | a bare `m()` or an `import static` to a static method of the imported type |
+| `java_qualified_name` | a fully qualified type name |
+| `java_visible_method` | `x.m()` on a receiver of unknown type, or a type name a variable hides, to the methods named `m` of the types the file sees (its own, imported, same package, wildcard) that the site may reach |
+
+Java visibility: `private` within the top-level class, package-private within the package, `protected` in the package or by inheritance, `public` always, and an interface member without `private` is public. A type is reachable when it and every type around it is public or in the file's package. A name the repository does not declare (the JDK's, a library's, a package outside it) keeps `outside_capability`. Kotlin, Rust, PHP, Ruby, C and C++ are not covered yet; their rows stay as the tier wrote them.
+
+`workspace_status` gives `module_cycles` (FR178): each cycle among the build modules of an ecosystem whose builds forbid one (Maven, Gradle, Go modules, Cargo, .NET) that these rows form, with the edges that form it, and a warning in `limitations`. It is empty on a repository whose declared dependencies do not loop.
 
 ## The build graph: JavaScript and Go modules
 

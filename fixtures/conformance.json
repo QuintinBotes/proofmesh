@@ -97,12 +97,14 @@
       "fixtures": [
         "syntax-tier",
         "prisma-schema",
-        "syntax-structure"
+        "syntax-structure",
+        "constrained"
       ],
       "tests": [
         "packages/proofmesh/test/syntax-tier.test.ts",
         "packages/proofmesh/test/prisma.test.ts",
-        "packages/proofmesh/test/syntax-structure.test.ts"
+        "packages/proofmesh/test/syntax-structure.test.ts",
+        "packages/proofmesh/test/constrained.test.ts"
       ]
     },
     "build": {

@@ -204,6 +204,71 @@
         }
       }
     },
+    "module_cycles": {
+      "type": "array",
+      "description": "Cycles among build modules that syntax-tier name matches form, in an ecosystem whose builds forbid them (Maven, Gradle, Go modules, Cargo, .NET); empty when there is none. Each names its modules and the edges that form it, with one site of each.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "ecosystem",
+          "modules",
+          "edges"
+        ],
+        "properties": {
+          "ecosystem": {
+            "type": "string"
+          },
+          "modules": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "edges": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "from",
+                "to",
+                "type",
+                "sites",
+                "path",
+                "line",
+                "assertion_id"
+              ],
+              "properties": {
+                "from": {
+                  "type": "string"
+                },
+                "to": {
+                  "type": "string"
+                },
+                "type": {
+                  "type": "string"
+                },
+                "sites": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "path": {
+                  "type": "string"
+                },
+                "line": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "assertion_id": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "jobs": {
       "type": "array",
       "description": "Index jobs of the repository that are queued or running, from MCP or the CLI, oldest first; poll one with get_job.",

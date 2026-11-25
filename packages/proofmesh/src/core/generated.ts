@@ -2631,6 +2631,22 @@ path: string
 inbound: number
 }[]
 /**
+ * Cycles among build modules that syntax-tier name matches form, in an ecosystem whose builds forbid them (Maven, Gradle, Go modules, Cargo, .NET); empty when there is none. Each names its modules and the edges that form it, with one site of each.
+ */
+module_cycles?: {
+ecosystem: string
+modules: string[]
+edges: {
+from: string
+to: string
+type: string
+sites: number
+path: string
+line: number
+assertion_id: string
+}[]
+}[]
+/**
  * Index jobs of the repository that are queued or running, from MCP or the CLI, oldest first; poll one with get_job.
  */
 jobs?: {

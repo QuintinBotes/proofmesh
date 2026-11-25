@@ -4,6 +4,14 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 ## Unreleased
 
+Constrained name matching in Go and Java (part of #16; Rust, PHP, Ruby, Kotlin, C and C++ stay open):
+
+- The syntax tier binds a call, a supertype name and an import where the language's rules allow it: the file's package and imports, the modules the build graph says the source depends on, and visibility. One reachable target is a `candidate`, several are `ambiguous` (five listed, the rest in `detail.more`), each with `detail.rule` and `detail.inferred` `name_match`; none is `resolved`, so no edge is made of a name match (FR171, FR173 to FR176).
+- A name only a module the source does not depend on holds is `unresolved` with `dependency_missing` and `detail.undeclared`, never a candidate (FR172). A Go import of a package of a module the importer depends on is `resolved` to the package's lowest-path file; a Java import is a `candidate` (FR177).
+- Java `new T()` is now a call row, and Go and Java calls carry `qualifier`, `receiver`, `shadowed` and `form` details; a Java static import carries `static`.
+- `workspace_status` gives `module_cycles`, and a warning, for a cycle among build modules that these rows form where the build forbids one (FR178).
+- Existing expectations that change: a same-package or same-class call in a repository with no build manifest is now a candidate (the `syntax-tier` fixture's Go and Java `helper()` calls), a Go struct embedding a type of its own package is a candidate (the `syntax-structure` fixture's `Shape`), and the snapshot identity gains the version of the rules.
+
 SCIP calls, inheritance and imports (#19):
 
 - The SCIP importer records `calls` by joining the syntax tier's call sites with the index's occurrences at each callee name (`resolved`, or `resolved_external` with the package from the symbol), where it recorded only `references`. A call is no longer also a `references` row; a function passed as a value, and a field or variable that holds one, stay references (FR161, FR167, FR168).

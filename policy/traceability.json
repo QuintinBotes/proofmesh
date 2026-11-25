@@ -829,6 +829,36 @@
     ],
     "FR141": [
       "packages/proofmesh/test/census.test.ts"
+    ],
+    "FR171": [
+      "packages/proofmesh/test/constrained.test.ts"
+    ],
+    "FR172": [
+      "packages/proofmesh/test/constrained.test.ts"
+    ],
+    "FR173": [
+      "packages/proofmesh/test/constrained.test.ts"
+    ],
+    "FR174": [
+      "packages/proofmesh/test/constrained.test.ts"
+    ],
+    "FR175": [
+      "packages/proofmesh/test/constrained.test.ts"
+    ],
+    "FR176": [
+      "packages/proofmesh/test/constrained.test.ts"
+    ],
+    "FR177": [
+      "packages/proofmesh/test/constrained.test.ts"
+    ],
+    "FR178": [
+      "packages/proofmesh/test/constrained.test.ts"
+    ],
+    "FR179": [
+      "packages/proofmesh/test/constrained.test.ts"
+    ],
+    "FR180": [
+      "packages/proofmesh/test/constrained.test.ts"
     ]
   },
   "manual": {

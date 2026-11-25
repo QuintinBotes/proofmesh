@@ -14,6 +14,7 @@ import { externalUsage, type UsageGroup } from './external-usage.js'
 import { findQuerySource, WEIGHED } from './query-source.js'
 import { EvidenceStore } from '../evidence/store.js'
 import { snapshotSummary, UNRESOLVED_REASONS } from './summary.js'
+import type { ModuleCycle } from '../indexer/module-cycles.js'
 import { overview } from './overview.js'
 import { getEcosystem } from './ecosystem.js'
 import { analyzeImpact, IMPACT_TYPES, type Impact } from './impact.js'
@@ -590,6 +591,7 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     // The census is built when the snapshot is (FR136); one sealed before it answers no rows and says so.
     const censusRows = meta.census ? (JSON.parse(meta.census) as Array<{ kind: string; language: string; files: number }>) : []
     const languages = censusRows
+    const cycles = (meta.module_cycles ? JSON.parse(meta.module_cycles) : []) as ModuleCycle[]
     const fileSummary = [...groups.values()].sort((a, b) => b.files - a.files || (a.extension < b.extension ? -1 : 1)).slice(0, 50)
     return {
       data: {
@@ -610,6 +612,7 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
         file_summary: fileSummary,
         languages,
         hubs: snapshotSummary(ctx.db, ctx.snapshot.id).hubs,
+        module_cycles: cycles,
         jobs: ctx.catalog.openJobs(ctx.repo.id),
         calls: { sites: snapshotSummary(ctx.db, ctx.snapshot.id).call_sites, unresolved: snapshotSummary(ctx.db, ctx.snapshot.id).unresolved_calls.count, by_reason: snapshotSummary(ctx.db, ctx.snapshot.id).unresolved_calls.by_reason, dependency_missing_by_package: snapshotSummary(ctx.db, ctx.snapshot.id).unresolved_calls.dependency_missing_by_package },
       },
@@ -617,6 +620,7 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
       shrink: 'files',
       more: all.length > ctx.limits.max_rows,
       limitations: [
+        ...cycles.map((c) => `Warning: build modules ${c.modules.join(', ')} form a cycle through syntax-tier name matches, and ${c.ecosystem} forbids module cycles; the edges are ${c.edges.map((e) => `${e.from} to ${e.to} (${e.type}, ${e.sites} site${e.sites === 1 ? '' : 's'}, first ${e.path}:${e.line})`).join(', ')}.`),
         ...(ask ? [] : ['No file rows were asked for: file_summary groups the files by disposition, reason and extension; pass files to list rows.']),
         ...(!meta.census ? ['This snapshot was sealed before the language census existed, so languages is empty; index again to build it.'] : []),
         ...(meta.census && !censusRows.some((r) => r.kind === 'code' || r.kind === 'template') ? ['No code was recognised in this repository: the rows are data and prose files.'] : []),

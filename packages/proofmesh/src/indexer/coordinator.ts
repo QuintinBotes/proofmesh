@@ -20,6 +20,8 @@ import { assemble, FactCache, fileKeys, splitByFile } from './fact-cache.js'
 import { analysisConfig, checkoutCommit, discover, gitInfo, type Discovered } from './discovery.js'
 import { registryFor, type AdapterSpec, type Registry } from './languages.js'
 import { buildCensus } from './census.js'
+import { constrain, RESOLUTION_VERSION, type Sym } from './constrained/index.js'
+import { moduleCycles } from './module-cycles.js'
 
 export type IndexResult = {
   snapshotId: string
@@ -155,7 +157,7 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
     const adapters = runs.map((r) => ({ ...r.manifest!, analysis_mode: r.mode, external_inputs: r.inputs ?? [], entry_sha256: r.entrySha256! })).sort((a, b) => (a.id < b.id ? -1 : 1))
     const analysisMode: Mode = adapters.some((a) => a.analysis_mode === 'trusted_build') ? 'trusted_build' : 'no_execution'
     const configs = Object.fromEntries(runs.map((r) => [r.spec.id, catalog.adapterConfig(repo.id, r.spec.id)]))
-    const identity = { repository_id: repo.id, manifest_hash: manifest, config_hash: sha256(canonicalJson({ ...analysisConfig(), adapters: configs })), analysis_mode: analysisMode, adapters, format_version: FORMAT_VERSION, format_ddl: sha256(readSql(`snapshot-format/${FORMAT_VERSION}.sql`)), ownership: OWNERSHIP_VERSION }
+    const identity = { repository_id: repo.id, manifest_hash: manifest, config_hash: sha256(canonicalJson({ ...analysisConfig(), adapters: configs })), analysis_mode: analysisMode, adapters, format_version: FORMAT_VERSION, format_ddl: sha256(readSql(`snapshot-format/${FORMAT_VERSION}.sql`)), ownership: OWNERSHIP_VERSION, resolution: RESOLUTION_VERSION }
     const identityJson = canonicalJson(identity)
     const snapshotId = `snap_${sha256(identityJson).slice(0, 24)}`
     const peaks = async () => {
@@ -198,6 +200,9 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
       const fileResults = new Map<string, { status: string; detail?: string; capabilities: Record<string, string> }>()
       const writer = new FactWriter(db, store, snapshotId, fileId, hashOf, configPaths)
       const pending: Array<{ rel: Rel; producer: Producer }> = []
+      // Every symbol the adapters declared, for the pass that binds names (FR171).
+      const declared: Sym[] = []
+      const note = (symbols: AnalyzeResponse['symbols'], p: Producer) => { for (const s of symbols) declared.push({ producer: p.id, local_id: s.local_id, path: s.path, kind: s.kind, name: s.name, qualified_name: s.qualified_name, start: s.range.start_byte, end: s.range.end_byte }) }
       const done = new Set((db.prepare('select adapter, batch from resume_batch').all() as Array<{ adapter: string; batch: number }>).map((r) => `${r.adapter}#${r.batch}`))
       const markDone = db.prepare('insert into resume_batch (adapter, batch) values (?, ?)')
       const batches = { done: 0, total: 0 }
@@ -224,6 +229,7 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
           fs.writeFileSync(wsJournal, JSON.stringify(ws))
           db.transaction(() => { writer.symbols(ws.symbols, producer); markDone.run(run.spec.id, -1) })()
         }
+        note(ws.symbols, producer)
         for (const r of ws.relationships) pending.push({ rel: r, producer })
         for (const fr of ws.file_results) fileResults.set(fr.path, { status: fr.status, ...(fr.detail ? { detail: fr.detail } : {}), capabilities: fr.capabilities as Record<string, string> })
         /** Replays the cached facts of files whose key is unchanged and analyses only the rest, assembled in file order. */
@@ -258,6 +264,7 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
             db.transaction(() => { writer.symbols(response.symbols, producer); markDone.run(run.spec.id, number) })()
             faultPoint('after_batch')
           }
+          note(response.symbols, producer)
           for (const r of response.relationships) pending.push({ rel: r, producer })
           for (const fr of response.file_results) fileResults.set(fr.path, { status: fr.status, ...(fr.detail ? { detail: fr.detail } : {}), capabilities: fr.capabilities as Record<string, string> })
         }
@@ -267,8 +274,10 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
       const moved = unstable(root, captured)
       if (moved.length) throw new ProofmeshError('UNSTABLE_WORKTREE', `${moved.length} file${moved.length === 1 ? '' : 's'} changed while indexing (${moved.slice(0, 3).join(', ')}); index again when the tree is quiet`, { detail: 'changed_during_capture', paths: moved.slice(0, 20) })
       progress({ phase: 'write', done: 0, total: pending.length })
+      // The names the language's rules can bind are bound before anything is written, from the whole workspace's facts (FR171).
+      const bound = constrain(declared, pending, (p) => { const h = hashOf.get(p); return h ? store.read(h) : undefined })
       // Millions of relationships take minutes to write: progress inside the transaction keeps the job and the index lease alive.
-      db.transaction(() => writer.relationships(pending, (done) => progress({ phase: 'write', done, total: pending.length })))()
+      db.transaction(() => writer.relationships(bound, (done) => progress({ phase: 'write', done, total: bound.length })))()
       const ownershipFiles = captured.filter((c) => c.role === 'ownership')
       const ownersFile = effectiveCodeowners(ownershipFiles.map((c) => c.path))
       if (ownersFile) {
@@ -300,6 +309,9 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
       if (unreadable.length) db.prepare("insert into meta (key, value) values ('body_hash_missing', ?)").run(canonicalJson({ count: unreadable.length, paths: unreadable.slice(0, 20) }))
       // A key the core had to disambiguate means an adapter named two declarations alike: recorded, never silent (FR147).
       if (writer.disambiguated.length) db.prepare("insert into meta (key, value) values ('key_disambiguated', ?)").run(canonicalJson({ count: writer.disambiguated.length, truncated: false, keys: writer.disambiguated }))
+      // Build modules a syntax-tier edge ties into a cycle, in an ecosystem whose builds forbid one (FR178).
+      const cycles = moduleCycles(db)
+      if (cycles.length) db.prepare("insert into meta (key, value) values ('module_cycles', ?)").run(canonicalJson(cycles))
       progress({ phase: 'check', done: 0, total: 0 })
       validate(db, store)
       // Planner statistics are part of the sealed file, so queries on large snapshots choose the selective index.
@@ -514,12 +526,12 @@ class FactWriter {
       if (r.resolution === 'resolved_external' && target.kind !== 'external') throw new AdapterProtocolError('resolved_external must target an external symbol')
       if (r.resolution === 'resolved' && target.kind === 'external') throw new AdapterProtocolError('resolved must target a symbol or file in the snapshot')
       if (!resolved && !r.reason && r.resolution === 'unresolved') throw new AdapterProtocolError(`an unresolved ${r.type} relationship must carry a reason`)
-      if (r.type === 'imports') {
+      if (r.type === 'imports' && r.resolution !== 'candidate' && r.resolution !== 'ambiguous') {
         // Statements between the same two files are one assertion (AC05) of the strongest kind among them; an import() is its own (FR092).
         const kind = r.detail?.kind ?? '', group = kind === 'dynamic' ? kind : ''
         const key = `${source.id}\n${group}\n${target.id ?? `unresolved:${r.site.path}:${r.site.range.start_byte}`}`
         // An unresolved statement is its own assertion, so it keeps the adapter's detail: the module it names (FR115).
-        const entry = imports.get(key) ?? { source: source.id, target: target.id, targetKind: target.kind, resolution: r.resolution, reason: r.reason ?? null, group, kind, ...(target.id || !r.detail ? {} : { detail: r.detail }), evidence: [], origin: r.origin, p }
+        const entry = imports.get(key) ?? { source: source.id, target: target.id, targetKind: target.kind, resolution: r.resolution, reason: r.reason ?? null, group, kind, ...(!r.detail || (target.id && !r.detail.rule) ? {} : { detail: r.detail }), evidence: [], origin: r.origin, p }
         if (IMPORT_KINDS.indexOf(kind) < IMPORT_KINDS.indexOf(entry.kind)) entry.kind = kind
         entry.evidence.push(ev)
         imports.set(key, entry)
