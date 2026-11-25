@@ -1,0 +1,13 @@
+{
+  "about": "The eight calls every Rosetta language answers, the rows a complete answer holds (roles, written by hand from the program in each language), and the lean grammar each call may use. N is a name, P is path:line, K a symbol kind, R a relationship type.",
+  "calls": {
+    "find_symbols": { "tool": "find_symbols", "input": { "text": "area" }, "order": "set", "roles": ["Circle.area", "Shape.area", "Square.area", "circleArea"], "grammar": ["N P K"] },
+    "implements": { "tool": "get_relationships", "input": { "subject_id": "$Shape", "direction": "in", "types": ["implements"] }, "order": "set", "roles": ["Circle", "Square"], "grammar": ["N P", "N P candidate inferred"] },
+    "calls_shape_area": { "tool": "get_relationships", "input": { "subject_id": "$Shape.area", "direction": "in", "types": ["calls"] }, "order": "set", "roles": ["total"], "grammar": ["N P", "N P candidate inferred"] },
+    "calls_circle_area": { "tool": "get_relationships", "input": { "subject_id": "$Circle.area", "direction": "in", "types": ["calls"] }, "order": "set", "roles": ["circleArea", "total"], "grammar": ["N P", "N P dispatch", "N P candidate inferred"] },
+    "imports": { "tool": "get_relationships", "input": { "subject_id": "$shapes-file", "direction": "in", "types": ["imports"], "include_tests": false }, "order": "set", "roles": ["report"], "grammar": ["P", "P candidate inferred"] },
+    "impact": { "tool": "analyze_impact", "input": { "subject_ids": ["$Circle.area"], "limits": { "max_depth": 2 } }, "order": "set", "roles": ["circleArea", "total", "report", "totalOfTwo"], "grammar": ["N P depth=n R", "N P depth=n R inferred"] },
+    "find_tests": { "tool": "find_tests", "input": { "subject_ids": ["$total"] }, "order": "set", "roles": ["totalOfTwo"], "grammar": ["N P depth=n", "N P depth=n inferred"] },
+    "trace_paths": { "tool": "trace_paths", "input": { "source_id": "$totalOfTwo", "target_id": "$Shape.area" }, "order": "exact", "roles": ["totalOfTwo", "total", "Shape.area"], "grammar": ["N P", "N P inferred"] }
+  }
+}

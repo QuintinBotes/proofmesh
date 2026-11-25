@@ -1,0 +1,120 @@
+{
+  "language": "java",
+  "census_language": "Java",
+  "tiers": {
+    "syntax": {
+      "subjects": {
+        "$Shape": {
+          "name": "shapes.Shape",
+          "path": "src/main/java/shapes/Shape.java"
+        },
+        "$Shape.area": {
+          "name": "shapes.Shape.area",
+          "path": "src/main/java/shapes/Shape.java"
+        },
+        "$Circle.area": {
+          "name": "shapes.Circle.area",
+          "path": "src/main/java/shapes/Circle.java"
+        },
+        "$shapes-file": {
+          "name": "shapes.Shapes",
+          "path": "src/main/java/shapes/Shapes.java"
+        },
+        "$total": {
+          "name": "shapes.Shapes.total",
+          "path": "src/main/java/shapes/Shapes.java"
+        },
+        "$totalOfTwo": {
+          "name": "shapes.ShapesTest.totalOfTwo",
+          "path": "src/test/java/shapes/ShapesTest.java"
+        }
+      },
+      "calls": {
+        "find_symbols": {
+          "rows": [
+            { "role": "Circle.area", "row": "shapes.Circle.area src/main/java/shapes/Circle.java:10 method" },
+            { "role": "Shape.area", "row": "shapes.Shape.area src/main/java/shapes/Shape.java:4 method" },
+            { "role": "Square.area", "row": "shapes.Square.area src/main/java/shapes/Square.java:10 method" },
+            { "role": "circleArea", "row": "shapes.Shapes.circleArea src/main/java/shapes/Shapes.java:12 method" }
+          ]
+        },
+        "implements": {
+          "rows": [
+            { "role": "Circle", "row": "shapes.Circle src/main/java/shapes/Circle.java:3 candidate inferred" },
+            { "role": "Square", "row": "shapes.Square src/main/java/shapes/Square.java:3 candidate inferred" }
+          ]
+        },
+        "calls_shape_area": {
+          "rows": [],
+          "not_at_tier": [
+            {
+              "role": "total",
+              "reason": "the receiver is a variable or an expression, whose type the syntax tier does not know, so the call binds to nothing"
+            }
+          ]
+        },
+        "calls_circle_area": {
+          "rows": [],
+          "not_at_tier": [
+            {
+              "role": "circleArea",
+              "reason": "the receiver is a `new Circle(1)` expression, whose type the syntax tier does not know"
+            },
+            {
+              "role": "total",
+              "reason": "the receiver is a variable or an expression, whose type the syntax tier does not know, so the call binds to nothing"
+            }
+          ]
+        },
+        "imports": {
+          "rows": [
+            { "role": "report", "row": "src/main/java/report/Report.java:4 candidate inferred" }
+          ]
+        },
+        "impact": {
+          "rows": [],
+          "not_at_tier": [
+            {
+              "role": "circleArea",
+              "reason": "its call of area has an expression as receiver, which binds to nothing"
+            },
+            {
+              "role": "total",
+              "reason": "a call through an interface needs the receiver's type, which the syntax tier does not know"
+            },
+            {
+              "role": "report",
+              "reason": "reached only through total"
+            },
+            {
+              "role": "totalOfTwo",
+              "reason": "reached only through total"
+            }
+          ]
+        },
+        "find_tests": {
+          "rows": [
+            { "role": "totalOfTwo", "row": "shapes.ShapesTest.totalOfTwo src/test/java/shapes/ShapesTest.java:8 depth=1 inferred" }
+          ]
+        },
+        "trace_paths": {
+          "rows": [],
+          "not_at_tier": [
+            {
+              "role": "totalOfTwo",
+              "reason": "the path is broken at total, whose call of area has a variable as receiver"
+            },
+            {
+              "role": "total",
+              "reason": "the receiver is a variable or an expression, whose type the syntax tier does not know, so the call binds to nothing"
+            },
+            {
+              "role": "Shape.area",
+              "reason": "the walk never reaches it"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

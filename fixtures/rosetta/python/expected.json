@@ -1,0 +1,64 @@
+{
+  "language": "python",
+  "census_language": "Python",
+  "tiers": {
+    "precise": {
+      "subjects": {
+        "$Shape": { "name": "Shape", "path": "shapes.py" },
+        "$Shape.area": { "name": "Shape.area", "path": "shapes.py" },
+        "$Circle.area": { "name": "Circle.area", "path": "shapes.py" },
+        "$shapes-file": { "name": "shapes.py", "path": "shapes.py" },
+        "$total": { "name": "total", "path": "shapes.py" },
+        "$totalOfTwo": { "name": "test_total_of_two", "path": "test_shapes.py" }
+      },
+      "calls": {
+        "find_symbols": { "rows": [
+          { "role": "Circle.area", "row": "Circle.area shapes.py:10 method" },
+          { "role": "Shape.area", "row": "Shape.area shapes.py:2 method" },
+          { "role": "Square.area", "row": "Square.area shapes.py:18 method" },
+          { "role": "circleArea", "row": "circle_area shapes.py:29 function" }
+        ] },
+        "implements": {
+          "rows": [],
+          "not_at_tier": [
+            { "role": "Circle", "reason": "the adapter records a base class as inherits and has no implements, so a Python class that fills a Shape base has no implements row" },
+            { "role": "Square", "reason": "the adapter records a base class as inherits and has no implements, so a Python class that fills a Shape base has no implements row" }
+          ]
+        },
+        "calls_shape_area": { "rows": [
+          { "role": "total", "row": "total shapes.py:25" }
+        ] },
+        "calls_circle_area": {
+          "rows": [
+            { "role": "circleArea", "row": "circle_area shapes.py:30" }
+          ],
+          "not_at_tier": [
+            { "role": "total", "reason": "no dispatch rows: the adapter records no overrides, so a call written against Shape.area is not a call of Circle.area" }
+          ]
+        },
+        "imports": { "rows": [
+          { "role": "report", "row": "report.py:1" },
+          { "extra": "the test file imports the shapes file as well, and include_tests false does not leave out an importing file that is test code", "row": "test_shapes.py:1" }
+        ] },
+        "impact": {
+          "rows": [
+            { "role": "circleArea", "row": "circle_area shapes.py:30 depth=1 calls" }
+          ],
+          "not_at_tier": [
+            { "role": "total", "reason": "reached only through dispatch, which this tier does not record" },
+            { "role": "report", "reason": "reached only through total, which this tier does not record" },
+            { "role": "totalOfTwo", "reason": "reached only through total, which this tier does not record" }
+          ]
+        },
+        "find_tests": { "rows": [
+          { "role": "totalOfTwo", "row": "test_total_of_two test_shapes.py:5 depth=1" }
+        ] },
+        "trace_paths": { "rows": [
+          { "role": "totalOfTwo", "row": "test_total_of_two test_shapes.py:5" },
+          { "role": "total", "row": "total shapes.py:25" },
+          { "role": "Shape.area", "row": "Shape.area shapes.py:2" }
+        ] }
+      }
+    }
+  }
+}

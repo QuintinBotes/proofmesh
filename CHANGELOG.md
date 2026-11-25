@@ -4,6 +4,13 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 ## Unreleased
 
+Rosetta suite (closes #20, SC-1 for the ten languages at the tiers they have; SC-2 is a rule for later slices):
+
+- `fixtures/rosetta/` holds one small program in each of ten languages (TypeScript, Python, C#, Go, Java, Rust, PHP, Ruby, Kotlin, C++), a hand-written `expected.json` per language and tier, and a `contract.json` of the eight calls. `packages/proofmesh/test/rosetta.test.ts` asks every language the same calls and compares the lean rows with the tier that analysed it (FR211 to FR216, FR219).
+- A row a tier cannot give is stated under `not_at_tier` with its reason, never skipped, and a stated gap that closes fails the test (FR215, FR217). `docs/proofmesh/languages.md` prints the per-language support table the files give.
+- `pnpm check:languages` fails when a language is listed as supported for a tier without its section, when a section does not account for every row, or when the table differs from the files (FR218); `pnpm verify` runs it.
+- Gaps the suite now states include: Python records no dispatch rows; C# records no imports; Go, Rust and C++ have no symbol for an interface, trait or abstract method; Rust, PHP, Ruby, Kotlin and C++ bind no calls; `include_tests` false does not leave out a test file that imports the subject.
+
 Reach through inferred edges (part of #21; SC-2, the per-language benchmark, and SC-3, the graph-bench run, are not run; candidate imports are not followed):
 
 - `analyze_impact`, `find_tests`, `trace_paths` and `impact_completeness` take `include_inferred` (`true`, `false` or `auto`, the default). Auto follows candidate edges where every subject's file was analysed by the syntax tier alone, so Go and Java without an index now answer impact, test reach and paths; every row reached through one is `inferred` (FR201, FR202).

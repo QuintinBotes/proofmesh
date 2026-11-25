@@ -1,0 +1,142 @@
+{
+  "language": "rust",
+  "census_language": "Rust",
+  "tiers": {
+    "syntax": {
+      "subjects": {
+        "$Shape": {
+          "name": "Shape",
+          "path": "src/shapes.rs"
+        },
+        "$Shape.area": {
+          "name": "Shape.area",
+          "path": "src/shapes.rs"
+        },
+        "$Circle.area": {
+          "name": "Circle.<Shape>.area",
+          "path": "src/shapes.rs"
+        },
+        "$shapes-file": {
+          "name": "src/shapes.rs",
+          "path": "src/shapes.rs"
+        },
+        "$total": {
+          "name": "total",
+          "path": "src/shapes.rs"
+        },
+        "$totalOfTwo": {
+          "name": "tests.total_of_two",
+          "path": "src/shapes.rs"
+        }
+      },
+      "calls": {
+        "find_symbols": {
+          "rows": [
+            { "role": "Circle.area", "row": "Circle.<Shape>.area src/shapes.rs:10 method" },
+            { "role": "Square.area", "row": "Square.<Shape>.area src/shapes.rs:20 method" },
+            { "role": "circleArea", "row": "circle_area src/shapes.rs:33 function" }
+          ],
+          "not_at_tier": [
+            {
+              "role": "Shape.area",
+              "reason": "a trait method declaration with no body is not a symbol"
+            }
+          ]
+        },
+        "implements": {
+          "rows": [],
+          "not_at_tier": [
+            {
+              "role": "Circle",
+              "reason": "the syntax tier reads no heritage in Rust"
+            },
+            {
+              "role": "Square",
+              "reason": "the syntax tier reads no heritage in Rust"
+            }
+          ]
+        },
+        "calls_shape_area": {
+          "error": "NOT_FOUND",
+          "rows": [],
+          "not_at_tier": [
+            {
+              "role": "total",
+              "reason": "the subject, Shape.area, is not a symbol at this tier"
+            }
+          ]
+        },
+        "calls_circle_area": {
+          "rows": [],
+          "not_at_tier": [
+            {
+              "role": "circleArea",
+              "reason": "no rule binds calls in Rust: the syntax tier keeps every call site unresolved"
+            },
+            {
+              "role": "total",
+              "reason": "no rule binds calls in Rust: the syntax tier keeps every call site unresolved"
+            }
+          ]
+        },
+        "imports": {
+          "rows": [],
+          "not_at_tier": [
+            {
+              "role": "report",
+              "reason": "the syntax tier reads no imports in Rust"
+            }
+          ]
+        },
+        "impact": {
+          "rows": [],
+          "not_at_tier": [
+            {
+              "role": "circleArea",
+              "reason": "no rule binds calls in Rust: the syntax tier keeps every call site unresolved"
+            },
+            {
+              "role": "total",
+              "reason": "no rule binds calls in Rust: the syntax tier keeps every call site unresolved"
+            },
+            {
+              "role": "report",
+              "reason": "no rule binds calls in Rust: the syntax tier keeps every call site unresolved"
+            },
+            {
+              "role": "totalOfTwo",
+              "reason": "no rule binds calls in Rust: the syntax tier keeps every call site unresolved"
+            }
+          ]
+        },
+        "find_tests": {
+          "rows": [],
+          "not_at_tier": [
+            {
+              "role": "totalOfTwo",
+              "reason": "no rule binds calls in Rust: the syntax tier keeps every call site unresolved"
+            }
+          ]
+        },
+        "trace_paths": {
+          "error": "NOT_FOUND",
+          "rows": [],
+          "not_at_tier": [
+            {
+              "role": "totalOfTwo",
+              "reason": "the subject, Shape.area, is not a symbol at this tier"
+            },
+            {
+              "role": "total",
+              "reason": "the subject, Shape.area, is not a symbol at this tier"
+            },
+            {
+              "role": "Shape.area",
+              "reason": "the subject, Shape.area, is not a symbol at this tier"
+            }
+          ]
+        }
+      }
+    }
+  }
+}
