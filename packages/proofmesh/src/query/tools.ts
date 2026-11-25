@@ -492,7 +492,8 @@ const UNRESOLVED_SHOWN = 10
 export function dispatchedFrom(db: Database.Database, subject: string): Map<string, string> {
   const via = new Map<string, string>()
   let frontier = [subject]
-  for (let depth = 0; depth < 8 && frontier.length; depth++) {
+  // No depth cap: the visited set ends a cycle, and an override chain is as deep as the class hierarchy.
+  while (frontier.length) {
     const rows = db.prepare(`select target_id from assertion where source_id in (${frontier.map(() => '?').join(',')}) and type in ('implements', 'overrides') and resolution = 'resolved' and target_kind = 'symbol'`).all(...frontier) as Array<{ target_id: string }>
     frontier = [...new Set(rows.map((r) => r.target_id))].filter((id) => id !== subject && !via.has(id))
     for (const id of frontier) via.set(id, id)
@@ -1100,7 +1101,8 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     const outFilter = hideExternal ? " and not (resolution = 'resolved_external' and type = 'calls')" : ''
     const tp = types.map(() => '?').join(','), rp = resolutions.map(() => '?').join(',')
     // With include_tests false, a row whose other side lives in test code is left out in SQL, so paging stays a slice of one order.
-    const notTest = (side: string) => input.include_tests === false ? ` and coalesce((select pm_is_test(f.path, ${rolesSql(ctx.db)}) from symbol s join file f on f.id = s.file_id where s.id = ${side}), 0) = 0` : ''
+    // An importer's source is the file itself, so a file id is looked up as well as a symbol id.
+    const notTest = (side: string) => input.include_tests === false ? ` and coalesce((select pm_is_test(f.path, ${rolesSql(ctx.db)}) from symbol s join file f on f.id = s.file_id where s.id = ${side}), (select pm_is_test(f.path) from file f where f.id = ${side}), 0) = 0` : ''
     type A = { id: string; type: string; origin: string; resolution: string; source_kind: string; source_id: string; target_kind: string | null; target_id: string | null; reason: string | null; detail: string | null }
     const all: Array<A & { direction: 'in' | 'out' }> = []
     // Outgoing then incoming, each by assertion ID: fetching offset + cap of each keeps every page a slice of one total order.
@@ -1155,7 +1157,7 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
       for (const r of ctx.db.prepare(`select case when x.resolution = 'unresolved' then 'none' when ${inferredSql('x')} then 'inferred' else 'observed' end as basis, count(*) as n from (${from}) x group by basis`).all(...params) as Array<{ basis: keyof typeof c; n: number }>) c[r.basis] = r.n
       return { ...c, total: c.observed + c.inferred + c.none }
     }
-    const outCount = direction === 'in' ? null : counted(`select * from assertion where source_id in (${sp}) and type in (${tp}) and resolution in (${rp})${outFilter}`, [...ids, ...types, ...resolutions])
+    const outCount = direction === 'in' ? null : counted(`select * from assertion where source_id in (${sp}) and type in (${tp}) and resolution in (${rp})${outFilter}${notTest('assertion.target_id')}`, [...ids, ...types, ...resolutions])
     const inCount = direction === 'out' ? null : counted(inbound, inboundParams)
     const inheritedBasis = byBasis(inherited.map((a) => ({ basis: basisOf(a) })))
     const outExternal = hideExternal ? (ctx.db.prepare(`select count(*) as n from assertion where source_id in (${sp}) and type = 'calls' and resolution = 'resolved_external'`).get(...ids) as { n: number }).n : 0

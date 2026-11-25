@@ -10,6 +10,15 @@ Pinned SCIP indexers for a trusted repository (closes #23, option B; amends A24 
 - The index records the indexer, version, digest and grant (catalog migration 0019); its facts carry `trusted_build` and its identity is part of snapshot identity. `proofmesh repo untrust` stops it being read: files return to their usual tier with unchanged keys and the census names `scip_revoked:<index>:<grant>`.
 - Pins: scip-go v0.2.9, scip-java v0.13.2 and rust-analyzer 2026-11-09 (releases over two weeks old), each platform's release asset and its published sha256 recorded in the table as install provenance; the installed executable must report the pinned version and its own sha256 is recorded in the index. A digest pinned in `<data dir>/indexers.json` is enforced. Not done: the container run is covered by its argv and a fake `docker` only, and without `--container` the module cache is declared by offline settings per indexer, not enforced.
 
+Python overrides (closes #69; completes #20 scenario 2):
+
+- The Python adapter records `overrides` from a method to the method of the same name it overrides, through the class's resolved bases: one row per base branch that declares it, a chain one level at a time, nothing for a static method, a property, a method that overrides nothing or a base outside the repository. Callers and impact of a subclass method now include calls made through the base class, labelled `dispatch` (FR226, FR214).
+
+Test importers and sibling implementations (closes #67, #68):
+
+- `get_relationships` with `include_tests` false now leaves out an importer row whose source is a test file; the filter looked up a symbol, and an importer's source is the file (FR224).
+- `analyze_impact` on one implementation of an interface or base member no longer lists a sibling implementation as a dependent; callers of the member and dispatch callers are still reached (FR225). The four Rosetta known-defect rows these fixed (TypeScript imports and impact, Python imports, C# impact) are now plain expected rows.
+
 Syntax-tier structure, Kotlin, Rust, PHP and Ruby (#59, part 1):
 
 - The syntax tier records each Kotlin `import`, Rust `use` (a grouped one with `detail.names`, also inside a function body) and `mod x;`, PHP `use` clause and Ruby `require` or `require_relative` of a string as an unresolved `imports` row, and each Kotlin supertype, Rust `impl Trait for Type` and trait bound, PHP `extends` and `implements`, and Ruby superclass and `include` as an unresolved `inherits` or `implements` row from the declaring type (FR221 to FR223). The Rosetta gaps for these languages now state that the rows exist and have no target. Swift, Scala, C, C++ and Bash follow in part 2.
