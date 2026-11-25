@@ -1,0 +1,135 @@
+{
+  "language": "ruby",
+  "census_language": "Ruby",
+  "tiers": {
+    "syntax": {
+      "subjects": {
+        "$Shape": {
+          "name": "Shape",
+          "path": "lib/shapes.rb"
+        },
+        "$Shape.area": {
+          "name": "Shape.area",
+          "path": "lib/shapes.rb"
+        },
+        "$Circle.area": {
+          "name": "Circle.area",
+          "path": "lib/shapes.rb"
+        },
+        "$shapes-file": {
+          "name": "lib/shapes.rb",
+          "path": "lib/shapes.rb"
+        },
+        "$total": {
+          "name": "total",
+          "path": "lib/shapes.rb"
+        },
+        "$totalOfTwo": {
+          "name": "shapes.it \"totals two\"",
+          "path": "spec/shapes_spec.rb"
+        }
+      },
+      "calls": {
+        "find_symbols": {
+          "rows": [
+            { "role": "Circle.area", "row": "Circle.area lib/shapes.rb:14 method" },
+            { "role": "Shape.area", "row": "Shape.area lib/shapes.rb:2 method" },
+            { "role": "Square.area", "row": "Square.area lib/shapes.rb:26 method" },
+            { "role": "circleArea", "row": "circle_area lib/shapes.rb:35 method" }
+          ]
+        },
+        "implements": {
+          "rows": [],
+          "not_at_tier": [
+            {
+              "role": "Circle",
+              "reason": "languages.md (what the tier records per language, FR118): no heritage is recorded for Ruby"
+            },
+            {
+              "role": "Square",
+              "reason": "languages.md (what the tier records per language, FR118): no heritage is recorded for Ruby"
+            }
+          ]
+        },
+        "calls_shape_area": {
+          "rows": [],
+          "not_at_tier": [
+            {
+              "role": "total",
+              "reason": "languages.md (constrained name matching): Ruby is not covered yet, so its call sites stay unresolved"
+            }
+          ]
+        },
+        "calls_circle_area": {
+          "rows": [],
+          "not_at_tier": [
+            {
+              "role": "circleArea",
+              "reason": "languages.md (constrained name matching): Ruby is not covered yet, so its call sites stay unresolved"
+            },
+            {
+              "role": "total",
+              "reason": "languages.md (constrained name matching): Ruby is not covered yet, so its call sites stay unresolved"
+            }
+          ]
+        },
+        "imports": {
+          "rows": [],
+          "not_at_tier": [
+            {
+              "role": "report",
+              "reason": "languages.md (what the tier records per language, FR118): no imports are recorded for Ruby"
+            }
+          ]
+        },
+        "impact": {
+          "rows": [],
+          "not_at_tier": [
+            {
+              "role": "circleArea",
+              "reason": "languages.md (constrained name matching): Ruby is not covered yet, so its call sites stay unresolved"
+            },
+            {
+              "role": "total",
+              "reason": "languages.md (constrained name matching): Ruby is not covered yet, so its call sites stay unresolved"
+            },
+            {
+              "role": "report",
+              "reason": "languages.md (constrained name matching): Ruby is not covered yet, so its call sites stay unresolved"
+            },
+            {
+              "role": "totalOfTwo",
+              "reason": "languages.md (constrained name matching): Ruby is not covered yet, so its call sites stay unresolved"
+            }
+          ]
+        },
+        "find_tests": {
+          "rows": [],
+          "not_at_tier": [
+            {
+              "role": "totalOfTwo",
+              "reason": "languages.md (constrained name matching): Ruby is not covered yet, so its call sites stay unresolved"
+            }
+          ]
+        },
+        "trace_paths": {
+          "rows": [],
+          "not_at_tier": [
+            {
+              "role": "totalOfTwo",
+              "reason": "languages.md (constrained name matching): Ruby is not covered yet, so its call sites stay unresolved"
+            },
+            {
+              "role": "total",
+              "reason": "languages.md (constrained name matching): Ruby is not covered yet, so its call sites stay unresolved"
+            },
+            {
+              "role": "Shape.area",
+              "reason": "languages.md (constrained name matching): Ruby is not covered yet, so its call sites stay unresolved"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

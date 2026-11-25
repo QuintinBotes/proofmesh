@@ -174,6 +174,25 @@ A symbol carries optional `roles` (adapter protocol 1.1, snapshot format 0.9): `
 
 `find_tests` says when the subject's language has no resolved calls: `Calls in Go are not resolved yet`, and no test is listed as executing it, with `include_inferred` false; by default it follows Go and Java candidate calls (FR205), lists the tests it reaches that way as inferred, and says so instead, for a subject that has candidate call sites of its own. The markers are read from syntax alone, so no test framework needs to be installed.
 
+## The Rosetta suite (FR211 to FR220)
+
+One small program, written in each language's idiom (`Shape` with `area`, `Circle` and `Square` filling it, `total` calling `s.area()` through `Shape`, `circleArea` calling `Circle(1).area()`, a `report` file importing the shapes file, and a test that calls `total`), lives in `fixtures/rosetta/<language>/repo/`. `packages/proofmesh/test/rosetta.test.ts` asks every language the same eight calls (`find_symbols` for `area`; `get_relationships` for the implementers of `Shape`, the callers of `Shape.area` and of `Circle.area`, and the importers of the shapes file; `analyze_impact` on `Circle.area` to depth 2; `find_tests` on `total`; `trace_paths` from the test to `Shape.area`) and compares the lean rows with the hand-written `expected.json` of the tier that analysed it. `fixtures/rosetta/contract.json` holds the calls, the rows a complete answer has and the lean grammar each may use.
+
+A tier gives a row, or states under `not_at_tier` why it cannot; a row neither given nor stated, or given beyond the contract without a stated reason (`extra`), fails the test, and so does a stated gap that has closed. A call whose subject the tier cannot name (a Go interface method is no symbol) is expected to fail with the error code the file states. The table is what each expected file gives: the contract rows a tier answers out of those a complete answer holds, `+n` for rows beyond them that the documentation explains, `!n` for rows the tool should not give (known defects, which are no support). Python gives no dispatch row, so issue 20's scenario 2 is not met for it: the missing rows are recorded as a known defect. A language is supported for a tier when it has a row here; `pnpm check:languages` fails when a row has no section in the language's `expected.json`, and when this table differs from the one the files give.
+
+| Language | Tier | find_symbols | implements | calls_shape_area | calls_circle_area | imports | impact | find_tests | trace_paths |
+|---|---|---|---|---|---|---|---|---|---|
+| `cpp` | syntax | 3/4+1 | 0/2 | 0/1 | 0/2 | 0/1 | 0/4 | 0/1 | 0/3 |
+| `csharp` | precise | 4/4 | 2/2 | 1/1 | 2/2 | 0/1 | 4/4!1 | 1/1 | 3/3 |
+| `go` | syntax | 3/4 | 0/2 | 0/1 | 0/2 | 1/1 | 0/4 | 1/1 | 0/3 |
+| `java` | syntax | 4/4 | 2/2 | 0/1 | 0/2 | 1/1 | 0/4 | 1/1 | 0/3 |
+| `kotlin` | syntax | 4/4 | 0/2 | 0/1 | 0/2 | 0/1 | 0/4 | 0/1 | 0/3 |
+| `php` | syntax | 4/4 | 0/2 | 0/1 | 0/2 | 0/1 | 0/4 | 0/1 | 0/3 |
+| `python` | precise | 4/4 | 0/2 | 1/1 | 1/2 | 1/1!1 | 1/4 | 1/1 | 3/3 |
+| `ruby` | syntax | 4/4 | 0/2 | 0/1 | 0/2 | 0/1 | 0/4 | 0/1 | 0/3 |
+| `rust` | syntax | 3/4 | 0/2 | 0/1 | 0/2 | 0/1 | 0/4 | 0/1 | 0/3 |
+| `typescript` | precise | 4/4 | 2/2 | 1/1 | 2/2 | 1/1!1 | 4/4!1 | 1/1 | 3/3 |
+
 ## Other languages
 
 `proofmesh adapter add` installs an adapter a contributor wrote for another language (US18). Its capabilities are unverified until it passes the conformance kit; see `adapter-authoring.md`.

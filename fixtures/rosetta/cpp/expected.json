@@ -1,0 +1,148 @@
+{
+  "language": "cpp",
+  "census_language": "C++",
+  "tiers": {
+    "syntax": {
+      "subjects": {
+        "$Shape": {
+          "name": "Shape",
+          "path": "shapes.h"
+        },
+        "$Shape.area": {
+          "name": "Shape.area",
+          "path": "shapes.h"
+        },
+        "$Circle.area": {
+          "name": "area()",
+          "path": "shapes.h"
+        },
+        "$shapes-file": {
+          "name": "shapes.h",
+          "path": "shapes.h"
+        },
+        "$total": {
+          "name": "total",
+          "path": "shapes.cc"
+        },
+        "$totalOfTwo": {
+          "name": "TEST(Shapes, TotalOfTwo)",
+          "path": "shapes_test.cc"
+        }
+      },
+      "calls": {
+        "find_symbols": {
+          "rows": [
+            { "role": "Circle.area", "row": "area() shapes.h:10 function" },
+            { "role": "Square.area", "row": "area() shapes.h:16 function" },
+            { "role": "circleArea", "row": "circleArea shapes.cc:11 function" },
+            {
+              "extra": "languages.md (names, FR146): a prototype in a header and its definition in another file stay two symbols",
+              "row": "circleArea shapes.h:21 function"
+            }
+          ],
+          "not_at_tier": [
+            {
+              "role": "Shape.area",
+              "reason": "observed: a pure virtual declaration is not a symbol"
+            }
+          ]
+        },
+        "implements": {
+          "rows": [],
+          "not_at_tier": [
+            {
+              "role": "Circle",
+              "reason": "languages.md (what the tier records per language, FR118): no heritage is recorded for C++"
+            },
+            {
+              "role": "Square",
+              "reason": "languages.md (what the tier records per language, FR118): no heritage is recorded for C++"
+            }
+          ]
+        },
+        "calls_shape_area": {
+          "error": "NOT_FOUND",
+          "rows": [],
+          "not_at_tier": [
+            {
+              "role": "total",
+              "reason": "observed: the subject, Shape.area, is not a symbol at this tier"
+            }
+          ]
+        },
+        "calls_circle_area": {
+          "error": "INVALID_ARGUMENT",
+          "rows": [],
+          "not_at_tier": [
+            {
+              "role": "circleArea",
+              "reason": "observed: the member is named area() inside its class body, as Square's is, so no name identifies it"
+            },
+            {
+              "role": "total",
+              "reason": "observed: the member is named area() inside its class body, as Square's is, so no name identifies it"
+            }
+          ]
+        },
+        "imports": {
+          "rows": [],
+          "not_at_tier": [
+            {
+              "role": "report",
+              "reason": "languages.md (what the tier records per language, FR118): no imports are recorded for C++"
+            }
+          ]
+        },
+        "impact": {
+          "error": "INVALID_ARGUMENT",
+          "rows": [],
+          "not_at_tier": [
+            {
+              "role": "circleArea",
+              "reason": "observed: the member is named area() inside its class body, as Square's is, so no name identifies it"
+            },
+            {
+              "role": "total",
+              "reason": "observed: the member is named area() inside its class body, as Square's is, so no name identifies it"
+            },
+            {
+              "role": "report",
+              "reason": "observed: the member is named area() inside its class body, as Square's is, so no name identifies it"
+            },
+            {
+              "role": "totalOfTwo",
+              "reason": "observed: the member is named area() inside its class body, as Square's is, so no name identifies it"
+            }
+          ]
+        },
+        "find_tests": {
+          "rows": [],
+          "not_at_tier": [
+            {
+              "role": "totalOfTwo",
+              "reason": "languages.md (what the tier records per language, FR118): C and C++ record no calls"
+            }
+          ]
+        },
+        "trace_paths": {
+          "error": "NOT_FOUND",
+          "rows": [],
+          "not_at_tier": [
+            {
+              "role": "totalOfTwo",
+              "reason": "observed: the subject, Shape.area, is not a symbol at this tier"
+            },
+            {
+              "role": "total",
+              "reason": "observed: the subject, Shape.area, is not a symbol at this tier"
+            },
+            {
+              "role": "Shape.area",
+              "reason": "observed: the subject, Shape.area, is not a symbol at this tier"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

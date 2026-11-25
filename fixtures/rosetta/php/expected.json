@@ -1,0 +1,135 @@
+{
+  "language": "php",
+  "census_language": "PHP",
+  "tiers": {
+    "syntax": {
+      "subjects": {
+        "$Shape": {
+          "name": "Rosetta.Shape",
+          "path": "src/Shapes.php"
+        },
+        "$Shape.area": {
+          "name": "Rosetta.Shape.area",
+          "path": "src/Shapes.php"
+        },
+        "$Circle.area": {
+          "name": "Rosetta.Circle.area",
+          "path": "src/Shapes.php"
+        },
+        "$shapes-file": {
+          "name": "src/Shapes.php",
+          "path": "src/Shapes.php"
+        },
+        "$total": {
+          "name": "Rosetta.total",
+          "path": "src/Shapes.php"
+        },
+        "$totalOfTwo": {
+          "name": "Rosetta.ShapesTest.testTotalOfTwo",
+          "path": "src/ShapesTest.php"
+        }
+      },
+      "calls": {
+        "find_symbols": {
+          "rows": [
+            { "role": "Circle.area", "row": "Rosetta.Circle.area src/Shapes.php:14 function" },
+            { "role": "Shape.area", "row": "Rosetta.Shape.area src/Shapes.php:7 function" },
+            { "role": "Square.area", "row": "Rosetta.Square.area src/Shapes.php:24 function" },
+            { "role": "circleArea", "row": "Rosetta.circleArea src/Shapes.php:39 function" }
+          ]
+        },
+        "implements": {
+          "rows": [],
+          "not_at_tier": [
+            {
+              "role": "Circle",
+              "reason": "languages.md (what the tier records per language, FR118): no heritage is recorded for PHP"
+            },
+            {
+              "role": "Square",
+              "reason": "languages.md (what the tier records per language, FR118): no heritage is recorded for PHP"
+            }
+          ]
+        },
+        "calls_shape_area": {
+          "rows": [],
+          "not_at_tier": [
+            {
+              "role": "total",
+              "reason": "languages.md (constrained name matching): PHP is not covered yet, so its call sites stay unresolved"
+            }
+          ]
+        },
+        "calls_circle_area": {
+          "rows": [],
+          "not_at_tier": [
+            {
+              "role": "circleArea",
+              "reason": "languages.md (constrained name matching): PHP is not covered yet, so its call sites stay unresolved"
+            },
+            {
+              "role": "total",
+              "reason": "languages.md (constrained name matching): PHP is not covered yet, so its call sites stay unresolved"
+            }
+          ]
+        },
+        "imports": {
+          "rows": [],
+          "not_at_tier": [
+            {
+              "role": "report",
+              "reason": "languages.md (what the tier records per language, FR118): no imports are recorded for PHP"
+            }
+          ]
+        },
+        "impact": {
+          "rows": [],
+          "not_at_tier": [
+            {
+              "role": "circleArea",
+              "reason": "languages.md (constrained name matching): PHP is not covered yet, so its call sites stay unresolved"
+            },
+            {
+              "role": "total",
+              "reason": "languages.md (constrained name matching): PHP is not covered yet, so its call sites stay unresolved"
+            },
+            {
+              "role": "report",
+              "reason": "languages.md (constrained name matching): PHP is not covered yet, so its call sites stay unresolved"
+            },
+            {
+              "role": "totalOfTwo",
+              "reason": "languages.md (constrained name matching): PHP is not covered yet, so its call sites stay unresolved"
+            }
+          ]
+        },
+        "find_tests": {
+          "rows": [],
+          "not_at_tier": [
+            {
+              "role": "totalOfTwo",
+              "reason": "languages.md (constrained name matching): PHP is not covered yet, so its call sites stay unresolved"
+            }
+          ]
+        },
+        "trace_paths": {
+          "rows": [],
+          "not_at_tier": [
+            {
+              "role": "totalOfTwo",
+              "reason": "languages.md (constrained name matching): PHP is not covered yet, so its call sites stay unresolved"
+            },
+            {
+              "role": "total",
+              "reason": "languages.md (constrained name matching): PHP is not covered yet, so its call sites stay unresolved"
+            },
+            {
+              "role": "Shape.area",
+              "reason": "languages.md (constrained name matching): PHP is not covered yet, so its call sites stay unresolved"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

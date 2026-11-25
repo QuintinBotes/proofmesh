@@ -1,0 +1,134 @@
+{
+  "language": "go",
+  "census_language": "Go",
+  "tiers": {
+    "syntax": {
+      "subjects": {
+        "$Shape": {
+          "name": "Shape",
+          "path": "shapes/shapes.go"
+        },
+        "$Shape.area": {
+          "name": "Shape.Area",
+          "path": "shapes/shapes.go"
+        },
+        "$Circle.area": {
+          "name": "Circle.Area",
+          "path": "shapes/shapes.go"
+        },
+        "$shapes-file": {
+          "name": "shapes/shapes.go",
+          "path": "shapes/shapes.go"
+        },
+        "$total": {
+          "name": "Total",
+          "path": "shapes/shapes.go"
+        },
+        "$totalOfTwo": {
+          "name": "TestTotalOfTwo",
+          "path": "shapes/shapes_test.go"
+        }
+      },
+      "calls": {
+        "find_symbols": {
+          "rows": [
+            { "role": "Circle.area", "row": "Circle.Area shapes/shapes.go:9 method" },
+            { "role": "Square.area", "row": "Square.Area shapes/shapes.go:13 method" },
+            { "role": "circleArea", "row": "CircleArea shapes/shapes.go:23 function" }
+          ],
+          "not_at_tier": [
+            {
+              "role": "Shape.area",
+              "reason": "observed: the methods of a Go interface are not symbols"
+            }
+          ]
+        },
+        "implements": {
+          "rows": [],
+          "not_at_tier": [
+            {
+              "role": "Circle",
+              "reason": "languages.md (what the tier records per language, FR118): the only Go heritage recorded is struct embedding; Go has no implements clause to read"
+            },
+            {
+              "role": "Square",
+              "reason": "languages.md (what the tier records per language, FR118): the only Go heritage recorded is struct embedding; Go has no implements clause to read"
+            }
+          ]
+        },
+        "calls_shape_area": {
+          "error": "NOT_FOUND",
+          "rows": [],
+          "not_at_tier": [
+            {
+              "role": "total",
+              "reason": "observed: the subject, Shape.Area, is not a symbol at this tier"
+            }
+          ]
+        },
+        "calls_circle_area": {
+          "rows": [],
+          "not_at_tier": [
+            {
+              "role": "circleArea",
+              "reason": "languages.md (constrained name matching): the receiver is a composite literal, an expression, which binds to nothing"
+            },
+            {
+              "role": "total",
+              "reason": "languages.md (constrained name matching): the receiver s is a variable, whose type the tier does not know, so the call through Shape binds to nothing"
+            }
+          ]
+        },
+        "imports": {
+          "rows": [
+            { "role": "report", "row": "report/report.go:6 candidate inferred" }
+          ]
+        },
+        "impact": {
+          "rows": [],
+          "not_at_tier": [
+            {
+              "role": "circleArea",
+              "reason": "languages.md (constrained name matching): its call of Circle.Area has an expression as receiver, which binds to nothing"
+            },
+            {
+              "role": "total",
+              "reason": "languages.md (constrained name matching): the receiver s is a variable, whose type the tier does not know, so the call through Shape binds to nothing"
+            },
+            {
+              "role": "report",
+              "reason": "reached only through total"
+            },
+            {
+              "role": "totalOfTwo",
+              "reason": "reached only through total"
+            }
+          ]
+        },
+        "find_tests": {
+          "rows": [
+            { "role": "totalOfTwo", "row": "TestTotalOfTwo shapes/shapes_test.go:6 depth=1 inferred" }
+          ]
+        },
+        "trace_paths": {
+          "error": "NOT_FOUND",
+          "rows": [],
+          "not_at_tier": [
+            {
+              "role": "totalOfTwo",
+              "reason": "observed: the subject, Shape.Area, is not a symbol at this tier"
+            },
+            {
+              "role": "total",
+              "reason": "observed: the subject, Shape.Area, is not a symbol at this tier"
+            },
+            {
+              "role": "Shape.area",
+              "reason": "observed: the subject, Shape.Area, is not a symbol at this tier"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

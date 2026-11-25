@@ -1,0 +1,149 @@
+{
+  "language": "python",
+  "census_language": "Python",
+  "tiers": {
+    "precise": {
+      "subjects": {
+        "$Shape": {
+          "name": "Shape",
+          "path": "shapes.py"
+        },
+        "$Shape.area": {
+          "name": "Shape.area",
+          "path": "shapes.py"
+        },
+        "$Circle.area": {
+          "name": "Circle.area",
+          "path": "shapes.py"
+        },
+        "$shapes-file": {
+          "name": "shapes.py",
+          "path": "shapes.py"
+        },
+        "$total": {
+          "name": "total",
+          "path": "shapes.py"
+        },
+        "$totalOfTwo": {
+          "name": "test_total_of_two",
+          "path": "test_shapes.py"
+        }
+      },
+      "calls": {
+        "find_symbols": {
+          "rows": [
+            {
+              "role": "Circle.area",
+              "row": "Circle.area shapes.py:10 method"
+            },
+            {
+              "role": "Shape.area",
+              "row": "Shape.area shapes.py:2 method"
+            },
+            {
+              "role": "Square.area",
+              "row": "Square.area shapes.py:18 method"
+            },
+            {
+              "role": "circleArea",
+              "row": "circle_area shapes.py:29 function"
+            }
+          ]
+        },
+        "implements": {
+          "rows": [],
+          "not_at_tier": [
+            {
+              "role": "Circle",
+              "reason": "languages.md (Python, Inheritance): a class inherits each repository class its base resolves to; no implements is recorded"
+            },
+            {
+              "role": "Square",
+              "reason": "languages.md (Python, Inheritance): a class inherits each repository class its base resolves to; no implements is recorded"
+            }
+          ]
+        },
+        "calls_shape_area": {
+          "rows": [
+            {
+              "role": "total",
+              "row": "total shapes.py:25"
+            }
+          ]
+        },
+        "calls_circle_area": {
+          "rows": [
+            {
+              "role": "circleArea",
+              "row": "circle_area shapes.py:30"
+            }
+          ],
+          "not_at_tier": [
+            {
+              "role": "total",
+              "reason": "known defect (issue 20 scenario 2 expects it): the adapter records no overrides, so a call written against Shape.area is not given as a call of Circle.area"
+            }
+          ]
+        },
+        "imports": {
+          "rows": [
+            {
+              "role": "report",
+              "row": "report.py:1"
+            },
+            {
+              "row": "test_shapes.py:1",
+              "known_defect": "known defect: include_tests false does not leave out an importing file that is test code (get_relationships, tools.ts notTest filter)"
+            }
+          ]
+        },
+        "impact": {
+          "rows": [
+            {
+              "role": "circleArea",
+              "row": "circle_area shapes.py:30 depth=1 calls"
+            }
+          ],
+          "not_at_tier": [
+            {
+              "role": "total",
+              "reason": "known defect (issue 20 scenario 2 expects it): the adapter records no overrides, so a call written against Shape.area is not given as a call of Circle.area"
+            },
+            {
+              "role": "report",
+              "reason": "known defect (issue 20 scenario 2 expects it): reached only through total, which is missing"
+            },
+            {
+              "role": "totalOfTwo",
+              "reason": "known defect (issue 20 scenario 2 expects it): reached only through total, which is missing"
+            }
+          ]
+        },
+        "find_tests": {
+          "rows": [
+            {
+              "role": "totalOfTwo",
+              "row": "test_total_of_two test_shapes.py:5 depth=1"
+            }
+          ]
+        },
+        "trace_paths": {
+          "rows": [
+            {
+              "role": "totalOfTwo",
+              "row": "test_total_of_two test_shapes.py:5"
+            },
+            {
+              "role": "total",
+              "row": "total shapes.py:25"
+            },
+            {
+              "role": "Shape.area",
+              "row": "Shape.area shapes.py:2"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

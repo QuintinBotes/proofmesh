@@ -949,6 +949,36 @@
     ],
     "FR210": [
       "packages/proofmesh/test/reach-inferred.test.ts"
+    ],
+    "FR211": [
+      "packages/proofmesh/test/rosetta.test.ts"
+    ],
+    "FR212": [
+      "packages/proofmesh/test/rosetta.test.ts"
+    ],
+    "FR213": [
+      "packages/proofmesh/test/rosetta.test.ts"
+    ],
+    "FR214": [
+      "packages/proofmesh/test/rosetta.test.ts"
+    ],
+    "FR215": [
+      "packages/proofmesh/test/rosetta.test.ts"
+    ],
+    "FR216": [
+      "packages/proofmesh/test/rosetta.test.ts"
+    ],
+    "FR217": [
+      "packages/proofmesh/test/rosetta.test.ts"
+    ],
+    "FR218": [
+      "packages/proofmesh/test/rosetta.test.ts"
+    ],
+    "FR219": [
+      "packages/proofmesh/test/rosetta.test.ts"
+    ],
+    "FR220": [
+      "packages/proofmesh/test/rosetta.test.ts"
     ]
   },
   "manual": {

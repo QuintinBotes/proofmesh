@@ -1,0 +1,94 @@
+{
+  "language": "typescript",
+  "census_language": "TypeScript",
+  "tiers": {
+    "precise": {
+      "subjects": {
+        "$Shape": {
+          "name": "Shape",
+          "path": "shapes.ts"
+        },
+        "$Shape.area": {
+          "name": "Shape.area",
+          "path": "shapes.ts"
+        },
+        "$Circle.area": {
+          "name": "Circle.area",
+          "path": "shapes.ts"
+        },
+        "$shapes-file": {
+          "name": "shapes.ts",
+          "path": "shapes.ts"
+        },
+        "$total": {
+          "name": "total",
+          "path": "shapes.ts"
+        },
+        "$totalOfTwo": {
+          "name": "totalOfTwo",
+          "path": "shapes.test.ts"
+        }
+      },
+      "calls": {
+        "find_symbols": {
+          "rows": [
+            { "role": "Circle.area", "row": "Circle.area shapes.ts:7 method" },
+            { "role": "Shape.area", "row": "Shape.area shapes.ts:2 method" },
+            { "role": "Square.area", "row": "Square.area shapes.ts:14 method" },
+            { "role": "circleArea", "row": "circleArea shapes.ts:25 function" }
+          ]
+        },
+        "implements": {
+          "rows": [
+            { "role": "Circle", "row": "Circle shapes.ts:5" },
+            { "role": "Square", "row": "Square shapes.ts:12" }
+          ]
+        },
+        "calls_shape_area": {
+          "rows": [
+            { "role": "total", "row": "total shapes.ts:21" }
+          ]
+        },
+        "calls_circle_area": {
+          "rows": [
+            { "role": "circleArea", "row": "circleArea shapes.ts:26" },
+            { "role": "total", "row": "total shapes.ts:21 dispatch" }
+          ]
+        },
+        "imports": {
+          "rows": [
+            { "role": "report", "row": "report.ts:1" },
+            {
+              "row": "shapes.test.ts:1",
+              "known_defect": "known defect: include_tests false does not leave out an importing file that is test code (get_relationships, tools.ts notTest filter)"
+            }
+          ]
+        },
+        "impact": {
+          "rows": [
+            { "role": "circleArea", "row": "circleArea shapes.ts:26 depth=1 calls" },
+            { "role": "total", "row": "total shapes.ts:21 depth=1 calls" },
+            { "role": "report", "row": "report report.ts:4 depth=2 calls" },
+            { "role": "totalOfTwo", "row": "totalOfTwo shapes.test.ts:4 depth=2 calls" },
+            {
+              "row": "Square.area shapes.ts:14 depth=1 implements",
+              "known_defect": "known defect: analyze_impact lists a sibling implementation of the same interface member as a dependent of Circle.area"
+            }
+          ]
+        },
+        "find_tests": {
+          "rows": [
+            { "role": "totalOfTwo", "row": "totalOfTwo shapes.test.ts:4 depth=1" }
+          ]
+        },
+        "trace_paths": {
+          "rows": [
+            { "role": "totalOfTwo", "row": "totalOfTwo shapes.test.ts:4" },
+            { "role": "total", "row": "total shapes.ts:21" },
+            { "role": "Shape.area", "row": "Shape.area shapes.ts:2" }
+          ]
+        }
+      }
+    }
+  }
+}
