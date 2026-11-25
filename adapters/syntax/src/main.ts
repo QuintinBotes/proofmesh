@@ -50,6 +50,27 @@ const isDefinition = (n: Node) => { let p = n.parent; while (p && /^(pointer|ref
 // A Ruby string without interpolation is its content, whatever delimits it (`"x"`, `'x'`, `%q(x)`).
 const rubyString = (n: Node) => (n.type === 'string' && n.namedChildren.every((c) => c.type === 'string_content') ? n.namedChildren.map((c) => c.text).join('') : null)
 
+// A Scala import is read whole: the path as written, then a wildcard, a renamed last name, or the selectors in braces as names.
+function scalaImport(n: Node): Record<string, string> {
+  const paths = n.childrenForFieldName('path'), tail = n.namedChildren.find((c) => !paths.some((p) => p.equals(c)))
+  const written = (a: Node, b: Node) => n.text.slice(a.startIndex - n.startIndex, b.endIndex - n.startIndex).replace(/\s+/g, ' ')
+  const base = paths.length ? written(paths[0]!, paths.at(-1)!) : ''
+  if (tail?.type === 'namespace_selectors') return { module: base, names: tail.text.replace(/^\{|\}$/g, '').replace(/\s+/g, ' ').trim() }
+  if (tail?.type === 'namespace_wildcard') return { module: `${base}.${tail.text}` }
+  if (tail?.type === 'as_renamed_identifier') return { module: `${base}.${tail.childForFieldName('name')!.text}`, alias: tail.childForFieldName('alias')!.text }
+  return { module: base }
+}
+// A C or C++ callee written `a::b<T>` is called by its last name.
+function lastName(n: Node): Node {
+  for (;;) {
+    const next = n.type === 'qualified_identifier' || n.type === 'template_function' || n.type === 'template_method' ? n.childForFieldName('name') : null
+    if (!next) return n
+    n = next
+  }
+}
+// An include inside `#if`, `#ifdef` or `#else` is conditional, unless the conditional is the file's include guard, which wraps every other statement.
+const conditionalInclude = (n: Node) => { for (let p = n.parent; p; p = p.parent) if (/^preproc_(if|ifdef|elif|elifdef|else)$/.test(p.type) && !(p.parent?.type === 'translation_unit' && p.parent.namedChildren.filter((c) => c.type !== 'comment').length === 1)) return true; return false }
+
 let workspace = ''
 const languageOf = new Map<string, string>()
 const queries = new Map<string, Promise<Query>>()
@@ -102,7 +123,8 @@ async function analyse(file: string, callees = false) {
     if (statement) {
       const spec = role('import.module'), alias = role('import.alias'), names = role('import.names')
       // A wildcard import's module runs to its `*`, as written.
-      const detail = spec ? { module: rubyString(spec) ?? text.slice(spec.startIndex, (role('import.wildcard') ?? spec).endIndex).replace(/^["'`](.*)["'`]$/s, '$1'), ...(alias ? { alias: alias.text } : {}), ...(names ? { names: names.text.replace(/^\{|\}$/g, '').replace(/\s+/g, ' ').trim() } : {}), ...(lang === 'java' && /^import\s+static\b/.test(statement.text) ? { static: 'true' } : {}) } : undefined
+      const include = statement.type === 'preproc_include'
+      const detail = lang === 'scala' ? scalaImport(statement) : spec ? { module: rubyString(spec) ?? text.slice(spec.startIndex, (role('import.wildcard') ?? spec).endIndex).replace(include ? /^[<"](.*)[>"]$/s : /^["'`](.*)["'`]$/s, '$1'), ...(include ? { system: String(spec.type === 'system_lib_string'), ...(conditionalInclude(statement) ? { conditional: 'true' } : {}) } : {}), ...(alias ? { alias: alias.text } : {}), ...(names ? { names: names.text.replace(/^\{|\}$/g, '').replace(/\s+/g, ' ').trim() } : {}), ...(lang === 'java' && /^import\s+static\b/.test(statement.text) ? { static: 'true' } : {}) } : undefined
       imports.push({ node: statement, ...(detail ? { detail } : {}) })
       continue
     }
@@ -124,10 +146,11 @@ async function analyse(file: string, callees = false) {
       defs.push({ id, node: def.node, qualified: name.text })
       symbols.push({ local_id: id, path: file, kind, name: parts?.at(-1) ?? name.text, qualified_name: parts?.join('.') ?? '', range: range(def.node), signature: null })
     } else if (ref) {
+      const callee = lastName(name)
       const [first, last] = name.startIndex <= ref.startIndex ? [name, ref] : [ref, name]
       // A Java call's arguments are the capture; the invocation is their parent.
       const call = lang === 'java' && ref.type === 'argument_list' ? ref.parent! : ref
-      calls.push({ name: name.text, site: range(first, last.endIndex >= first.endIndex ? last : first), node: ref, at: range(name), facts: callFacts(lang, call, name) })
+      calls.push({ name: callee.text, site: range(first, last.endIndex >= first.endIndex ? last : first), node: ref, at: range(callee), facts: callFacts(lang, call, name) })
     } else if (role('reference.table')) {
       const parts = dbName(name)
       if (parts) tables.push({ name, parts })
@@ -178,9 +201,13 @@ async function analyse(file: string, callees = false) {
   // The roles are set once the names are final: a test entry point, and test code that is none (FR193).
   const roles = testRoles(lang, file, text, defs, imports, examples)
   for (const s of symbols) { const r = roles.get(s.local_id as string); if (r) s.roles = r }
-  const enclosing = (n: Node) => defs.filter((d) => within(n, d.node) || d.node === n).sort((a, b) => b.node.startIndex - a.node.startIndex)[0]?.id ?? moduleId
+  // A C or C++ definition is tagged at its declarator, and the body it holds hangs from the function_definition above.
+  const extent = (d: (typeof defs)[number]) => { let p = d.node.parent; while (p && /^(pointer|reference|parenthesized)_declarator$/.test(p.type)) p = p.parent; return (lang === 'c' || lang === 'cpp') && d.node.type === 'function_declarator' && p?.type === 'function_definition' ? p : d.node }
+  const enclosing = (n: Node) => defs.filter((d) => within(n, extent(d)) || d.node === n).sort((a, b) => b.node.startIndex - a.node.startIndex)[0]?.id ?? moduleId
   const relationships: Array<Record<string, unknown>> = calls.map((c) => ({ type: 'calls', origin: 'syntax', source: { symbol: enclosing(c.node) }, site: { path: file, range: c.site }, resolution: 'unresolved', reason: 'outside_capability', detail: { callee: c.name, ...c.facts, ...(callees ? { callee_start: String(c.at.start_byte), callee_end: String(c.at.end_byte) } : {}) } }))
-  for (const i of imports) relationships.push({ type: 'imports', origin: 'syntax', source: { file }, site: { path: file, range: range(i.node) }, resolution: 'unresolved', reason: 'outside_capability', ...(i.detail ? { detail: i.detail } : {}) })
+  // A preprocessor include's node runs through its line break, which is no part of the statement.
+  const statementRange = (n: Node): Range => { const r = range(n), extra = n.type === 'preproc_include' ? n.text.slice(n.text.trimEnd().length) : ''; return { ...r, end_byte: r.end_byte - Buffer.byteLength(extra), end_line: r.end_line - (extra.match(/\n/g)?.length ?? 0) } }
+  for (const i of imports) relationships.push({ type: 'imports', origin: 'syntax', source: { file }, site: { path: file, range: statementRange(i.node) }, resolution: 'unresolved', reason: 'outside_capability', ...(i.detail ? { detail: i.detail } : {}) })
   // A supertype is named, never resolved (FR117): the constrained-resolution slice binds it.
   // A Rust impl runs from the type it is for: the type this file declares under that name, else the file's module, with the type in `detail.for`.
   const typeKinds = new Set(['class', 'struct', 'enum', 'interface', 'type_alias'])

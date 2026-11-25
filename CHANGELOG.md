@@ -4,6 +4,10 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 ## Unreleased
 
+Syntax-tier structure, Swift, Scala, C, C++ and Bash (closes #59, part 2; part 1 is #66):
+
+- The syntax tier records each Swift `import`, Scala `import` (also inside a function body, with `detail.names` for braces), C and C++ `#include` (`detail.system`, and `detail.conditional` inside `#if`) and Bash `source` or `.` of a literal path as an unresolved `imports` row, and each Swift supertype, Scala `extends` and `with` and C++ base class as an unresolved `inherits` or `implements` row from the declaring type (FR224, FR225). C and C++ call sites are recorded, from the function or method that holds them, a macro call included (FR226). `docs/proofmesh/languages.md` and the Rosetta rows for C++ state what is recorded.
+
 Syntax-tier structure, Kotlin, Rust, PHP and Ruby (#59, part 1):
 
 - The syntax tier records each Kotlin `import`, Rust `use` (a grouped one with `detail.names`, also inside a function body) and `mod x;`, PHP `use` clause and Ruby `require` or `require_relative` of a string as an unresolved `imports` row, and each Kotlin supertype, Rust `impl Trait for Type` and trait bound, PHP `extends` and `implements`, and Ruby superclass and `include` as an unresolved `inherits` or `implements` row from the declaring type (FR221 to FR223). The Rosetta gaps for these languages now state that the rows exist and have no target. Swift, Scala, C, C++ and Bash follow in part 2.

@@ -710,9 +710,16 @@
       "site_text": "order_total(1)",
       "resolution": "unresolved",
       "reason": "outside_capability"
+    },
+    {
+      "from": "c/util:run",
+      "line": 2,
+      "site_text": "helper(1)",
+      "resolution": "unresolved",
+      "reason": "outside_capability"
     }
   ],
-  "closed_world": "Symbols and calls are complete for this fixture. C and C++ tags queries name no calls. The imports and table references below are complete for the Swift and SQL files, the only ones whose queries name either.",
+  "closed_world": "Symbols and calls are complete for this fixture. The imports and table references below are complete for this fixture: the Swift file has the only imports, and the SQL file the table references.",
   "imports_unresolved": [
     {
       "from": "swift/Shop.swift",

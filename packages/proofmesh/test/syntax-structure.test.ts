@@ -30,6 +30,9 @@ describe('FR115 FR116 FR117 the syntax tier records imports and heritage in Go a
       const facts = rows.map((r) => ({ from: r.path, line: (db.prepare('select start_line from evidence where id = ?').get(r.evidence_id) as { start_line: number }).start_line, site_text: evidenceSlice(d, db, r.evidence_id), detail: JSON.parse(r.detail) }))
       expect(facts.sort((a, b) => a.from.localeCompare(b.from) || a.line - b.line)).toEqual(EXPECTED.imports_unresolved)
       expect(db.prepare(`select path, json_extract(capabilities, '$.imports') as imports from file order by path`).all()).toEqual([
+        { path: 'bash/run.sh', imports: 'partial' },
+        { path: 'c/total.c', imports: 'partial' },
+        { path: 'cpp/area.cpp', imports: 'partial' },
         { path: 'go/shape.go', imports: 'partial' },
         { path: 'java/Circle.java', imports: 'partial' },
         // #4 scenario 5: "nothing reports `complete` for imports, because nothing is resolved", also a file with no import.
@@ -39,6 +42,9 @@ describe('FR115 FR116 FR117 the syntax tier records imports and heritage in Go a
         { path: 'php/Circle.php', imports: 'partial' },
         { path: 'ruby/circle.rb', imports: 'partial' },
         { path: 'rust/lib.rs', imports: 'partial' },
+        // FR224: Swift, Scala, C, C++ and Bash name imports too.
+        { path: 'scala/Circle.scala', imports: 'partial' },
+        { path: 'swift/Circle.swift', imports: 'partial' },
       ])
     })
   }, 240000)
@@ -74,7 +80,7 @@ describe('FR221 FR222 FR223 the syntax tier records imports and heritage in Kotl
   }, 240000)
 
   it('FR221 Kotlin, PHP and Ruby give one unresolved row per import statement with the module as written', () => {
-    expect(importRows(structureIndex()).filter((r) => !/^(go|java|rust)\//.test(r.path)).map((r) => [r.path, r.line, r.detail, r.state])).toEqual([
+    expect(importRows(structureIndex()).filter((r) => /^(kotlin|php|ruby)\//.test(r.path)).map((r) => [r.path, r.line, r.detail, r.state])).toEqual([
       ['kotlin/Circle.kt', 3, { module: 'com.acme.geo.Point' }, 'unresolved outside_capability null'],
       ['php/Circle.php', 4, { module: 'App\\Geo\\Point' }, 'unresolved outside_capability null'],
       ['ruby/circle.rb', 1, { module: 'json' }, 'unresolved outside_capability null'],
@@ -182,5 +188,140 @@ describe('FR221 FR222 FR223 the syntax tier records imports and heritage in Kotl
     expect(row('Rust')).toEqual(['`use` and `mod x;`, with module, alias and grouped names', '`impl Trait for`, trait bounds', 'yes'])
     expect(row('PHP')).toEqual(['`use`, with module, alias and grouped names', '`extends`, `implements`', 'yes'])
     expect(row('Ruby')).toEqual(['`require` and `require_relative` of a string', 'superclass, `include`', 'yes'])
+  })
+})
+
+const NEW = /^(swift|scala|c|cpp|bash)\//
+const calls = (dataDir: string) => withSnapshot(dataDir, (db) => rows(db, 'calls').map((x) => [x.path, x.line, x.from, x.detail?.callee, x.resolution, x.reason] as const))
+
+describe('FR224 FR225 FR226 the syntax tier records imports and heritage in Swift, Scala, C, C++ and Bash, and calls in C and C++', () => {
+  it('FR224 each import statement of the fixture is one unresolved row with the module as written, and a C include says whether it is a system include and whether #if wraps it', () => {
+    expect(importRows(structureIndex()).filter((r) => NEW.test(r.path)).map((r) => [r.path, r.line, r.detail, r.state])).toEqual([
+      ['bash/run.sh', 1, { module: './lib.sh' }, 'unresolved outside_capability null'],
+      ['bash/run.sh', 2, { module: './lib.sh' }, 'unresolved outside_capability null'],
+      ['c/total.c', 1, { module: 'stdio.h', system: 'true' }, 'unresolved outside_capability null'],
+      ['c/total.c', 2, { module: 'add.h', system: 'false' }, 'unresolved outside_capability null'],
+      ['c/total.c', 5, { module: 'extra.h', system: 'false', conditional: 'true' }, 'unresolved outside_capability null'],
+      ['cpp/area.cpp', 1, { module: 'shape.hpp', system: 'false' }, 'unresolved outside_capability null'],
+      ['scala/Circle.scala', 3, { module: 'com.acme.geo', names: 'Point, Line' }, 'unresolved outside_capability null'],
+      ['scala/Circle.scala', 7, { module: 'scala.math.Pi' }, 'unresolved outside_capability null'],
+      ['swift/Circle.swift', 1, { module: 'Foundation' }, 'unresolved outside_capability null'],
+    ])
+  }, 240000)
+
+  it('FR225 FR226 FR117 heritage and the calls of the fixture hold as a closed world, from the declaring type or function, with no target', async () => {
+    const r = await runKit(syntax(), fixtureRepo('syntax-structure'), EXPECTED)
+    expect(r.checks.filter((c) => !c.passed).map((c) => `${c.id}: ${c.detail}`)).toEqual([])
+    withSnapshot(structureIndex(), (db) => {
+      expect(rows(db, 'inherits', 'implements').filter((x) => NEW.test(x.path)).map((x) => [x.type, x.from, x.detail, x.resolution, x.reason, x.to, x.line])).toEqual([
+        ['inherits', 'com.acme.sshapes.Circle', { name: 'Base' }, 'unresolved', 'outside_capability', null, 5],
+        ['implements', 'com.acme.sshapes.Circle', { name: 'Shape' }, 'unresolved', 'outside_capability', null, 5],
+        ['inherits', 'cpp/area:Circle', { name: 'Shape' }, 'unresolved', 'outside_capability', null, 3],
+        ['inherits', 'swift/Circle:Circle', { name: 'Base', relation: 'supertype' }, 'unresolved', 'outside_capability', null, 3],
+        ['inherits', 'swift/Circle:Circle', { name: 'Shape', relation: 'supertype' }, 'unresolved', 'outside_capability', null, 3],
+      ])
+    })
+  }, 240000)
+
+  it('FR226 a C function has a call row for the call in its body, a macro call is a call, and every function of the C fixture with a call has one (SC-3)', () => {
+    const c = withSnapshot(structureIndex(), (db) => rows(db, 'calls').filter((x) => x.path === 'c/total.c').map((x) => [x.from, x.detail?.callee, x.resolution, x.reason, x.to]))
+    expect(c).toEqual([['c/total:biggest', 'MAX', 'unresolved', 'outside_capability', null], ['c/total:total', 'add', 'unresolved', 'outside_capability', null]])
+    // Every function of the file whose body has a call: both of them, by the fixture's own text.
+    const text = fs.readFileSync(path.join(fixtureRepo('syntax-structure'), 'c', 'total.c'), 'utf8')
+    const withCall = [...text.matchAll(/^int (\w+)\([^)]*\) \{.*\w\(.*\}$/gm)].map((m) => `c/total:${m[1]}`)
+    expect(withCall.sort()).toEqual(c.map((x) => x[0]).sort())
+  }, 240000)
+
+  it('FR226 a C++ call names its last identifier, qualified, templated or through an object, from the function or method that holds it, and a callee with no name is no row', async () => {
+    const { dataDir } = await indexedRepo({
+      'k.cpp': 'void g() { h<int>(2); ns::k(); a::b::c(); std::make_unique<T>(1); this->m(); p.q<int>(1); (*fp)(1); r(); }\nclass W { double area() { return z(); } };\n',
+      'k.c': 'int f(void) { (*fp)(1); return s(2) + t->u(3) + tab[0](4); }\n',
+    })
+    expect(calls(dataDir).map(([p, l, from, callee]) => [p, l, from, callee]).sort((x, y) => String(x[0]).localeCompare(String(y[0])) || String(x[3]).localeCompare(String(y[3])))).toEqual([
+      ['k.c', 1, 'k:f', 's'], ['k.c', 1, 'k:f', 'u'],
+      ['k.cpp', 1, 'k:g', 'c'], ['k.cpp', 1, 'k:g', 'h'], ['k.cpp', 1, 'k:g', 'k'], ['k.cpp', 1, 'k:g', 'm'], ['k.cpp', 1, 'k:g', 'make_unique'], ['k.cpp', 1, 'k:g', 'q'], ['k.cpp', 1, 'k:g', 'r'],
+      ['k.cpp', 2, 'k:W.area', 'z'],
+    ])
+  }, 240000)
+
+  it('FR224 the other forms: Scala wildcard, rename and selectors, Swift attribute and kind, a C include guard, #else and a computed include, Bash quoted, expanded and later arguments', async () => {
+    const { dataDir } = await indexedRepo({
+      'a.scala': 'import a.b._\nimport a.b.*\nimport a.b.{C => D, E}\nimport a.b.C as D\nimport a.B, c.D\nobject O { def f = { import x.y.Z\n 1 } }\n',
+      'a.swift': '@testable import Foo\nimport struct Foo.Bar\nimport Foo.Bar.Baz\n',
+      'g.c': '#ifndef G_H\n#define G_H\n#include <a.h>\n#endif\n',
+      'e.c': '#if X\n#include "p.h"\n#else\n#include "q.h"\n#endif\n#include "r.h"\n#include MACRO\n',
+      'b.sh': 'source "./a.sh"\nsource \'b.sh\'\nsource "$DIR/c.sh"\nsource $DIR/d.sh\nsource <(foo)\nsource e.sh extra\nsource\n[ -f x ] && source f.sh\n',
+    })
+    expect(importRows(dataDir).map((r) => [r.path, r.line, r.detail])).toEqual([
+      ['a.scala', 1, { module: 'a.b._' }], ['a.scala', 2, { module: 'a.b.*' }], ['a.scala', 3, { module: 'a.b', names: 'C => D, E' }], ['a.scala', 4, { module: 'a.b.C', alias: 'D' }], ['a.scala', 5, { module: 'a.B, c.D' }], ['a.scala', 6, { module: 'x.y.Z' }],
+      ['a.swift', 1, { module: 'Foo' }], ['a.swift', 2, { module: 'Foo.Bar' }], ['a.swift', 3, { module: 'Foo.Bar.Baz' }],
+      ['b.sh', 1, { module: './a.sh' }], ['b.sh', 2, { module: 'b.sh' }], ['b.sh', 6, { module: 'e.sh' }], ['b.sh', 8, { module: 'f.sh' }],
+      // The include guard wraps the whole file, so it does not make the include conditional.
+      ['e.c', 2, { module: 'p.h', system: 'false', conditional: 'true' }], ['e.c', 4, { module: 'q.h', system: 'false', conditional: 'true' }], ['e.c', 6, { module: 'r.h', system: 'false' }],
+      ['g.c', 3, { module: 'a.h', system: 'true' }],
+    ])
+  }, 240000)
+
+  it('FR225 the other forms: Swift struct, enum, protocol, generic and qualified supertypes and no extension; Scala trait, with, comma, generic and qualified; C++ several bases, qualified, templated, struct', async () => {
+    const { dataDir } = await indexedRepo({
+      'a.swift': 'struct S: Equatable, Hashable {}\nprotocol P: Q, R {}\nextension S: P {}\nenum E: Int, Codable { case a }\nclass G: Base<Int>, Mod.Proto {}\n',
+      'a.scala': 'class A extends B(1) with C with D[Int]\ntrait T extends U with V\nobject O extends X\nclass F(x: Int) extends G.H with I.J\nclass K extends L, M\n',
+      'a.cpp': 'class A : public B, virtual C, private ns::D, E<int> {};\nstruct S : B {};\ntemplate<class T> class U : public V<T> {};\n',
+    })
+    withSnapshot(dataDir, (db) => {
+      const by = (p: string) => rows(db, 'inherits', 'implements').filter((x) => x.path === p).map((x) => [x.line, x.type, x.from, x.detail])
+      expect(by('a.swift')).toEqual(expect.arrayContaining([
+        [1, 'inherits', 'a:S', { name: 'Equatable', relation: 'supertype' }], [1, 'inherits', 'a:S', { name: 'Hashable', relation: 'supertype' }],
+        [2, 'inherits', 'a:P', { name: 'Q', relation: 'supertype' }], [2, 'inherits', 'a:P', { name: 'R', relation: 'supertype' }],
+        [4, 'inherits', 'a:E', { name: 'Int', relation: 'supertype' }], [4, 'inherits', 'a:E', { name: 'Codable', relation: 'supertype' }],
+        [5, 'inherits', 'a:G', { name: 'Base', relation: 'supertype' }], [5, 'inherits', 'a:G', { name: 'Mod.Proto', relation: 'supertype' }],
+      ]))
+      expect(by('a.swift')).toHaveLength(8)
+      expect(by('a.scala')).toEqual(expect.arrayContaining([
+        [1, 'inherits', 'A', { name: 'B' }], [1, 'implements', 'A', { name: 'C' }], [1, 'implements', 'A', { name: 'D' }],
+        [2, 'inherits', 'T', { name: 'U' }], [2, 'implements', 'T', { name: 'V' }],
+        [3, 'inherits', 'O', { name: 'X' }],
+        [4, 'inherits', 'F', { name: 'G.H' }], [4, 'implements', 'F', { name: 'I.J' }],
+        [5, 'inherits', 'K', { name: 'L' }], [5, 'implements', 'K', { name: 'M' }],
+      ]))
+      expect(by('a.scala')).toHaveLength(10)
+      expect(by('a.cpp')).toEqual(expect.arrayContaining([
+        [1, 'inherits', 'a:A', { name: 'B' }], [1, 'inherits', 'a:A', { name: 'C' }], [1, 'inherits', 'a:A', { name: 'ns::D' }], [1, 'inherits', 'a:A', { name: 'E' }],
+        [2, 'inherits', 'a:S', { name: 'B' }], [3, 'inherits', 'a:U', { name: 'V' }],
+      ]))
+      expect(by('a.cpp')).toHaveLength(6)
+    })
+  }, 240000)
+
+  it('FR224 FR225 FR226 a file the grammar only partly parses keeps the imports, heritage and calls of the parsed part, and reports syntax partial', async () => {
+    const { dataDir } = await indexedRepo({
+      'broken.c': '#include <a.h>\nint f(void) { return g(1); }\nint (((\n',
+      'broken.cpp': '#include "x.h"\nclass A : public B {};\nvoid h() { k(); }\nvoid (((\n',
+      'broken.scala': 'import a.b.C\nclass K extends B with D\ndef ((( \n',
+      'broken.swift': 'import Foo\nclass S: Base {}\nfunc ((( \n',
+      'broken.sh': 'source ./a.sh\nif (((\n',
+    })
+    expect(importRows(dataDir).map((r) => [r.path, r.line, r.detail.module])).toEqual([['broken.c', 1, 'a.h'], ['broken.cpp', 1, 'x.h'], ['broken.scala', 1, 'a.b.C'], ['broken.sh', 1, './a.sh'], ['broken.swift', 1, 'Foo']])
+    withSnapshot(dataDir, (db) => {
+      expect(db.prepare(`select path, json_extract(capabilities, '$.syntax') as syntax, json_extract(capabilities, '$.imports') as imports from file order by path`).all()).toEqual(
+        ['broken.c', 'broken.cpp', 'broken.scala', 'broken.sh', 'broken.swift'].map((path) => ({ path, syntax: 'partial', imports: 'partial' })))
+      expect(rows(db, 'inherits', 'implements').map((x) => [x.path, x.type, x.detail?.name]).sort((a, b) => a.join().localeCompare(b.join()))).toEqual([['broken.cpp', 'inherits', 'B'], ['broken.scala', 'implements', 'D'], ['broken.scala', 'inherits', 'B'], ['broken.swift', 'inherits', 'Base']])
+    })
+    expect(calls(dataDir).filter(([p]) => /^broken\.c(pp)?$/.test(p)).map(([p, , from, callee]) => [p, from, callee])).toEqual([['broken.c', 'broken:f', 'g'], ['broken.cpp', 'broken:h', 'k']])
+  }, 240000)
+
+  it('FR226 a call inside a googletest macro body is a call, and so is the assertion macro itself', async () => {
+    const { dataDir } = await indexedRepo({ 't_test.cc': '#include <gtest/gtest.h>\nTEST(Calc, Adds) { EXPECT_EQ(add(1, 2), 3); }\n' })
+    expect(calls(dataDir).map(([p, l, , callee]) => [p, l, callee]).sort()).toEqual([['t_test.cc', 2, 'EXPECT_EQ'], ['t_test.cc', 2, 'add']])
+  }, 240000)
+
+  it('FR224 FR225 FR226 languages.md states imports, heritage and calls for Swift, Scala, C, C++ and Bash', () => {
+    const doc = fs.readFileSync(path.join(ROOT, 'docs', 'proofmesh', 'languages.md'), 'utf8')
+    const row = (name: string) => doc.split('\n').find((l) => l.startsWith('| ') && l.split('|')[1]!.trim().split(', ').includes(name))!.split('|').slice(2, -1).map((c) => c.trim())
+    expect(row('Swift')).toEqual(['yes, with module', 'supertypes, as `inherits` with `detail.relation` `supertype`', 'yes'])
+    expect(row('Scala')).toEqual(['yes, with module, wildcard, alias and selector names', '`extends` as `inherits`, `with` as `implements`', 'yes'])
+    expect(row('C')).toEqual(['`#include`, with `detail.system` and `detail.conditional`', 'no', 'yes'])
+    expect(row('C++')).toEqual(['`#include`, with `detail.system` and `detail.conditional`', 'base classes, as `inherits`', 'yes'])
+    expect(row('Bash')).toEqual(['`source` and `.` of a literal path', 'no', 'yes'])
   })
 })

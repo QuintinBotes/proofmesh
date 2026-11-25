@@ -52,11 +52,11 @@
           "not_at_tier": [
             {
               "role": "Circle",
-              "reason": "languages.md (what the tier records per language, FR118): no heritage is recorded for C++"
+              "reason": "slice 59b, languages.md (Swift, Scala, C, C++ and Bash, FR225): a C++ base class is recorded as an unresolved inherits row, never implements, and no target is bound, so Shape has no incoming implements row"
             },
             {
               "role": "Square",
-              "reason": "languages.md (what the tier records per language, FR118): no heritage is recorded for C++"
+              "reason": "slice 59b, languages.md (Swift, Scala, C, C++ and Bash, FR225): a C++ base class is recorded as an unresolved inherits row, never implements, and no target is bound, so Shape has no incoming implements row"
             }
           ]
         },
@@ -89,7 +89,7 @@
           "not_at_tier": [
             {
               "role": "report",
-              "reason": "languages.md (what the tier records per language, FR118): no imports are recorded for C++"
+              "reason": "slice 59b, languages.md (Swift, Scala, C, C++ and Bash, FR224): the tier records each C++ include as an unresolved row with no target, so no row points at the file; constrained name matching does not cover C++ yet"
             }
           ]
         },
@@ -120,7 +120,7 @@
           "not_at_tier": [
             {
               "role": "totalOfTwo",
-              "reason": "languages.md (what the tier records per language, FR118): C and C++ record no calls"
+              "reason": "slice 59b, languages.md (Swift, Scala, C, C++ and Bash, FR226): C++ calls are recorded as unresolved rows with no target, so no call reaches total; constrained name matching does not cover C++ yet"
             }
           ]
         },
