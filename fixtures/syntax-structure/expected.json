@@ -3,7 +3,11 @@
   "dispositions": {
     "go/shape.go": ["indexed", null],
     "java/Circle.java": ["indexed", null],
-    "java/Kind.java": ["indexed", null]
+    "java/Kind.java": ["indexed", null],
+    "kotlin/Circle.kt": ["indexed", null],
+    "php/Circle.php": ["indexed", null],
+    "ruby/circle.rb": ["indexed", null],
+    "rust/lib.rs": ["indexed", null]
   },
   "symbols": [
     { "kind": "module", "qualified_name": "go/shape", "lines": [1, 13], "signature": null },
@@ -14,9 +18,26 @@
     { "kind": "module", "qualified_name": "java/Kind", "lines": [1, 9], "signature": null },
     { "kind": "enum", "qualified_name": "com.acme.shapes.Kind", "lines": [3, 7], "signature": null },
     { "kind": "enum", "qualified_name": "com.acme.shapes.Kind.Size", "lines": [6, 6], "signature": null },
-    { "kind": "class", "qualified_name": "com.acme.shapes.Pair", "lines": [9, 9], "signature": null }
+    { "kind": "class", "qualified_name": "com.acme.shapes.Pair", "lines": [9, 9], "signature": null },
+    { "kind": "module", "qualified_name": "kotlin/Circle", "lines": [1, 5], "signature": null },
+    { "kind": "class", "qualified_name": "com.acme.kshapes.Circle", "lines": [5, 5], "signature": null },
+    { "kind": "module", "qualified_name": "php/Circle", "lines": [1, 7], "signature": null },
+    { "kind": "namespace", "qualified_name": "App.Shapes", "lines": [2, 2], "signature": null },
+    { "kind": "class", "qualified_name": "App.Shapes.Circle", "lines": [6, 7], "signature": null },
+    { "kind": "module", "qualified_name": "ruby/circle", "lines": [1, 6], "signature": null },
+    { "kind": "class", "qualified_name": "ruby/circle:Circle", "lines": [4, 6], "signature": null },
+    { "kind": "module", "qualified_name": "rust/lib", "lines": [1, 15], "signature": null },
+    { "kind": "namespace", "qualified_name": "rust/lib:geo", "lines": [3, 3], "signature": null },
+    { "kind": "interface", "qualified_name": "rust/lib:Shape", "lines": [5, 5], "signature": null },
+    { "kind": "interface", "qualified_name": "rust/lib:Named", "lines": [7, 7], "signature": null },
+    { "kind": "class", "qualified_name": "rust/lib:Circle", "lines": [9, 9], "signature": null },
+    { "kind": "function", "qualified_name": "rust/lib:area", "lines": [13, 15], "signature": null }
   ],
-  "calls": [],
+  "calls": [
+    { "from": "ruby/circle", "line": 1, "site_text": "require \"json\"", "resolution": "unresolved", "reason": "outside_capability" },
+    { "from": "ruby/circle", "line": 2, "site_text": "require_relative \"base\"", "resolution": "unresolved", "reason": "outside_capability" },
+    { "from": "ruby/circle:Circle", "line": 5, "site_text": "include Comparable", "resolution": "unresolved", "reason": "outside_capability" }
+  ],
   "structure": [
     { "type": "inherits", "from": "go/shape:Shape", "to": null, "detail": { "name": "Base", "relation": "embedding", "rule": "go_same_package" }, "site_text": "Base" },
     { "type": "inherits", "from": "com.acme.shapes.Circle", "to": null, "detail": { "name": "Base" }, "site_text": "Base" },
@@ -24,12 +45,27 @@
     { "type": "implements", "from": "com.acme.shapes.Circle", "to": null, "detail": { "name": "Named" }, "site_text": "Named" },
     { "type": "implements", "from": "com.acme.shapes.Kind", "to": null, "detail": { "name": "Named" }, "site_text": "Named" },
     { "type": "implements", "from": "com.acme.shapes.Kind.Size", "to": null, "detail": { "name": "Shape" }, "site_text": "Shape" },
-    { "type": "implements", "from": "com.acme.shapes.Pair", "to": null, "detail": { "name": "Shape" }, "site_text": "Shape" }
+    { "type": "implements", "from": "com.acme.shapes.Pair", "to": null, "detail": { "name": "Shape" }, "site_text": "Shape" },
+    { "type": "inherits", "from": "com.acme.kshapes.Circle", "to": null, "detail": { "name": "Base" }, "site_text": "Base" },
+    { "type": "inherits", "from": "com.acme.kshapes.Circle", "to": null, "detail": { "name": "Shape", "relation": "supertype" }, "site_text": "Shape" },
+    { "type": "inherits", "from": "App.Shapes.Circle", "to": null, "detail": { "name": "Base" }, "site_text": "Base" },
+    { "type": "implements", "from": "App.Shapes.Circle", "to": null, "detail": { "name": "Shape" }, "site_text": "Shape" },
+    { "type": "inherits", "from": "ruby/circle:Circle", "to": null, "detail": { "name": "Base" }, "site_text": "Base" },
+    { "type": "inherits", "from": "ruby/circle:Circle", "to": null, "detail": { "name": "Comparable", "relation": "include" }, "site_text": "Comparable" },
+    { "type": "implements", "from": "rust/lib:Circle", "to": null, "detail": { "name": "Shape" }, "site_text": "Shape" },
+    { "type": "inherits", "from": "rust/lib:Named", "to": null, "detail": { "name": "Shape" }, "site_text": "Shape" }
   ],
   "imports_unresolved": [
     { "from": "go/shape.go", "line": 4, "site_text": "\"fmt\"", "detail": { "module": "fmt" } },
     { "from": "go/shape.go", "line": 5, "site_text": "geo \"example.com/shop/geo\"", "detail": { "module": "example.com/shop/geo", "alias": "geo" } },
     { "from": "java/Circle.java", "line": 3, "site_text": "import com.acme.geo.Point;", "detail": { "module": "com.acme.geo.Point" } },
-    { "from": "java/Circle.java", "line": 4, "site_text": "import com.acme.util.*;", "detail": { "module": "com.acme.util.*" } }
+    { "from": "java/Circle.java", "line": 4, "site_text": "import com.acme.util.*;", "detail": { "module": "com.acme.util.*" } },
+    { "from": "kotlin/Circle.kt", "line": 3, "site_text": "import com.acme.geo.Point", "detail": { "module": "com.acme.geo.Point" } },
+    { "from": "php/Circle.php", "line": 4, "site_text": "use App\\Geo\\Point;", "detail": { "module": "App\\Geo\\Point" } },
+    { "from": "ruby/circle.rb", "line": 1, "site_text": "require \"json\"", "detail": { "module": "json" } },
+    { "from": "ruby/circle.rb", "line": 2, "site_text": "require_relative \"base\"", "detail": { "module": "base" } },
+    { "from": "rust/lib.rs", "line": 1, "site_text": "use crate::geo::{Point, Line};", "detail": { "module": "crate::geo", "names": "Point, Line" } },
+    { "from": "rust/lib.rs", "line": 3, "site_text": "mod geo;", "detail": { "module": "geo" } },
+    { "from": "rust/lib.rs", "line": 14, "site_text": "use std::fmt;", "detail": { "module": "std::fmt" } }
   ]
 }

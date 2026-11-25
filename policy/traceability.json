@@ -683,6 +683,15 @@
     "FR118": [
       "packages/proofmesh/test/syntax-structure.test.ts"
     ],
+    "FR221": [
+      "packages/proofmesh/test/syntax-structure.test.ts"
+    ],
+    "FR222": [
+      "packages/proofmesh/test/syntax-structure.test.ts"
+    ],
+    "FR223": [
+      "packages/proofmesh/test/syntax-structure.test.ts"
+    ],
     "FR119": [
       "packages/proofmesh/test/symbol-at.test.ts"
     ],
@@ -980,7 +989,7 @@
     "FR220": [
       "packages/proofmesh/test/rosetta.test.ts"
     ],
-    "FR223": [
+    "FR224": [
       "packages/proofmesh/test/python.overrides.test.ts",
       "packages/proofmesh/test/rosetta.test.ts"
     ]

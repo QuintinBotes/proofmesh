@@ -47,6 +47,9 @@ function parameterTypes(node: Node): string {
 // A function_declarator is a definition when a function body hangs from it, and a prototype otherwise.
 const isDefinition = (n: Node) => { let p = n.parent; while (p && /^(pointer|reference|parenthesized)_declarator$/.test(p.type)) p = p.parent; return p?.type === 'function_definition' }
 
+// A Ruby string without interpolation is its content, whatever delimits it (`"x"`, `'x'`, `%q(x)`).
+const rubyString = (n: Node) => (n.type === 'string' && n.namedChildren.every((c) => c.type === 'string_content') ? n.namedChildren.map((c) => c.text).join('') : null)
+
 let workspace = ''
 const languageOf = new Map<string, string>()
 const queries = new Map<string, Promise<Query>>()
@@ -84,7 +87,7 @@ async function analyse(file: string, callees = false) {
   const scopes: Array<{ node: Node; qualified: string }> = []
   const calls: Array<{ name: string; site: Range; node: Node; at: Range; facts: Record<string, string> }> = []
   const imports: Array<{ node: Node; detail?: Record<string, string> }> = []
-  const supertypes: Array<{ type: string; relation?: string; node: Node }> = []
+  const supertypes: Array<{ type: string; relation?: string; node: Node; owner?: Node; conditional?: boolean }> = []
   const tables: Array<{ name: Node; parts: string[] }> = []
   const locals: Array<{ node: Node; name: string }> = []
   for (const m of query.matches(tree.rootNode)) {
@@ -97,16 +100,16 @@ async function analyse(file: string, callees = false) {
     // An import statement, and a supertype a type names, need no @name: the module and the supertype are their own captures.
     const statement = role('import')
     if (statement) {
-      const spec = role('import.module'), alias = role('import.alias')
+      const spec = role('import.module'), alias = role('import.alias'), names = role('import.names')
       // A wildcard import's module runs to its `*`, as written.
-      const detail = spec ? { module: text.slice(spec.startIndex, (role('import.wildcard') ?? spec).endIndex).replace(/^["`](.*)["`]$/s, '$1'), ...(alias ? { alias: alias.text } : {}), ...(lang === 'java' && /^import\s+static\b/.test(statement.text) ? { static: 'true' } : {}) } : undefined
+      const detail = spec ? { module: rubyString(spec) ?? text.slice(spec.startIndex, (role('import.wildcard') ?? spec).endIndex).replace(/^["'`](.*)["'`]$/s, '$1'), ...(alias ? { alias: alias.text } : {}), ...(names ? { names: names.text.replace(/^\{|\}$/g, '').replace(/\s+/g, ' ').trim() } : {}), ...(lang === 'java' && /^import\s+static\b/.test(statement.text) ? { static: 'true' } : {}) } : undefined
       imports.push({ node: statement, ...(detail ? { detail } : {}) })
       continue
     }
     const heritage = m.captures.find((c) => /^(inherits|implements)(\.|$)/.test(c.name))
     if (heritage) {
       const [type, relation] = heritage.name.split('.')
-      supertypes.push({ type: type!, ...(relation ? { relation } : {}), node: heritage.node })
+      supertypes.push({ type: type!, ...(relation ? { relation } : {}), node: heritage.node, ...(role('owner') ? { owner: role('owner')! } : {}), ...(role('conditional') ? { conditional: true } : {}) })
       continue
     }
     if (!name) continue
@@ -179,7 +182,26 @@ async function analyse(file: string, callees = false) {
   const relationships: Array<Record<string, unknown>> = calls.map((c) => ({ type: 'calls', origin: 'syntax', source: { symbol: enclosing(c.node) }, site: { path: file, range: c.site }, resolution: 'unresolved', reason: 'outside_capability', detail: { callee: c.name, ...c.facts, ...(callees ? { callee_start: String(c.at.start_byte), callee_end: String(c.at.end_byte) } : {}) } }))
   for (const i of imports) relationships.push({ type: 'imports', origin: 'syntax', source: { file }, site: { path: file, range: range(i.node) }, resolution: 'unresolved', reason: 'outside_capability', ...(i.detail ? { detail: i.detail } : {}) })
   // A supertype is named, never resolved (FR117): the constrained-resolution slice binds it.
-  for (const h of supertypes) relationships.push({ type: h.type, origin: 'syntax', source: { symbol: enclosing(h.node) }, site: { path: file, range: range(h.node) }, resolution: 'unresolved', reason: 'outside_capability', detail: { name: h.node.text, ...(h.relation ? { relation: h.relation } : {}) } })
+  // A Rust impl runs from the type it is for: the type this file declares under that name, else the file's module, with the type in `detail.for`.
+  const typeKinds = new Set(['class', 'struct', 'enum', 'interface', 'type_alias'])
+  // The modules a node sits in, outermost first. An owner written `b::T` is the `T` declared in `b` beside the impl; `crate`, `self` and `super` are read as Rust reads them.
+  const modulesOf = (n: Node) => { const out: string[] = []; for (let p = n.parent; p; p = p.parent) if (p.type === 'mod_item') out.unshift(p.childForFieldName('name')?.text ?? ''); return out }
+  const ownerOf = (impl: Node, written: string): string | undefined => {
+    const segments = written.split('::').map((x) => x.trim()), name = segments.pop()!
+    const kinds = (d: (typeof defs)[number]) => typeKinds.has(String(symbols.find((s) => s.local_id === d.id)?.kind))
+    const named = defs.filter((d) => d.qualified === name && kinds(d))
+    let path = modulesOf(impl)
+    for (const [i, seg] of segments.entries()) { if (seg === 'crate' && i === 0) path = []; else if (seg === 'super') path = path.slice(0, -1); else if (seg !== 'self') path = [...path, seg] }
+    const exact = named.filter((d) => modulesOf(d.node).join('::') === path.join('::'))
+    // A bare name may also be one `use` brought in, so a single declaration of it is the owner; a written path must match, and an ambiguous one names none.
+    return (exact.length === 1 ? exact[0] : !segments.length && !exact.length && named.length === 1 ? named[0] : undefined)?.id
+  }
+  for (const h of supertypes) {
+    const written = h.owner?.text.replace(/<.*$/s, '').replace(/^[&\s]+/, '').trim()
+    const declared = written ? ownerOf(h.node, written) : undefined
+    // A Kotlin supertype's type arguments are no part of its name.
+    relationships.push({ type: h.type, origin: 'syntax', source: { symbol: h.owner ? declared ?? moduleId : enclosing(h.node) }, site: { path: file, range: range(h.node) }, resolution: 'unresolved', reason: 'outside_capability', detail: { name: h.node.text.replace(/<.*$/s, ''), ...(h.relation ? { relation: h.relation } : {}), ...(h.conditional ? { conditional: 'true' } : {}), ...(written && !declared ? { for: written } : {}) } })
+  }
   // A table this file declares under the name a query uses is a candidate; any other is named and left unresolved.
   const references = tables.filter((t) => !locals.some((l) => t.parts.length === 1 && l.name === t.parts[0]!.toLowerCase() && within(t.name, l.node)))
   for (const t of references) {
