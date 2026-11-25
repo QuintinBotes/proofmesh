@@ -73,7 +73,7 @@ export type Pom = {
   parent?: { groupId?: string; artifactId?: string; version?: string; relativePath?: string }
   properties: Record<string, string>
   modules: Array<{ value: string } & At>
-  dependencies: Array<{ groupId?: string; artifactId?: string; version?: string } & At>
+  dependencies: Array<{ groupId?: string; artifactId?: string; version?: string; scope?: string } & At>
   managed: Record<string, string>
 }
 
@@ -81,7 +81,7 @@ export type Pom = {
 export function readPom(root: XNode): Pom {
   if (root.name !== 'project') throw new ParseError(`the root element is <${root.name}>, not <project>`, root.start)
   const parent = child(root, 'parent')
-  const dep = (d: XNode) => ({ groupId: textOf(child(d, 'groupId')), artifactId: textOf(child(d, 'artifactId')), version: textOf(child(d, 'version')), start: d.start, end: d.end })
+  const dep = (d: XNode) => ({ groupId: textOf(child(d, 'groupId')), artifactId: textOf(child(d, 'artifactId')), version: textOf(child(d, 'version')), scope: textOf(child(d, 'scope')), start: d.start, end: d.end })
   const managed: Record<string, string> = {}
   for (const d of child(child(root, 'dependencyManagement'), 'dependencies')?.children ?? []) { const x = dep(d); if (x.groupId && x.artifactId && x.version) managed[`${x.groupId}:${x.artifactId}`] = x.version }
   return {

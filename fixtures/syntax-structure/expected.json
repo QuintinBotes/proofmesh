@@ -1,5 +1,5 @@
 {
-  "closed_world": "Every symbol, call, heritage row and import statement of these files. Imports are unresolved, so they are listed under imports_unresolved, which the test compares exactly.",
+  "closed_world": "Every symbol, call, heritage row and import statement of these files. Imports are unresolved, so they are listed under imports_unresolved, which the test compares exactly. A Go struct embedding a type of its own package is a candidate of that type (FR171); a name the files do not declare stays unresolved.",
   "dispositions": {
     "go/shape.go": ["indexed", null],
     "java/Circle.java": ["indexed", null],
@@ -18,7 +18,7 @@
   ],
   "calls": [],
   "structure": [
-    { "type": "inherits", "from": "go/shape:Shape", "to": null, "detail": { "name": "Base", "relation": "embedding" }, "site_text": "Base" },
+    { "type": "inherits", "from": "go/shape:Shape", "to": null, "detail": { "name": "Base", "relation": "embedding", "rule": "go_same_package", "inferred": "name_match" }, "site_text": "Base" },
     { "type": "inherits", "from": "com.acme.shapes.Circle", "to": null, "detail": { "name": "Base" }, "site_text": "Base" },
     { "type": "implements", "from": "com.acme.shapes.Circle", "to": null, "detail": { "name": "Shape" }, "site_text": "Shape" },
     { "type": "implements", "from": "com.acme.shapes.Circle", "to": null, "detail": { "name": "Named" }, "site_text": "Named" },

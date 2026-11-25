@@ -196,7 +196,7 @@ describe('FR154 FR155 FR156 the Gradle module graph, read from settings and buil
     })
     withSnapshot(dataDir, (db) => {
       expect(rows(db, 'depends_on').map((r) => [r.from, r.to, r.resolution, r.reason, r.detail, r.line])).toEqual([
-        [':a', ':b', 'resolved', null, { inferred: INFERRED }, 2],
+        [':a', ':b', 'resolved', null, { inferred: INFERRED, scope: 'test' }, 2],
         [':a', null, 'unresolved', 'dependency_missing', { path: ':nope', inferred: INFERRED }, 3],
       ])
       expect(rows(db, 'depends_on_package').map((r) => [r.to, r.detail, r.line])).toEqual([

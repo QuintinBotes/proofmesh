@@ -364,6 +364,8 @@ function compute(): { symbols: Fact[]; relationships: Fact[] } {
     for (let p: typeof e | undefined = e, n = 0; p && n < 20; p = parentOf(p), n++) if (p.pom.managed[key]) return interpolate(p, p.pom.managed[key]!)
     return undefined
   }
+  /** A dependency only test sources, or only the run time, can use says so: `detail.scope` is `test` or `runtime`; the compile scope says nothing. */
+  const scopeOf = (scope?: string): Record<string, string> => { const s = scope?.trim(); const k = !s ? '' : /^test|Test/.test(s) ? 'test' : /^runtime/i.test(s) ? 'runtime' : ''; return k ? { scope: k } : {} }
   const mavenProjects = projects.filter((x) => x.eco === 'maven')
   for (const e of poms.values()) {
     const source = e.project
@@ -380,7 +382,7 @@ function compute(): { symbols: Fact[]; relationships: Fact[] } {
       if (!group || !artifact || group.includes('${') || artifact.includes('${')) { relationships.push(dynamic(source, site, e.m, { ...(d.artifactId ? { artifactId: d.artifactId } : {}), ...(d.groupId ? { groupId: d.groupId } : {}) })); continue }
       const name = `${group}:${artifact}`
       const named = mavenProjects.filter((x) => x.name === name && x !== source)
-      if (named.length) { relationships.push(dependsOn(source, site, e.m, named, { name })); continue }
+      if (named.length) { relationships.push(dependsOn(source, site, e.m, named, { name }, scopeOf(d.scope))); continue }
       const raw = d.version ?? managedVersion(e, name), version = raw && interpolate(e, raw)
       relationships.push(external(source, site, e.m, 'maven', name, version && !version.includes('${') ? version : '', version?.includes('${') ? { version_expression: version } : {}))
     }
@@ -400,7 +402,7 @@ function compute(): { symbols: Fact[]; relationships: Fact[] } {
     for (const dep of deps) {
       const site = rangeOf(m, dep.start, dep.end)
       if (dep.kind === 'coordinate') coordinate(dep.group, dep.name, dep.version, site)
-      else if (dep.kind === 'project') relationships.push(dependsOn(source, site, m, [owner.projects.get(dep.path)].filter((p): p is Project => !!p && p !== source), { path: dep.path }, INFERRED))
+      else if (dep.kind === 'project') relationships.push(dependsOn(source, site, m, [owner.projects.get(dep.path)].filter((p): p is Project => !!p && p !== source), { path: dep.path }, { ...INFERRED, ...scopeOf(dep.configuration) }))
       else if (dep.kind === 'catalog') {
         const libs = catalogLookup(catalog, dep.alias)
         if (libs) for (const l of libs) coordinate(l.group, l.name, l.version, site)

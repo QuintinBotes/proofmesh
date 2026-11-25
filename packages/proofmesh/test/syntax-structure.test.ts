@@ -34,12 +34,13 @@ describe('FR115 FR116 FR117 the syntax tier records imports and heritage in Go a
     })
   }, 240000)
 
-  it('FR116 FR117 SC014 heritage rows name each supertype from the type that declares it, unresolved, and pass the conformance kit', async () => {
+  it('FR116 FR117 SC014 heritage rows name each supertype from the type that declares it, unresolved unless a rule binds it, and pass the conformance kit', async () => {
     const r = await runKit(syntax(), fixtureRepo('syntax-structure'), EXPECTED)
     expect(r.checks.filter((c) => !c.passed).map((c) => `${c.id}: ${c.detail}`)).toEqual([])
     expect(r.checks.map((c) => c.id)).toEqual(expect.arrayContaining(['golden.symbols', 'golden.calls', 'golden.structure']))
     withSnapshot(structureIndex(), (db) => {
-      expect(db.prepare(`select distinct resolution, reason, target_id from assertion where type in ('inherits', 'implements')`).all()).toEqual([{ resolution: 'unresolved', reason: 'outside_capability', target_id: null }])
+      // A Java supertype the files do not declare stays unresolved; a Go struct embedding a type of its own package is a candidate of it, never resolved (FR171).
+      expect(db.prepare(`select distinct resolution, reason, target_id from assertion where type in ('inherits', 'implements') order by resolution`).all()).toEqual([{ resolution: 'candidate', reason: 'candidate', target_id: null }, { resolution: 'unresolved', reason: 'outside_capability', target_id: null }])
     })
   }, 240000)
 
