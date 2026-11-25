@@ -4,6 +4,13 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 ## Unreleased
 
+SCIP calls, inheritance and imports (#19):
+
+- The SCIP importer records `calls` by joining the syntax tier's call sites with the index's occurrences at each callee name (`resolved`, or `resolved_external` with the package from the symbol), where it recorded only `references`. A call is no longer also a `references` row; a function passed as a value, and a field or variable that holds one, stay references (FR161, FR167, FR168).
+- It reads the index's `is_implementation` relationships into `implements`, `inherits` and `overrides` (FR162), and records each import statement, resolved to the package's file or to `<ecosystem>:<package>` (`go:std` for Go's standard library) (FR163). `analyze_impact` and `find_tests` follow them like any other edge (FR169).
+- A file reports `resolved_calls` `partial` when a call site matches no occurrence, and `unsupported` with `imports` where the syntax tier lacks the language or cannot be reached (FR166, FR170).
+- The index is read one document at a time, in memory that grows with its definitions, not its size; `proofmesh scip add` too (FR164). An index with a document before its metadata, or a length longer than the file, is refused; a document is read again only while the index file is unchanged.
+
 Build graph, Maven and Gradle (part of #13):
 
 - The build adapter reads `pom.xml`, `settings.gradle(.kts)`, `build.gradle(.kts)` and `gradle/libs.versions.toml` as captured text and never runs a build tool, a JVM or a script. A pom is a `project` named `groupId:artifactId` and a Gradle `include` a project named by its path; each contains the source files under its directory, `depends_on` records the modules a dependency names, and `depends_on_package` records the others as `maven:<group>:<artifact>` with their version. Gradle facts are marked `inferred`. A dependency a Gradle script computes is named as unresolved (`dynamic_specifier`) at its line and its file reports `partial` in the census (FR151 to FR160). Bazel and Buck stay open on #13.

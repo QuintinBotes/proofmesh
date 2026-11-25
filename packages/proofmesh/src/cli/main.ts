@@ -7,7 +7,7 @@ import { asProofmeshError, ProofmeshError } from '../core/errors.js'
 import { resolveDataDir } from '../core/paths.js'
 import { Catalog, initDataDir, LEASE_OWNER, type IndexJob } from '../meshstore/catalog.js'
 import { runVerificationCommand } from './verification.js'
-import { decodeScip, repositoryPath } from '../scip/decode.js'
+import { repositoryPath, scanScip } from '../scip/decode.js'
 import { sameRepository } from '../indexer/discovery.js'
 import { runWorkspaceLink } from './workspace-link.js'
 import { sha256File } from '../core/hash.js'
@@ -240,17 +240,21 @@ export async function main(argv: string[]): Promise<number> {
             const name = take(opts, '--name') ?? path.basename(file).replace(/\.scip$/, '')
             if (!/^[A-Za-z0-9._-]+$/.test(name)) throw new ProofmeshError('INVALID_ARGUMENT', `--name takes letters, digits, dots, dashes and underscores; got ${name}`)
             if (!fs.existsSync(file) || !fs.statSync(file).isFile()) throw new ProofmeshError('INVALID_ARGUMENT', `${file} is not a file`)
-            let index
-            try { index = decodeScip(fs.readFileSync(file)) } catch (e) { throw new ProofmeshError('INVALID_ARGUMENT', `${file} is not a SCIP index: ${(e as Error).message}`) }
             // A27: each covered file's hash as the tree stands now, on the assumption that the person just built the index from it.
+            // The index is read a document at a time, so naming a very large one holds no more than one document (FR164).
             const files: Record<string, { hash: string; language: string }> = {}
-            let missing = 0
-            for (const doc of index.documents) {
-              const rel = repositoryPath(index, doc, repo.root), abs = rel ? path.join(repo.root, rel) : undefined
-              if (rel && abs && fs.existsSync(abs) && fs.lstatSync(abs).isFile()) files[rel] = { hash: sha256File(abs), language: doc.language || 'unknown' }
-              else missing++
-            }
-            const s = catalog.addScip(repo.id, { name, path: file, sha256: sha256File(file), tool: `${index.tool.name} ${index.tool.version}`.trim(), files }, os.userInfo().username)
+            let missing = 0, tool = '', meta = { projectRoot: '' }
+            try {
+              scanScip(file, {
+                metadata: (m) => { tool = `${m.tool.name} ${m.tool.version}`.trim(); meta = m },
+                document: (doc) => {
+                  const rel = repositoryPath(meta, doc, repo.root), abs = rel ? path.join(repo.root, rel) : undefined
+                  if (rel && abs && fs.existsSync(abs) && fs.lstatSync(abs).isFile()) files[rel] = { hash: sha256File(abs), language: doc.language || 'unknown' }
+                  else missing++
+                },
+              })
+            } catch (e) { throw new ProofmeshError('INVALID_ARGUMENT', `${file} is not a SCIP index: ${(e as Error).message}`) }
+            const s = catalog.addScip(repo.id, { name, path: file, sha256: sha256File(file), tool, files }, os.userInfo().username)
             console.log(`SCIP index ${s.name} named for ${repo.name}: ${Object.keys(s.files).length} files covered${missing ? `, ${missing} of its documents ${missing === 1 ? 'names' : 'name'} no file in the repository` : ''}; produced by ${s.tool || 'an unnamed indexer'}; by ${s.added_by} at ${s.added_at}`)
             console.log('Proofmesh reads it at every index and never runs an indexer. Files no semantic adapter covers get its symbols and references while they keep their content as of now; after an edit a file falls back to its usual adapter until you produce the index again and add it again.')
             return 0

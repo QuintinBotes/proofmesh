@@ -58,7 +58,9 @@ function tags(name: string): Promise<Query> {
   return q
 }
 
-async function analyse(file: string) {
+// `callees` is for the SCIP importer, which joins a call site to the index's occurrence at the callee name (FR161): it asks the private method
+// `analyze_calls`, which the public protocol does not name, and gets the name's byte range in each call's detail.
+async function analyse(file: string, callees = false) {
   const text = fs.readFileSync(path.join(workspace, file), 'utf8')
   const at = byteOffsets(text)
   const lang = languageOf.get(file)!
@@ -78,7 +80,7 @@ async function analyse(file: string) {
   const defs: Array<{ id: string; node: Node; qualified: string }> = []
   // An extension's members are named after the type it extends, which it does not declare.
   const scopes: Array<{ node: Node; qualified: string }> = []
-  const calls: Array<{ name: string; site: Range; node: Node }> = []
+  const calls: Array<{ name: string; site: Range; node: Node; at: Range }> = []
   const imports: Array<{ node: Node; detail?: Record<string, string> }> = []
   const supertypes: Array<{ type: string; relation?: string; node: Node }> = []
   const tables: Array<{ name: Node; parts: string[] }> = []
@@ -116,7 +118,7 @@ async function analyse(file: string) {
       symbols.push({ local_id: id, path: file, kind, name: parts?.at(-1) ?? name.text, qualified_name: parts?.join('.') ?? '', range: range(def.node), signature: null })
     } else if (ref) {
       const [first, last] = name.startIndex <= ref.startIndex ? [name, ref] : [ref, name]
-      calls.push({ name: name.text, site: range(first, last.endIndex >= first.endIndex ? last : first), node: ref })
+      calls.push({ name: name.text, site: range(first, last.endIndex >= first.endIndex ? last : first), node: ref, at: range(name) })
     } else if (role('reference.table')) {
       const parts = dbName(name)
       if (parts) tables.push({ name, parts })
@@ -151,7 +153,7 @@ async function analyse(file: string) {
     if (rest.length > 1) for (const n of rest) n.s.qualified_name = `${n.s.qualified_name}(${n.types})`
   }
   const enclosing = (n: Node) => defs.filter((d) => within(n, d.node) || d.node === n).sort((a, b) => b.node.startIndex - a.node.startIndex)[0]?.id ?? moduleId
-  const relationships: Array<Record<string, unknown>> = calls.map((c) => ({ type: 'calls', origin: 'syntax', source: { symbol: enclosing(c.node) }, site: { path: file, range: c.site }, resolution: 'unresolved', reason: 'outside_capability', detail: { callee: c.name } }))
+  const relationships: Array<Record<string, unknown>> = calls.map((c) => ({ type: 'calls', origin: 'syntax', source: { symbol: enclosing(c.node) }, site: { path: file, range: c.site }, resolution: 'unresolved', reason: 'outside_capability', detail: { callee: c.name, ...(callees ? { callee_start: String(c.at.start_byte), callee_end: String(c.at.end_byte) } : {}) } }))
   for (const i of imports) relationships.push({ type: 'imports', origin: 'syntax', source: { file }, site: { path: file, range: range(i.node) }, resolution: 'unresolved', reason: 'outside_capability', ...(i.detail ? { detail: i.detail } : {}) })
   // A supertype is named, never resolved (FR117): the constrained-resolution slice binds it.
   for (const h of supertypes) relationships.push({ type: h.type, origin: 'syntax', source: { symbol: enclosing(h.node) }, site: { path: file, range: range(h.node) }, resolution: 'unresolved', reason: 'outside_capability', detail: { name: h.node.text, ...(h.relation ? { relation: h.relation } : {}) } })
@@ -179,11 +181,11 @@ readline.createInterface({ input: process.stdin }).on('line', async (line) => {
       reply({ adapter: { id: 'syntax', version: VERSION, protocol_version: '1.0', languages: SYNTAX_LANGUAGES, toolchain: toolchain(SYNTAX_LANGUAGES) }, capabilities: { syntax: true, symbols: true, resolved_calls: false }, external_inputs: [], units: req.params.files.map((f: { path: string }) => ({ id: f.path, files: [f.path] })) })
     } else if (req.method === 'workspace') {
       reply({ symbols: [], relationships: [], file_results: [], diagnostics: [] })
-    } else if (req.method === 'analyze') {
+    } else if (req.method === 'analyze' || req.method === 'analyze_calls') {
       const out = { symbols: [] as unknown[], relationships: [] as unknown[], file_results: [] as unknown[], diagnostics: [] as unknown[] }
       for (const p of req.params.paths as string[]) {
         try {
-          const r = await analyse(p)
+          const r = await analyse(p, req.method === 'analyze_calls')
           out.symbols.push(...r.symbols); out.relationships.push(...r.relationships); out.file_results.push(r.result)
         } catch (e) {
           out.file_results.push({ path: p, status: 'failed', capabilities: { text: 'complete', syntax: 'failed' } })

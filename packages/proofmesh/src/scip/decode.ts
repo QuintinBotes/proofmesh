@@ -1,11 +1,14 @@
 // A reader for SCIP indexes (github.com/sourcegraph/scip, scip.proto), limited to the fields Proofmesh ingests (A24).
 // Proofmesh never runs an indexer: a person produces the file and names it with `proofmesh scip add`.
 
+import crypto from 'node:crypto'
 import fs from 'node:fs'
 
 export type ScipRange = { startLine: number; startChar: number; endLine: number; endChar: number }
 export type ScipOccurrence = { symbol: string; roles: number; range?: ScipRange; enclosing?: ScipRange }
-export type ScipSymbol = { symbol: string; kind: number; displayName: string; signature: string | null }
+/** A symbol's relationship to another; `implementation` is scip.proto's `is_implementation`, the only flag Proofmesh reads (FR162). */
+export type ScipRelationship = { symbol: string; implementation: boolean }
+export type ScipSymbol = { symbol: string; kind: number; displayName: string; signature: string | null; relationships: ScipRelationship[] }
 export type ScipDocument = { path: string; language: string; positionEncoding: number; occurrences: ScipOccurrence[]; symbols: ScipSymbol[] }
 export type ScipIndex = { projectRoot: string; tool: { name: string; version: string }; documents: ScipDocument[] }
 
@@ -90,10 +93,14 @@ function occurrence(b: Uint8Array): ScipOccurrence {
 }
 
 function symbolInformation(b: Uint8Array): ScipSymbol {
-  const s: ScipSymbol = { symbol: '', kind: 0, displayName: '', signature: null }
+  const s: ScipSymbol = { symbol: '', kind: 0, displayName: '', signature: null, relationships: [] }
   for (const [field, , v] of fields(b)) {
     if (field === 1) s.symbol = text(v)
-    else if (field === 5) s.kind = v as number
+    else if (field === 4) {
+      const r: ScipRelationship = { symbol: '', implementation: false }
+      for (const [f, , x] of fields(v as Uint8Array)) { if (f === 1) r.symbol = text(x); else if (f === 3) r.implementation = x !== 0 }
+      if (r.symbol) s.relationships.push(r)
+    } else if (field === 5) s.kind = v as number
     else if (field === 6) s.displayName = text(v)
     else if (field === 7) for (const [f, , t] of fields(v as Uint8Array)) if (f === 5) s.signature = text(t)
   }
@@ -115,18 +122,136 @@ function document(b: Uint8Array): ScipDocument {
 export function decodeScip(bytes: Uint8Array): ScipIndex {
   const index: ScipIndex = { projectRoot: '', tool: { name: '', version: '' }, documents: [] }
   for (const [field, , v] of fields(bytes)) {
-    if (field === 1) {
-      for (const [f, , m] of fields(v as Uint8Array)) {
-        if (f === 3) index.projectRoot = text(m)
-        else if (f === 2) for (const [t, , x] of fields(m as Uint8Array)) { if (t === 1) index.tool.name = text(x); else if (t === 2) index.tool.version = text(x) }
-      }
-    } else if (field === 2) index.documents.push(document(v as Uint8Array))
+    if (field === 1) Object.assign(index, metadata(v as Uint8Array))
+    else if (field === 2) index.documents.push(document(v as Uint8Array))
   }
   return index
 }
 
+function metadata(b: Uint8Array): Pick<ScipIndex, 'projectRoot' | 'tool'> {
+  const out = { projectRoot: '', tool: { name: '', version: '' } }
+  for (const [f, , m] of fields(b)) {
+    if (f === 3) out.projectRoot = text(m)
+    else if (f === 2) for (const [t, , x] of fields(m as Uint8Array)) { if (t === 1) out.tool.name = text(x); else if (t === 2) out.tool.version = text(x) }
+  }
+  return out
+}
+
+/** What a streaming read counts, so a test can show the memory bound by numbers (FR164). */
+export type ScanProbe = { chunkBytes: number; bytesRead: number; maxBufferedBytes: number; largestMessage: number; documents: number; documentsHeld: number; maxDocumentsHeld: number }
+export const newProbe = (): ScanProbe => ({ chunkBytes: 0, bytesRead: 0, maxBufferedBytes: 0, largestMessage: 0, documents: 0, documentsHeld: 0, maxDocumentsHeld: 0 })
+export const CHUNK_BYTES = 1 << 20
+/** Where a document sits in the index file, so it can be read again alone. */
+export type DocumentAt = { offset: number; length: number }
+
+/**
+ * Reads an index from disk one document at a time (FR164): the file is read in chunks, and only the bytes of the message being
+ * decoded are held, never the whole file and never more than one decoded document. Returns the SHA-256 of every byte read.
+ */
+export function scanScip(file: string, visit: { metadata?(m: Pick<ScipIndex, 'projectRoot' | 'tool'>): void; document(doc: ScipDocument, at: DocumentAt): void; external?(info: ScipSymbol): void }, options: { chunkBytes?: number; probe?: ScanProbe } = {}): string {
+  const chunkBytes = options.chunkBytes ?? CHUNK_BYTES, probe = options.probe ?? newProbe()
+  probe.chunkBytes = chunkBytes
+  const fd = fs.openSync(file, 'r'), hash = crypto.createHash('sha256'), size = fs.fstatSync(fd).size
+  const corrupt = (why: string) => new Error(`the SCIP file is truncated or corrupt at offset ${fieldAt}: ${why}`)
+  let buf = Buffer.alloc(0), start = 0, fieldAt = 0, eof = false, sawMetadata = false
+  /** Reads until `want` bytes are buffered, or the file ends. `want` was checked against the file's size, so one allocation holds it. */
+  const ensure = (want: number): boolean => {
+    if (buf.length >= want) return true
+    if (eof) return false
+    // One buffer for the wanted size and a chunk more, filled by as many reads as it takes, so short reads reallocate nothing.
+    const next = Buffer.allocUnsafe(Math.max(want, buf.length + chunkBytes))
+    buf.copy(next)
+    let have = buf.length
+    probe.maxBufferedBytes = Math.max(probe.maxBufferedBytes, next.length)
+    while (have < want) {
+      const n = fs.readSync(fd, next, have, next.length - have, null)
+      if (!n) { eof = true; break }
+      hash.update(next.subarray(have, have + n)); probe.bytesRead += n
+      have += n
+    }
+    buf = next.subarray(0, have)
+    return have >= want
+  }
+  const consume = (n: number) => { buf = buf.subarray(n); start += n }
+  /** Steps over bytes the reader does not use, hashing them without keeping them. */
+  const skip = (n: number) => {
+    const have = Math.min(n, buf.length)
+    consume(have)
+    let rest = n - have
+    const scratch = Buffer.allocUnsafe(Math.min(chunkBytes, Math.max(rest, 1)))
+    while (rest > 0) {
+      const got = fs.readSync(fd, scratch, 0, Math.min(scratch.length, rest), null)
+      if (!got) throw new Error('the SCIP file is truncated')
+      hash.update(scratch.subarray(0, got)); probe.bytesRead += got; rest -= got; start += got
+    }
+  }
+  const varint = (): number => {
+    for (let need = 1; need <= 10; need++) {
+      if (!ensure(need)) throw new Error('the SCIP file is truncated')
+      if (!(buf[need - 1]! & 0x80)) {
+        let v = 0
+        for (let i = 0; i < need; i++) v += (buf[i]! & 0x7f) * 2 ** (7 * i)
+        if (v > Number.MAX_SAFE_INTEGER) throw corrupt('a number beyond 2^53')
+        consume(need)
+        return v
+      }
+    }
+    throw new Error('the SCIP file has a varint longer than ten bytes')
+  }
+  try {
+    while (ensure(1)) {
+      fieldAt = start
+      const key = varint(), field = Math.floor(key / 8), wire = key % 8
+      if (wire === 0) varint()
+      else if (wire === 1) skip(8)
+      else if (wire === 5) skip(4)
+      else if (wire === 2) {
+        const length = varint()
+        // A message cannot be longer than what is left of the file; refused before any buffer is made for it.
+        if (start + length > size) throw corrupt(`a message of ${length} bytes, ${Math.max(0, size - start)} left in the file`)
+        if (field !== 1 && field !== 2 && !(field === 3 && visit.external)) { skip(length); continue }
+        if (!ensure(length)) throw new Error('the SCIP file is truncated')
+        probe.largestMessage = Math.max(probe.largestMessage, length)
+        const message = buf.subarray(0, length), at = { offset: start, length }
+        if (field === 1) { sawMetadata = true; visit.metadata?.(metadata(message)) }
+        else if (field === 3) visit.external!(symbolInformation(message))
+        else {
+          if (!sawMetadata) throw new Error('the SCIP file has a document before its metadata')
+          probe.documents++; probe.maxDocumentsHeld = Math.max(probe.maxDocumentsHeld, ++probe.documentsHeld)
+          try { visit.document(document(message), at) } finally { probe.documentsHeld-- }
+        }
+        consume(length)
+      } else throw new Error(`the SCIP file has wire type ${wire}, which protobuf does not define`)
+    }
+  } finally { fs.closeSync(fd) }
+  return hash.digest('hex')
+}
+
+/** What an index file looked like when it was read, to refuse reading it again once it changed. */
+export type Stamp = { size: number; mtimeMs: number }
+export const stampOf = (file: string): Stamp => { const st = fs.statSync(file); return { size: st.size, mtimeMs: st.mtimeMs } }
+
+/** One document of an index, read again by where `scanScip` found it; refused if the file changed or another document sits there. */
+export function readDocument(file: string, at: DocumentAt, expected: Stamp & { path: string }): ScipDocument {
+  const fd = fs.openSync(file, 'r')
+  try {
+    const st = fs.fstatSync(fd), changed = () => new Error(`the SCIP index ${file} changed after the adapter read it`)
+    if (st.size !== expected.size || st.mtimeMs !== expected.mtimeMs || at.offset + at.length > st.size) throw changed()
+    const bytes = Buffer.allocUnsafe(at.length)
+    let have = 0
+    while (have < at.length) {
+      const n = fs.readSync(fd, bytes, have, at.length - have, at.offset + have)
+      if (!n) throw changed()
+      have += n
+    }
+    const doc = document(bytes)
+    if (doc.path !== expected.path) throw new Error(`the SCIP index ${file} at offset ${at.offset} holds ${doc.path}, which is not the document ${expected.path} that was read there`)
+    return doc
+  } finally { fs.closeSync(fd) }
+}
+
 /** The repository path of a document: SCIP paths are relative to the index's project root, which may sit inside the repository. */
-export function repositoryPath(index: ScipIndex, doc: ScipDocument, repositoryRoot: string): string | undefined {
+export function repositoryPath(index: Pick<ScipIndex, 'projectRoot'>, doc: ScipDocument, repositoryRoot: string): string | undefined {
   let root = index.projectRoot.startsWith('file://') ? decodeURIComponent(new URL(index.projectRoot).pathname).replace(/\/$/, '') : ''
   if (root && fs.existsSync(root)) root = fs.realpathSync(root)
   const prefix = root && (root === repositoryRoot || root.startsWith(repositoryRoot + '/')) ? root.slice(repositoryRoot.length + 1) : ''

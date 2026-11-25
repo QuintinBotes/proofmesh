@@ -14,13 +14,17 @@ const occurrence = (o: Occ, typed: boolean) => {
   const enclosing = !o.enclosing ? [] : typed ? r(o.enclosing.length === 3 ? 10 : 11, o.enclosing) : field(7, packed(o.enclosing))
   return [...range, ...field(2, o.symbol), ...field(3, o.def ? 1 : 8), ...enclosing]
 }
-export type Doc = { path: string; language: string; typed: boolean; occurrences: Occ[]; symbols?: Array<{ symbol: string; kind: number; signature?: string }> }
-export const encode = (root: string, tool: string, docs: Doc[]) => Uint8Array.from([
-  ...field(1, [...field(2, [...field(1, tool), ...field(2, '1.0')]), ...field(3, `file://${root}`)]),
-  ...docs.flatMap((d) => field(2, [
-    ...field(4, d.language), ...field(1, d.path),
-    ...d.occurrences.flatMap((o) => field(2, occurrence(o, d.typed))),
-    ...(d.symbols ?? []).flatMap((s) => field(3, [...field(1, s.symbol), ...field(5, s.kind), ...(s.signature ? field(7, field(5, s.signature)) : [])])),
-  ])),
+export type Sym = { symbol: string; kind: number; signature?: string; /** Symbols this one implements or overrides: scip.proto's `is_implementation`. */ implements?: string[] }
+export type Doc = { path: string; language: string; typed: boolean; occurrences: Occ[]; symbols?: Sym[] }
+const symbolInformation = (s: Sym) => field(3, [...field(1, s.symbol), ...(s.implements ?? []).flatMap((t) => field(4, [...field(1, t), ...field(3, 1)])), ...field(5, s.kind), ...(s.signature ? field(7, field(5, s.signature)) : [])])
+/** One document as the bytes of the index's `documents` field. */
+export const documentBytes = (d: Doc): number[] => field(2, [
+  ...field(4, d.language), ...field(1, d.path),
+  ...d.occurrences.flatMap((o) => field(2, occurrence(o, d.typed))),
+  ...(d.symbols ?? []).flatMap(symbolInformation),
 ])
+/** The index's metadata, which comes first. */
+export const metadataBytes = (root: string, tool: string): number[] => field(1, [...field(2, [...field(1, tool), ...field(2, '1.0')]), ...field(3, `file://${root}`)])
+/** `externals` are the index's own symbol information for symbols defined outside it (`external_symbols`). */
+export const encode = (root: string, tool: string, docs: Doc[], externals: Sym[] = []) => Uint8Array.from([...metadataBytes(root, tool), ...docs.flatMap(documentBytes), ...externals.flatMap(symbolInformation)])
 
