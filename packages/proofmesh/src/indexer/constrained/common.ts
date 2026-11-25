@@ -14,8 +14,8 @@ export type Model = {
   symbols: Sym[]
   /** The module of a file in an ecosystem, if the build graph put it in one. */
   projectOf: (file: string, eco: Array<Project['eco']>) => Project | undefined
-  /** A module sees itself and the modules it declares a dependency on (FR172); files in no module see each other. */
-  sees: (from: Project | undefined, to: Project | undefined) => boolean
+  /** A module sees itself and the modules it declares a direct, resolved dependency on for the file's sources (FR172): a test-scope dependency only for test sources, a runtime one for none. Files in no module see each other. */
+  sees: (from: Project | undefined, to: Project | undefined, file: string) => boolean
   read: (file: string) => Buffer | undefined
 }
 
@@ -23,11 +23,11 @@ export type Model = {
 const withDetail = (rel: Rel, extra: Record<string, string>): Rel['detail'] => ({ ...(rel.detail ?? {}), ...extra })
 
 /** The row, bound to its targets: one is a candidate, several are ambiguous with the first CAP of them. The rule and the basis are on the row (FR171). */
-export function bind(rel: Rel, targets: Sym[], rule: string): Rel {
+export function bind(rel: Rel, targets: Sym[], rule: string, how: { ambiguous?: boolean; inferred?: string } = {}): Rel {
   const seen = [...new Map(targets.map((t) => [t.local_id, t])).values()]
   const { reason: _reason, ...rest } = rel
-  const detail = withDetail(rel, { rule, inferred: 'name_match', ...(seen.length > CAP ? { more: String(seen.length - CAP) } : {}) })
-  return { ...rest, resolution: seen.length === 1 ? 'candidate' : 'ambiguous', candidates: seen.slice(0, CAP).map((t) => t.local_id), detail }
+  const detail = withDetail(rel, { rule, inferred: how.inferred ?? 'name_match', ...(seen.length > CAP ? { more: String(seen.length - CAP) } : {}) })
+  return { ...rest, resolution: seen.length === 1 && !how.ambiguous ? 'candidate' : 'ambiguous', candidates: seen.slice(0, CAP).map((t) => t.local_id), detail }
 }
 
 /** The row, left unresolved with a reason that says why no rule binds it. */

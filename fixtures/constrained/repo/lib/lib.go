@@ -20,3 +20,6 @@ func (i Item) reset() {
 func Render(x string) string {
 	return x
 }
+
+func (i Item) Write() {
+}

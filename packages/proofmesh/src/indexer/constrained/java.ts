@@ -92,7 +92,7 @@ export function resolveJava(m: Model, rels: Rel[]): Map<Rel, Rel> {
     if (v === 'private') return !!site && topOf(site) === topOf(s) && !inherited
     return pkgOf(s) === from.pkg || (v === 'protected' && inherited)
   }
-  const sees = (from: File, t: Sym) => m.sees(from.project, files.get(t.path)!.project)
+  const sees = (from: File, t: Sym) => m.sees(from.project, files.get(t.path)!.project, from.path)
 
   /** The types a name may mean from a file, by the first rule that finds one; types only a module the file does not depend on holds are `hidden` (FR172). */
   const resolveType = (from: File, name: string): Found => {
@@ -112,9 +112,12 @@ export function resolveJava(m: Model, rels: Rel[]): Map<Rel, Rel> {
     }
     const own = keep((inFile.get(from.path) ?? []).filter((t) => TYPES.has(t.kind) && t.name === name))
     if (own.length) return { types: own, rule: RANK[0]!, hidden }
-    const single = from.imports.filter((i) => !i.wildcard && !i.static && i.module.split('.').at(-1) === name).flatMap((i) => keep(byFqn.get(i.module) ?? []))
+    const named = from.imports.filter((i) => !i.wildcard && !i.static && i.module.split('.').at(-1) === name)
+    const single = named.flatMap((i) => keep(byFqn.get(i.module) ?? []))
     if (single.length) return { types: single, rule: RANK[1]!, hidden }
     if (hidden.length) return { types: [], rule: RANK[1]!, hidden }
+    // A single-type import of a name the repository does not declare (java.util.List) still hides the package's type of that name.
+    if (named.length) return { types: [], rule: RANK[1]!, hidden }
     const samePackage = keep((byPackage.get(from.pkg) ?? []).filter((t) => t.name === name))
     if (samePackage.length) return { types: samePackage, rule: RANK[2]!, hidden }
     const wild = from.imports.filter((i) => i.wildcard && !i.static).flatMap((i) => keep((byPackage.get(i.module.slice(0, -2)) ?? []).filter((t) => t.name === name)))
@@ -136,11 +139,10 @@ export function resolveJava(m: Model, rels: Rel[]): Map<Rel, Rel> {
   const methodsOf = (t: Sym, name: string, from: File, site: Sym | undefined, inherited: boolean, seen = new Set<Sym>()): { found: Sym[]; complete: boolean } => {
     if (seen.has(t)) return { found: [], complete: true }
     seen.add(t)
-    const own = (membersOf.get(t) ?? []).filter((s) => s.name === name && memberVisible(s, from, site, inherited))
-    if (own.length) return { found: own, complete: true }
+    // Overloads span the type and its supertypes, so the inherited methods of the name count beside the type's own.
+    const found = (membersOf.get(t) ?? []).filter((s) => s.name === name && memberVisible(s, from, site, inherited))
     const up = supers.get(t)
     let complete = up?.complete ?? true
-    const found: Sym[] = []
     for (const s of up?.types ?? []) { const r = methodsOf(s, name, from, site, true, seen); found.push(...r.found); complete &&= r.complete }
     return { found, complete }
   }
@@ -193,14 +195,17 @@ export function resolveJava(m: Model, rels: Rel[]): Map<Rel, Rel> {
     }
     const inside = lexical(site)
     // A bare name or `this`: the innermost enclosing type that has a method of that name, its own or inherited, else a static import.
+    // A supertype the repository does not hold may declare the name, and an inherited method hides a static import (JLS 15.12.1), so
+    // an incomplete search binds to nothing past it, and what it finds is ambiguous.
     if (!qualifier || qualifier === 'this' || qualifier === 'super') {
       if (!qualifier || qualifier === 'this') {
+        let incomplete = false
         for (const t of qualifier ? inside.slice(0, 1) : inside) {
           const r = methodsOf(t, callee, from, site, false)
-          if (r.found.length) { out.set(rel, bind(rel, r.found, 'java_same_class')); break }
-          if (!r.complete) break
+          if (r.found.length) { out.set(rel, bind(rel, r.found, 'java_same_class', { ambiguous: !r.complete })); break }
+          if (!r.complete) { incomplete = true; break }
         }
-        if (out.has(rel) || qualifier) continue
+        if (out.has(rel) || qualifier || incomplete) continue
         const viaImport = from.imports.filter((i) => i.static).flatMap((i) => {
           const owner = i.wildcard ? i.module.slice(0, -2) : i.module.slice(0, i.module.lastIndexOf('.'))
           if (!i.wildcard && i.module.slice(owner.length + 1) !== callee) return []
@@ -208,36 +213,24 @@ export function resolveJava(m: Model, rels: Rel[]): Map<Rel, Rel> {
         })
         if (viaImport.length) out.set(rel, bind(rel, viaImport, 'java_static_import'))
       } else if (inside[0]) {
-        const found = (supers.get(inside[0])?.types ?? []).flatMap((t) => methodsOf(t, callee, from, site, true).found)
-        if (found.length) out.set(rel, bind(rel, found, 'java_inherited'))
+        const r = (supers.get(inside[0])?.types ?? []).map((t) => methodsOf(t, callee, from, site, true))
+        const found = r.flatMap((x) => x.found)
+        if (found.length) out.set(rel, bind(rel, found, 'java_inherited', { ambiguous: !(supers.get(inside[0])?.complete ?? true) || r.some((x) => !x.complete) }))
       }
       continue
     }
-    // `T.m()`: a type, by the same rules that name it, then the methods of it that the site may reach. A variable of that name hides the type.
-    if (!shadowed && rel.detail?.receiver !== 'expression') {
-      const named = resolveType(from, qualifier)
-      if (named.types.length) {
-        const r = named.types.map((t) => methodsOf(t, callee, from, site, false))
-        const found = r.flatMap((x) => x.found)
-        const inherited = found.length && named.types.every((t) => !(membersOf.get(t) ?? []).some((s) => found.includes(s)))
-        if (found.length) out.set(rel, bind(rel, found, inherited ? 'java_inherited' : named.rule))
-        else if (r.every((x) => x.complete)) out.set(rel, unresolved(rel, 'unknown_name', { type: named.types[0]!.qualified_name }))
-        continue
-      }
-      if (named.hidden.length) { out.set(rel, undeclared(rel, named.hidden)); continue }
-      // A name that looks like a type but is none of the repository's (the JDK's, a library's) is not a receiver to guess at.
-      if (!qualifier.includes('.') && /^\p{Lu}/u.test(qualifier)) continue
-      if (qualifier.includes('.') && /^[a-z]+(\.[a-z]\w*)*\.\p{Lu}/u.test(qualifier)) continue
-    }
-    // A receiver of a type the tier cannot know: the methods of that name on the types this file can see, by what the site may reach.
-    const reach: Array<{ s: Sym; rank: number }> = []
-    const add = (list: Sym[], rank: number, inheritedFrom = false) => { for (const t of list) for (const s of membersOf.get(t) ?? []) if (s.name === callee && memberVisible(s, from, site, inheritedFrom)) reach.push({ s, rank }) }
-    add((inFile.get(from.path) ?? []).filter((t) => TYPES.has(t.kind)), 0)
-    add(from.imports.filter((i) => !i.wildcard && !i.static).flatMap((i) => (byFqn.get(i.module) ?? []).filter((t) => accessible(t, from) && sees(from, t))), 1)
-    add((byPackage.get(from.pkg) ?? []).filter((t) => sees(from, t)), 2)
-    add(from.imports.filter((i) => i.wildcard && !i.static).flatMap((i) => (byPackage.get(i.module.slice(0, -2)) ?? []).filter((t) => accessible(t, from) && sees(from, t))), 3)
-    const found = ranked(reach)
-    if (found.length) out.set(rel, bind(rel, found, 'java_visible_method'))
+    // `T.m()`: a type, by the same rules that name it, then the methods of it that the site may reach. A variable of that name hides the
+    // type, and a receiver of any other kind has a type the tier cannot know: both bind to nothing, for a method of that name on any type
+    // the file sees would be a guess.
+    if (shadowed || rel.detail?.receiver === 'expression') continue
+    const named = resolveType(from, qualifier)
+    if (named.types.length) {
+      const r = named.types.map((t) => methodsOf(t, callee, from, site, false))
+      const found = r.flatMap((x) => x.found)
+      const inherited = found.length && named.types.every((t) => !(membersOf.get(t) ?? []).some((s) => found.includes(s)))
+      if (found.length) out.set(rel, bind(rel, found, inherited ? 'java_inherited' : named.rule, { ambiguous: r.some((x) => !x.complete) }))
+      else if (r.every((x) => x.complete)) out.set(rel, unresolved(rel, 'unknown_name', { type: named.types[0]!.qualified_name }))
+    } else if (named.hidden.length) out.set(rel, undeclared(rel, named.hidden))
   }
   return out
 }

@@ -15,11 +15,8 @@
       "at": "svc/main.go:7",
       "type": "calls",
       "name": "Total",
-      "resolution": "candidate",
-      "rule": "go_method_name",
-      "candidates": [
-        "lib/lib:Item.Total@lib/lib.go"
-      ]
+      "resolution": "unresolved",
+      "reason": "outside_capability"
     },
     {
       "at": "svc/main.go:8",
@@ -93,6 +90,54 @@
       ]
     },
     {
+      "at": "svc/collide.go:10",
+      "type": "calls",
+      "name": "Write",
+      "resolution": "unresolved",
+      "reason": "outside_capability"
+    },
+    {
+      "at": "svc/collide.go:11",
+      "type": "calls",
+      "name": "Write",
+      "resolution": "unresolved",
+      "reason": "outside_capability"
+    },
+    {
+      "at": "svc/internal_use.go:6",
+      "type": "calls",
+      "name": "Hidden",
+      "resolution": "unresolved",
+      "reason": "unknown_name",
+      "detail": {
+        "visibility": "internal"
+      }
+    },
+    {
+      "at": "svc/ignored_use.go:9",
+      "type": "calls",
+      "name": "Format",
+      "resolution": "unresolved",
+      "reason": "outside_capability"
+    },
+    {
+      "at": "svc/ignored_use.go:9",
+      "type": "calls",
+      "name": "Format",
+      "resolution": "unresolved",
+      "reason": "outside_capability"
+    },
+    {
+      "at": "lib/use.go:6",
+      "type": "calls",
+      "name": "Hidden",
+      "resolution": "candidate",
+      "rule": "go_package_member",
+      "candidates": [
+        "lib/internal/secret/secret:Hidden@lib/internal/secret/secret.go"
+      ]
+    },
+    {
       "at": "java/a/src/main/java/a/Back.java:7",
       "type": "calls",
       "name": "Use",
@@ -103,6 +148,34 @@
       }
     },
     {
+      "at": "java/b/src/main/java/b/Derived.java:8",
+      "type": "calls",
+      "name": "foo",
+      "resolution": "ambiguous",
+      "rule": "java_same_class",
+      "candidates": [
+        "b.Derived.foo@java/b/src/main/java/b/Derived.java",
+        "b.Base.foo@java/b/src/main/java/b/Base.java"
+      ]
+    },
+    {
+      "at": "java/b/src/main/java/b/Ext.java:8",
+      "type": "calls",
+      "name": "bar",
+      "resolution": "ambiguous",
+      "rule": "java_same_class",
+      "candidates": [
+        "b.Ext.bar@java/b/src/main/java/b/Ext.java"
+      ]
+    },
+    {
+      "at": "java/b/src/main/java/b/Lists.java:7",
+      "type": "calls",
+      "name": "of",
+      "resolution": "unresolved",
+      "reason": "outside_capability"
+    },
+    {
       "at": "java/b/src/main/java/b/Order.java:5",
       "type": "calls",
       "name": "order",
@@ -110,6 +183,23 @@
       "rule": "java_same_class",
       "candidates": [
         "b.Order.order@java/b/src/main/java/b/Order.java"
+      ]
+    },
+    {
+      "at": "java/b/src/main/java/b/Stat.java:7",
+      "type": "calls",
+      "name": "format",
+      "resolution": "unresolved",
+      "reason": "outside_capability"
+    },
+    {
+      "at": "java/b/src/main/java/b/Stat2.java:7",
+      "type": "calls",
+      "name": "format",
+      "resolution": "candidate",
+      "rule": "java_static_import",
+      "candidates": [
+        "a.Util.format@java/a/src/main/java/a/Util.java"
       ]
     },
     {
@@ -150,33 +240,52 @@
       "at": "java/b/src/main/java/b/Use.java:14",
       "type": "calls",
       "name": "shown",
-      "resolution": "candidate",
-      "rule": "java_visible_method",
-      "candidates": [
-        "a.Util.shown@java/a/src/main/java/a/Util.java"
-      ]
+      "resolution": "unresolved",
+      "reason": "outside_capability"
     },
     {
       "at": "java/b/src/main/java/b/Use.java:15",
       "type": "calls",
       "name": "format",
-      "resolution": "ambiguous",
-      "rule": "java_visible_method",
-      "candidates": [
-        "a.Util.format@java/a/src/main/java/a/Util.java",
-        "b.Util.format@java/b/src/main/java/b/Util.java"
-      ]
+      "resolution": "unresolved",
+      "reason": "outside_capability"
     },
     {
       "at": "java/b/src/main/java/b/Use.java:20",
       "type": "calls",
       "name": "format",
-      "resolution": "ambiguous",
-      "rule": "java_visible_method",
+      "resolution": "unresolved",
+      "reason": "outside_capability"
+    },
+    {
+      "at": "java/c/src/main/java/c/M.java:7",
+      "type": "calls",
+      "name": "format",
+      "resolution": "unresolved",
+      "reason": "dependency_missing",
+      "detail": {
+        "undeclared": "example:a"
+      }
+    },
+    {
+      "at": "java/c/src/test/java/c/T.java:7",
+      "type": "calls",
+      "name": "format",
+      "resolution": "candidate",
+      "rule": "java_import",
       "candidates": [
-        "a.Util.format@java/a/src/main/java/a/Util.java",
-        "b.Util.format@java/b/src/main/java/b/Util.java"
+        "a.Util.format@java/a/src/main/java/a/Util.java"
       ]
+    },
+    {
+      "at": "java/d/src/main/java/d/D.java:7",
+      "type": "calls",
+      "name": "format",
+      "resolution": "unresolved",
+      "reason": "dependency_missing",
+      "detail": {
+        "undeclared": "example:a"
+      }
     }
   ],
   "heritage": [
@@ -201,6 +310,23 @@
       ]
     },
     {
+      "at": "java/b/src/main/java/b/Derived.java:3",
+      "type": "inherits",
+      "name": "Base",
+      "resolution": "candidate",
+      "rule": "java_same_package",
+      "candidates": [
+        "b.Base@java/b/src/main/java/b/Base.java"
+      ]
+    },
+    {
+      "at": "java/b/src/main/java/b/Ext.java:3",
+      "type": "inherits",
+      "name": "External",
+      "resolution": "unresolved",
+      "reason": "outside_capability"
+    },
+    {
       "at": "java/b/src/main/java/b/Order.java:3",
       "type": "implements",
       "name": "Named",
@@ -209,6 +335,13 @@
       "candidates": [
         "b.Named@java/b/src/main/java/b/Named.java"
       ]
+    },
+    {
+      "at": "java/b/src/main/java/b/Stat.java:5",
+      "type": "inherits",
+      "name": "External",
+      "resolution": "unresolved",
+      "reason": "outside_capability"
     },
     {
       "at": "java/b/src/main/java/b/Use.java:5",
@@ -223,6 +356,93 @@
   ],
   "imports": [
     {
+      "at": "svc/blank.go:3",
+      "type": "imports",
+      "name": "example.com/lib",
+      "resolution": "ambiguous",
+      "rule": "go_import_path",
+      "candidates": [
+        "lib/lib@lib/lib.go",
+        "lib/use@lib/use.go"
+      ],
+      "detail": {
+        "package": "lib",
+        "files": "2",
+        "inferred": "package_directory"
+      }
+    },
+    {
+      "at": "svc/dot.go:3",
+      "type": "imports",
+      "name": "example.com/lib",
+      "resolution": "ambiguous",
+      "rule": "go_import_path",
+      "candidates": [
+        "lib/lib@lib/lib.go",
+        "lib/use@lib/use.go"
+      ],
+      "detail": {
+        "package": "lib",
+        "files": "2",
+        "inferred": "package_directory"
+      }
+    },
+    {
+      "at": "svc/main.go:3",
+      "type": "imports",
+      "name": "example.com/lib",
+      "resolution": "ambiguous",
+      "rule": "go_import_path",
+      "candidates": [
+        "lib/lib@lib/lib.go",
+        "lib/use@lib/use.go"
+      ],
+      "detail": {
+        "package": "lib",
+        "files": "2",
+        "inferred": "package_directory"
+      }
+    },
+    {
+      "at": "svc/util.go:3",
+      "type": "imports",
+      "name": "example.com/lib",
+      "resolution": "ambiguous",
+      "rule": "go_import_path",
+      "candidates": [
+        "lib/lib@lib/lib.go",
+        "lib/use@lib/use.go"
+      ],
+      "detail": {
+        "package": "lib",
+        "files": "2",
+        "inferred": "package_directory"
+      }
+    },
+    {
+      "at": "svc/collide.go:6",
+      "type": "imports",
+      "name": "example.com/lib",
+      "resolution": "ambiguous",
+      "rule": "go_import_path",
+      "candidates": [
+        "lib/lib@lib/lib.go",
+        "lib/use@lib/use.go"
+      ],
+      "detail": {
+        "package": "lib",
+        "files": "2",
+        "inferred": "package_directory"
+      }
+    },
+    {
+      "at": "svc/collide.go:4",
+      "type": "imports",
+      "name": "bytes",
+      "resolution": "unresolved",
+      "reason": "outside_capability"
+    },
+    {
       "at": "svc/bad.go:3",
       "type": "imports",
       "name": "example.com/other",
@@ -233,36 +453,42 @@
       }
     },
     {
-      "at": "svc/blank.go:3",
+      "at": "svc/ignored_use.go:4",
       "type": "imports",
-      "name": "example.com/lib",
-      "resolution": "resolved",
-      "to": "lib/lib.go",
-      "rule": "go_import_path"
+      "name": "example.com/lib/testdata/fix",
+      "resolution": "unresolved",
+      "reason": "outside_capability"
     },
     {
-      "at": "svc/dot.go:3",
+      "at": "svc/ignored_use.go:5",
       "type": "imports",
-      "name": "example.com/lib",
-      "resolution": "resolved",
-      "to": "lib/lib.go",
-      "rule": "go_import_path"
+      "name": "example.com/lib/vendor/v",
+      "resolution": "unresolved",
+      "reason": "outside_capability"
     },
     {
-      "at": "svc/main.go:3",
+      "at": "svc/internal_use.go:3",
       "type": "imports",
-      "name": "example.com/lib",
-      "resolution": "resolved",
-      "to": "lib/lib.go",
-      "rule": "go_import_path"
+      "name": "example.com/lib/internal/secret",
+      "resolution": "unresolved",
+      "reason": "import_unresolved",
+      "detail": {
+        "visibility": "internal"
+      }
     },
     {
-      "at": "svc/util.go:3",
+      "at": "lib/use.go:3",
       "type": "imports",
-      "name": "example.com/lib",
-      "resolution": "resolved",
-      "to": "lib/lib.go",
-      "rule": "go_import_path"
+      "name": "example.com/lib/internal/secret",
+      "resolution": "candidate",
+      "rule": "go_import_path",
+      "candidates": [
+        "lib/internal/secret/secret@lib/internal/secret/secret.go"
+      ],
+      "detail": {
+        "package": "lib/internal/secret",
+        "files": "1"
+      }
     },
     {
       "at": "java/a/src/main/java/a/Back.java:3",
@@ -275,6 +501,33 @@
       }
     },
     {
+      "at": "java/b/src/main/java/b/Lists.java:3",
+      "type": "imports",
+      "name": "java.util.List",
+      "resolution": "unresolved",
+      "reason": "outside_capability"
+    },
+    {
+      "at": "java/b/src/main/java/b/Stat.java:3",
+      "type": "imports",
+      "name": "a.Util.format",
+      "resolution": "candidate",
+      "rule": "java_static_import",
+      "candidates": [
+        "a.Util.format@java/a/src/main/java/a/Util.java"
+      ]
+    },
+    {
+      "at": "java/b/src/main/java/b/Stat2.java:3",
+      "type": "imports",
+      "name": "a.Util.format",
+      "resolution": "candidate",
+      "rule": "java_static_import",
+      "candidates": [
+        "a.Util.format@java/a/src/main/java/a/Util.java"
+      ]
+    },
+    {
       "at": "java/b/src/main/java/b/Use.java:3",
       "type": "imports",
       "name": "a.Util",
@@ -283,6 +536,36 @@
       "candidates": [
         "a.Util@java/a/src/main/java/a/Util.java"
       ]
+    },
+    {
+      "at": "java/c/src/main/java/c/M.java:3",
+      "type": "imports",
+      "name": "a.Util",
+      "resolution": "unresolved",
+      "reason": "dependency_missing",
+      "detail": {
+        "undeclared": "example:a"
+      }
+    },
+    {
+      "at": "java/c/src/test/java/c/T.java:3",
+      "type": "imports",
+      "name": "a.Util",
+      "resolution": "candidate",
+      "rule": "java_import",
+      "candidates": [
+        "a.Util@java/a/src/main/java/a/Util.java"
+      ]
+    },
+    {
+      "at": "java/d/src/main/java/d/D.java:3",
+      "type": "imports",
+      "name": "a.Util",
+      "resolution": "unresolved",
+      "reason": "dependency_missing",
+      "detail": {
+        "undeclared": "example:a"
+      }
     }
   ]
 }
