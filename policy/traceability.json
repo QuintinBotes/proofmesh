@@ -996,6 +996,10 @@
     "FR225": [
       "packages/proofmesh/test/rosetta.test.ts",
       "packages/proofmesh/test/impact-dispatch.test.ts"
+    ],
+    "FR226": [
+      "packages/proofmesh/test/python.overrides.test.ts",
+      "packages/proofmesh/test/rosetta.test.ts"
     ]
   },
   "manual": {

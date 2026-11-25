@@ -4,6 +4,10 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 ## Unreleased
 
+Python overrides (closes #69; completes #20 scenario 2):
+
+- The Python adapter records `overrides` from a method to the method of the same name it overrides, through the class's resolved bases: one row per base branch that declares it, a chain one level at a time, nothing for a static method, a property, a method that overrides nothing or a base outside the repository. Callers and impact of a subclass method now include calls made through the base class, labelled `dispatch` (FR226, FR214).
+
 Test importers and sibling implementations (closes #67, #68):
 
 - `get_relationships` with `include_tests` false now leaves out an importer row whose source is a test file; the filter looked up a symbol, and an importer's source is the file (FR224).
