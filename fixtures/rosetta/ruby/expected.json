@@ -43,11 +43,11 @@
           "not_at_tier": [
             {
               "role": "Circle",
-              "reason": "languages.md (what the tier records per language, FR118): no heritage is recorded for Ruby"
+              "reason": "slice 59a, languages.md (Kotlin, Rust, PHP and Ruby, FR222): `include Shape` is recorded as an unresolved inherits row with relation include (FR222), never implements, and no target is bound"
             },
             {
               "role": "Square",
-              "reason": "languages.md (what the tier records per language, FR118): no heritage is recorded for Ruby"
+              "reason": "slice 59a, languages.md (Kotlin, Rust, PHP and Ruby, FR222): `include Shape` is recorded as an unresolved inherits row with relation include (FR222), never implements, and no target is bound"
             }
           ]
         },
@@ -78,7 +78,7 @@
           "not_at_tier": [
             {
               "role": "report",
-              "reason": "languages.md (what the tier records per language, FR118): no imports are recorded for Ruby"
+              "reason": "slice 59a, languages.md (Kotlin, Rust, PHP and Ruby, FR221): the tier records each Ruby import as an unresolved row with no target, so no row points at the file; constrained name matching does not cover Ruby yet"
             }
           ]
         },

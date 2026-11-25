@@ -157,7 +157,7 @@ describe('FR214 the precise tiers answer observed, and say where they fall short
     expect(of('python').answers.calls_circle_area!.rows).toHaveLength(1)
   })
 
-  it('FR221 FR222: no expected file records the test importer or the sibling implementation as a known defect any more', () => {
+  it('FR224 FR225: no expected file records the test importer or the sibling implementation as a known defect any more', () => {
     for (const lang of ['typescript', 'python', 'csharp']) {
       const rows = Object.values(of(lang).section!.calls).flatMap((c) => c.rows)
       expect(rows.filter((r) => r.known_defect && !/Python gives/.test(r.known_defect)), lang).toEqual([])
