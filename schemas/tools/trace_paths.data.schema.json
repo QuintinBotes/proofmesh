@@ -28,7 +28,8 @@
         "additionalProperties": false,
         "required": [
           "nodes",
-          "assertions"
+          "assertions",
+          "basis"
         ],
         "properties": {
           "nodes": {
@@ -43,6 +44,13 @@
               "type": "string",
               "pattern": "^as_[0-9a-z]+$"
             }
+          },
+          "basis": {
+            "enum": [
+              "observed",
+              "inferred"
+            ],
+            "description": "inferred when any hop of the path is."
           }
         }
       }
@@ -239,6 +247,7 @@
         "required": [
           "type",
           "origin",
+          "basis",
           "rule"
         ],
         "properties": {
@@ -247,6 +256,13 @@
           },
           "origin": {
             "type": "string"
+          },
+          "basis": {
+            "enum": [
+              "observed",
+              "inferred"
+            ],
+            "description": "The hop's own basis."
           },
           "rule": {
             "type": [

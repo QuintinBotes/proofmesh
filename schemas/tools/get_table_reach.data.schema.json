@@ -101,7 +101,8 @@
                 "qualified_name",
                 "name",
                 "path",
-                "depth"
+                "depth",
+                "basis"
               ],
               "properties": {
                 "id": {
@@ -126,6 +127,13 @@
                   "type": "integer",
                   "minimum": 1,
                   "description": "Length of the shortest resolved path from this symbol to the table."
+                },
+                "basis": {
+                  "enum": [
+                    "observed",
+                    "inferred"
+                  ],
+                  "description": "inferred when a hop of the chain that reaches the endpoint or job is inferred, or the link from the table to that chain is."
                 }
               }
             }

@@ -17,6 +17,7 @@ import { snapshotSummary, UNRESOLVED_REASONS } from './summary.js'
 import type { ModuleCycle } from '../indexer/module-cycles.js'
 import { overview } from './overview.js'
 import { getEcosystem } from './ecosystem.js'
+import { type Basis, basisOf, byBasis, inferredSql } from './basis.js'
 import { analyzeImpact, IMPACT_TYPES, type Impact } from './impact.js'
 import { isTestCode, isTestPath } from './tests.js'
 import { EXECUTING, testReach, type TestRow } from './test-reach.js'
@@ -443,7 +444,7 @@ const impactRows = (ctx: Ctx, reached: Impact['reached_by'], mixed: boolean) => 
     const via = reached.get(x.id), site = via ? siteOf(ctx.db, via) : null
     const line = site?.start_line ?? (ctx.db.prepare('select start_line from symbol where id = ?').get(x.id) as { start_line: number }).start_line
     const type = via && mixed ? (ctx.db.prepare('select type from assertion where id = ?').get(via) as { type: string }).type : null
-    const row = leanRow(leanName(x), site?.path ?? x.path, line, [`depth=${x.depth}`, ...(!via ? ['dispatch'] : type ? [type] : [])])
+    const row = leanRow(leanName(x), site?.path ?? x.path, line, [`depth=${x.depth}`, ...(!via ? ['dispatch'] : type ? [type] : []), ...(x.basis === 'inferred' ? ['inferred'] : [])])
     rendered.set(x.id, row)
     return row
   })
@@ -689,7 +690,7 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     const baseRow = ctx.catalog.snapshotOfCommit(ctx.repo.id, base)
     const headRow = head ? ctx.catalog.snapshotOfCommit(ctx.repo.id, head) : ctx.catalog.currentSnapshot(ctx.repo.id)?.id === ctx.snapshot.id && treeFreshness(ctx.db, ctx.dataDir, root).current ? ctx.snapshot : undefined
     const sides = { base: { commit: base, snapshot_id: baseRow?.id ?? null }, head: { commit: head, snapshot_id: headRow?.id ?? null } }
-    const zero = { changed_symbols: 0, dependents: 0, changed: 0, tested: 0, neither: 0 }
+    const zero = { changed_symbols: 0, dependents: 0, changed: 0, tested: 0, neither: 0, by_basis: { observed: 0, inferred: 0 } }
     const missing = [...(headRow ? [] : [head]), ...(baseRow ? [] : [base])]
     if (missing.length) {
       // One index job per repository at a time: the first missing side now, the other on a later call.
@@ -718,7 +719,7 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
       const all = done.map((d) => d.changed), stopped = done.reduce((n, d) => n + d.stopped, 0), unfollowed = [...new Set(done.flatMap((d) => d.unfollowed))].sort()
       const deps = all.flatMap((c) => c.dependents)
       const count = (s: string) => deps.filter((x) => x.status === s).length
-      const totals = { changed_symbols: all.length, dependents: deps.length, changed: count('changed'), tested: count('tested'), neither: count('neither') }
+      const totals = { changed_symbols: all.length, dependents: deps.length, changed: count('changed'), tested: count('tested'), neither: count('neither'), by_basis: byBasis(deps) }
       // Files the diff touches that a side's snapshot does not analyse are named, never dropped.
       const unanalysed = [...new Set([...[...diff.head.keys()].filter((p) => !indexed(headDb, p)), ...[...diff.base.keys()].filter((p) => !indexed(baseDb, p) && !diff.head.has(p))])].sort()
       const end = ctx.page.offset + ctx.limits.max_rows
@@ -933,14 +934,14 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     return {
       data: {
         tests: r.rows.slice(ctx.page.offset, end).map((t) => ({ ...t, chain: r.chain(t) })),
-        totals: { tests: r.rows.length, executing, not_executing: r.rows.length - executing, by_project: [...byProject].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)).map(([name, count]) => ({ name, count })) },
+        totals: { tests: r.rows.length, executing, not_executing: r.rows.length - executing, by_basis: byBasis(r.rows), by_project: [...byProject].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)).map(([name, count]) => ({ name, count })) },
         observed: { available: false, reason: 'No coverage data has been imported for this snapshot.' }, stopped_by: r.stopped_by,
       },
       stop_reasons: [...(r.stopped_by === 'max_depth' ? ['max_depth' as const] : []), ...(r.rows.length > end ? ['max_rows' as const] : [])], more: r.rows.length > end, limitations, shrink: 'tests',
       // A lean row is the test at its first call toward the subject, as an impact row is; a call is depth=1, a transitive call deeper (FR097, FR101).
       lean: (data) => (data.tests as Array<TestRow & { chain: Array<{ path: string; line: number }> }>).map((t) => t.evidence === 'import_only'
-        ? leanRow(null, t.path, t.line, ['import_only'])
-        : leanRow(leanName(t), t.chain[0]!.path, t.chain[0]!.line, [`depth=${t.depth}`, ...(t.evidence === 'dispatch' || t.evidence === 'reference' ? [t.evidence] : [])])),
+        ? leanRow(null, t.path, t.line, ['import_only', ...(t.basis === 'inferred' ? ['inferred'] : [])])
+        : leanRow(leanName(t), t.chain[0]!.path, t.chain[0]!.line, [`depth=${t.depth}`, ...(t.evidence === 'dispatch' || t.evidence === 'reference' ? [t.evidence] : []), ...(t.basis === 'inferred' ? ['inferred'] : [])])),
     }
   },
 
@@ -1110,9 +1111,9 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
       return { kind: 'external', id, name: x.name, module: x.module }
     }
     const relationships = rows.map((a) => {
-      const site = siteOf(ctx.db, a.id)
+      const site = siteOf(ctx.db, a.id), basis = basisOf(a)
       return {
-        assertion_id: a.id, type: a.type, direction: a.direction, resolution: a.resolution, origin: a.origin,
+        assertion_id: a.id, type: a.type, direction: a.direction, resolution: a.resolution, origin: a.origin, ...(basis ? { basis } : {}),
         other: a.direction === 'out' ? describe(a.target_kind, a.target_id) : describe(a.source_kind, a.source_id),
         site: { path: site.path, start_line: site.start_line, end_line: site.end_line }, reason: a.reason, detail: a.detail ? (JSON.parse(a.detail) as Record<string, string>) : null, evidence_ids: site.evidence,
         ...(viaOf(a) ? { via: { id: viaOf(a)!, qualified_name: (ctx.db.prepare('select qualified_name from symbol where id = ?').get(viaOf(a)) as { qualified_name: string }).qualified_name } } : {}),
@@ -1126,10 +1127,17 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
       ? ctx.db.prepare(`select reason, count(*) as n from assertion where source_id in (${sp}) and type in (${tp}) and resolution = 'unresolved' group by reason`).all(...ids, ...types) as Array<{ reason: string; n: number }>
       : []
     const byReason = { ...boundaries.by_reason }
-    const outTotal = () => (ctx.db.prepare(`select count(*) as n from assertion where source_id in (${sp}) and type in (${tp}) and resolution in (${rp})${outFilter}`).get(...ids, ...types, ...resolutions) as { n: number }).n
-    const inTotal = () => (ctx.db.prepare(`select count(*) as n from (${inbound})`).get(...inboundParams) as { n: number }).n
+    // Every matching row, by basis; an unresolved boundary is no relationship and has none.
+    const counted = (from: string, params: unknown[]) => {
+      const c = { observed: 0, inferred: 0, none: 0 }
+      for (const r of ctx.db.prepare(`select case when x.resolution = 'unresolved' then 'none' when ${inferredSql('x')} then 'inferred' else 'observed' end as basis, count(*) as n from (${from}) x group by basis`).all(...params) as Array<{ basis: keyof typeof c; n: number }>) c[r.basis] = r.n
+      return { ...c, total: c.observed + c.inferred + c.none }
+    }
+    const outCount = direction === 'in' ? null : counted(`select * from assertion where source_id in (${sp}) and type in (${tp}) and resolution in (${rp})${outFilter}`, [...ids, ...types, ...resolutions])
+    const inCount = direction === 'out' ? null : counted(inbound, inboundParams)
+    const inheritedBasis = byBasis(inherited.map((a) => ({ basis: basisOf(a) })))
     const outExternal = hideExternal ? (ctx.db.prepare(`select count(*) as n from assertion where source_id in (${sp}) and type = 'calls' and resolution = 'resolved_external'`).get(...ids) as { n: number }).n : 0
-    const totals = { in: direction === 'out' ? 0 : inTotal(), out: direction === 'in' ? 0 : outTotal() + inherited.length, ...(boundaries !== NO_BOUNDARIES ? { boundaries_calling_name: boundaries.name_matched } : {}), ...(outExternal ? { out_external: outExternal } : {}) }
+    const totals = { in: inCount?.total ?? 0, out: outCount ? outCount.total + inherited.length : 0, by_basis: { observed: (outCount?.observed ?? 0) + (inCount?.observed ?? 0) + (outCount ? inheritedBasis.observed : 0), inferred: (outCount?.inferred ?? 0) + (inCount?.inferred ?? 0) + (outCount ? inheritedBasis.inferred : 0) }, ...(boundaries !== NO_BOUNDARIES ? { boundaries_calling_name: boundaries.name_matched } : {}), ...(outExternal ? { out_external: outExternal } : {}) }
     for (const g of outGroups) byReason[g.reason] = (byReason[g.reason] ?? 0) + g.n
     const truncated = relationships.length > ctx.limits.max_rows
     const limitations = [
@@ -1155,6 +1163,7 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
           // A query that mixes directions or types says which each row is, as the JSON rows' direction and type fields do.
           ...(direction === 'both' ? [r.direction] : []), ...(types.length > 1 ? [r.type] : []), ...(r.via ? ['dispatch'] : []), ...(o.kind === 'external' ? ['external'] : []),
           ...(r.resolution === 'unresolved' ? [`unresolved:${r.reason}`] : r.resolution === 'candidate' || r.resolution === 'ambiguous' ? [r.resolution] : []),
+          ...(r.basis === 'inferred' ? ['inferred'] : []),
         ])
       }),
     }
@@ -1207,15 +1216,20 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
       if (f) nodes[id] = { kind: 'file', name: f.path.slice(f.path.lastIndexOf('/') + 1), qualified_name: f.path, path: f.path, start_line: 1 }
     }
     const relationships: Record<string, unknown> = {}
+    const hopBasis = new Map<string, Basis>()
     for (const id of [...new Set([...t.paths.flatMap((p) => p.assertions), ...t.explored.map((e) => e.assertion_id)])].sort()) {
-      const a = ctx.db.prepare('select type, origin, detail from assertion where id = ?').get(id) as { type: string; origin: string; detail: string | null }
-      relationships[id] = { type: a.type, origin: a.origin, rule: a.detail ? ((JSON.parse(a.detail) as { rule?: string }).rule ?? null) : null }
+      const a = ctx.db.prepare('select type, origin, resolution, detail from assertion where id = ?').get(id) as { type: string; origin: string; resolution: string; detail: string | null }
+      const basis = basisOf(a) ?? 'observed'
+      hopBasis.set(id, basis)
+      relationships[id] = { type: a.type, origin: a.origin, basis, rule: a.detail ? ((JSON.parse(a.detail) as { rule?: string }).rule ?? null) : null }
     }
+    // A path is inferred when any hop is.
+    const paths = t.paths.map((p) => ({ ...p, basis: p.assertions.some((a) => hopBasis.get(a) === 'inferred') ? 'inferred' as const : 'observed' as const }))
     const stop = t.stopped_by ? [t.stopped_by] : []
     // Under the byte budget the explored edges go first, then boundaries, then paths beyond the first: a found path is never cut away.
     const exploredTotal = t.explored.length
     const prune = (data: Record<string, unknown>) => {
-      const d = data as { paths: typeof t.paths; search: { horizon: typeof t.horizon; explored: typeof t.explored; explored_truncated: boolean }; boundaries: Boundary[]; nodes: Record<string, unknown>; relationships: Record<string, unknown> }
+      const d = data as { paths: typeof paths; search: { horizon: typeof t.horizon; explored: typeof t.explored; explored_truncated: boolean }; boundaries: Boundary[]; nodes: Record<string, unknown>; relationships: Record<string, unknown> }
       const keep = new Set<string>([source, target, ...d.paths.flatMap((p) => p.nodes), ...d.search.horizon.map((h) => h.id), ...d.boundaries.map((b) => b.from_id), ...d.search.explored.flatMap((e) => [e.from, e.to])])
       const edges = new Set<string>([...d.paths.flatMap((p) => p.assertions), ...d.search.explored.map((e) => e.assertion_id)])
       for (const k of Object.keys(d.nodes)) if (!keep.has(k)) delete d.nodes[k]
@@ -1223,18 +1237,19 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
       if (d.search.explored.length < exploredTotal) d.search.explored_truncated = true
     }
     return {
-      data: { conclusion, paths: t.paths, search: { levels: t.levels, stopped_by: t.stopped_by, horizon: t.horizon, explored: t.explored, explored_truncated: t.explored_truncated }, boundaries: boundaries.items, nodes, relationships },
+      data: { conclusion, paths, search: { levels: t.levels, stopped_by: t.stopped_by, horizon: t.horizon, explored: t.explored, explored_truncated: t.explored_truncated }, boundaries: boundaries.items, nodes, relationships },
       evidence_ids: [...new Set(t.paths.flatMap((p) => p.assertions.flatMap((a) => siteOf(ctx.db, a).evidence)))].sort(),
       unresolved: { scope: 'query', items: boundaries.items, count: boundaries.count, by_reason: boundaries.by_reason }, stop_reasons: stop, limitations, shrink: ['search.explored', 'boundaries', 'search.horizon', 'paths'], keep: 1, prune,
       // The first path's hops in order: each node at its call to the next (at its declaration for a dispatch hop), then the target (FR098).
       lean: (data) => {
-        const p = (data.paths as typeof t.paths)[0], nodes = data.nodes as Record<string, { kind: string; name: string; qualified_name: string; path: string; start_line: number }>
+        const p = (data.paths as typeof paths)[0], nodes = data.nodes as Record<string, { kind: string; name: string; qualified_name: string; path: string; start_line: number }>
         return (p?.nodes ?? []).map((id, i) => {
           const n = nodes[id]!, type = i < p!.assertions.length ? hopType(p!.assertions[i]!) : null
           if (n.kind === 'external') return leanRow(n.name, null, null)
-          if (type === null || isDispatch(type)) return leanRow(leanName(n), n.path, n.start_line, type ? ['dispatch'] : [])
+          const inferred = type !== null && hopBasis.get(p!.assertions[i]!) === 'inferred' ? ['inferred'] : []
+          if (type === null || isDispatch(type)) return leanRow(leanName(n), n.path, n.start_line, [...(type ? ['dispatch'] : []), ...inferred])
           const site = siteOf(ctx.db, p!.assertions[i]!)
-          return leanRow(leanName(n), site.path, site.start_line, type === 'calls' ? [] : [type])
+          return leanRow(leanName(n), site.path, site.start_line, [...(type === 'calls' ? [] : [type]), ...inferred])
         })
       },
     }

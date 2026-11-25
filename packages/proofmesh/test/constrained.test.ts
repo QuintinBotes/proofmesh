@@ -212,19 +212,19 @@ describe('FR178 issue 16 scenario 6: workspace_status warns of a cycle among bui
 })
 
 describe('FR171 issue 16 scenario 7: a candidate is read as inferred, and no edge is made of it', () => {
-  it('FR171 FR177 scenario 7: get_relationships calls into lib/lib.go Format answers one row, svc/main.go, a candidate from the syntax tier carrying its rule and its inferred basis', () => {
+  it('FR171 FR177 scenario 7: get_relationships calls into lib/lib.go Format answers one row, svc/main.go, a candidate from the syntax tier carrying its rule and, by its resolution, the inferred basis (FR188)', () => {
     const d = constrainedIndex()
     const env = tool(d, 'get_relationships', { subject_id: symbolId(d, 'lib/lib:Format'), direction: 'in', types: ['calls'] })
     const rows = env.data.relationships as Array<{ resolution: string; origin: string; other: { path: string; qualified_name: string }; detail: Record<string, string> }>
     expect(rows).toHaveLength(1)
-    expect(rows[0]).toMatchObject({ resolution: 'candidate', origin: 'syntax', other: { path: 'svc/main.go' }, detail: { rule: 'go_package_member', inferred: 'name_match' } })
+    expect(rows[0]).toMatchObject({ resolution: 'candidate', origin: 'syntax', other: { path: 'svc/main.go' }, basis: 'inferred', detail: { rule: 'go_package_member' } })
   }, 240000)
 
-  it('FR171 every candidate and ambiguous row says it is inferred and names its rule; no resolved row of a name match does; and none of them is an edge', () => {
+  it('FR171 every candidate and ambiguous row names its rule, which is what reads it as inferred (FR188); no resolved row of a name match does; and none of them is an edge', () => {
     withSnapshot(constrainedIndex(), (db) => {
       const open = (db.prepare("select id, resolution, detail from assertion where origin = 'syntax' and type in ('calls', 'inherits', 'implements', 'imports') and resolution in ('candidate', 'ambiguous')").all() as Array<{ id: string; resolution: string; detail: string }>)
       expect(open.length).toBeGreaterThan(10)
-      for (const r of open) expect(JSON.parse(r.detail)).toMatchObject({ inferred: expect.stringMatching(/^(name_match|package_directory)$/), rule: expect.stringMatching(/^(go|java)_/) })
+      for (const r of open) expect(JSON.parse(r.detail)).toMatchObject({ rule: expect.stringMatching(/^(go|java)_/) })
       expect((db.prepare("select count(*) as n from edge e join assertion a on a.id = e.assertion_id where a.resolution in ('candidate', 'ambiguous')").get() as { n: number }).n).toBe(0)
       // No syntax-tier import is a resolved edge: a Go package is a directory and an import links files, so its row lists the package's files (FR177).
       expect((db.prepare("select count(*) as n from assertion where type = 'imports' and resolution = 'resolved' and origin = 'syntax'").get() as { n: number }).n).toBe(0)

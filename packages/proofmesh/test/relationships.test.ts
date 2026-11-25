@@ -13,7 +13,7 @@ describe('an external symbol is a subject for inbound calls', () => {
     const env = tool(dataDir, 'get_relationships', { subject_id: ext!.id, types: ['calls'] })
     expect((env.data.relationships as any[]).length).toBe(ext!.n)
     expect((env.data.relationships as any[]).every((r) => r.direction === 'in' && r.resolution === 'resolved_external')).toBe(true)
-    expect(env.data.totals).toEqual({ in: ext!.n, out: 0 })
+    expect(env.data.totals).toEqual({ in: ext!.n, out: 0, by_basis: { observed: ext!.n, inferred: 0 } })
     expect(env.limitations.some((l) => l.startsWith('The subject is an external symbol'))).toBe(true)
   })
 })

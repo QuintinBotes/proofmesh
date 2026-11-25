@@ -3,6 +3,7 @@
 import { spawnSync } from 'node:child_process'
 import type Database from 'better-sqlite3'
 import { ProofmeshError } from '../core/errors.js'
+import { type Basis, basisOf, inferredSql } from './basis.js'
 import { leanName, leanRow, quote } from './lean.js'
 import { innermost } from './symbol-at.js'
 import { EXECUTING, importedNames, testReach } from './test-reach.js'
@@ -14,9 +15,9 @@ export type Diff = { head: Ranges; base: Ranges; renamed: Map<string, string> }
 /** One side of the comparison: its snapshot database, its id and its changed ranges. */
 type Snap = { db: Database.Database; id: string; ranges: Ranges }
 type Sym = { id: string; kind: string; name: string; qualified_name: string; path: string; file_id: string; start_line: number; end_line: number }
-type Test = { name: string; path: string; line: number; evidence: string; depth: number; changed: boolean }
+type Test = { name: string; path: string; line: number; evidence: string; depth: number; basis: Basis; changed: boolean }
 /** A caller, implementer, overrider, subclass, reference or importer of a changed symbol, with its status. */
-export type Dependent = { id: string; name: string; path: string; line: number; relation: string; via: string | null; status: 'changed' | 'tested' | 'neither'; test: Test | null }
+export type Dependent = { id: string; name: string; path: string; line: number; relation: string; via: string | null; basis: Basis; status: 'changed' | 'tested' | 'neither'; test: Test | null }
 /** A symbol the diff changed, with its status and dependents. */
 export type Changed = { id: string; name: string; path: string; line: number; change: 'added' | 'modified' | 'deleted'; status: 'tested' | 'neither'; test: Test | null; dependents: Dependent[] }
 
@@ -145,7 +146,7 @@ export function complete(c: { sym: Sym; change: Changed['change']; snap: Snap },
   const testCode = (s: { path: string; file_id: string }) => inTestCode(db, s, o.isTest)
   const site = db.prepare('select f.path, e.start_line as line from assertion_evidence ae join evidence e on e.id = ae.evidence_id join file f on f.id = e.file_id where ae.assertion_id = ? order by e.start_byte limit 1')
   const symbol = db.prepare(`${SYMBOL_SQL} where s.id = ?`)
-  const inbound = (id: string, types: string[]) => db.prepare(`select src, type, assertion_id from edge where dst = ? and resolution = 'resolved' and type in (${types.map(() => '?').join(',')})`).all(id, ...types) as Array<{ src: string; type: string; assertion_id: string }>
+  const inbound = (id: string, types: string[]) => db.prepare(`select e.src, e.type, e.assertion_id, ${inferredSql()} as inferred from edge e join assertion a on a.id = e.assertion_id where e.dst = ? and e.resolution = 'resolved' and e.type in (${types.map(() => '?').join(',')})`).all(id, ...types) as Array<{ src: string; type: string; assertion_id: string; inferred: number }>
 
   // The test nearest a symbol or file that executes it, by find_tests' evidence (FR112); a search cut short is counted, so neither can say so.
   let stopped = 0
@@ -159,7 +160,7 @@ export function complete(c: { sym: Sym; change: Changed['change']; snap: Snap },
       return null
     }
     const own = symbol.get(t.id) as Sym | undefined
-    return { name: leanName(t), path: t.path, line: t.line, evidence: t.evidence, depth: t.depth, changed: !!own && changedIn(own) }
+    return { name: leanName(t), path: t.path, line: t.line, evidence: t.evidence, depth: t.depth, basis: t.basis, changed: !!own && changedIn(own) }
   }
   const statusOf = (changed: boolean, ids: string[], files: string[]): Pick<Dependent, 'status' | 'test'> => {
     if (changed) return { status: 'changed', test: null }
@@ -169,21 +170,31 @@ export function complete(c: { sym: Sym; change: Changed['change']; snap: Snap },
 
   // One row per dependent and relation, at its first site.
   const rows = new Map<string, Dependent>()
-  const keep = (s: Sym, relation: string, assertion: string, via: string | null) => {
+  const keep = (s: Sym, relation: string, assertion: string, via: string | null, basis: Basis) => {
     if (s.id === c.sym.id || (!o.includeTests && testCode(s))) return
     const key = `${s.id}\u0000${relation}`, at = site.get(assertion) as { path: string; line: number }
     const had = rows.get(key)
-    if (had && (had.path < at.path || (had.path === at.path && had.line <= at.line))) return
-    rows.set(key, { id: s.id, name: leanName(s), path: at.path, line: at.line, relation, via, status: 'neither', test: null })
+    // A dependent an observed chain reaches is observed: that chain's row replaces an inferred one (FR184).
+    if (had && !(had.basis === 'inferred' && basis === 'observed') && (had.basis !== basis || had.path < at.path || (had.path === at.path && had.line <= at.line))) return
+    rows.set(key, { id: s.id, name: leanName(s), path: at.path, line: at.line, relation, via, basis, status: 'neither', test: null })
   }
   // Every member above the changed one, at any distance, whose calls may dispatch to it.
-  const above = db.prepare("select dst from edge where src = ? and type in ('implements', 'overrides') and resolution = 'resolved'")
-  const up: string[] = []
-  for (const q = [c.sym.id]; q.length;) for (const r of above.all(q.pop()!) as Array<{ dst: string }>) if (!up.includes(r.dst)) { up.push(r.dst); q.push(r.dst) }
-  for (const e of inbound(c.sym.id, ['calls', 'implements', 'overrides', 'inherits', 'references'])) { const s = symbol.get(e.src) as Sym | undefined; if (s) keep(s, e.type, e.assertion_id, null) }
-  for (const m of up) {
+  const above = db.prepare(`select e.dst, ${inferredSql()} as inferred from edge e join assertion a on a.id = e.assertion_id where e.src = ? and e.type in ('implements', 'overrides') and e.resolution = 'resolved'`)
+  // Each is inferred unless some chain of observed implements and overrides hops reaches it.
+  const up = new Map<string, boolean>()
+  for (const q: Array<[string, boolean]> = [[c.sym.id, false]]; q.length;) {
+    const [at, inferred] = q.pop()!
+    for (const r of above.all(at) as Array<{ dst: string; inferred: number }>) {
+      const through = inferred || !!r.inferred
+      if (up.get(r.dst) === false || up.get(r.dst) === through) continue
+      up.set(r.dst, through)
+      q.push([r.dst, through])
+    }
+  }
+  for (const e of inbound(c.sym.id, ['calls', 'implements', 'overrides', 'inherits', 'references'])) { const s = symbol.get(e.src) as Sym | undefined; if (s) keep(s, e.type, e.assertion_id, null, e.inferred ? 'inferred' : 'observed') }
+  for (const [m, inferred] of up) {
     const via = leanName(symbol.get(m) as Sym)
-    for (const e of inbound(m, ['calls'])) { const s = symbol.get(e.src) as Sym | undefined; if (s) keep(s, 'calls', e.assertion_id, via) }
+    for (const e of inbound(m, ['calls'])) { const s = symbol.get(e.src) as Sym | undefined; if (s) keep(s, 'calls', e.assertion_id, via, inferred || e.inferred ? 'inferred' : 'observed') }
   }
   // Callers of callers, breadth first, each at its shortest depth.
   let frontier = [...rows.values()].filter((r) => r.relation === 'calls')
@@ -192,8 +203,9 @@ export function complete(c: { sym: Sym; change: Changed['change']; snap: Snap },
     for (const f of frontier) {
       for (const e of inbound(f.id, ['calls'])) {
         const s = symbol.get(e.src) as Sym | undefined
-        if (!s || rows.has(`${s.id}\u0000calls`)) continue
-        keep(s, 'calls', e.assertion_id, f.name)
+        const basis: Basis = f.basis === 'inferred' || e.inferred ? 'inferred' : 'observed'
+        if (!s || (rows.has(`${s.id}\u0000calls`) && !(rows.get(`${s.id}\u0000calls`)!.basis === 'inferred' && basis === 'observed'))) continue
+        keep(s, 'calls', e.assertion_id, f.name, basis)
         const added = rows.get(`${s.id}\u0000calls`)
         if (added) next.push(added)
       }
@@ -204,7 +216,7 @@ export function complete(c: { sym: Sym; change: Changed['change']; snap: Snap },
   const module = c.sym.kind === 'module', name = c.sym.qualified_name.slice(c.sym.qualified_name.indexOf(':') + 1)
   const covered = new Set([...rows.values()].map((r) => (symbol.get(r.id) as Sym).file_id))
   if (module || !name.includes('.')) {
-    const imports = db.prepare(`select a.id, a.source_id as file, f.path from assertion a join file f on f.id = a.source_id where a.type = 'imports' and a.resolution = 'resolved' and a.target_id = ?`).all(c.sym.file_id) as Array<{ id: string; file: string; path: string }>
+    const imports = db.prepare(`select a.id, a.source_id as file, f.path, a.origin, a.resolution, a.detail from assertion a join file f on f.id = a.source_id where a.type = 'imports' and a.resolution = 'resolved' and a.target_id = ?`).all(c.sym.file_id) as Array<{ id: string; file: string; path: string; origin: string; resolution: string; detail: string | null }>
     const texts = db.prepare('select e.object_hash as hash, e.start_byte as start, e.end_byte as end from assertion_evidence ae join evidence e on e.id = ae.evidence_id where ae.assertion_id = ?')
     for (const i of imports) {
       if (covered.has(i.file) || (!o.includeTests && o.isTest(i.path, projectOf(db, i.file)))) continue
@@ -212,7 +224,7 @@ export function complete(c: { sym: Sym; change: Changed['change']; snap: Snap },
       if (!module && !names.some((n) => n === '*' || n === name)) continue
       const at = site.get(i.id) as { path: string; line: number }, had = rows.get(`${i.file}\u0000imports`)
       if (had && had.line <= at.line) continue
-      rows.set(`${i.file}\u0000imports`, { id: i.file, name: i.path.slice(i.path.lastIndexOf('/') + 1), path: at.path, line: at.line, relation: 'imports', via: null, status: 'neither', test: null })
+      rows.set(`${i.file}\u0000imports`, { id: i.file, name: i.path.slice(i.path.lastIndexOf('/') + 1), path: at.path, line: at.line, relation: 'imports', via: null, basis: basisOf(i)!, status: 'neither', test: null })
     }
   }
 
@@ -236,7 +248,7 @@ const statusText = (s: { status: string; test: Test | null }) => s.test
 export function completenessRows(changed: Changed[]): string[] {
   return changed.flatMap((c) => [
     `changed ${leanRow(c.name, c.path, c.line, [c.change, statusText(c)])}`,
-    ...c.dependents.map((d) => `  ${d.relation} ${leanRow(d.relation === 'imports' ? null : d.name, d.path, d.line, [statusText(d), ...(d.via ? [`(via ${d.via})`] : [])])}`),
+    ...c.dependents.map((d) => `  ${d.relation} ${leanRow(d.relation === 'imports' ? null : d.name, d.path, d.line, [statusText(d), ...(d.via ? [`(via ${d.via})`] : []), ...(d.basis === 'inferred' ? ['inferred'] : [])])}`),
   ])
 }
 

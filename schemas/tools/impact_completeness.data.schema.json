@@ -137,6 +137,7 @@
               "path",
               "line",
               "evidence",
+              "basis",
               "depth",
               "changed"
             ],
@@ -159,6 +160,13 @@
                   "dispatch",
                   "observed"
                 ]
+              },
+              "basis": {
+                "enum": [
+                  "observed",
+                  "inferred"
+                ],
+                "description": "observed: a compiler, an index or a declared configuration proves it. inferred: a convention, a name match or a contract match suggests it. Derived when the answer is built."
               },
               "depth": {
                 "type": "integer",
@@ -183,6 +191,7 @@
                 "line",
                 "relation",
                 "via",
+                "basis",
                 "status",
                 "test"
               ],
@@ -218,6 +227,13 @@
                   ],
                   "description": "The member a dispatched call names, or the caller a caller of callers reaches the change through."
                 },
+                "basis": {
+                  "enum": [
+                    "observed",
+                    "inferred"
+                  ],
+                  "description": "inferred when the chain that reaches the dependent has an inferred hop; a dependent an all-observed chain also reaches is observed."
+                },
                 "status": {
                   "enum": [
                     "changed",
@@ -236,6 +252,7 @@
                     "path",
                     "line",
                     "evidence",
+                    "basis",
                     "depth",
                     "changed"
                   ],
@@ -258,6 +275,13 @@
                         "dispatch",
                         "observed"
                       ]
+                    },
+                    "basis": {
+                      "enum": [
+                        "observed",
+                        "inferred"
+                      ],
+                      "description": "observed: a compiler, an index or a declared configuration proves it. inferred: a convention, a name match or a contract match suggests it. Derived when the answer is built."
                     },
                     "depth": {
                       "type": "integer",
@@ -283,7 +307,8 @@
         "dependents",
         "changed",
         "tested",
-        "neither"
+        "neither",
+        "by_basis"
       ],
       "description": "Over every changed symbol, on this page or not; changed, tested and neither count the dependents.",
       "properties": {
@@ -306,6 +331,25 @@
         "neither": {
           "type": "integer",
           "minimum": 0
+        },
+        "by_basis": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "observed",
+            "inferred"
+          ],
+          "description": "The dependents by basis; unresolved boundaries have none.",
+          "properties": {
+            "observed": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "inferred": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
         }
       }
     }
