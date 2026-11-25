@@ -157,10 +157,11 @@ describe('FR214 the precise tiers answer observed, and say where they fall short
     expect(of('python').answers.calls_circle_area!.rows).toHaveLength(1)
   })
 
-  it.each([['typescript', 'imports'], ['typescript', 'impact'], ['python', 'imports'], ['csharp', 'impact']])('FR214 %s %s: a row the tool should not give is a known defect, not an extra and not support', (lang, call) => {
-    const rows = of(lang).section!.calls[call]!.rows
-    expect(rows.filter((r) => r.known_defect).length).toBe(1)
-    expect(rows.filter((r) => r.known_defect).every((r) => !r.extra && !r.role && /^known defect: /.test(r.known_defect!))).toBe(true)
+  it('FR224 FR225: no expected file records the test importer or the sibling implementation as a known defect any more', () => {
+    for (const lang of ['typescript', 'python', 'csharp']) {
+      const rows = Object.values(of(lang).section!.calls).flatMap((c) => c.rows)
+      expect(rows.filter((r) => r.known_defect && !/Python gives/.test(r.known_defect)), lang).toEqual([])
+    }
   })
 })
 
@@ -266,7 +267,7 @@ describe('FR217 a stated gap is a promise: a language that gains an answer chang
     expect(fs.readFileSync(path.join(ROOT, 'docs', 'proofmesh', 'languages.md'), 'utf8')).toContain(table)
     expect(table.split('\n')).toHaveLength(2 + LANGUAGES.length)
     expect(table).toContain('| `go` | syntax | 3/4 | 0/2 | 0/1 | 0/2 | 1/1 | 0/4 | 1/1 | 0/3 |')
-    expect(table).toContain('| `python` | precise | 4/4 | 0/2 | 1/1 | 1/2 | 1/1!1 | 1/4 | 1/1 | 3/3 |')
+    expect(table).toContain('| `python` | precise | 4/4 | 0/2 | 1/1 | 1/2 | 1/1 | 1/4 | 1/1 | 3/3 |')
   })
 })
 

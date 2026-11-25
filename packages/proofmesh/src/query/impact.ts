@@ -61,13 +61,16 @@ export function analyzeImpact(db: Database.Database, snapshotId: string, subject
   /** One breadth-first walk; with observedOnly it follows no inferred edge, so what it reaches is reached by a chain of observed hops alone. */
   const walk = (observedOnly: boolean) => {
     let sawInferred = false
+    // Members first reached upward through dispatch: their other implementers are siblings of the subject, not dependents of it.
+    // A member the walk already reached (an interface member that is itself the subject) is not upward: its implementers are dependents.
+    const upward = new Set<string>()
     const follow = (rows: Array<{ dst: string; inferred: number }>) => rows.filter((r) => { if (r.inferred) sawInferred = true; return !(observedOnly && r.inferred) }).map((r) => r.dst)
     const peers = (id: string): string[] => {
       const out: string[] = []
       if (TYPE_KINDS.has(kindOf.get(id) ?? '')) {
         out.push(...(membersOf.get(id) ?? []))
-        for (const dst of follow(above.all(id) as Array<{ dst: string; inferred: number }>)) out.push(...(membersOf.get(dst) ?? []))
-      } else out.push(...follow(overrides.all(id) as Array<{ dst: string; inferred: number }>))
+        for (const dst of follow(above.all(id) as Array<{ dst: string; inferred: number }>)) for (const m of membersOf.get(dst) ?? []) { if (!depthOf.has(m)) upward.add(m); out.push(m) }
+      } else for (const dst of follow(overrides.all(id) as Array<{ dst: string; inferred: number }>)) { if (!depthOf.has(dst)) upward.add(dst); out.push(dst) }
       if (files) out.push(...(db.prepare("select id from symbol where file_id = ? and kind = 'module' union select file_id from symbol where id = ? and kind = 'module'").all(id, id) as Array<{ id: string }>).map((r) => r.id))
       return out
     }
@@ -95,10 +98,11 @@ export function analyzeImpact(db: Database.Database, snapshotId: string, subject
       for (let i = 0; i < frontier.length; i += 500) {
         const chunk = frontier.slice(i, i + 500)
         // An external subject is reached only through calls that resolved to it; nothing else points at an external.
-        const rows = db.prepare(`select e.src, e.assertion_id, ${inferredSql()} as inferred from edge e join assertion a on a.id = e.assertion_id where e.dst in (${chunk.map(() => '?').join(',')}) and e.type in (${types.map(() => '?').join(',')}) and e.resolution in ('resolved', 'resolved_external')`).all(...chunk, ...types) as Array<{ src: string; assertion_id: string; inferred: number }>
+        const rows = db.prepare(`select e.src, e.dst, e.type, e.assertion_id, ${inferredSql()} as inferred from edge e join assertion a on a.id = e.assertion_id where e.dst in (${chunk.map(() => '?').join(',')}) and e.type in (${types.map(() => '?').join(',')}) and e.resolution in ('resolved', 'resolved_external')`).all(...chunk, ...types) as Array<{ src: string; dst?: string; type?: string; assertion_id: string; inferred: number }>
         // A candidate site names its callers through assertion_candidate; it is an edge only while following (FR202).
         if (candidates) rows.push(...candidatesTo(db, chunk, types).map((c) => ({ src: c.src, assertion_id: c.assertion_id, inferred: 1 })))
         for (const r of rows) {
+          if (r.dst && upward.has(r.dst) && (r.type === 'implements' || r.type === 'overrides')) continue
           if (r.inferred) sawInferred = true
           if (!(observedOnly && r.inferred)) reach(r.src, depth, next, r.assertion_id)
           // Checked per row, so a hub with thousands of callers cannot overshoot the budget within one level (FR210).

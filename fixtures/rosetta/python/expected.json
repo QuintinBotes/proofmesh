@@ -90,10 +90,6 @@
             {
               "role": "report",
               "row": "report.py:1"
-            },
-            {
-              "row": "test_shapes.py:1",
-              "known_defect": "known defect: include_tests false does not leave out an importing file that is test code (get_relationships, tools.ts notTest filter)"
             }
           ]
         },
