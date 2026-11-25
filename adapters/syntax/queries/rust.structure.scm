@@ -8,3 +8,5 @@
 ; An impl names its trait, and the implementing type is its owner. A trait names the traits it requires.
 (impl_item trait: [(type_identifier) (scoped_type_identifier) (generic_type type: (_))] @implements type: (_) @owner)
 (trait_item bounds: (trait_bounds [(type_identifier) (scoped_type_identifier) (generic_type type: (_))] @inherits))
+(trait_item bounds: (trait_bounds (higher_ranked_trait_bound type: [(type_identifier) (scoped_type_identifier) (generic_type type: (_))] @inherits)))
+(trait_item bounds: (trait_bounds (higher_ranked_trait_bound type: (function_type trait: (_) @inherits))))

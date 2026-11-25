@@ -130,6 +130,36 @@ describe('FR221 FR222 FR223 the syntax tier records imports and heritage in Kotl
     })
   }, 240000)
 
+  it('FR221 FR222 an impl runs from the type its written path names, a named companion owns its supertypes, a higher-ranked bound is a bound, a percent-literal require is its content, a conditional include is marked', async () => {
+    const { dataDir } = await indexedRepo({
+      'm.rs': 'mod a { pub struct Thing {} }\nmod b { pub struct Thing {} }\nimpl Shape for b::Thing {}\nimpl Shape for a::Thing {}\nimpl Shape for Thing {}\nimpl Shape for crate::a::Thing {}\nmod c { impl Shape for super::a::Thing {} }\ntrait T: for<\'a> Bound<\'a> {}\ntrait U: Send + for<\'a> Fn(&\'a u8) {}\n',
+      'h.kt': 'class Host {\n  companion object Named : Registry { }\n  companion object : Factory { }\n}\n',
+      'r.rb': 'require %q(foo)\nrequire %Q[bar]\nclass A\n  include M if enabled?\n  include N unless off\n  if cond\n    include O\n  end\n  include P\nend\nmodule B\n  include Q if z\nend\n',
+    })
+    expect(importRows(dataDir).map((r) => [r.path, r.line, r.detail.module])).toEqual([['r.rb', 1, 'foo'], ['r.rb', 2, 'bar']])
+    withSnapshot(dataDir, (db) => {
+      const by = (path: string) => rows(db, 'inherits', 'implements').filter((x) => x.path === path).map((x) => [x.line, x.type, x.from, x.detail]).sort((x, y) => Number(x[0]) - Number(y[0]) || String(x[2]).localeCompare(String(y[2])) || JSON.stringify(x[3]).localeCompare(JSON.stringify(y[3])))
+      expect(by('m.rs')).toEqual([
+        [3, 'implements', 'm:b.Thing', { name: 'Shape' }],
+        [4, 'implements', 'm:a.Thing', { name: 'Shape' }],
+        [5, 'implements', 'm', { name: 'Shape', for: 'Thing' }],
+        [6, 'implements', 'm:a.Thing', { name: 'Shape' }],
+        [7, 'implements', 'm:a.Thing', { name: 'Shape' }],
+        [8, 'inherits', 'm:T', { name: 'Bound' }],
+        [9, 'inherits', 'm:U', { name: 'Fn' }],
+        [9, 'inherits', 'm:U', { name: 'Send' }],
+      ])
+      expect(by('h.kt')).toEqual([[2, 'inherits', 'Host.Named', { name: 'Registry', relation: 'supertype' }]])
+      expect(by('r.rb')).toEqual([
+        [4, 'inherits', 'r:A', { name: 'M', relation: 'include', conditional: 'true' }],
+        [5, 'inherits', 'r:A', { name: 'N', relation: 'include', conditional: 'true' }],
+        [7, 'inherits', 'r:A', { name: 'O', relation: 'include', conditional: 'true' }],
+        [9, 'inherits', 'r:A', { name: 'P', relation: 'include' }],
+        [12, 'inherits', 'r:B', { name: 'Q', relation: 'include', conditional: 'true' }],
+      ])
+    })
+  }, 240000)
+
   it('FR221 a file the grammar only partly parses keeps the imports and heritage of the parsed part, and reports syntax partial', async () => {
     const { dataDir } = await indexedRepo({
       'broken.rs': 'use a::b;\ntrait T: U {}\nfn (((\n',
