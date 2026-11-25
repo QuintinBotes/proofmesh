@@ -12,7 +12,7 @@ import { Parser, type Node } from 'web-tree-sitter'
 import { byteOffsets, lastLine, parser, send, toolchain, type Range } from './common.js'
 
 const VERSION = '0.1.0'
-type Sym = { local_id: string; path: string; kind: string; name: string; qualified_name: string; range: Range; signature: string | null }
+type Sym = { local_id: string; path: string; kind: string; name: string; qualified_name: string; range: Range; signature: string | null; roles?: string[] }
 type Location = { uri?: string; targetUri?: string; range?: { start: { line: number; character: number } }; targetSelectionRange?: { start: { line: number; character: number } } }
 
 let workspace = ''
@@ -77,6 +77,33 @@ function header(n: Node): string {
   return n.text.slice(0, body ? body.startIndex - n.startIndex : undefined).replace(/\s+/g, ' ').trim().replace(/:$/, '').trim()
 }
 
+/**
+ * Test roles (FR192, FR193). pytest collects the test_ functions of a test_*.py or *_test.py file and the test_ methods of its Test classes;
+ * unittest collects the test methods of a TestCase subclass wherever it is. A collected function or method is a test; a class holding one, and the
+ * other members of such a class, are test support; a helper function at the top of a test file is neither, and is test code by its file.
+ * pytest's python_functions default is the prefix `test`, so `testAdd` and `tester` are collected too.
+ */
+function testRoles(file: string, declared: Array<{ id: string; node: Node; top: boolean; owner?: string }>, symbols: Sym[]): void {
+  const pytestFile = /(^|\/)test_[^/]*\.py$|_test\.py$/.test(file)
+  const bySymbol = new Map(symbols.map((s) => [s.local_id, s]))
+  const unittestClass = (n: Node) => (n.childForFieldName('superclasses')?.namedChildren ?? []).some((b) => /(^|\.)\w*TestCase$/.test(b.text))
+  const pytestClass = (n: Node) => pytestFile && /^Test/.test(n.childForFieldName('name')!.text)
+  const testClass = new Map(declared.filter((d) => d.node.type === 'class_definition').map((d) => [d.id, unittestClass(d.node) ? 'unittest' : pytestClass(d.node) ? 'pytest' : null]))
+  const entries = new Set<string>()
+  for (const d of declared) {
+    if (d.node.type !== 'function_definition') continue
+    const name = d.node.childForFieldName('name')!.text
+    const kind = d.owner ? testClass.get(d.owner) : null
+    if ((d.top && pytestFile && /^test/.test(name)) || (kind === 'unittest' && /^test/.test(name)) || (kind === 'pytest' && /^test/.test(name))) entries.add(d.id)
+  }
+  const holding = new Set(declared.filter((d) => d.node.type === 'class_definition' && (testClass.get(d.id) === 'unittest' || [...entries].some((e) => declared.find((x) => x.id === e)!.owner === d.id))).map((d) => d.id))
+  for (const d of declared) {
+    const s = bySymbol.get(d.id)!
+    if (entries.has(d.id)) s.roles = ['test']
+    else if (holding.has(d.id) || (d.owner && holding.has(d.owner))) s.roles = ['test_support']
+  }
+}
+
 function readFacts(file: string): Promise<FileFacts> {
   let f = facts.get(file)
   if (!f) {
@@ -90,7 +117,8 @@ function readFacts(file: string): Promise<FileFacts> {
       // Where each declaration's name sits, so a definition Pyright reports maps back to the symbol it names.
       const byName = new Map<string, string>()
       const classes = new Map<string, Node>()
-      const walk = (n: Node, chain: string[], inClass: boolean) => {
+      const declared: Array<{ id: string; node: Node; top: boolean; owner?: string }> = []
+      const walk = (n: Node, chain: string[], inClass: boolean, ownerId?: string) => {
         for (const c of n.namedChildren) {
           const d = c.type === 'decorated_definition' ? c.childForFieldName('definition') ?? c : c
           if (d.type === 'class_definition' || d.type === 'function_definition') {
@@ -105,12 +133,14 @@ function readFacts(file: string): Promise<FileFacts> {
             const nameNode = d.childForFieldName('name')!
             byName.set(`${nameNode.startPosition.row}:${nameNode.startPosition.column}`, id)
             if (d.type === 'class_definition') classes.set(id, d)
+            declared.push({ id, node: d, top: chain.length === 0, ...(inClass && ownerId ? { owner: ownerId } : {}) })
             const body = d.childForFieldName('body')
-            if (body) walk(body, [...chain, name], d.type === 'class_definition')
+            if (body) walk(body, [...chain, name], d.type === 'class_definition', id)
           } else if (!['lambda'].includes(c.type)) walk(c, chain, false)
         }
       }
       walk(tree.rootNode, [], false)
+      testRoles(file, declared, symbols)
       // Module-level string constants, so a path kept in one (`PATH = "/api/x"`) is read where it is used.
       const constants = new Map<string, string>()
       for (const n of tree.rootNode.namedChildren) {
@@ -377,6 +407,41 @@ function basesOf(id: string): Promise<Base[]> {
     bases.set(id, b)
   }
   return b
+}
+
+/** How far a base chain is followed through the workspace: a class, its base, and that base's base. */
+const TEST_HOPS = 2
+const UNITTEST_BASE = /(^|\.)\w*TestCase$/
+/** What a class's bases say: yes when a chain reaches a TestCase, unknown when it leaves the workspace by some other base, no otherwise. */
+async function testBase(id: string, hops: number, seen = new Set<string>()): Promise<'yes' | 'no' | 'unknown'> {
+  if (seen.has(id)) return 'no'
+  seen.add(id)
+  const out: Array<'yes' | 'no' | 'unknown'> = []
+  for (const b of await basesOf(id)) {
+    if (b.symbol) out.push(hops > 0 ? await testBase(b.symbol, hops - 1, seen) : 'no')
+    else out.push(UNITTEST_BASE.test(b.external ?? b.node.text) ? 'yes' : 'unknown')
+  }
+  return out.includes('yes') ? 'yes' : out.includes('unknown') ? 'unknown' : 'no'
+}
+
+/**
+ * A class whose base chain reaches a TestCase through the workspace is a test case (FR192), and so is a class named *Test or Test* in a test file whose
+ * bases leave the workspace; its test* methods are tests and its other members test support. Run once Pyright has resolved the bases.
+ */
+async function inheritedTestRoles(file: string, f: FileFacts): Promise<void> {
+  const testFile = /(^|\/)test_[^/]*\.py$|_test\.py$|(^|\/)tests?\//.test(file)
+  const bySymbol = new Map(f.symbols.map((s) => [s.local_id, s]))
+  for (const [id, node] of f.classes) {
+    if (bySymbol.get(id)!.roles) continue
+    const verdict = await testBase(id, TEST_HOPS)
+    if (verdict !== 'yes' && !(verdict === 'unknown' && testFile && /Tests?$|^Test/.test(node.childForFieldName('name')!.text))) continue
+    bySymbol.get(id)!.roles = ['test_support']
+    for (const c of node.childForFieldName('body')?.namedChildren ?? []) {
+      const d = c.type === 'decorated_definition' ? c.childForFieldName('definition') ?? c : c
+      const s = d.type === 'function_definition' ? bySymbol.get(`${file}#${d.startIndex}`) : undefined
+      if (s) s.roles = /^test/.test(d.childForFieldName('name')!.text) ? ['test'] : ['test_support']
+    }
+  }
 }
 
 /** Every base outside the workspace a class derives from, directly or through its workspace bases. */
@@ -775,6 +840,7 @@ async function analyseWithPyright(file: string) {
   }
   const refs = importRefs(file, f)
   for (const r of refs) for (const to of targets(r)) relationships.push({ type: 'imports', origin: 'semantic_resolver', source: { file }, site: { path: file, range: rangeOf(f, r.node) }, resolution: 'resolved', target: { file: to } })
+  await inheritedTestRoles(file, f)
   for (const id of f.classes.keys()) {
     for (const b of await basesOf(id)) if (b.symbol) relationships.push({ type: 'inherits', origin: 'semantic_resolver', source: { symbol: id }, site: { path: file, range: rangeOf(f, b.node) }, resolution: 'resolved', target: { symbol: b.symbol } })
   }
@@ -844,7 +910,7 @@ readline.createInterface({ input: process.stdin }).on('line', async (line) => {
       extraPaths = sitePackages ? searchPaths(sitePackages, req.params.repository_root) : []
       await startSession()
       reply({
-        adapter: { id: 'python', version: VERSION, protocol_version: '1.0', languages: ['python'], toolchain: { ...toolchain(['python']), pyright: pyrightVersion } },
+        adapter: { id: 'python', version: VERSION, protocol_version: '1.1', languages: ['python'], toolchain: { ...toolchain(['python']), pyright: pyrightVersion } },
         capabilities: { symbols: true, imports: true, resolved_calls: true }, external_inputs: distributions.map((d) => `pypi:${d.replace(/-(?=[^-]*$)/, '/')}`), units: await units(),
       })
     } else if (req.method === 'workspace') {

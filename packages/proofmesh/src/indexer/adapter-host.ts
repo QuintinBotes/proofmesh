@@ -21,7 +21,7 @@ const launcher = (entry: string): [string, string[]] => (entry.endsWith('.dll') 
 
 /** One adapter subprocess speaking JSON-RPC 2.0, one JSON object per line. */
 /** The adapter protocol version this core speaks; it accepts any adapter that speaks 1.x (A22). */
-export const PROTOCOL_VERSION = '1.0'
+export const PROTOCOL_VERSION = '1.1'
 
 export class AdapterProcess {
   private child!: ChildProcess

@@ -33,7 +33,7 @@ describe('FR101 FR103 FR104 FR107 find_tests names how it knows each test reache
     const env = ask(subject)
     expect(env.data.tests.map(line)).toEqual(rows)
     expect(chain(env.data.tests[0])).toEqual(first)
-    expect(env.limitations).toContain('Test code is recognised by path and project naming, not by test framework attributes.')
+    expect(env.limitations).toContain('Test code is recognised by file convention and project naming, and by the roles an adapter gave each symbol (a test entry point, or code in a test-only scope).')
   })
 
   it('a symbol id names the same subject as name and path', () => {

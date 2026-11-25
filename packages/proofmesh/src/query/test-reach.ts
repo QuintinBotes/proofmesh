@@ -1,6 +1,7 @@
 import type Database from 'better-sqlite3'
 import { type Basis, basisOf, inferredSql } from './basis.js'
 import { structure, TYPE_KINDS } from './impact.js'
+import { hasRoles, isTestEntry, parseRoles, rolesSql, type Roles } from './tests.js'
 
 /** How a test is known to reach its subject, strongest first (FR101, FR104). */
 export const EVIDENCE = ['call', 'transitive_call', 'dispatch', 'reference', 'import_only'] as const
@@ -12,7 +13,7 @@ type Hop = { name: string; path: string; line: number }
 export type TestRow = { id: string; kind: string; name: string; qualified_name: string; path: string; project: string | null; line: number; depth: number; evidence: Evidence; basis: Basis; via?: string }
 /** A node on the way from a subject to a test; `next` leads back to the subject. mode 0 runs the subject, 1 runs it by dispatch, 2 only references it. */
 type State = { node: string; mode: number; depth: number; next?: State; assertion?: string; peer?: boolean; via?: string }
-type Info = { id: string; kind: string; name: string; qualified_name: string; start_line: number; file_id: string; path: string }
+type Info = { id: string; kind: string; name: string; qualified_name: string; start_line: number; file_id: string; path: string; roles: string | null }
 
 const NODE_BUDGET = 50000
 /** Kinds a call through an interface or base member can reach. */
@@ -25,6 +26,14 @@ const local = (qn: string) => qn.slice(qn.indexOf(':') + 1)
 export const importedNames = (text: string) => text.replace(/(['"`])(?:\\.|(?!\1)[^\\])*\1/g, ' ').replace(/^\s*from\s+\S+/, ' ').replace(/([\w$]+)\s+as\s+[\w$]+/g, '$1').match(/[\w$]+|\*/g) ?? []
 /** Relationships that run their target: a call, a render, a hook. Heritage runs nothing of the member above (dispatch covers the way down), nor does injection. */
 const RUNS = ['calls', 'renders', 'uses_hook']
+
+const withRoles = new Map<string, Set<string>>()
+/** The files in which some symbol has roles, so whose adapter sent them; computed once per open snapshot. shortcut: a role-aware file that happens to hold no test or support symbol is judged by the old rule. */
+function filesWithRoles(db: Database.Database, snapshotId: string): Set<string> {
+  let hit = withRoles.get(snapshotId)
+  if (!hit) withRoles.set(snapshotId, (hit = new Set(hasRoles(db) ? (db.prepare('select distinct file_id from symbol where roles is not null').all() as Array<{ file_id: string }>).map((r) => r.file_id) : [])))
+  return hit
+}
 
 const projects = new Map<string, Map<string, string>>()
 /** The project that contains each file, by its module symbol; computed once per open snapshot, since impact_completeness asks per row. */
@@ -42,7 +51,7 @@ function projectsOf(db: Database.Database, snapshotId: string): Map<string, stri
  * Breadth first back from the subjects along resolved relationships, as analyze_impact walks; a reference counts only into a subject.
  * `files` are the subjects named by path, whose every import counts for import_only.
  */
-export function testReach(db: Database.Database, snapshotId: string, subjects: string[], files: string[], read: (hash: string) => Buffer | undefined, maxDepth: number, isTest: (path: string, project: string | null) => boolean) {
+export function testReach(db: Database.Database, snapshotId: string, subjects: string[], files: string[], read: (hash: string) => Buffer | undefined, maxDepth: number, isTest: (path: string, project: string | null, roles?: Roles) => boolean) {
   const { membersOf, kindOf } = structure(db, snapshotId)
   const projectOfFile = projectsOf(db, snapshotId)
   const infos = new Map<string, Info>()
@@ -50,10 +59,14 @@ export function testReach(db: Database.Database, snapshotId: string, subjects: s
     const todo = [...new Set(ids)].filter((id) => !infos.has(id))
     for (let i = 0; i < todo.length; i += 500) {
       const chunk = todo.slice(i, i + 500)
-      for (const r of db.prepare(`select s.id, s.kind, s.name, s.qualified_name, s.start_line, s.file_id, f.path from symbol s join file f on f.id = s.file_id where s.id in (${chunk.map(() => '?').join(',')})`).all(...chunk) as Info[]) infos.set(r.id, r)
+      for (const r of db.prepare(`select s.id, s.kind, s.name, s.qualified_name, s.start_line, s.file_id, f.path, ${rolesSql(db)} as roles from symbol s join file f on f.id = s.file_id where s.id in (${chunk.map(() => '?').join(',')})`).all(...chunk) as Info[]) infos.set(r.id, r)
     }
   }
-  const testCode = (i: Info) => isTest(i.path, projectOfFile.get(i.file_id) ?? null)
+  const testCode = (i: Info) => isTest(i.path, projectOfFile.get(i.file_id) ?? null, parseRoles(i.roles))
+  // In a file whose adapter sent roles, only an entry point is a test and a helper in test code is not (FR194); in any other file (an adapter that
+  // sends none, such as protocol 1.0, or a snapshot that predates roles) every symbol in test code counts as a test.
+  const aware = filesWithRoles(db, snapshotId)
+  const isTestRow = (i: Info) => (aware.has(i.file_id) ? isTestEntry(parseRoles(i.roles)) : testCode(i))
 
   // What a call to a node may run of it: a subject type's own members, and by dispatch the members of the interfaces it implements;
   // for a member, the interface and base members it implements or overrides. A type reached on the way runs only what reached it.
@@ -109,7 +122,7 @@ export function testReach(db: Database.Database, snapshotId: string, subjects: s
     const rows: TestRow[] = [], chainStart = new Map<string, State>()
     for (const [id, s] of best) {
       const i = infos.get(id)
-      if (!i || !testCode(i)) continue
+      if (!i || !isTestRow(i)) continue
       const evidence: Evidence = s.mode === 2 ? 'reference' : s.mode === 1 ? 'dispatch' : s.depth === 1 ? 'call' : 'transitive_call'
       rows.push({ id, kind: i.kind, name: i.name, qualified_name: i.qualified_name, path: i.path, project: projectOfFile.get(i.file_id) ?? null, line: i.start_line, depth: s.depth, evidence, basis: 'observed', ...(s.mode === 1 && s.via ? { via: local(infos.get(s.via)!.qualified_name) } : {}) })
       chainStart.set(id, s)

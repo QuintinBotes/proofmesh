@@ -1,0 +1,46 @@
+{
+  "test_files": [
+    "calc/calc_test.go",
+    "calc_test.cc",
+    "pkg/test_calc.py",
+    "spec/calc_spec.rb",
+    "src/CalcTest.php",
+    "src/test/java/a/CalcTest.java",
+    "src/test/kotlin/CalcTest.kt"
+  ],
+  "roles_test": [
+    { "path": "Sources/CalcCheck.swift", "name": "testAdd" },
+    { "path": "calc/calc_test.go", "name": "BenchmarkAdd" },
+    { "path": "calc/calc_test.go", "name": "ExampleAdd" },
+    { "path": "calc/calc_test.go", "name": "TestAdd" },
+    { "path": "calc_test.cc", "name": "TEST(Calc, Adds)" },
+    { "path": "pkg/test_calc.py", "name": "test_add" },
+    { "path": "spec/calc_spec.rb", "name": "it \"adds\"" },
+    { "path": "src/CalcTest.php", "name": "testAdd" },
+    { "path": "src/lib.rs", "name": "adds" },
+    { "path": "src/test/java/a/CalcTest.java", "name": "adds" },
+    { "path": "src/test/kotlin/CalcTest.kt", "name": "adds" }
+  ],
+  "helpers": [
+    { "path": "Sources/CalcCheck.swift", "name": "make" },
+    { "path": "calc/calc_test.go", "name": "setup" },
+    { "path": "calc_test.cc", "name": "make" },
+    { "path": "pkg/test_calc.py", "name": "make" },
+    { "path": "spec/calc_spec.rb", "name": "make" },
+    { "path": "src/CalcTest.php", "name": "make" },
+    { "path": "src/test/java/a/CalcTest.java", "name": "make" },
+    { "path": "src/test/kotlin/CalcTest.kt", "name": "make" }
+  ],
+  "production": [
+    { "path": "Sources/Calc.swift", "name": "add" },
+    { "path": "calc.cc", "name": "add" },
+    { "path": "calc/calc.go", "name": "Add" },
+    { "path": "lib/calc.rb", "name": "add" },
+    { "path": "pkg/calc.py", "name": "add" },
+    { "path": "src/Calc.php", "name": "add" },
+    { "path": "src/lib.rs", "name": "add" },
+    { "path": "src/main/java/a/Calc.java", "name": "add" },
+    { "path": "src/main/kotlin/Calc.kt", "name": "add" }
+  ],
+  "python_find_tests": { "subject": "pkg/calc:add", "tests": [{ "name": "test_add", "path": "pkg/test_calc.py", "line": 8, "evidence": "call", "depth": 1 }] }
+}

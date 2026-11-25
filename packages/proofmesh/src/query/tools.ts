@@ -19,7 +19,8 @@ import { overview } from './overview.js'
 import { getEcosystem } from './ecosystem.js'
 import { type Basis, basisOf, byBasis, inferredSql } from './basis.js'
 import { analyzeImpact, IMPACT_TYPES, type Impact } from './impact.js'
-import { isTestCode, isTestPath } from './tests.js'
+import { ADAPTER_LANGUAGE_NAMES } from '../indexer/language-detect.js'
+import { hasRoles, isTestCode, isTestPath, parseRoles, roleTest, rolesSql } from './tests.js'
 import { EXECUTING, testReach, type TestRow } from './test-reach.js'
 import { changedSymbols, complete, completenessRows, diffLines, inTestCode, summaryLine, type Changed } from './completeness.js'
 import { gitInfo } from '../indexer/discovery.js'
@@ -228,8 +229,8 @@ function runRepositoryTool(dataDir: string, tool: string, input: Record<string, 
     const db = openSnapshot(catalog, snapshot)
     try {
       const { applied, limitations } = applyLimits(input.limits as Limits | undefined)
-      // Test code is recognised by path in SQL, so a filter keeps the paging order intact.
-      db.function('pm_is_test', { deterministic: true }, (p: unknown) => (p !== null && isTestPath(String(p)) ? 1 : 0))
+      // Test code is recognised by path and by a symbol's roles in SQL, so a filter keeps the paging order intact; a call with the path alone judges the file.
+      db.function('pm_is_test', { deterministic: true, varargs: true }, (p: unknown, roles?: unknown) => (p !== null && (isTestPath(String(p)) || (typeof roles === 'string' && roleTest(parseRoles(roles)))) ? 1 : 0))
       // Lean leaves out what compact leaves out: it states only this answer's limitations.
       const lean = input.envelope === 'lean'
       const ctx: Ctx = { dataDir, db, catalog, snapshot, limits: applied, started: Date.now(), store: new EvidenceStore(dataDir), repo: { id: repo.id, name: repo.name, root: repo.root }, page: { offset: cursor?.offset ?? 0, query }, compact: lean || input.envelope === 'compact' || (input.envelope === undefined && !!session?.fullSent.has(snapshot.id)), lean }
@@ -374,6 +375,14 @@ type SymbolRow = { id: string; kind: string; name: string; qualified_name: strin
 const MAX_LOCATIONS = 100
 const SYMBOL_SQL = 'select s.id, s.kind, s.name, s.qualified_name, f.path, s.start_line, s.end_line, s.signature, s.evidence_id from symbol s join file f on f.id = s.file_id'
 const publicSymbol = ({ evidence_id: _e, ...s }: SymbolRow) => s
+const TEST_RECOGNISED = 'by file convention and project naming, and by the roles an adapter gave each symbol (a test entry point, or code in a test-only scope)'
+const TEST_FILTER_NOTE = `Test code was left out, recognised ${TEST_RECOGNISED}.`
+/** The roles an adapter gave each symbol, where the snapshot holds them; a symbol with none has no roles field. */
+function withRoles<T extends { id: string }>(db: Database.Database, symbols: T[]): Array<T & { roles?: string[] }> {
+  if (!symbols.length || !hasRoles(db)) return symbols
+  const stored = new Map((db.prepare(`select id, roles from symbol where id in (${symbols.map(() => '?').join(',')}) and roles is not null`).all(...symbols.map((s) => s.id)) as Array<{ id: string; roles: string }>).map((r) => [r.id, parseRoles(r.roles)!]))
+  return symbols.map((s) => (stored.has(s.id) ? { ...s, roles: stored.get(s.id)! } : s))
+}
 /** A symbol as a lean row: at its declaration, with its kind, and its id when asked (FR096, FR100). */
 const symbolRow = (s: Pick<SymbolRow, 'id' | 'kind' | 'name' | 'qualified_name' | 'path' | 'start_line'>, ids = false) =>
   leanRow(leanName(s), s.path, s.start_line, [s.kind, ...(ids ? [`id=${s.id}`] : [])])
@@ -640,17 +649,17 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     const rows = ctx.db.prepare(`${SYMBOL_SQL}
       where s.id in (select symbol_id from symbol_fts where name like @like escape '\\' or qualified_name like @like escape '\\')
       ${kinds ? `and s.kind in (${kinds.map((_, i) => `@k${i}`).join(',')})` : ''}
-      ${input.include_tests === false ? 'and pm_is_test(f.path) = 0' : ''}
+      ${input.include_tests === false ? `and pm_is_test(f.path, ${rolesSql(ctx.db)}) = 0` : ''}
       ${prefix ? "and f.path like @path escape '\\'" : ''}
       order by case when lower(s.name) = @lower then 0 when lower(s.name) like @prefix escape '\\' then 1 when lower(s.name) like @like escape '\\' then 2 else 3 end,
         case s.kind when 'project' then 0 when 'module' then 2 when 'method' then 3 when 'function' then 3 when 'property' then 3 when 'field' then 3
           when 'constructor' then 3 when 'variable' then 3 else 1 end,
         s.qualified_name, f.path, s.id
       limit @limit offset @offset`).all({ like: `%${escape(text)}%`, prefix: `${escape(lower)}%`, lower, limit: ctx.limits.max_rows + 1, offset: ctx.page.offset, ...(prefix ? { path: `${escape(prefix)}%` } : {}), ...Object.fromEntries((kinds ?? []).map((k, i) => [`k${i}`, k])) }) as SymbolRow[]
-    const symbols = rows.slice(0, ctx.limits.max_rows).map(publicSymbol)
+    const symbols = withRoles(ctx.db, rows.slice(0, ctx.limits.max_rows).map(publicSymbol))
     // A path prefix that names no indexed file says so, so an empty answer is not read as "no such symbol" (FR015).
     const noPath = prefix !== undefined && !ctx.db.prepare("select 1 from file where disposition = 'indexed' and path like ? escape '\\' limit 1").get(`${escape(prefix)}%`)
-    return { data: { symbols }, stop_reasons: rows.length > ctx.limits.max_rows ? ['max_rows'] : [], more: rows.length > ctx.limits.max_rows, shrink: 'symbols', lean: (data) => (data.symbols as typeof symbols).map((sym) => symbolRow(sym, input.include_ids === true)), limitations: [...(input.include_tests === false ? ['Test code was left out, recognised by path and project naming, not by test framework attributes.'] : []), ...(noPath ? [`No indexed file is under path_prefix ${prefix}; the search covered nothing.`] : [])] }
+    return { data: { symbols }, stop_reasons: rows.length > ctx.limits.max_rows ? ['max_rows'] : [], more: rows.length > ctx.limits.max_rows, shrink: 'symbols', lean: (data) => (data.symbols as typeof symbols).map((sym) => symbolRow(sym, input.include_ids === true)), limitations: [...(input.include_tests === false ? [TEST_FILTER_NOTE] : []), ...(noPath ? [`No indexed file is under path_prefix ${prefix}; the search covered nothing.`] : [])] }
   },
 
   analyze_impact(ctx, input) {
@@ -734,7 +743,7 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
           ...(ctx.catalog.workspaces().some((w) => w.members.includes(ctx.repo.id)) ? ['Dependents in the other repositories of this workspace are not searched.'] : []),
           ...(ctx.lean ? [] : [
             'Symbols are matched by kind and qualified name, so a rename is one deleted symbol and one added; an edit of only whitespace or comments inside a symbol counts as modified.',
-            'Tested means a test executes it by a call, a chain of calls or dispatch, as find_tests finds it; test code is recognised by path and project naming.',
+            'Tested means a test executes it by a call, a chain of calls or dispatch, as find_tests finds it; test code is recognised by file convention, project naming and symbol roles.',
           ]),
         ],
         lean: (data) => completenessRows(data.changed as Changed[]),
@@ -916,15 +925,21 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     if (!ids.length) throw new ProofmeshError('INVALID_ARGUMENT', 'name at least one symbol or path')
     const r = testReach(ctx.db, ctx.snapshot.id, ids, files, (h) => ctx.store.read(h), ctx.limits.max_depth, isTestCode)
     const end = ctx.page.offset + ctx.limits.max_rows, executing = r.rows.filter((t) => EXECUTING.has(t.evidence)).length
+    // A subject whose file's calls are not resolved has no call to find a test through: say so, since no row would not mean no test.
+    const noCalls = [...new Set(ids.flatMap((id) => {
+      const f = ctx.db.prepare("select f.language, json_extract(f.capabilities, '$.resolved_calls') as calls from symbol s join file f on f.id = s.file_id where s.id = ?").get(id) as { language: string | null; calls: string | null } | undefined
+      return f?.language && f.calls === 'unsupported' ? [ADAPTER_LANGUAGE_NAMES[f.language] ?? f.language] : []
+    }))].sort()
     const byProject = new Map<string, number>()
     for (const t of r.rows) byProject.set(t.project ?? '(no project)', (byProject.get(t.project ?? '(no project)') ?? 0) + 1)
     // Lean states only what applies to this answer; the tool description carries the standing caveats.
     const limitations = [
       ...(ctx.lean ? [] : [
         'Static reach only: tests that reach the code through unresolved calls, reflection, or configuration are missed.',
-        'Test code is recognised by path and project naming, not by test framework attributes.',
-        'Every symbol in test code counts as a test, so a helper there, such as a fixture builder or a beforeEach body, is listed as one.',
+        `Test code is recognised ${TEST_RECOGNISED}.`,
+        'In a file whose adapter sent no test roles (TypeScript, JavaScript, a language with no markers, a file with no test attribute or marker), every symbol in test code counts as a test, so a helper there, such as a fixture builder or a beforeEach body, is listed as one.',
       ]),
+      ...(noCalls.length ? [`Calls in ${noCalls.join(' and ')} are not resolved yet, so no test is listed as executing code in ${noCalls.length === 1 ? 'it' : 'them'}; a test that calls it is not found.`] : []),
       ...(r.unfollowed.length ? [`In this snapshot, calls through interfaces and base classes are not followed for ${r.unfollowed.join(', ')} code, so a test that reaches a member only by dispatch is missed.`] : []),
       ...(r.ambiguous ? [`${r.ambiguous} call site${r.ambiguous === 1 ? '' : 's'} with no single resolved target name${r.ambiguous === 1 ? 's' : ''} code on these paths as a candidate; a test that reaches the subject only through one is not listed.`] : []),
       ...(r.rows.some((t) => t.evidence === 'import_only') ? ['An import_only row is a test file that imports the subject by name, its whole module, or for a file subject the file, and in which nothing calls or references it.'] : []),
@@ -1049,7 +1064,7 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     const sealed = hasBodyHash(ctx.db)
     const identity = ctx.db.prepare(`select stable_key, ${sealed ? 'body_hash' : 'null as body_hash'} from symbol where id = ?`).get(id) as { stable_key: string; body_hash: string | null }
     return {
-      data: { symbol: { ...s, ...identity } }, evidence_ids: [s.evidence_id],
+      data: { symbol: { ...withRoles(ctx.db, [s])[0]!, ...identity } }, evidence_ids: [s.evidence_id],
       limitations: !sealed ? ['This snapshot was sealed before body hashes existed, so body_hash is null; index again to compute it.']
         : identity.body_hash ? []
         : unreadableFiles(ctx.db).paths.includes(s.path) ? [`The content of ${s.path} was unavailable when the snapshot was sealed, so body_hash is null.`]
@@ -1078,7 +1093,7 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     const outFilter = hideExternal ? " and not (resolution = 'resolved_external' and type = 'calls')" : ''
     const tp = types.map(() => '?').join(','), rp = resolutions.map(() => '?').join(',')
     // With include_tests false, a row whose other side lives in test code is left out in SQL, so paging stays a slice of one order.
-    const notTest = (side: string) => input.include_tests === false ? ` and coalesce((select pm_is_test(f.path) from symbol s join file f on f.id = s.file_id where s.id = ${side}), 0) = 0` : ''
+    const notTest = (side: string) => input.include_tests === false ? ` and coalesce((select pm_is_test(f.path, ${rolesSql(ctx.db)}) from symbol s join file f on f.id = s.file_id where s.id = ${side}), 0) = 0` : ''
     type A = { id: string; type: string; origin: string; resolution: string; source_kind: string; source_id: string; target_kind: string | null; target_id: string | null; reason: string | null; detail: string | null }
     const all: Array<A & { direction: 'in' | 'out' }> = []
     // Outgoing then incoming, each by assertion ID: fetching offset + cap of each keeps every page a slice of one total order.
@@ -1147,7 +1162,7 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
       ...(via.size && direction !== 'out' ? [`Inbound rows include calls and references to the ${via.size} member${via.size === 1 ? '' : 's'} this symbol implements or overrides, each marked with ${ctx.lean ? 'dispatch' : 'via'}: they reach this symbol only when the runtime type is its own.`] : []),
       ...(inherited.length ? ['Ownership is recorded on the file module; the owned_by rows are the owners of this symbol\'s file.'] : []),
       ...(isExternal ? ['The subject is an external symbol: only resolved calls into it are listed, and a closed generic is a separate external symbol from its open definition.'] : []),
-      ...(input.include_tests === false ? ['Rows whose other side is test code were left out, recognised by path and project naming, not by test framework attributes.'] : []),
+      ...(input.include_tests === false ? [`Rows whose other side is test code were left out: ${TEST_RECOGNISED}.`] : []),
       ...leanReferencesNote(ctx, types),
     ]
     return {

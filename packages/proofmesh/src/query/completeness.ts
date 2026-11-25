@@ -6,6 +6,7 @@ import { ProofmeshError } from '../core/errors.js'
 import { type Basis, basisOf, inferredSql } from './basis.js'
 import { leanName, leanRow, quote } from './lean.js'
 import { innermost } from './symbol-at.js'
+import { hasRoles, parseRoles, type Roles } from './tests.js'
 import { EXECUTING, importedNames, testReach } from './test-reach.js'
 
 /** Changed line ranges by path, on one side of a diff. */
@@ -126,10 +127,12 @@ export function changedSymbols(head: Snap, base: Snap, diff: Diff, read: (db: Da
 /** The project that contains a file, by its module symbol, for recognising test code by project naming. */
 const projectOf = (db: Database.Database, fileId: string) => (db.prepare("select p.qualified_name as q from assertion a join symbol p on p.id = a.source_id join symbol m on m.id = a.target_id where a.type = 'contains' and p.kind = 'project' and m.file_id = ? limit 1").get(fileId) as { q: string } | undefined)?.q ?? null
 /** Whether a symbol is in test code, by its path and project naming. */
-export const inTestCode = (db: Database.Database, s: { path: string; file_id: string }, isTest: (path: string, project: string | null) => boolean) => isTest(s.path, projectOf(db, s.file_id))
+/** A symbol's roles, where the snapshot holds them. */
+const rolesOf = (db: Database.Database, id: string): string[] | null => (hasRoles(db) ? parseRoles((db.prepare('select roles from symbol where id = ?').get(id) as { roles: string | null } | undefined)?.roles) : null)
+export const inTestCode = (db: Database.Database, s: { id?: string; path: string; file_id: string }, isTest: (path: string, project: string | null, roles?: Roles) => boolean) => isTest(s.path, projectOf(db, s.file_id), s.id ? rolesOf(db, s.id) : null)
 
 /** What `complete` needs: both sides, the depth, whether test code counts, and readers for file and object text. */
-export type Options = { head: Snap; base: Snap; depth: number; includeTests: boolean; isTest: (path: string, project: string | null) => boolean; read: (db: Database.Database, path: string) => string | undefined; readHash: (hash: string) => Buffer | undefined; maxDepth: number }
+export type Options = { head: Snap; base: Snap; depth: number; includeTests: boolean; isTest: (path: string, project: string | null, roles?: Roles) => boolean; read: (db: Database.Database, path: string) => string | undefined; readHash: (hash: string) => Buffer | undefined; maxDepth: number }
 
 /**
  * One changed symbol with its dependents (FR111) and every status (FR112): callers (dispatch included, via the member called), implementers,
@@ -143,7 +146,7 @@ export function complete(c: { sym: Sym; change: Changed['change']; snap: Snap },
     const t = other.db.prepare(`${SYMBOL_SQL} where s.kind = ? and s.qualified_name = ? and ${SAME_FILE}`).get(s.kind, s.qualified_name, s.path) as Sym | undefined
     return !!t && overlaps(other.ranges.get(t.path), t.start_line, t.end_line)
   })()
-  const testCode = (s: { path: string; file_id: string }) => inTestCode(db, s, o.isTest)
+  const testCode = (s: { id?: string; path: string; file_id: string }) => inTestCode(db, s, o.isTest)
   const site = db.prepare('select f.path, e.start_line as line from assertion_evidence ae join evidence e on e.id = ae.evidence_id join file f on f.id = e.file_id where ae.assertion_id = ? order by e.start_byte limit 1')
   const symbol = db.prepare(`${SYMBOL_SQL} where s.id = ?`)
   const inbound = (id: string, types: string[]) => db.prepare(`select e.src, e.type, e.assertion_id, ${inferredSql()} as inferred from edge e join assertion a on a.id = e.assertion_id where e.dst = ? and e.resolution = 'resolved' and e.type in (${types.map(() => '?').join(',')})`).all(id, ...types) as Array<{ src: string; type: string; assertion_id: string; inferred: number }>
