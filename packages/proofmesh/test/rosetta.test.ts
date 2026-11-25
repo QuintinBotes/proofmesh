@@ -267,7 +267,7 @@ describe('FR217 a stated gap is a promise: a language that gains an answer chang
     expect(fs.readFileSync(path.join(ROOT, 'docs', 'proofmesh', 'languages.md'), 'utf8')).toContain(table)
     expect(table.split('\n')).toHaveLength(2 + LANGUAGES.length)
     expect(table).toContain('| `go` | syntax | 3/4 | 0/2 | 0/1 | 0/2 | 1/1 | 0/4 | 1/1 | 0/3 |')
-    expect(table).toContain('| `python` | precise | 4/4 | 0/2 | 1/1 | 1/2 | 1/1!1 | 1/4 | 1/1 | 3/3 |')
+    expect(table).toContain('| `python` | precise | 4/4 | 0/2 | 1/1 | 1/2 | 1/1 | 1/4 | 1/1 | 3/3 |')
   })
 })
 
