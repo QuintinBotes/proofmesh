@@ -61,18 +61,17 @@ export function sitesNaming(db: Database.Database, ids: string[], types: readonl
   return { followable: all.filter((c) => !c).length, capped: all.filter((c) => c).length }
 }
 
-const sites = (n: number, what = 'call site') => `${n} candidate ${what}${n === 1 ? '' : 's'}`
 /**
- * What an answer says about candidate edges (FR209): that they were followed and why, how many sites it stopped at for their cap, or how many it did
- * not follow. Nothing when there was nothing to say, so an answer for a precise tier keeps its bytes.
+ * What an answer says about candidate edges (FR209): that they were followed and why, how many sites it stopped at for their cap, or, when include_inferred
+ * said not to follow, how many it did not. An answer that followed none and was not told so says nothing, so one for a precise tier keeps its bytes (FR204).
  */
 export function inferredNotes(f: Follow, seen: { followable: number; capped: number }, subjects: number): string[] {
   if (f.on) {
     return [
-      `Candidate edges were followed because ${f.asked ? 'include_inferred was true' : `${subjects === 1 ? "the subject's file has" : "the subjects' files have"} no precise tier`}: every row reached through one is inferred.`,
-      ...(seen.capped ? [`${seen.capped} call site${seen.capped === 1 ? '' : 's'} naming code on these paths ${seen.capped === 1 ? 'has' : 'have'} more than ${MAX_FOLLOWED} candidates and ${seen.capped === 1 ? 'was' : 'were'} not followed.`] : []),
+      `Candidate edges were followed in every file the walk reached because ${f.asked ? 'include_inferred was true' : `${subjects === 1 ? "the subject's file has" : "the subjects' files have"} no precise tier`}: every row reached through one is inferred.`,
+      ...(seen.capped ? [`${seen.capped} ambiguous site${seen.capped === 1 ? '' : 's'} naming code on these paths ${seen.capped === 1 ? 'lists' : 'list'} more than ${MAX_FOLLOWED} candidates and ${seen.capped === 1 ? 'was' : 'were'} not followed.`] : []),
     ]
   }
   const n = seen.followable + seen.capped
-  return n ? [`${sites(n)} naming code on these paths ${n === 1 ? 'was' : 'were'} not followed; pass include_inferred true to follow ${n === 1 ? 'it' : 'them'}.`] : []
+  return f.asked && n ? [`${n} candidate site${n === 1 ? '' : 's'} naming code on these paths ${n === 1 ? 'was' : 'were'} not followed; pass include_inferred true to follow ${n === 1 ? 'it' : 'them'}.`] : []
 }

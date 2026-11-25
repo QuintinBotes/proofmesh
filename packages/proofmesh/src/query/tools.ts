@@ -931,11 +931,11 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     const r = testReach(ctx.db, ctx.snapshot.id, ids, files, (h) => ctx.store.read(h), ctx.limits.max_depth, isTestCode, follow.on)
     const end = ctx.page.offset + ctx.limits.max_rows, executing = r.rows.filter((t) => EXECUTING.has(t.evidence)).length
     // A subject whose file's calls are not resolved has no call to find a test through: say so, since no row would not mean no test.
-    // Not when candidate calls were followed in a language that has them: its calls are then read, as inferred (FR205).
-    const hasCandidates = (language: string) => !!ctx.db.prepare("select 1 from assertion a join symbol s on s.id = a.source_id join file f on f.id = s.file_id where f.language = ? and a.type = 'calls' and a.resolution in ('candidate', 'ambiguous') limit 1").get(language)
+    // Not for a subject whose candidate calls were followed: it has candidate sites of its own, so some of its calls are read, as inferred (FR205).
+    const ownSites = (id: string) => { const n = sitesNaming(ctx.db, [id], ['calls']); return n.followable + n.capped > 0 }
     const noCalls = [...new Set(ids.flatMap((id) => {
       const f = ctx.db.prepare("select f.language, json_extract(f.capabilities, '$.resolved_calls') as calls from symbol s join file f on f.id = s.file_id where s.id = ?").get(id) as { language: string | null; calls: string | null } | undefined
-      return f?.language && f.calls === 'unsupported' && !(follow.on && hasCandidates(f.language)) ? [ADAPTER_LANGUAGE_NAMES[f.language] ?? f.language] : []
+      return f?.language && f.calls === 'unsupported' && !(follow.on && ownSites(id)) ? [ADAPTER_LANGUAGE_NAMES[f.language] ?? f.language] : []
     }))].sort()
     const byProject = new Map<string, number>()
     for (const t of r.rows) byProject.set(t.project ?? '(no project)', (byProject.get(t.project ?? '(no project)') ?? 0) + 1)
@@ -1301,7 +1301,7 @@ const inferredNotesFor = (done: Array<{ follow: { on: boolean; asked: boolean };
   const group = (on: boolean) => done.filter((d) => d.follow.on === on)
   const sum = (list: typeof done) => ({ followable: list.reduce((n, d) => n + d.sites.followable, 0), capped: list.reduce((n, d) => n + d.sites.capped, 0) })
   const followed = group(true)
-  return [...(followed.length ? inferredNotes({ on: true, asked: followed.some((d) => d.follow.asked) }, sum(followed), followed.length) : []), ...inferredNotes({ on: false, asked: false }, sum(group(false)), 0)]
+  return [...(followed.length ? inferredNotes({ on: true, asked: followed.some((d) => d.follow.asked) }, sum(followed), followed.length) : []), ...inferredNotes({ on: false, asked: group(false).some((d) => d.follow.asked) }, sum(group(false)), 0)]
 }
 
 /** Whether a snapshot analyses a path. */

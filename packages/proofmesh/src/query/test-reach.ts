@@ -52,7 +52,7 @@ function projectsOf(db: Database.Database, snapshotId: string): Map<string, stri
  * Breadth first back from the subjects along resolved relationships, as analyze_impact walks; a reference counts only into a subject.
  * `files` are the subjects named by path, whose every import counts for import_only.
  */
-export function testReach(db: Database.Database, snapshotId: string, subjects: string[], files: string[], read: (hash: string) => Buffer | undefined, maxDepth: number, isTest: (path: string, project: string | null, roles?: Roles) => boolean, follow = false) {
+export function testReach(db: Database.Database, snapshotId: string, subjects: string[], files: string[], read: (hash: string) => Buffer | undefined, maxDepth: number, isTest: (path: string, project: string | null, roles?: Roles) => boolean, follow = false, budget = NODE_BUDGET) {
   const { membersOf, kindOf } = structure(db, snapshotId)
   const projectOfFile = projectsOf(db, snapshotId)
   const infos = new Map<string, Info>()
@@ -112,9 +112,12 @@ export function testReach(db: Database.Database, snapshotId: string, subjects: s
           if (r.inferred) sawInferred = true
           if (observedOnly && r.inferred) continue
           for (const s of at.get(r.dst)!) add({ node: r.src, mode: r.type === 'references' ? 2 : s.mode, depth, next: s, assertion: r.assertion_id, via: s.via }, next)
+          // Checked per row, so a hub with thousands of callers cannot overshoot the budget within one level (FR210).
+          if (states.size > budget) break
         }
+        if (states.size > budget) break
       }
-      if (states.size > NODE_BUDGET) { stopped = 'node_budget'; break }
+      if (states.size > budget) { stopped = 'node_budget'; break }
       frontier = next
     }
 

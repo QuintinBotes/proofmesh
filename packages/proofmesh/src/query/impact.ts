@@ -51,7 +51,7 @@ export function structure(db: Database.Database, snapshotId: string) {
  * types, breadth first and bounded. Grouped by project (from project containment), area, and owning team. With imports among
  * the types a file and its module symbol are one node (FR090, FR091), reported once as the file, with the import that reached it.
  */
-export function analyzeImpact(db: Database.Database, snapshotId: string, subjects: string[], types: readonly string[], maxDepth: number, maxRows: number, keep: (d: Impact['dependents'][number]) => boolean = () => true, candidates = false): Impact {
+export function analyzeImpact(db: Database.Database, snapshotId: string, subjects: string[], types: readonly string[], maxDepth: number, maxRows: number, keep: (d: Impact['dependents'][number]) => boolean = () => true, candidates = false, budget = NODE_BUDGET): Impact {
   // A change reaches code through dispatch as well as direct references: a type through its members and the members of
   // the interfaces it implements, a member through the member it overrides or implements. Those peers share the reached node's depth.
   const { membersOf, kindOf } = structure(db, snapshotId)
@@ -101,9 +101,12 @@ export function analyzeImpact(db: Database.Database, snapshotId: string, subject
         for (const r of rows) {
           if (r.inferred) sawInferred = true
           if (!(observedOnly && r.inferred)) reach(r.src, depth, next, r.assertion_id)
+          // Checked per row, so a hub with thousands of callers cannot overshoot the budget within one level (FR210).
+          if (depthOf.size > budget) break
         }
+        if (depthOf.size > budget) break
       }
-      if (depthOf.size > NODE_BUDGET) { stopped = 'node_budget'; break }
+      if (depthOf.size > budget) { stopped = 'node_budget'; break }
       frontier = next
     }
     return { depthOf, via, subjectSet, stopped, sawInferred }

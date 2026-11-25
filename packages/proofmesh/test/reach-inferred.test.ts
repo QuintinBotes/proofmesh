@@ -8,15 +8,26 @@ import { indexRepository } from '../src/indexer/coordinator.js'
 import { Registry } from '../src/indexer/languages.js'
 import { Catalog, initDataDir } from '../src/meshstore/catalog.js'
 import { runTool } from '../src/query/tools.js'
-import { cli, fixtureRepo, indexedDataDir, indexedRepo, symbolId, tmpDir, tool } from './helpers.js'
+import { cli, fixtureRepo, indexedDataDir, indexedRepo, ROOT, symbolId, tmpDir, tool, withSnapshot as withSnapshotOf } from './helpers.js'
 
 // Issue 21: impact, test reach and paths follow candidate edges where no precise tier analysed the subject, every row reached through one inferred.
 type Dep = { name: string; qualified_name: string; depth: number; basis: string }
 type Impact = { dependents: Dep[]; totals: { dependents: number; by_basis: { observed: number; inferred: number } } }
 const impact = (d: string, id: string | string[], input: Record<string, unknown> = {}) => tool(d, 'analyze_impact', { subject_ids: Array.isArray(id) ? id : [id], ...input })
 const names = (env: { data: unknown }) => (env.data as Impact).dependents.map((x) => [x.qualified_name, x.depth, x.basis])
-// Ids are hashes that depend on where the repository sits, so the digest leaves them out.
-const sha = (e: { data: unknown; limitations: unknown }) => createHash('sha256').update(JSON.stringify({ d: e.data, l: e.limitations }).replace(/\b[a-z]+_[0-9a-f]{16,}\b/g, '<id>')).digest('hex').slice(0, 16)
+// Ids are hashes that depend on where the repository sits, and orders follow from them, so the digest leaves both out.
+const ID = /\b[a-z]+_[0-9a-f]{16,}\b/g
+/** The answer with ids left out and every order that follows from them removed: a map keyed by ids becomes a sorted list, and a list of objects is sorted. */
+const canon = (x: unknown): unknown => {
+  if (Array.isArray(x)) { const l = x.map(canon); return l.length && typeof l[0] === 'object' && l[0] !== null && !Array.isArray(l[0]) ? l.map((v) => JSON.stringify(v).replace(ID, '<id>')).sort() : l }
+  if (x && typeof x === 'object') {
+    const o = x as Record<string, unknown>, keys = Object.keys(o)
+    if (keys.length && keys.every((k) => /^[a-z]+_[0-9a-f]{16,}$/.test(k))) return keys.map((k) => JSON.stringify(canon(o[k])).replace(ID, '<id>')).sort()
+    return Object.fromEntries(keys.map((k) => [k, canon(o[k])]))
+  }
+  return x
+}
+const sha = (e: { data: unknown; limitations: unknown }) => createHash('sha256').update(JSON.stringify(canon({ d: e.data, l: e.limitations })).replace(ID, '<id>')).digest('hex').slice(0, 16)
 const git = (cwd: string, ...args: string[]) => execFileSync('git', ['-c', 'user.name=Test', '-c', 'user.email=test@example.com', '-c', 'commit.gpgsign=false', ...args], { cwd, encoding: 'utf8' }).trim()
 
 let constrained: string
@@ -31,20 +42,20 @@ describe('FR201 FR202 FR203 FR209 issue 21 scenarios 1 and 2: analyze_impact in 
     const env = impact(constrained, symbolId(constrained, 'lib/lib:Format'))
     expect(names(env)).toEqual([['svc/main:run', 1, 'inferred']])
     expect((env.data as Impact).totals.by_basis).toEqual({ observed: 0, inferred: 1 })
-    expect(env.limitations).toContain("Candidate edges were followed because the subject's file has no precise tier: every row reached through one is inferred.")
+    expect(env.limitations).toContain("Candidate edges were followed in every file the walk reached because the subject's file has no precise tier: every row reached through one is inferred.")
   })
 
   it('FR201 FR203 scenario 2: include_inferred false has no dependents and counts the candidate callers it did not follow', () => {
     const env = impact(constrained, symbolId(constrained, 'lib/lib:Format'), { include_inferred: false })
     expect((env.data as Impact).dependents).toEqual([])
-    expect(env.limitations).toContain('1 candidate call site naming code on these paths was not followed; pass include_inferred true to follow it.')
+    expect(env.limitations).toContain('1 candidate site naming code on these paths was not followed; pass include_inferred true to follow it.')
     expect(env.limitations.some((l) => /^Candidate edges were followed/.test(l))).toBe(false)
   })
 
   it('FR201 include_inferred true asks for it, and the answer says the person did', () => {
     const env = impact(constrained, symbolId(constrained, 'lib/lib:Format'), { include_inferred: true })
     expect(names(env)).toEqual([['svc/main:run', 1, 'inferred']])
-    expect(env.limitations).toContain('Candidate edges were followed because include_inferred was true: every row reached through one is inferred.')
+    expect(env.limitations).toContain('Candidate edges were followed in every file the walk reached because include_inferred was true: every row reached through one is inferred.')
   })
 
   it('FR201 any other value of include_inferred is refused', () => {
@@ -58,15 +69,15 @@ describe('FR204 FR201 issue 21 scenario 3: an answer for a subject a precise tie
     const { dataDir: a } = await indexedDataDir(fixtureRepo('ts-invoicing'))
     const f = symbolId(a, 'packages/format/src/currency:formatAmount'), h = symbolId(a, 'packages/api/src/handler:handleInvoice')
     for (const [name, input, pinned] of [
-      ['analyze_impact', { subject_ids: [f] }, 'c8a1ecabfbad4f62'],
+      ['analyze_impact', { subject_ids: [f] }, 'b46e40daffaa581c'],
       ['find_tests', { subject_ids: [f] }, '14229cabf3e620c9'],
-      ['trace_paths', { source_id: h, target_id: f }, 'b5f3834127f771d9'],
+      ['trace_paths', { source_id: h, target_id: f }, '8433e868d5914ce6'],
     ] as const) {
       expect(sha(tool(a, name, input))).toBe(pinned)
       expect(sha(tool(a, name, { ...input, include_inferred: false }))).toBe(pinned)
     }
     const { dataDir: m } = await indexedDataDir(fixtureRepo('ts-module'))
-    expect(sha(tool(m, 'analyze_impact', { subject_ids: [symbolId(m, 'src/app:greet')] }))).toBe('401d5ce28ffbfa2a')
+    expect(sha(tool(m, 'analyze_impact', { subject_ids: [symbolId(m, 'src/app:greet')] }))).toBe('538f790ce73d06e1')
   }, 240000)
 
   it('FR201 auto follows candidate edges only where every subject\'s file was analysed by the syntax tier alone', async () => {
@@ -105,7 +116,7 @@ describe('FR205 issue 21 scenario 4: find_tests reaches a Go test through a cand
 
   it('FR205 FR209 the answer says candidate edges were followed, and no longer says Go calls are unresolved', () => {
     const env = find()
-    expect(env.limitations).toContain("Candidate edges were followed because the subject's file has no precise tier: every row reached through one is inferred.")
+    expect(env.limitations).toContain("Candidate edges were followed in every file the walk reached because the subject's file has no precise tier: every row reached through one is inferred.")
     expect(env.limitations.some((l) => /^Calls in Go are not resolved yet/.test(l))).toBe(false)
   })
 
@@ -138,7 +149,7 @@ describe('FR206 issue 21 scenario 5: trace_paths follows a candidate call', () =
   it('FR209 a lean path row ends with inferred, and the answer says candidate edges were followed', () => {
     const lean = runTool(constrained, 'trace_paths', { source_id: symbolId(constrained, 'svc/main:run'), target_id: symbolId(constrained, 'lib/lib:Format'), envelope: 'lean' }).text!
     expect(lean).toMatch(/run svc\/main\.go:\d+ inferred/)
-    expect(trace().limitations).toContain("Candidate edges were followed because the subjects' files have no precise tier: every row reached through one is inferred.")
+    expect(trace().limitations).toContain("Candidate edges were followed in every file the walk reached because the subjects' files have no precise tier: every row reached through one is inferred.")
   })
 })
 
@@ -195,9 +206,9 @@ describe('FR208 FR202 issue 21 scenario 7: an ambiguous site is followed with al
     expect(ids).toHaveLength(6)
     const env = impact(d, ids)
     expect((env.data as Impact).dependents).toEqual([])
-    expect(env.limitations).toContain('1 call site naming code on these paths has more than 5 candidates and was not followed.')
+    expect(env.limitations).toContain('1 ambiguous site naming code on these paths lists more than 5 candidates and was not followed.')
     for (const id of ids) expect((tool(d, 'trace_paths', { source_id: caller, target_id: id }).data as unknown as { conclusion: string }).conclusion).not.toBe('path_found')
-    expect(tool(d, 'find_tests', { subject_ids: ids }).limitations.some((l) => /has more than 5 candidates/.test(l))).toBe(true)
+    expect(tool(d, 'find_tests', { subject_ids: ids }).limitations.some((l) => /lists more than 5 candidates/.test(l))).toBe(true)
   }, 240000)
 })
 
@@ -231,13 +242,24 @@ describe('FR210 FR201 FR204 issue 21 edge cases: an observed chain wins, an infe
     expect((env.data as Impact).totals.by_basis).toEqual({ observed: 3, inferred: 1 })
   }, 240000)
 
-  it('FR204 FR209 by default a precise-tier subject follows no candidate: the observed rows only, and the answer counts the candidate site it did not follow', async () => {
+  it('FR204 FR209 by default a precise-tier subject follows no candidate and the answer says nothing of them; asked for with false, it counts the site it did not follow', async () => {
     const d = await guessIndex(FILES)
     const env = impact(d, symbolId(d, 's:S'))
     expect(names(env)).toEqual([['p:P1', 1, 'observed'], ['p:P2', 2, 'observed'], ['p:X', 3, 'observed']])
-    expect(env.limitations).toContain('1 candidate call site naming code on these paths was not followed; pass include_inferred true to follow it.')
-    expect(env.limitations.some((l) => /^Candidate edges were followed/.test(l))).toBe(false)
-    expect(names(impact(d, symbolId(d, 's:S'), { include_inferred: false }))).toEqual(names(env))
+    expect(env.limitations.some((l) => /candidate/i.test(l))).toBe(false)
+    const off = impact(d, symbolId(d, 's:S'), { include_inferred: false })
+    expect(names(off)).toEqual(names(env))
+    expect(off.limitations).toContain('1 candidate site naming code on these paths was not followed; pass include_inferred true to follow it.')
+  }, 240000)
+
+  it('FR204 a precise-tier subject with candidate sites answers byte-identically with the default input, data and limitations, in every tool', async () => {
+    const d = await guessIndex({ ...FILES, 'test/t.guess': 'def testY\n  call Y\n' })
+    const S = symbolId(d, 's:S'), X = symbolId(d, 'p:X'), Y = symbolId(d, 'y:Y')
+    // The digests are of the answers the code before issue 21 gave for this repository.
+    expect(sha(tool(d, 'analyze_impact', { subject_ids: [S] }))).toBe('f896ece756590e17')
+    expect(sha(tool(d, 'find_tests', { subject_ids: [S] }))).toBe('bd8b98971215cf8d')
+    expect(sha(tool(d, 'trace_paths', { source_id: X, target_id: S }))).toBe('a418129d2e0af03f')
+    expect(sha(tool(d, 'trace_paths', { source_id: X, target_id: Y }))).toBe('ff647a1e5996434b')
   }, 240000)
 
   it('FR210 a chain with one inferred hop makes the row inferred: P0 calls X, which is reached only through Y', async () => {
@@ -261,5 +283,90 @@ describe('FR210 FR201 FR204 issue 21 edge cases: an observed chain wins, an infe
     const tests = (include_inferred?: boolean) => (tool(d, 'find_tests', { subject_ids: [symbolId(d, 's:S')], ...(include_inferred === undefined ? {} : { include_inferred }) }).data as unknown as { tests: Array<{ name: string; basis: string }> }).tests.map((t) => [t.name, t.basis])
     expect(tests()).toEqual([])
     expect(tests(true)).toEqual([['testY', 'inferred']])
+  }, 240000)
+})
+
+describe('FR201 FR210 issue 21 edge case 1: auto is decided from the subjects; once on, the walk follows candidate sites in every file it reaches', () => {
+  type Spec = { files: Record<string, string | null>; symbols: Array<[string, string]>; observed: Array<[string, string]>; candidates: Array<[string, string[]]> }
+  let n = 0
+  /** A snapshot of the real format with only what a walk reads: files with a tier (null: none recorded), symbols, observed calls and candidate sites. */
+  function mini(spec: Spec) {
+    const db = new Database(':memory:')
+    db.pragma('foreign_keys = off')
+    db.exec(fs.readFileSync(path.join(ROOT, 'schemas', 'snapshot-format', '0.9.sql'), 'utf8'))
+    for (const [id, tier] of Object.entries(spec.files)) db.prepare("insert into file (id, path, content_hash, size, language, disposition, capabilities) values (?, ?, 'h', 1, 'x', 'indexed', ?)").run(id, `${id}.x`, JSON.stringify(tier ? { tier } : {}))
+    for (const [id, file] of spec.symbols) db.prepare("insert into symbol (id, file_id, kind, name, qualified_name, start_byte, end_byte, start_line, end_line, stable_key, evidence_id) values (?, ?, 'function', ?, ?, 0, 1, 1, 1, ?, 'ev')").run(`sym_${id}`, file, id, `${file}:${id}`, id)
+    const assertion = db.prepare("insert into assertion (id, type, origin, resolution, source_kind, source_id, target_kind, target_id, reason, adapter, adapter_version, analysis_mode) values (?, 'calls', 'semantic_resolver', ?, 'symbol', ?, ?, ?, ?, 'x', '1', 'no_execution')")
+    spec.observed.forEach(([src, dst], i) => {
+      assertion.run(`a_obs${i}`, 'resolved', `sym_${src}`, 'symbol', `sym_${dst}`, null)
+      db.prepare("insert into edge (src, type, dst, resolution, assertion_id) values (?, 'calls', ?, 'resolved', ?)").run(`sym_${src}`, `sym_${dst}`, `a_obs${i}`)
+    })
+    spec.candidates.forEach(([src, dsts], i) => {
+      assertion.run(`a_cand${i}`, dsts.length > 1 ? 'ambiguous' : 'candidate', `sym_${src}`, null, null, 'name_match')
+      dsts.forEach((dst, rank) => db.prepare("insert into assertion_candidate (assertion_id, symbol_id, rank, reason) values (?, ?, ?, 'r')").run(`a_cand${i}`, `sym_${dst}`, rank))
+    })
+    return { db, snap: `snap_mini${n++}` }
+  }
+  const rowsOf = (impact: { dependents: Dep[] }) => impact.dependents.map((x) => [x.name, x.depth, x.basis])
+
+  it('FR201 FR204 a precise subject meeting a syntax-tier file through an observed edge follows no candidate under auto, and follows them when asked', async () => {
+    const { resolveFollow } = await import('../src/query/inferred.js')
+    const { analyzeImpact } = await import('../src/query/impact.js')
+    const { db, snap } = mini({ files: { p: 'precise:x', s: 'syntax' }, symbols: [['pf', 'p'], ['s1', 's'], ['s2', 's']], observed: [['s1', 'pf']], candidates: [['s2', ['s1']]] })
+    expect(resolveFollow(db, 'auto', ['sym_pf']).on).toBe(false)
+    expect(rowsOf(analyzeImpact(db, snap, ['sym_pf'], ['calls'], 5, 100, undefined, resolveFollow(db, 'auto', ['sym_pf']).on))).toEqual([['s1', 1, 'observed']])
+    expect(rowsOf(analyzeImpact(db, snap, ['sym_pf'], ['calls'], 5, 100, undefined, resolveFollow(db, true, ['sym_pf']).on))).toEqual([['s1', 1, 'observed'], ['s2', 2, 'inferred']])
+  })
+
+  it('FR201 FR210 a syntax-tier subject follows candidate sites in every file the walk reaches, a precise-tier file included, and every row past the first candidate is inferred', async () => {
+    const { resolveFollow } = await import('../src/query/inferred.js')
+    const { analyzeImpact } = await import('../src/query/impact.js')
+    const { db, snap } = mini({ files: { p: 'precise:x', s: 'syntax' }, symbols: [['s0', 's'], ['p1', 'p'], ['p2', 'p'], ['p3', 'p']], observed: [['p2', 'p1']], candidates: [['p1', ['s0']], ['p3', ['p2']]] })
+    expect(resolveFollow(db, 'auto', ['sym_s0']).on).toBe(true)
+    expect(rowsOf(analyzeImpact(db, snap, ['sym_s0'], ['calls'], 5, 100, undefined, true))).toEqual([['p1', 1, 'inferred'], ['p2', 2, 'inferred'], ['p3', 3, 'inferred']])
+  })
+
+  it('FR210 the node budget is checked inside a level: a hub with more ambiguous callers than the budget stops at it and says so, and a budget it does not exceed changes nothing', async () => {
+    const { analyzeImpact } = await import('../src/query/impact.js')
+    const callers = Array.from({ length: 30 }, (_, i) => `c${i}`)
+    const { db, snap } = mini({ files: { s: 'syntax' }, symbols: [['hub', 's'], ...callers.map((c) => [c, 's'] as [string, string])], observed: [], candidates: callers.map((c) => [c, ['hub', 'other']] as [string, string[]]) })
+    const all = analyzeImpact(db, snap, ['sym_hub'], ['calls'], 5, 100, undefined, true)
+    expect([all.dependents.length, all.stopped_by]).toEqual([30, null])
+    const cut = analyzeImpact(db, snap, ['sym_hub'], ['calls'], 5, 100, undefined, true, 10)
+    expect([cut.dependents.length, cut.totals.dependents, cut.stopped_by]).toEqual([10, 10, 'node_budget'])
+  })
+
+  it('FR210 test reach stops at the node budget inside a level too', async () => {
+    const { testReach } = await import('../src/query/test-reach.js')
+    const callers = Array.from({ length: 30 }, (_, i) => `t${i}`)
+    const { db, snap } = mini({ files: { s: 'syntax', tests: 'syntax' }, symbols: [['hub', 's'], ...callers.map((c) => [c, 'tests'] as [string, string])], observed: [], candidates: callers.map((c) => [c, ['hub']] as [string, string[]]) })
+    const isTest = (p: string) => p === 'tests.x'
+    const all = testReach(db, snap, ['sym_hub'], [], () => undefined, 5, isTest, true)
+    expect([all.rows.length, all.stopped_by]).toEqual([30, null])
+    const cut = testReach(db, snap + 'b', ['sym_hub'], [], () => undefined, 5, isTest, true, 10)
+    expect([cut.rows.length, cut.stopped_by]).toEqual([10, 'node_budget'])
+  })
+
+  it('FR201 a subject in a file with no recorded tier is not syntax-tier: auto follows nothing, and asked for it follows', async () => {
+    const { resolveFollow } = await import('../src/query/inferred.js')
+    const { analyzeImpact } = await import('../src/query/impact.js')
+    // No fixture symbol lacks a tier, so the snapshot is built: a file whose capabilities record none.
+    const { db, snap } = mini({ files: { u: null, s: 'syntax' }, symbols: [['u0', 'u'], ['s1', 's']], observed: [], candidates: [['s1', ['u0']]] })
+    expect(resolveFollow(db, 'auto', ['sym_u0']).on).toBe(false)
+    expect(analyzeImpact(db, snap, ['sym_u0'], ['calls'], 5, 100, undefined, false).dependents).toEqual([])
+    expect(rowsOf(analyzeImpact(db, snap, ['sym_u0'], ['calls'], 5, 100, undefined, resolveFollow(db, true, ['sym_u0']).on))).toEqual([['s1', 1, 'inferred']])
+  })
+})
+
+describe('FR199 FR205 the note that Go calls are not resolved is decided per subject: dropped only for a subject with candidate sites of its own', () => {
+  it('FR205 a Go function a test calls loses the note, and one nothing calls keeps it', async () => {
+    const { dataDir: d } = await indexedRepo({
+      'go.mod': 'module example.com/p\n\ngo 1.21\n',
+      'a.go': 'package p\n\nfunc Used() {}\n\nfunc Unused() {}\n',
+      'a_test.go': 'package p\n\nimport "testing"\n\nfunc TestUsed(t *testing.T) { Used() }\n',
+    })
+    const note = (qn: string) => tool(d, 'find_tests', { subject_ids: [symbolId(d, qn)] }).limitations.some((l) => /^Calls in Go are not resolved yet/.test(l))
+    expect(note('a:Used')).toBe(false)
+    expect(note('a:Unused')).toBe(true)
   }, 240000)
 })

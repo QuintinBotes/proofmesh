@@ -172,7 +172,7 @@ A symbol carries optional `roles` (adapter protocol 1.1, snapshot format 0.9): `
 
 `find_tests` lists only entry points in a file whose adapter sent roles (Go, Rust, Python, Java, Kotlin, PHP, Ruby, C, C++, Swift and C# with their markers): a helper that calls the subject is no test, but a test that calls the helper reaches the subject through it. In any other file (an adapter that sends no roles, a snapshot sealed before roles, TypeScript and JavaScript, a file of a marker language in which no symbol has a role) every symbol in test code is a test, as before. A block that declares no name is named by its call and its description, `it "adds"`, and a googletest macro as it is written, `TEST(Calc, Adds)`.
 
-`find_tests` says when the subject's language has no resolved calls: `Calls in Go are not resolved yet`, and no test is listed as executing it, with `include_inferred` false; by default it follows Go and Java candidate calls (FR205), lists the tests it reaches that way as inferred, and says so instead. The markers are read from syntax alone, so no test framework needs to be installed.
+`find_tests` says when the subject's language has no resolved calls: `Calls in Go are not resolved yet`, and no test is listed as executing it, with `include_inferred` false; by default it follows Go and Java candidate calls (FR205), lists the tests it reaches that way as inferred, and says so instead, for a subject that has candidate call sites of its own. The markers are read from syntax alone, so no test framework needs to be installed.
 
 ## Other languages
 
