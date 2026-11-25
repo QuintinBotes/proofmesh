@@ -121,9 +121,12 @@ export function testReach(db: Database.Database, snapshotId: string, subjects: s
   const all = walk(false)
   const proved = all.sawInferred ? walk(true) : all
   const { states, reached, stopped } = all
-  const provedIds = new Set(proved.rows.map((r) => r.id))
-  const rows: TestRow[] = [...proved.rows, ...(proved === all ? [] : all.rows.filter((r) => !provedIds.has(r.id)).map((r) => ({ ...r, basis: 'inferred' as const })))]
-  const chainStart = new Map<string, State>([...all.chainStart, ...proved.chainStart])
+  // A row of the observed walk replaces the all-edges row only when its evidence is at least as strong; a weaker observed chain would lose an executing test.
+  const observedRows = new Map(proved.rows.map((r) => [r.id, r]))
+  const useObserved = (r: TestRow) => { const o = observedRows.get(r.id); return o !== undefined && EVIDENCE.indexOf(o.evidence) <= EVIDENCE.indexOf(r.evidence) }
+  const rows: TestRow[] = proved === all ? [...all.rows] : all.rows.map((r) => (useObserved(r) ? observedRows.get(r.id)! : { ...r, basis: 'inferred' as const }))
+  const chainStart = new Map<string, State>(all.chainStart)
+  if (proved !== all) for (const r of rows) if (r.basis === 'observed') chainStart.set(r.id, proved.chainStart.get(r.id)!)
 
   // import_only: a test file that imports the subject (for a file subject, the file) and in which nothing reaches it.
   const touched = new Set(reached.map((s) => infos.get(s.node)?.file_id))

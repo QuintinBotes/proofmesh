@@ -148,6 +148,25 @@ describe('FR182 FR184 FR185 issue 10 scenario 4: analyze_impact labels a depende
     expect(deps('orders').length).toBeGreaterThan(0)
     expect(deps('orders').map((x) => x[1])).toEqual(deps('orders').map(() => 'observed'))
   }, 240000)
+
+  it('FR182 get_table_reach rows carry basis: inferred when the chain to the table is, observed otherwise', async () => {
+    const { dataDir: t } = await indexedDataDir(fixtureRepo('ts-typeorm'))
+    const rows = (table: string) => (tool(t, 'get_table_reach', { table }).data as unknown as { tables: Array<{ reach: Array<{ qualified_name: string; basis: string }> }> }).tables.flatMap((x) => x.reach)
+    expect(rows('payment').length).toBeGreaterThan(0)
+    expect(rows('payment').map((r) => r.basis)).toEqual(rows('payment').map(() => 'inferred'))
+    expect(rows('orders').length).toBeGreaterThan(0)
+    expect(rows('orders').map((r) => r.basis)).toEqual(rows('orders').map(() => 'observed'))
+  }, 240000)
+})
+
+describe('FR183 FR184 find_tests keeps the strongest evidence when only a weaker chain is observed', () => {
+  it('FR183 FR184 a test that calls the subject through a guessed call and also references it is listed as a call, inferred, and stays executing', async () => {
+    const { d } = await guessIndex({ 'src/core.guess': 'def core\n', 'test/t.guess': 'def t_weak\n  guess core\n  ref core\ndef t_ref\n  ref core\ndef t_call\n  call core\n' })
+    const data = tool(d, 'find_tests', { subject_ids: [symbolId(d, 'src/core:core')] }).data as unknown as { tests: Array<{ name: string; evidence: string; basis: string }>; totals: { by_basis: Record<string, number>; executing: number } }
+    expect(data.tests.map((t) => [t.name, t.evidence, t.basis])).toEqual([['t_weak', 'call', 'inferred'], ['t_call', 'call', 'observed'], ['t_ref', 'reference', 'observed']])
+    expect(data.totals.executing).toBe(2)
+    expect(data.totals.by_basis).toEqual({ observed: 2, inferred: 1 })
+  }, 120000)
 })
 
 describe('FR183 FR184 FR185 issue 10 scenario 5: find_tests and trace_paths carry basis', () => {

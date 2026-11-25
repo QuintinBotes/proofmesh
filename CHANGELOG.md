@@ -4,7 +4,7 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 ## Unreleased
 
-Relationship basis (closes #10):
+Relationship basis (part of #10; the graph-bench scenario SC-2 is not run):
 
 - Every relationship row of `get_relationships`, every dependent of `analyze_impact` and `impact_completeness`, every test of `find_tests` and every hop of `trace_paths` carries `basis`, `observed` or `inferred`, derived when the answer is built from the resolution, the origin and `detail.inferred`. An unresolved boundary has none (FR181 to FR183, FR189).
 - A row reached through a chain is `inferred` when any hop of its strongest chain is; the strongest chain is the shortest all-observed one where one exists, so a dependent that an observed and an inferred chain both reach is `observed`, at the depth of that chain. A path is `inferred` when any hop is (FR184).

@@ -13,4 +13,6 @@
 
 `list_queries` returns the contract versions above as `contract`, the manifest a client can check before it relies on a schema. A test fails when this table and the code disagree.
 
+Removed without a deprecation period: the `detail.inferred` values `name_match` and `package_directory` that constrained name matching wrote on a bound relationship row (#61). They were a stand-in for `basis` (FR188), which is derived from the row's resolution, origin and detail and so is on every row; read `basis` instead. A row's `detail.rule` stays. `detail.inferred` itself is still written by adapters and still makes a row `inferred`. The resolution version moved from 2 to 3, so snapshots built before are not reused and the next index rebuilds.
+
 Deprecations are listed in CHANGELOG.md under the release that announces them.

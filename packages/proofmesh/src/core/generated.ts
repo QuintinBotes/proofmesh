@@ -1556,6 +1556,10 @@ path: string
  * Length of the shortest resolved path from this symbol to the table.
  */
 depth: number
+/**
+ * inferred when a hop of the chain that reaches the endpoint or job is inferred, or the link from the table to that chain is.
+ */
+basis: ("observed" | "inferred")
 }[]
 /**
  * True when a limit stopped the search, so the reach is a lower bound.
