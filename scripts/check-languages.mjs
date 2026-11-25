@@ -15,7 +15,9 @@ export const languagesOf = (root) => fs.readdirSync(path.join(root, 'fixtures', 
 const cell = (call, section) => {
   const given = section.calls[call].rows.filter((r) => r.role).length
   const extra = section.calls[call].rows.filter((r) => r.extra).length
-  return `${given}/${section.contract[call].roles.length}${extra ? `+${extra}` : ''}`
+  // A known defect is a row the tool should not give: it is no support, so it is shown apart, as !n.
+  const defect = section.calls[call].rows.filter((r) => r.known_defect).length
+  return `${given}/${section.contract[call].roles.length}${extra ? `+${extra}` : ''}${defect ? `!${defect}` : ''}`
 }
 
 /** The support table the expected files give, one row per language and tier, in the order of the files. */
@@ -30,7 +32,7 @@ export function rosettaTable(root) {
   return lines.join('\n')
 }
 
-/** What is wrong with one tier section: a call missing, a role neither given nor stated as a gap, one both given and stated, a gap with no reason, an extra row with none. */
+/** What is wrong with one tier section: a call missing, a role neither given nor stated as a gap, one both given and stated, a gap with no reason, an extra row or a known defect with none. */
 export function sectionProblems(contract, section, where) {
   const out = []
   for (const [call, spec] of Object.entries(contract.calls)) {
@@ -44,7 +46,7 @@ export function sectionProblems(contract, section, where) {
     }
     for (const r of [...given, ...gaps]) if (!spec.roles.includes(r)) out.push(`${where}: ${call}: ${r} is no row of the contract`)
     for (const g of got.not_at_tier ?? []) if (!g.reason) out.push(`${where}: ${call}: gap ${g.role} states no reason`)
-    for (const r of got.rows) if (!r.role && !r.extra) out.push(`${where}: ${call}: row "${r.row}" is neither a contract role nor an extra with a reason`)
+    for (const r of got.rows) if (!r.role && !r.extra && !r.known_defect) out.push(`${where}: ${call}: row "${r.row}" is neither a contract role nor an extra or a known defect with a reason`)
   }
   return out
 }

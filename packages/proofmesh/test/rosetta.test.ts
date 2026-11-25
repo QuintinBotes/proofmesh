@@ -13,7 +13,7 @@ const LANGUAGES = ['cpp', 'csharp', 'go', 'java', 'kotlin', 'php', 'python', 'ru
 const PRECISE = ['csharp', 'python', 'typescript']
 const SYNTAX = LANGUAGES.filter((l) => !PRECISE.includes(l))
 
-type Row = { role?: string; extra?: string; row: string }
+type Row = { role?: string; extra?: string; known_defect?: string; row: string }
 type Gap = { role: string; reason: string }
 type CallExpect = { error?: string; rows: Row[]; not_at_tier?: Gap[] }
 type Section = { subjects: Record<string, { name: string; path: string }>; calls: Record<string, CallExpect> }
@@ -148,11 +148,19 @@ describe('FR214 the precise tiers answer observed, and say where they fall short
     expect(rows.filter((r) => !/dispatch$/.test(r)).map(last)).toEqual([direct])
   })
 
-  it('FR214 Python does not give the dispatch row, and its expected file says so, for the callers and for what they reach', () => {
+  it('FR214 scenario 2 is NOT met for Python: it gives no dispatch row, so total is missing from the callers of Circle.area; the file records it as a known defect', () => {
     const section = of('python').section!
-    expect(section.calls.calls_circle_area!.not_at_tier!.map((g) => g.role)).toEqual(['total'])
-    expect(section.calls.impact!.not_at_tier!.map((g) => g.role)).toEqual(['total', 'report', 'totalOfTwo'])
+    for (const [call, roles] of [['calls_circle_area', ['total']], ['impact', ['total', 'report', 'totalOfTwo']]] as const) {
+      expect(section.calls[call]!.not_at_tier!.map((g) => g.role)).toEqual(roles)
+      for (const g of section.calls[call]!.not_at_tier!) expect(g.reason).toMatch(/^known defect/)
+    }
     expect(of('python').answers.calls_circle_area!.rows).toHaveLength(1)
+  })
+
+  it.each([['typescript', 'imports'], ['typescript', 'impact'], ['python', 'imports'], ['csharp', 'impact']])('FR214 %s %s: a row the tool should not give is a known defect, not an extra and not support', (lang, call) => {
+    const rows = of(lang).section!.calls[call]!.rows
+    expect(rows.filter((r) => r.known_defect).length).toBe(1)
+    expect(rows.filter((r) => r.known_defect).every((r) => !r.extra && !r.role && /^known defect: /.test(r.known_defect!))).toBe(true)
   })
 })
 
@@ -176,6 +184,7 @@ describe('FR215 the syntax tier answers inferred, states each row it cannot give
     ['a gap with no reason', (s: Section) => { s.calls.calls_circle_area!.not_at_tier = [{ role: 'total', reason: '' }] }],
     ['a row that is no part of the contract', (s: Section) => { s.calls.find_symbols!.rows.push({ role: 'Triangle.area', row: 'Triangle.area a.go:1 method' }) }],
     ['an extra row with no reason', (s: Section) => { s.calls.find_symbols!.rows.push({ row: 'Odd a.go:1 method' }) }],
+    ['a known defect with no reason', (s: Section) => { s.calls.find_symbols!.rows.push({ known_defect: '', row: 'Odd a.go:1 method' }) }],
   ])('FR215 the accounting finds %s', async (_name, mutate) => {
     const { sectionProblems } = await checker()
     const copy = structuredClone(expectedOf('go').tiers.syntax!)
@@ -257,14 +266,15 @@ describe('FR217 a stated gap is a promise: a language that gains an answer chang
     expect(fs.readFileSync(path.join(ROOT, 'docs', 'proofmesh', 'languages.md'), 'utf8')).toContain(table)
     expect(table.split('\n')).toHaveLength(2 + LANGUAGES.length)
     expect(table).toContain('| `go` | syntax | 3/4 | 0/2 | 0/1 | 0/2 | 1/1 | 0/4 | 1/1 | 0/3 |')
-    expect(table).toContain('| `python` | precise | 4/4 | 0/2 | 1/1 | 1/2 | 1/1+1 | 1/4 | 1/1 | 3/3 |')
+    expect(table).toContain('| `python` | precise | 4/4 | 0/2 | 1/1 | 1/2 | 1/1!1 | 1/4 | 1/1 | 3/3 |')
   })
 })
 
 describe('FR218 a language listed as supported for a tier has its Rosetta section', () => {
-  const copyDocs = (extraRow?: string): string => {
-    const root = tmpDir('pm-rosetta-')
-    fs.cpSync(path.join(ROSETTA), path.join(root, 'fixtures', 'rosetta'), { recursive: true, filter: (s) => !s.includes(`${path.sep}repo`) })
+  // The programs are left out by their place under the fixture root, not by a name anywhere in the absolute path.
+  const copyDocs = (extraRow?: string, from = ROSETTA, into = tmpDir('pm-rosetta-')): string => {
+    const root = into
+    fs.cpSync(from, path.join(root, 'fixtures', 'rosetta'), { recursive: true, filter: (s) => !path.relative(from, s).split(path.sep).includes('repo') })
     fs.mkdirSync(path.join(root, 'docs', 'proofmesh'), { recursive: true })
     let doc = fs.readFileSync(path.join(ROOT, 'docs', 'proofmesh', 'languages.md'), 'utf8')
     if (extraRow) doc = doc.replace(/(\| `typescript` \| precise \|.*\n)/, `$1${extraRow}\n`)
@@ -272,6 +282,18 @@ describe('FR218 a language listed as supported for a tier has its Rosetta sectio
     return root
   }
   const run = (root: string) => spawnSync(process.execPath, [path.join(ROOT, 'scripts', 'check-languages.mjs'), root], { encoding: 'utf8' })
+
+  it('FR218 the copy leaves out the programs and keeps the expected files when the fixtures sit under a directory named repo-x, or repo', () => {
+    for (const dir of ['repo-x', 'repo', 'repos']) {
+      const home = path.join(tmpDir('pm-home-'), dir)
+      fs.mkdirSync(home)
+      fs.cpSync(ROSETTA, path.join(home, 'rosetta'), { recursive: true })
+      const root = copyDocs(undefined, path.join(home, 'rosetta'), path.join(home, 'out'))
+      expect(fs.existsSync(path.join(root, 'fixtures', 'rosetta', 'go', 'expected.json')), dir).toBe(true)
+      expect(fs.existsSync(path.join(root, 'fixtures', 'rosetta', 'go', 'repo')), dir).toBe(false)
+      expect(run(root).status, dir).toBe(0)
+    }
+  })
 
   it('FR218 scenario 5: on the repository the check passes', () => {
     const r = run(ROOT)

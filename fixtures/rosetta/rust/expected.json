@@ -39,7 +39,7 @@
           "not_at_tier": [
             {
               "role": "Shape.area",
-              "reason": "a trait method declaration with no body is not a symbol"
+              "reason": "observed: a trait method declaration with no body is not a symbol"
             }
           ]
         },
@@ -48,11 +48,11 @@
           "not_at_tier": [
             {
               "role": "Circle",
-              "reason": "the syntax tier reads no heritage in Rust"
+              "reason": "languages.md (what the tier records per language, FR118): no heritage is recorded for Rust"
             },
             {
               "role": "Square",
-              "reason": "the syntax tier reads no heritage in Rust"
+              "reason": "languages.md (what the tier records per language, FR118): no heritage is recorded for Rust"
             }
           ]
         },
@@ -62,7 +62,7 @@
           "not_at_tier": [
             {
               "role": "total",
-              "reason": "the subject, Shape.area, is not a symbol at this tier"
+              "reason": "observed: the subject, Shape.area, is not a symbol at this tier"
             }
           ]
         },
@@ -71,11 +71,11 @@
           "not_at_tier": [
             {
               "role": "circleArea",
-              "reason": "no rule binds calls in Rust: the syntax tier keeps every call site unresolved"
+              "reason": "languages.md (constrained name matching): Rust is not covered yet, so its call sites stay unresolved"
             },
             {
               "role": "total",
-              "reason": "no rule binds calls in Rust: the syntax tier keeps every call site unresolved"
+              "reason": "languages.md (constrained name matching): Rust is not covered yet, so its call sites stay unresolved"
             }
           ]
         },
@@ -84,7 +84,7 @@
           "not_at_tier": [
             {
               "role": "report",
-              "reason": "the syntax tier reads no imports in Rust"
+              "reason": "languages.md (what the tier records per language, FR118): no imports are recorded for Rust"
             }
           ]
         },
@@ -93,19 +93,19 @@
           "not_at_tier": [
             {
               "role": "circleArea",
-              "reason": "no rule binds calls in Rust: the syntax tier keeps every call site unresolved"
+              "reason": "languages.md (constrained name matching): Rust is not covered yet, so its call sites stay unresolved"
             },
             {
               "role": "total",
-              "reason": "no rule binds calls in Rust: the syntax tier keeps every call site unresolved"
+              "reason": "languages.md (constrained name matching): Rust is not covered yet, so its call sites stay unresolved"
             },
             {
               "role": "report",
-              "reason": "no rule binds calls in Rust: the syntax tier keeps every call site unresolved"
+              "reason": "languages.md (constrained name matching): Rust is not covered yet, so its call sites stay unresolved"
             },
             {
               "role": "totalOfTwo",
-              "reason": "no rule binds calls in Rust: the syntax tier keeps every call site unresolved"
+              "reason": "languages.md (constrained name matching): Rust is not covered yet, so its call sites stay unresolved"
             }
           ]
         },
@@ -114,7 +114,7 @@
           "not_at_tier": [
             {
               "role": "totalOfTwo",
-              "reason": "no rule binds calls in Rust: the syntax tier keeps every call site unresolved"
+              "reason": "languages.md (constrained name matching): Rust is not covered yet, so its call sites stay unresolved"
             }
           ]
         },
@@ -124,15 +124,15 @@
           "not_at_tier": [
             {
               "role": "totalOfTwo",
-              "reason": "the subject, Shape.area, is not a symbol at this tier"
+              "reason": "observed: the subject, Shape.area, is not a symbol at this tier"
             },
             {
               "role": "total",
-              "reason": "the subject, Shape.area, is not a symbol at this tier"
+              "reason": "observed: the subject, Shape.area, is not a symbol at this tier"
             },
             {
               "role": "Shape.area",
-              "reason": "the subject, Shape.area, is not a symbol at this tier"
+              "reason": "observed: the subject, Shape.area, is not a symbol at this tier"
             }
           ]
         }

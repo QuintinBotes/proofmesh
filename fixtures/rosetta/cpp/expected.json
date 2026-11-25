@@ -36,14 +36,14 @@
             { "role": "Square.area", "row": "area() shapes.h:16 function" },
             { "role": "circleArea", "row": "circleArea shapes.cc:11 function" },
             {
-              "extra": "a header prototype is a symbol of its own: it merges into its definition only inside one file",
+              "extra": "languages.md (names, FR146): a prototype in a header and its definition in another file stay two symbols",
               "row": "circleArea shapes.h:21 function"
             }
           ],
           "not_at_tier": [
             {
               "role": "Shape.area",
-              "reason": "a pure virtual declaration is not a symbol"
+              "reason": "observed: a pure virtual declaration is not a symbol"
             }
           ]
         },
@@ -52,11 +52,11 @@
           "not_at_tier": [
             {
               "role": "Circle",
-              "reason": "the syntax tier reads no heritage in C++"
+              "reason": "languages.md (what the tier records per language, FR118): no heritage is recorded for C++"
             },
             {
               "role": "Square",
-              "reason": "the syntax tier reads no heritage in C++"
+              "reason": "languages.md (what the tier records per language, FR118): no heritage is recorded for C++"
             }
           ]
         },
@@ -66,7 +66,7 @@
           "not_at_tier": [
             {
               "role": "total",
-              "reason": "the subject, Shape.area, is not a symbol at this tier"
+              "reason": "observed: the subject, Shape.area, is not a symbol at this tier"
             }
           ]
         },
@@ -76,11 +76,11 @@
           "not_at_tier": [
             {
               "role": "circleArea",
-              "reason": "the member is named area() inside its class body, as Square's is, so no name identifies it"
+              "reason": "observed: the member is named area() inside its class body, as Square's is, so no name identifies it"
             },
             {
               "role": "total",
-              "reason": "the member is named area() inside its class body, as Square's is, so no name identifies it"
+              "reason": "observed: the member is named area() inside its class body, as Square's is, so no name identifies it"
             }
           ]
         },
@@ -89,7 +89,7 @@
           "not_at_tier": [
             {
               "role": "report",
-              "reason": "the syntax tier reads no imports in C++"
+              "reason": "languages.md (what the tier records per language, FR118): no imports are recorded for C++"
             }
           ]
         },
@@ -99,19 +99,19 @@
           "not_at_tier": [
             {
               "role": "circleArea",
-              "reason": "the member is named area() inside its class body, as Square's is, so no name identifies it"
+              "reason": "observed: the member is named area() inside its class body, as Square's is, so no name identifies it"
             },
             {
               "role": "total",
-              "reason": "the member is named area() inside its class body, as Square's is, so no name identifies it"
+              "reason": "observed: the member is named area() inside its class body, as Square's is, so no name identifies it"
             },
             {
               "role": "report",
-              "reason": "the member is named area() inside its class body, as Square's is, so no name identifies it"
+              "reason": "observed: the member is named area() inside its class body, as Square's is, so no name identifies it"
             },
             {
               "role": "totalOfTwo",
-              "reason": "the member is named area() inside its class body, as Square's is, so no name identifies it"
+              "reason": "observed: the member is named area() inside its class body, as Square's is, so no name identifies it"
             }
           ]
         },
@@ -120,7 +120,7 @@
           "not_at_tier": [
             {
               "role": "totalOfTwo",
-              "reason": "no rule binds calls in C++: the syntax tier keeps every call site unresolved"
+              "reason": "languages.md (what the tier records per language, FR118): C and C++ record no calls"
             }
           ]
         },
@@ -130,15 +130,15 @@
           "not_at_tier": [
             {
               "role": "totalOfTwo",
-              "reason": "the subject, Shape.area, is not a symbol at this tier"
+              "reason": "observed: the subject, Shape.area, is not a symbol at this tier"
             },
             {
               "role": "total",
-              "reason": "the subject, Shape.area, is not a symbol at this tier"
+              "reason": "observed: the subject, Shape.area, is not a symbol at this tier"
             },
             {
               "role": "Shape.area",
-              "reason": "the subject, Shape.area, is not a symbol at this tier"
+              "reason": "observed: the subject, Shape.area, is not a symbol at this tier"
             }
           ]
         }

@@ -4,52 +4,87 @@
   "tiers": {
     "precise": {
       "subjects": {
-        "$Shape": { "name": "Rosetta.Shapes.IShape", "path": "Shapes.cs" },
-        "$Shape.area": { "name": "Rosetta.Shapes.IShape.Area", "path": "Shapes.cs" },
-        "$Circle.area": { "name": "Rosetta.Shapes.Circle.Area", "path": "Shapes.cs" },
-        "$shapes-file": { "name": "Shapes.cs", "path": "Shapes.cs" },
-        "$total": { "name": "Rosetta.Shapes.Totals.Total", "path": "Shapes.cs" },
-        "$totalOfTwo": { "name": "Rosetta.Tests.ShapesTests.TotalOfTwo", "path": "ShapesTests.cs" }
+        "$Shape": {
+          "name": "Rosetta.Shapes.IShape",
+          "path": "Shapes.cs"
+        },
+        "$Shape.area": {
+          "name": "Rosetta.Shapes.IShape.Area",
+          "path": "Shapes.cs"
+        },
+        "$Circle.area": {
+          "name": "Rosetta.Shapes.Circle.Area",
+          "path": "Shapes.cs"
+        },
+        "$shapes-file": {
+          "name": "Shapes.cs",
+          "path": "Shapes.cs"
+        },
+        "$total": {
+          "name": "Rosetta.Shapes.Totals.Total",
+          "path": "Shapes.cs"
+        },
+        "$totalOfTwo": {
+          "name": "Rosetta.Tests.ShapesTests.TotalOfTwo",
+          "path": "ShapesTests.cs"
+        }
       },
       "calls": {
-        "find_symbols": { "rows": [
-          { "role": "Circle.area", "row": "Rosetta.Shapes.Circle.Area Shapes.cs:12 method" },
-          { "role": "Shape.area", "row": "Rosetta.Shapes.IShape.Area Shapes.cs:5 method" },
-          { "role": "Square.area", "row": "Rosetta.Shapes.Square.Area Shapes.cs:19 method" },
-          { "role": "circleArea", "row": "Rosetta.Shapes.Totals.CircleArea Shapes.cs:31 method" }
-        ] },
-        "implements": { "rows": [
-          { "role": "Circle", "row": "Rosetta.Shapes.Circle Shapes.cs:8" },
-          { "role": "Square", "row": "Rosetta.Shapes.Square Shapes.cs:15" }
-        ] },
-        "calls_shape_area": { "rows": [
-          { "role": "total", "row": "Rosetta.Shapes.Totals.Total Shapes.cs:27" }
-        ] },
-        "calls_circle_area": { "rows": [
-          { "role": "circleArea", "row": "Rosetta.Shapes.Totals.CircleArea Shapes.cs:31" },
-          { "role": "total", "row": "Rosetta.Shapes.Totals.Total Shapes.cs:27 dispatch" }
-        ] },
+        "find_symbols": {
+          "rows": [
+            { "role": "Circle.area", "row": "Rosetta.Shapes.Circle.Area Shapes.cs:12 method" },
+            { "role": "Shape.area", "row": "Rosetta.Shapes.IShape.Area Shapes.cs:5 method" },
+            { "role": "Square.area", "row": "Rosetta.Shapes.Square.Area Shapes.cs:19 method" },
+            { "role": "circleArea", "row": "Rosetta.Shapes.Totals.CircleArea Shapes.cs:31 method" }
+          ]
+        },
+        "implements": {
+          "rows": [
+            { "role": "Circle", "row": "Rosetta.Shapes.Circle Shapes.cs:8" },
+            { "role": "Square", "row": "Rosetta.Shapes.Square Shapes.cs:15" }
+          ]
+        },
+        "calls_shape_area": {
+          "rows": [
+            { "role": "total", "row": "Rosetta.Shapes.Totals.Total Shapes.cs:27" }
+          ]
+        },
+        "calls_circle_area": {
+          "rows": [
+            { "role": "circleArea", "row": "Rosetta.Shapes.Totals.CircleArea Shapes.cs:31" },
+            { "role": "total", "row": "Rosetta.Shapes.Totals.Total Shapes.cs:27 dispatch" }
+          ]
+        },
         "imports": {
           "rows": [],
           "not_at_tier": [
             { "role": "report", "reason": "the adapter records no imports: a using directive names a namespace, not a file, and is not a relationship" }
           ]
         },
-        "impact": { "rows": [
-          { "role": "circleArea", "row": "Rosetta.Shapes.Totals.CircleArea Shapes.cs:31 depth=1 calls" },
-          { "role": "total", "row": "Rosetta.Shapes.Totals.Total Shapes.cs:27 depth=1 calls" },
-          { "role": "report", "row": "Rosetta.Reports.Report.Make Report.cs:7 depth=2 calls" },
-          { "role": "totalOfTwo", "row": "Rosetta.Tests.ShapesTests.TotalOfTwo ShapesTests.cs:9 depth=2 calls" },
-          { "extra": "the walk lists a sibling implementation of the same interface member, as it does for any implementation", "row": "Rosetta.Shapes.Square.Area Shapes.cs:19 depth=1 implements" }
-        ] },
-        "find_tests": { "rows": [
-          { "role": "totalOfTwo", "row": "Rosetta.Tests.ShapesTests.TotalOfTwo ShapesTests.cs:9 depth=1" }
-        ] },
-        "trace_paths": { "rows": [
-          { "role": "totalOfTwo", "row": "Rosetta.Tests.ShapesTests.TotalOfTwo ShapesTests.cs:9" },
-          { "role": "total", "row": "Rosetta.Shapes.Totals.Total Shapes.cs:27" },
-          { "role": "Shape.area", "row": "Rosetta.Shapes.IShape.Area Shapes.cs:5" }
-        ] }
+        "impact": {
+          "rows": [
+            { "role": "circleArea", "row": "Rosetta.Shapes.Totals.CircleArea Shapes.cs:31 depth=1 calls" },
+            { "role": "total", "row": "Rosetta.Shapes.Totals.Total Shapes.cs:27 depth=1 calls" },
+            { "role": "report", "row": "Rosetta.Reports.Report.Make Report.cs:7 depth=2 calls" },
+            { "role": "totalOfTwo", "row": "Rosetta.Tests.ShapesTests.TotalOfTwo ShapesTests.cs:9 depth=2 calls" },
+            {
+              "row": "Rosetta.Shapes.Square.Area Shapes.cs:19 depth=1 implements",
+              "known_defect": "known defect: analyze_impact lists a sibling implementation of the same interface member as a dependent of Circle.Area"
+            }
+          ]
+        },
+        "find_tests": {
+          "rows": [
+            { "role": "totalOfTwo", "row": "Rosetta.Tests.ShapesTests.TotalOfTwo ShapesTests.cs:9 depth=1" }
+          ]
+        },
+        "trace_paths": {
+          "rows": [
+            { "role": "totalOfTwo", "row": "Rosetta.Tests.ShapesTests.TotalOfTwo ShapesTests.cs:9" },
+            { "role": "total", "row": "Rosetta.Shapes.Totals.Total Shapes.cs:27" },
+            { "role": "Shape.area", "row": "Rosetta.Shapes.IShape.Area Shapes.cs:5" }
+          ]
+        }
       }
     }
   }

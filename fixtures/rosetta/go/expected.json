@@ -39,7 +39,7 @@
           "not_at_tier": [
             {
               "role": "Shape.area",
-              "reason": "the methods of a Go interface are not symbols"
+              "reason": "observed: the methods of a Go interface are not symbols"
             }
           ]
         },
@@ -48,11 +48,11 @@
           "not_at_tier": [
             {
               "role": "Circle",
-              "reason": "Go satisfies an interface by having its methods, with no clause to read; deciding it needs types"
+              "reason": "languages.md (what the tier records per language, FR118): the only Go heritage recorded is struct embedding; Go has no implements clause to read"
             },
             {
               "role": "Square",
-              "reason": "Go satisfies an interface by having its methods, with no clause to read; deciding it needs types"
+              "reason": "languages.md (what the tier records per language, FR118): the only Go heritage recorded is struct embedding; Go has no implements clause to read"
             }
           ]
         },
@@ -62,7 +62,7 @@
           "not_at_tier": [
             {
               "role": "total",
-              "reason": "the subject, Shape.Area, is not a symbol at this tier"
+              "reason": "observed: the subject, Shape.Area, is not a symbol at this tier"
             }
           ]
         },
@@ -71,11 +71,11 @@
           "not_at_tier": [
             {
               "role": "circleArea",
-              "reason": "the receiver is a composite literal, an expression whose type the syntax tier does not know"
+              "reason": "languages.md (constrained name matching): the receiver is a composite literal, an expression, which binds to nothing"
             },
             {
               "role": "total",
-              "reason": "a call through an interface needs the receiver's type, which the syntax tier does not know"
+              "reason": "languages.md (constrained name matching): the receiver s is a variable, whose type the tier does not know, so the call through Shape binds to nothing"
             }
           ]
         },
@@ -89,11 +89,11 @@
           "not_at_tier": [
             {
               "role": "circleArea",
-              "reason": "its call of Circle.Area has an expression as receiver, which binds to nothing"
+              "reason": "languages.md (constrained name matching): its call of Circle.Area has an expression as receiver, which binds to nothing"
             },
             {
               "role": "total",
-              "reason": "a call through an interface needs the receiver's type, which the syntax tier does not know"
+              "reason": "languages.md (constrained name matching): the receiver s is a variable, whose type the tier does not know, so the call through Shape binds to nothing"
             },
             {
               "role": "report",
@@ -116,15 +116,15 @@
           "not_at_tier": [
             {
               "role": "totalOfTwo",
-              "reason": "the subject, Shape.Area, is not a symbol at this tier"
+              "reason": "observed: the subject, Shape.Area, is not a symbol at this tier"
             },
             {
               "role": "total",
-              "reason": "the subject, Shape.Area, is not a symbol at this tier"
+              "reason": "observed: the subject, Shape.Area, is not a symbol at this tier"
             },
             {
               "role": "Shape.area",
-              "reason": "the subject, Shape.Area, is not a symbol at this tier"
+              "reason": "observed: the subject, Shape.Area, is not a symbol at this tier"
             }
           ]
         }

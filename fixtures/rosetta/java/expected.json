@@ -49,7 +49,7 @@
           "not_at_tier": [
             {
               "role": "total",
-              "reason": "the receiver is a variable or an expression, whose type the syntax tier does not know, so the call binds to nothing"
+              "reason": "languages.md (constrained name matching): a call whose receiver is a variable, a field, a call result or any other expression has a type the tier does not know, and binds to nothing"
             }
           ]
         },
@@ -58,11 +58,11 @@
           "not_at_tier": [
             {
               "role": "circleArea",
-              "reason": "the receiver is a `new Circle(1)` expression, whose type the syntax tier does not know"
+              "reason": "languages.md (constrained name matching): the receiver is a `new Circle(1)` expression, which binds to nothing"
             },
             {
               "role": "total",
-              "reason": "the receiver is a variable or an expression, whose type the syntax tier does not know, so the call binds to nothing"
+              "reason": "languages.md (constrained name matching): a call whose receiver is a variable, a field, a call result or any other expression has a type the tier does not know, and binds to nothing"
             }
           ]
         },
@@ -76,11 +76,11 @@
           "not_at_tier": [
             {
               "role": "circleArea",
-              "reason": "its call of area has an expression as receiver, which binds to nothing"
+              "reason": "languages.md (constrained name matching): its call of area has an expression as receiver, which binds to nothing"
             },
             {
               "role": "total",
-              "reason": "a call through an interface needs the receiver's type, which the syntax tier does not know"
+              "reason": "languages.md (constrained name matching): the receiver s is a variable, whose type the tier does not know, so the call through Shape binds to nothing"
             },
             {
               "role": "report",
@@ -106,7 +106,7 @@
             },
             {
               "role": "total",
-              "reason": "the receiver is a variable or an expression, whose type the syntax tier does not know, so the call binds to nothing"
+              "reason": "languages.md (constrained name matching): a call whose receiver is a variable, a field, a call result or any other expression has a type the tier does not know, and binds to nothing"
             },
             {
               "role": "Shape.area",
