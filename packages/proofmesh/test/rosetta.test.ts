@@ -142,7 +142,7 @@ describe('FR214 the precise tiers answer observed, and say where they fall short
   it.each(['csharp', 'python', 'typescript'])('FR214 scenario 2: %s lists the callers of Circle.area as circleArea, direct, and total, by dispatch through Shape.area', (lang) => {
     const rows = of(lang).answers.calls_circle_area!.rows
     expect(rows).toHaveLength(2)
-    const [viaShape, direct] = lang === 'csharp' ? ['Total', 'CircleArea'] : ['total', 'circleArea']
+    const [viaShape, direct] = lang === 'csharp' ? ['Total', 'CircleArea'] : lang === 'python' ? ['total', 'circle_area'] : ['total', 'circleArea']
     const last = (r: string) => r.split(' ')[0]!.split('.').pop()
     expect(rows.filter((r) => /dispatch$/.test(r)).map(last)).toEqual([viaShape])
     expect(rows.filter((r) => !/dispatch$/.test(r)).map(last)).toEqual([direct])
@@ -155,7 +155,7 @@ describe('FR214 the precise tiers answer observed, and say where they fall short
     expect(impact).toEqual(expect.arrayContaining(['circle_area', 'total', 'report', 'test_total_of_two']))
   })
 
-  it.each([['typescript', 'imports'], ['typescript', 'impact'], ['python', 'imports'], ['csharp', 'impact']])('FR214 %s %s: a row the tool should not give is a known defect, not an extra and not support', (lang, call) => {
+  it.each([['typescript', 'imports'], ['typescript', 'impact'], ['python', 'imports'], ['python', 'impact'], ['csharp', 'impact']])('FR214 %s %s: a row the tool should not give is a known defect, not an extra and not support', (lang, call) => {
     const rows = of(lang).section!.calls[call]!.rows
     expect(rows.filter((r) => r.known_defect).length).toBe(1)
     expect(rows.filter((r) => r.known_defect).every((r) => !r.extra && !r.role && /^known defect: /.test(r.known_defect!))).toBe(true)
@@ -264,7 +264,7 @@ describe('FR217 a stated gap is a promise: a language that gains an answer chang
     expect(fs.readFileSync(path.join(ROOT, 'docs', 'proofmesh', 'languages.md'), 'utf8')).toContain(table)
     expect(table.split('\n')).toHaveLength(2 + LANGUAGES.length)
     expect(table).toContain('| `go` | syntax | 3/4 | 0/2 | 0/1 | 0/2 | 1/1 | 0/4 | 1/1 | 0/3 |')
-    expect(table).toContain('| `python` | precise | 4/4 | 0/2 | 1/1 | 2/2 | 1/1!1 | 4/4 | 1/1 | 3/3 |')
+    expect(table).toContain('| `python` | precise | 4/4 | 0/2 | 1/1 | 2/2 | 1/1!1 | 4/4!1 | 1/1 | 3/3 |')
   })
 })
 

@@ -112,6 +112,10 @@
             {
               "role": "totalOfTwo",
               "row": "test_total_of_two test_shapes.py:5 depth=2 calls"
+            },
+            {
+              "row": "Square.area shapes.py:18 depth=1 overrides",
+              "known_defect": "known defect: analyze_impact lists a sibling implementation of the same base member as a dependent of Circle.area"
             }
           ]
         },

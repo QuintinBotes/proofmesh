@@ -189,7 +189,7 @@ A tier gives a row, or states under `not_at_tier` why it cannot; a row neither g
 | `java` | syntax | 4/4 | 2/2 | 0/1 | 0/2 | 1/1 | 0/4 | 1/1 | 0/3 |
 | `kotlin` | syntax | 4/4 | 0/2 | 0/1 | 0/2 | 0/1 | 0/4 | 0/1 | 0/3 |
 | `php` | syntax | 4/4 | 0/2 | 0/1 | 0/2 | 0/1 | 0/4 | 0/1 | 0/3 |
-| `python` | precise | 4/4 | 0/2 | 1/1 | 2/2 | 1/1!1 | 4/4 | 1/1 | 3/3 |
+| `python` | precise | 4/4 | 0/2 | 1/1 | 2/2 | 1/1!1 | 4/4!1 | 1/1 | 3/3 |
 | `ruby` | syntax | 4/4 | 0/2 | 0/1 | 0/2 | 0/1 | 0/4 | 0/1 | 0/3 |
 | `rust` | syntax | 3/4 | 0/2 | 0/1 | 0/2 | 0/1 | 0/4 | 0/1 | 0/3 |
 | `typescript` | precise | 4/4 | 2/2 | 1/1 | 2/2 | 1/1!1 | 4/4!1 | 1/1 | 3/3 |
