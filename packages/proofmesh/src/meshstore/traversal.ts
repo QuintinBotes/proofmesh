@@ -29,7 +29,8 @@ export interface EdgeSource {
 /** Relationship types a path follows in both directions: a call to an interface or virtual member may dispatch to any implementation. */
 export const DISPATCH_TYPES = ['implements', 'overrides'] as const
 export class SqliteEdges implements EdgeSource {
-  constructor(private readonly db: Database.Database) {}
+  /** `extra` adds edges the `edge` table does not hold, such as candidate calls, for the nodes of a level. */
+  constructor(private readonly db: Database.Database, private readonly extra?: (nodes: string[]) => Array<{ src: string; dst: string; assertion_id: string }>) {}
   outEdges(nodes: string[], types: string[], resolutions: string[]) {
     const out: Array<{ src: string; dst: string; assertion_id: string }> = []
     const tp = types.map(() => '?').join(','), rp = resolutions.map(() => '?').join(',')
@@ -40,6 +41,7 @@ export class SqliteEdges implements EdgeSource {
       // The implementation reached from the member it implements or overrides: the edge read backwards.
       if (dispatch.length) out.push(...(this.db.prepare(`select dst as src, src as dst, assertion_id from edge where dst in (${cp}) and type in (${dispatch.map(() => '?').join(',')}) and resolution in (${rp})`).all(...chunk, ...dispatch, ...resolutions) as typeof out))
     }
+    if (this.extra) out.push(...this.extra(nodes))
     return out.sort((a, b) => (a.src < b.src ? -1 : a.src > b.src ? 1 : a.dst < b.dst ? -1 : a.dst > b.dst ? 1 : a.assertion_id < b.assertion_id ? -1 : 1))
   }
 }

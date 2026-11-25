@@ -135,8 +135,9 @@ describe('FR195 issue 11 scenario 3: find_tests lists test entry points, not hel
 })
 
 describe('FR199 issue 11 scenario 5: calls in a language with no resolved calls are said not to be resolved', () => {
-  it('FR199 scenario 5: find_tests on Go Add says calls in Go are not resolved yet, and lists no test as executing it', () => {
-    const env = tool(d, 'find_tests', { subject_ids: [symbolId(d, 'calc/calc:Add')] })
+  // With include_inferred false the answer is the one before issue 21: its default follows Go and Java candidate calls (FR205).
+  it('FR199 scenario 5: find_tests on Go Add with include_inferred false says calls in Go are not resolved yet, and lists no test as executing it', () => {
+    const env = tool(d, 'find_tests', { subject_ids: [symbolId(d, 'calc/calc:Add')], include_inferred: false })
     const data = env.data as unknown as { tests: Array<{ name: string; evidence: string }>; totals: { executing: number } }
     expect(data.totals.executing).toBe(0)
     expect(data.tests.filter((t) => ['call', 'transitive_call', 'dispatch'].includes(t.evidence))).toEqual([])
@@ -146,8 +147,13 @@ describe('FR199 issue 11 scenario 5: calls in a language with no resolved calls 
   it('FR199 the note is not made for a language whose calls are resolved', () => {
     const env = tool(d, 'find_tests', { subject_ids: [symbolId(d, 'pkg/calc:add')] })
     expect(env.limitations.some((l) => /are not resolved yet/.test(l))).toBe(false)
-    const lean = tool(d, 'find_tests', { subject_ids: [symbolId(d, 'calc/calc:Add')], envelope: 'lean' }) as unknown as { text?: string }
+    const lean = tool(d, 'find_tests', { subject_ids: [symbolId(d, 'calc/calc:Add')], envelope: 'lean', include_inferred: false }) as unknown as { text?: string }
     expect(String(lean.text ?? '')).toMatch(/# Calls in Go are not resolved yet/)
+  })
+
+  it('FR199 FR205 the note is still made for a language with no candidate calls, whatever include_inferred says', () => {
+    const env = tool(d, 'find_tests', { subject_ids: [symbolId(d, 'Sources/Calc:Calc.add')], include_inferred: true })
+    expect(env.limitations.some((l) => /^Calls in Swift are not resolved yet/.test(l))).toBe(true)
   })
 })
 

@@ -1,6 +1,7 @@
 import type Database from 'better-sqlite3'
 import { type Basis, inferredSql } from './basis.js'
 import { areaOf } from './galaxy.js'
+import { candidatesTo, sitesNaming } from './inferred.js'
 
 /** Relationship types along which a change travels from a symbol to the code that depends on it. */
 export const IMPACT_TYPES = ['calls', 'inherits', 'implements', 'overrides', 'injects', 'registered_as', 'handles', 'dispatches_to', 'evaluates_flag', 'maps_to', 'exposes', 'consumes', 'reads_config', 'runs', 'calls_service', 'renders', 'uses_hook', 'provides_context', 'uses_context'] as const
@@ -12,6 +13,8 @@ export type Impact = {
   subject_members: number
   /** The assertion that first reached each node, whose site is a lean impact row's line (FR097); a peer reached through dispatch has none. */
   reached_by: Map<string, string>
+  /** The candidate sites naming code the walk reached: those it could follow, and those it never does for their cap (FR202, FR209). */
+  sites: { followable: number; capped: number }
 }
 
 const NODE_BUDGET = 50000
@@ -48,7 +51,7 @@ export function structure(db: Database.Database, snapshotId: string) {
  * types, breadth first and bounded. Grouped by project (from project containment), area, and owning team. With imports among
  * the types a file and its module symbol are one node (FR090, FR091), reported once as the file, with the import that reached it.
  */
-export function analyzeImpact(db: Database.Database, snapshotId: string, subjects: string[], types: readonly string[], maxDepth: number, maxRows: number, keep: (d: Impact['dependents'][number]) => boolean = () => true): Impact {
+export function analyzeImpact(db: Database.Database, snapshotId: string, subjects: string[], types: readonly string[], maxDepth: number, maxRows: number, keep: (d: Impact['dependents'][number]) => boolean = () => true, candidates = false): Impact {
   // A change reaches code through dispatch as well as direct references: a type through its members and the members of
   // the interfaces it implements, a member through the member it overrides or implements. Those peers share the reached node's depth.
   const { membersOf, kindOf } = structure(db, snapshotId)
@@ -93,6 +96,8 @@ export function analyzeImpact(db: Database.Database, snapshotId: string, subject
         const chunk = frontier.slice(i, i + 500)
         // An external subject is reached only through calls that resolved to it; nothing else points at an external.
         const rows = db.prepare(`select e.src, e.assertion_id, ${inferredSql()} as inferred from edge e join assertion a on a.id = e.assertion_id where e.dst in (${chunk.map(() => '?').join(',')}) and e.type in (${types.map(() => '?').join(',')}) and e.resolution in ('resolved', 'resolved_external')`).all(...chunk, ...types) as Array<{ src: string; assertion_id: string; inferred: number }>
+        // A candidate site names its callers through assertion_candidate; it is an edge only while following (FR202).
+        if (candidates) rows.push(...candidatesTo(db, chunk, types).map((c) => ({ src: c.src, assertion_id: c.assertion_id, inferred: 1 })))
         for (const r of rows) {
           if (r.inferred) sawInferred = true
           if (!(observedOnly && r.inferred)) reach(r.src, depth, next, r.assertion_id)
@@ -149,5 +154,6 @@ export function analyzeImpact(db: Database.Database, snapshotId: string, subject
     stopped_by: stopped,
     subject_members: [...subjectSet].filter((id) => !subjects.includes(id) && kindOf.has(id)).length,
     reached_by: via,
+    sites: sitesNaming(db, [...depthOf.keys()], types),
   }
 }

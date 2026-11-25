@@ -919,6 +919,36 @@
     ],
     "FR200": [
       "packages/proofmesh/test/tests-polyglot.test.ts"
+    ],
+    "FR201": [
+      "packages/proofmesh/test/reach-inferred.test.ts"
+    ],
+    "FR202": [
+      "packages/proofmesh/test/reach-inferred.test.ts"
+    ],
+    "FR203": [
+      "packages/proofmesh/test/reach-inferred.test.ts"
+    ],
+    "FR204": [
+      "packages/proofmesh/test/reach-inferred.test.ts"
+    ],
+    "FR205": [
+      "packages/proofmesh/test/reach-inferred.test.ts"
+    ],
+    "FR206": [
+      "packages/proofmesh/test/reach-inferred.test.ts"
+    ],
+    "FR207": [
+      "packages/proofmesh/test/reach-inferred.test.ts"
+    ],
+    "FR208": [
+      "packages/proofmesh/test/reach-inferred.test.ts"
+    ],
+    "FR209": [
+      "packages/proofmesh/test/reach-inferred.test.ts"
+    ],
+    "FR210": [
+      "packages/proofmesh/test/reach-inferred.test.ts"
     ]
   },
   "manual": {
