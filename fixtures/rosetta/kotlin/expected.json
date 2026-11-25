@@ -43,11 +43,11 @@
           "not_at_tier": [
             {
               "role": "Circle",
-              "reason": "languages.md (what the tier records per language, FR118): no heritage is recorded for Kotlin"
+              "reason": "slice 59a, languages.md (Kotlin, Rust, PHP and Ruby, FR222): Kotlin supertypes are recorded as unresolved inherits rows, never implements (FR222), and no target is bound, so Shape has no incoming implements row"
             },
             {
               "role": "Square",
-              "reason": "languages.md (what the tier records per language, FR118): no heritage is recorded for Kotlin"
+              "reason": "slice 59a, languages.md (Kotlin, Rust, PHP and Ruby, FR222): Kotlin supertypes are recorded as unresolved inherits rows, never implements (FR222), and no target is bound, so Shape has no incoming implements row"
             }
           ]
         },
@@ -78,7 +78,7 @@
           "not_at_tier": [
             {
               "role": "report",
-              "reason": "languages.md (what the tier records per language, FR118): no imports are recorded for Kotlin"
+              "reason": "slice 59a, languages.md (Kotlin, Rust, PHP and Ruby, FR221): the tier records each Kotlin import as an unresolved row with no target, so no row points at the file; constrained name matching does not cover Kotlin yet"
             }
           ]
         },
