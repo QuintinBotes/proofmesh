@@ -14,7 +14,7 @@ import { resolveJava } from './java.js'
 export type { Sym } from './common.js'
 
 /** Bump when a rule changes what is bound: it is part of a snapshot's identity, so an older snapshot is never reused. A test keeps the hash of this directory's sources in resolution.lock.json beside it. */
-export const RESOLUTION_VERSION = 2
+export const RESOLUTION_VERSION = 3
 /** The conventional place of test sources in a Maven or Gradle module. */
 const TEST_SOURCES = /(^|\/)src\/[^/]*[tT]est[^/]*\//
 const ECO: Array<[RegExp, Project['eco']]> = [[/^go\.mod$/, 'go'], [/^pom\.xml$/, 'maven'], [/^(settings|build)\.gradle(\.kts)?$/, 'gradle']]

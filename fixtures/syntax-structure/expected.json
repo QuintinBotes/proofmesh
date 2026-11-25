@@ -18,7 +18,7 @@
   ],
   "calls": [],
   "structure": [
-    { "type": "inherits", "from": "go/shape:Shape", "to": null, "detail": { "name": "Base", "relation": "embedding", "rule": "go_same_package", "inferred": "name_match" }, "site_text": "Base" },
+    { "type": "inherits", "from": "go/shape:Shape", "to": null, "detail": { "name": "Base", "relation": "embedding", "rule": "go_same_package" }, "site_text": "Base" },
     { "type": "inherits", "from": "com.acme.shapes.Circle", "to": null, "detail": { "name": "Base" }, "site_text": "Base" },
     { "type": "implements", "from": "com.acme.shapes.Circle", "to": null, "detail": { "name": "Shape" }, "site_text": "Shape" },
     { "type": "implements", "from": "com.acme.shapes.Circle", "to": null, "detail": { "name": "Named" }, "site_text": "Named" },

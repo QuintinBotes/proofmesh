@@ -81,7 +81,7 @@ describe('FR108 FR109 FR110 FR111 FR112 FR113 FR114 impact_completeness: what a 
       ['calls', 'managerScore', 'src/roles/manager.ts', 3, null, 'changed'],
       ['imports', 'index.ts', 'src/index.ts', 1, null, 'neither'],
     ])
-    expect(data.totals).toEqual({ changed_symbols: 2, dependents: 4, changed: 1, tested: 1, neither: 2 })
+    expect(data.totals).toEqual({ changed_symbols: 2, dependents: 4, changed: 1, tested: 1, neither: 2, by_basis: { observed: 4, inferred: 0 } })
   }, 180000)
 
   it('scenario 2: depth 2 adds the caller of a caller, via it', () => {
@@ -177,7 +177,7 @@ describe('FR108 FR109 FR110 FR111 FR112 FR113 FR114 impact_completeness: what a 
     const { d, repo, base, head } = once
     const env = JSON.parse(cli(['--data-dir', d, 'completeness', repo, `${base}..${head}`, '--json']).stdout)
     expect(env.tool).toBe('impact_completeness')
-    expect(env.data.totals).toEqual({ changed_symbols: 2, dependents: 4, changed: 1, tested: 1, neither: 2 })
+    expect(env.data.totals).toEqual({ changed_symbols: 2, dependents: 4, changed: 1, tested: 1, neither: 2, by_basis: { observed: 4, inferred: 0 } })
   }, 180000)
 })
 

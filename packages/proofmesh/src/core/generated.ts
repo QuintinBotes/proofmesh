@@ -159,6 +159,10 @@ name: string
 qualified_name: string
 path: string
 depth: number
+/**
+ * inferred when the strongest chain to the dependent has an inferred hop; the strongest chain is the shortest all-observed chain where one exists, and depth is that chain's.
+ */
+basis: ("observed" | "inferred")
 project: (string | null)
 /**
  * For a file reached through imports (kind file): the import statement that reached it.
@@ -170,6 +174,13 @@ start_line: number
 }[]
 totals: {
 dependents: number
+/**
+ * The dependents by basis; unresolved boundaries have none.
+ */
+by_basis: {
+observed: number
+inferred: number
+}
 by_depth: {
 [k: string]: number
 }
@@ -549,6 +560,10 @@ line: number
  */
 evidence: ("call" | "transitive_call" | "dispatch" | "reference" | "import_only")
 /**
+ * inferred when the chain that reaches the test has an inferred hop; a test an all-observed chain also reaches is observed, with that chain.
+ */
+basis: ("observed" | "inferred")
+/**
  * For dispatch, the interface or base member the call resolved to.
  */
 via?: string
@@ -578,6 +593,13 @@ executing: number
  * Rows that only reference or import the subject.
  */
 not_executing: number
+/**
+ * The rows by basis; unresolved boundaries have none.
+ */
+by_basis: {
+observed: number
+inferred: number
+}
 }
 observed: {
 available: boolean
@@ -1229,6 +1251,10 @@ type: ("calls" | "imports" | "contains" | "inherits" | "implements" | "overrides
 direction: ("in" | "out")
 resolution: ("resolved" | "resolved_external" | "candidate" | "ambiguous" | "unresolved")
 origin: ("syntax" | "semantic_resolver" | "configuration_adapter" | "framework_adapter" | "contract_match" | "runtime_observation" | "documentation" | "human_assertion" | "model_hypothesis")
+/**
+ * observed: a compiler, an index or a declared configuration proves it. inferred: a convention, a name match or a contract match suggests it. Derived when the answer is built. Absent on an unresolved boundary, which is not a relationship.
+ */
+basis?: ("observed" | "inferred")
 other: {
 kind: ("symbol" | "file" | "external" | "none")
 id?: string
@@ -1275,6 +1301,13 @@ calls_name?: boolean
 totals: {
 in: number
 out: number
+/**
+ * The matching relationships by basis; unresolved boundaries have none.
+ */
+by_basis: {
+observed: number
+inferred: number
+}
 /**
  * Unresolved call sites in the snapshot that call the subject's name: likely callers the graph could not bind, counted past the row limit.
  */
@@ -1531,6 +1564,10 @@ path: string
  * Length of the shortest resolved path from this symbol to the table.
  */
 depth: number
+/**
+ * inferred when a hop of the chain that reaches the endpoint or job is inferred, or the link from the table to that chain is.
+ */
+basis: ("observed" | "inferred")
 }[]
 /**
  * True when a limit stopped the search, so the reach is a lower bound.
@@ -1729,6 +1766,10 @@ name: string
 path: string
 line: number
 evidence: ("call" | "transitive_call" | "dispatch" | "observed")
+/**
+ * observed: a compiler, an index or a declared configuration proves it. inferred: a convention, a name match or a contract match suggests it. Derived when the answer is built.
+ */
+basis: ("observed" | "inferred")
 depth: number
 /**
  * The diff changes the test itself.
@@ -1751,6 +1792,10 @@ relation: ("calls" | "implements" | "overrides" | "inherits" | "references" | "i
  * The member a dispatched call names, or the caller a caller of callers reaches the change through.
  */
 via: (string | null)
+/**
+ * inferred when the chain that reaches the dependent has an inferred hop; a dependent an all-observed chain also reaches is observed.
+ */
+basis: ("observed" | "inferred")
 status: ("changed" | "tested" | "neither")
 /**
  * The nearest test that executes it, as find_tests lists it; null unless the status is tested.
@@ -1760,6 +1805,10 @@ name: string
 path: string
 line: number
 evidence: ("call" | "transitive_call" | "dispatch" | "observed")
+/**
+ * observed: a compiler, an index or a declared configuration proves it. inferred: a convention, a name match or a contract match suggests it. Derived when the answer is built.
+ */
+basis: ("observed" | "inferred")
 depth: number
 /**
  * The diff changes the test itself.
@@ -1777,6 +1826,13 @@ dependents: number
 changed: number
 tested: number
 neither: number
+/**
+ * The dependents by basis; unresolved boundaries have none.
+ */
+by_basis: {
+observed: number
+inferred: number
+}
 }
 }
 
@@ -2301,6 +2357,10 @@ conclusion: ("path_found" | "no_path_within_bounds" | "no_resolved_path" | "no_p
 paths: {
 nodes: string[]
 assertions: string[]
+/**
+ * inferred when any hop of the path is.
+ */
+basis: ("observed" | "inferred")
 }[]
 search: {
 levels: {
@@ -2350,6 +2410,10 @@ relationships: {
 [k: string]: {
 type: string
 origin: string
+/**
+ * The hop's own basis.
+ */
+basis: ("observed" | "inferred")
 rule: (string | null)
 }
 }

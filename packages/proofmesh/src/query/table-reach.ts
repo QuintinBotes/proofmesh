@@ -1,7 +1,8 @@
 import type Database from 'better-sqlite3'
+import { type Basis, inferredSql } from './basis.js'
 import { analyzeImpact, IMPACT_TYPES, type Impact } from './impact.js'
 
-type Reached = { id: string; kind: 'endpoint' | 'job'; qualified_name: string; name: string; path: string; depth: number }
+type Reached = { id: string; kind: 'endpoint' | 'job'; qualified_name: string; name: string; path: string; depth: number; basis: Basis }
 /** A table and every table symbol that names it, shown as its first declaration in path order. */
 export type Table = { id: string; qualified_name: string; name: string; path: string; symbols: Array<{ id: string; qualified_name: string; path: string }> }
 export type TableReach = Omit<Table, 'symbols'> & {
@@ -45,11 +46,15 @@ export function tableReach(db: Database.Database, snapshotId: string, table: Tab
   const keep = (d: Impact['dependents'][number]) => d.kind === 'endpoint' || d.kind === 'job' || jobOfType.has(owner(d.qualified_name))
   const reach = new Map<string, Reached>()
   /** Adds what a search reached, `hops` further from the table than the search's subjects are. */
-  const add = (dependents: Impact['dependents'], hops: number) => {
+  // shortcut: the links that lead from the table to a search's subjects (references of a reader or referrer) are labelled for the search as a whole,
+  // inferred only when every link is; keep a per-subject label if mixed links ever matter.
+  const add = (dependents: Impact['dependents'], hops: number, linksInferred = false) => {
     for (const d of dependents) {
       const hit = d.kind === 'endpoint' || d.kind === 'job' ? { ...d, kind: d.kind as 'endpoint' | 'job' } : { ...jobOfType.get(owner(d.qualified_name))!, kind: 'job' as const, depth: d.depth + 1 }
       const depth = hit.depth + hops, known = reach.get(hit.id)
-      if (!known || known.depth > depth) reach.set(hit.id, { id: hit.id, kind: hit.kind, qualified_name: hit.qualified_name, name: hit.name, path: hit.path, depth })
+      // A job reached through its method is inferred when that method's own chain is.
+      const basis: Basis = linksInferred || d.basis === 'inferred' ? 'inferred' : 'observed'
+      if (!known || known.depth > depth || (known.depth === depth && known.basis === 'inferred' && basis === 'observed')) reach.set(hit.id, { id: hit.id, kind: hit.kind, qualified_name: hit.qualified_name, name: hit.name, path: hit.path, depth, basis })
     }
   }
   const r = analyzeImpact(db, snapshotId, ids, [...IMPACT_TYPES], maxDepth, maxRows, keep)
@@ -64,17 +69,18 @@ export function tableReach(db: Database.Database, snapshotId: string, table: Tab
   const names = new Set(mapped.map((e) => e.qualified_name.slice(e.qualified_name.lastIndexOf('.') + 1)))
   const accessors = (db.prepare("select id, qualified_name, signature from symbol where kind = 'property' and signature like '%DbSet<%'").all() as Array<{ id: string; qualified_name: string; signature: string }>)
     .filter((p) => names.has(/I?DbSet<(?:[\w.]*\.)?(\w+)>/.exec(p.signature)?.[1] ?? ''))
-  const readers = accessors.length ? db.prepare(`select distinct source_id as id, target_id from assertion where type = 'references' and resolution = 'resolved' and target_id in (${accessors.map(() => '?').join(',')})`).all(...accessors.map((a) => a.id)) as Array<{ id: string; target_id: string }> : []
-  if (readers.length) add(analyzeImpact(db, snapshotId, [...new Set(readers.map((x) => x.id))], [...IMPACT_TYPES], Math.max(0, maxDepth - 1), maxRows, keep).dependents, 2)
+  const readers = accessors.length ? db.prepare(`select distinct a.source_id as id, a.target_id, ${inferredSql()} as inferred from assertion a where a.type = 'references' and a.resolution = 'resolved' and a.target_id in (${accessors.map(() => '?').join(',')})`).all(...accessors.map((a) => a.id)) as Array<{ id: string; target_id: string; inferred: number }> : []
+  if (readers.length) add(analyzeImpact(db, snapshotId, [...new Set(readers.map((x) => x.id))], [...IMPACT_TYPES], Math.max(0, maxDepth - 1), maxRows, keep).dependents, 2, readers.every((x) => x.inferred === 1))
   // Code that references the table itself, such as a Prisma Client model access (A36), reaches it one hop further than that code.
-  const referrers = (db.prepare(`select distinct source_id as id from assertion where type = 'references' and resolution = 'resolved' and target_id in (${among})`).all(...ids) as Array<{ id: string }>).map((x) => x.id)
+  const referrerRows = db.prepare(`select distinct a.source_id as id, ${inferredSql()} as inferred from assertion a where a.type = 'references' and a.resolution = 'resolved' and a.target_id in (${among})`).all(...ids) as Array<{ id: string; inferred: number }>
+  const referrers = [...new Set(referrerRows.map((x) => x.id))]
   const direct = referrers.length ? analyzeImpact(db, snapshotId, referrers, [...IMPACT_TYPES], Math.max(0, maxDepth - 1), maxRows, keep) : undefined
-  if (direct) add(direct.dependents, 1)
+  if (direct) add(direct.dependents, 1, referrerRows.every((x) => x.inferred === 1))
   const stopped = r.stopped_by ?? direct?.stopped_by ?? null
   return {
     ...shown, ...(symbols.length > 1 ? { symbols } : {}), entities, stopped_by: stopped,
     horizon: stopped !== null || r.totals.dependents > maxRows || (direct?.totals.dependents ?? 0) > maxRows,
-    accessors: accessors.map((a) => ({ id: a.id, qualified_name: a.qualified_name, readers: readers.filter((x) => x.target_id === a.id).length })),
+    accessors: accessors.map((a) => ({ id: a.id, qualified_name: a.qualified_name, readers: new Set(readers.filter((x) => x.target_id === a.id).map((x) => x.id)).size })),
     reach: [...reach.values()].sort((a, b) => a.depth - b.depth || (a.qualified_name < b.qualified_name ? -1 : 1)),
   }
 }

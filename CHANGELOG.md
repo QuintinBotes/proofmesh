@@ -4,6 +4,14 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 ## Unreleased
 
+Relationship basis (part of #10; the graph-bench scenario SC-2 is not run):
+
+- Every relationship row of `get_relationships`, every dependent of `analyze_impact` and `impact_completeness`, every test of `find_tests` and every hop of `trace_paths` carries `basis`, `observed` or `inferred`, derived when the answer is built from the resolution, the origin and `detail.inferred`. An unresolved boundary has none (FR181 to FR183, FR189).
+- A row reached through a chain is `inferred` when any hop of its strongest chain is; the strongest chain is the shortest all-observed one where one exists, so a dependent that an observed and an inferred chain both reach is `observed`, at the depth of that chain. A path is `inferred` when any hop is (FR184).
+- The answers' totals give `by_basis`, and an inferred lean row ends with the token `inferred` (FR185, FR186). The snapshot format and the adapter protocol are unchanged (FR190).
+- The constrained name matching of #16 no longer writes `detail.inferred` `name_match` or `package_directory` on the rows it binds: that was a stand-in for this label, and a `candidate` or `ambiguous` row reads as inferred through its resolution (FR188). `RESOLUTION_VERSION` is 3, so earlier snapshots are not reused.
+- Existing expectations that change: the `constrained` fixture's five Go import rows and the `syntax-structure` fixture's Go embedding row lose `detail.inferred`, and the two #16 tests that named it now read `basis`; in `analyze_impact` a dependent that an observed chain reaches deeper than an inferred one is reported at the observed chain's depth (this arises only where an inferred relationship is resolved, such as an ORM convention table or an adapter's guessed call); a lean candidate or ambiguous row of `get_relationships` now ends with `inferred`.
+
 Test recognition in every language (closes #11 apart from SC-2, which needs the pinned public samples; a JavaScript `test('name', fn)` callback is still not a symbol):
 
 - Test files are recognised by each language's convention: Go `_test.go` (and only that, so a Go directory named `test` that holds production code is not test code), Python `test_*.py`, `*_test.py` and `conftest.py`, PHP `*Test.php`, Ruby `_spec.rb` and `_test.rb`, C and C++ `*_test.*` and `*_unittest.*`, with the existing TypeScript, C#, Java, Kotlin and Swift patterns (FR191).

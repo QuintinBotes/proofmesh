@@ -117,7 +117,7 @@ export function resolveGo(m: Model, rels: Rel[]): Map<Rel, Rel> {
         // An import is a link between files and a package is a directory, so the row lists the module symbols of the package's files as candidates (FR177).
         const files = nonTest(imp.pkg!).sort(), modules = files.flatMap((f) => m.symbols.filter((s) => s.path === f && s.kind === 'module'))
         if (!modules.length) continue
-        out.set(rel, bind(rel, modules, 'go_import_path', { inferred: 'package_directory' }))
+        out.set(rel, bind(rel, modules, 'go_import_path'))
         out.set(rel, { ...out.get(rel)!, detail: { ...out.get(rel)!.detail!, package: imp.pkg!.dir || '.', files: String(files.length) } })
       }
       continue

@@ -1,4 +1,5 @@
 import type Database from 'better-sqlite3'
+import { type Basis, basisOf, inferredSql } from './basis.js'
 import { structure, TYPE_KINDS } from './impact.js'
 import { hasRoles, isTestEntry, parseRoles, rolesSql, type Roles } from './tests.js'
 
@@ -9,7 +10,7 @@ export const EXECUTING = new Set<string>(['call', 'transitive_call', 'dispatch',
 
 type Evidence = (typeof EVIDENCE)[number]
 type Hop = { name: string; path: string; line: number }
-export type TestRow = { id: string; kind: string; name: string; qualified_name: string; path: string; project: string | null; line: number; depth: number; evidence: Evidence; via?: string }
+export type TestRow = { id: string; kind: string; name: string; qualified_name: string; path: string; project: string | null; line: number; depth: number; evidence: Evidence; basis: Basis; via?: string }
 /** A node on the way from a subject to a test; `next` leads back to the subject. mode 0 runs the subject, 1 runs it by dispatch, 2 only references it. */
 type State = { node: string; mode: number; depth: number; next?: State; assertion?: string; peer?: boolean; via?: string }
 type Info = { id: string; kind: string; name: string; qualified_name: string; start_line: number; file_id: string; path: string; roles: string | null }
@@ -69,56 +70,76 @@ export function testReach(db: Database.Database, snapshotId: string, subjects: s
 
   // What a call to a node may run of it: a subject type's own members, and by dispatch the members of the interfaces it implements;
   // for a member, the interface and base members it implements or overrides. A type reached on the way runs only what reached it.
-  const above = db.prepare("select dst from edge where src = ? and type in ('implements', 'overrides') and resolution = 'resolved'")
-  const peers = (id: string, subject: boolean): Array<{ id: string; dispatch: boolean }> => {
-    const up = (above.all(id) as Array<{ dst: string }>).map((r) => r.dst)
-    if (!TYPE_KINDS.has(kindOf.get(id) ?? '')) return up.map((m) => ({ id: m, dispatch: true }))
-    return subject ? [...(membersOf.get(id) ?? []).map((m) => ({ id: m, dispatch: false })), ...up.flatMap((i) => (membersOf.get(i) ?? []).map((m) => ({ id: m, dispatch: true })))] : []
-  }
-  const states = new Map<string, State>()
-  // A state is kept only when no state of its node is as strong; breadth first, the kept one is the shortest of its mode.
-  const add = (s: State, into: State[]) => {
-    for (let m = 0; m <= s.mode; m++) if (states.has(`${s.node}\u0000${m}`)) return
-    states.set(`${s.node}\u0000${s.mode}`, s)
-    into.push(s)
-    for (const p of peers(s.node, s.depth === 0)) add({ node: p.id, mode: p.dispatch ? Math.max(s.mode, 1) : s.mode, depth: s.depth, next: s, peer: true, via: p.dispatch ? p.id : s.via }, into)
-  }
-
+  const above = db.prepare(`select e.dst, ${inferredSql()} as inferred from edge e join assertion a on a.id = e.assertion_id where e.src = ? and e.type in ('implements', 'overrides') and e.resolution = 'resolved'`)
   load(subjects)
   // A test does not test itself: a subject in test code has no rows.
   const roots = subjects.filter((id) => infos.has(id) && !testCode(infos.get(id)!))
-  let frontier: State[] = []
-  for (const id of roots) add({ node: id, mode: 0, depth: 0 }, frontier)
-  let stopped: 'max_depth' | 'node_budget' | null = null
-  for (let depth = 1; frontier.length; depth++) {
-    if (depth > maxDepth) { stopped = 'max_depth'; break }
-    // A test that reads or passes the subject references it; only the subject's own references count.
-    const types: string[] = depth === 1 ? [...RUNS, 'references'] : RUNS
-    const at = new Map<string, State[]>()
-    // A reference ends its chain: calling code that reads the subject is not reading it.
-    for (const s of frontier) if (s.mode < 2) at.set(s.node, [...(at.get(s.node) ?? []), s])
-    const nodes = [...at.keys()], next: State[] = []
-    for (let i = 0; i < nodes.length; i += 500) {
-      const chunk = nodes.slice(i, i + 500)
-      const rows = db.prepare(`select src, dst, type, assertion_id from edge where dst in (${chunk.map(() => '?').join(',')}) and type in (${types.map(() => '?').join(',')}) and resolution in ('resolved', 'resolved_external')`).all(...chunk, ...types) as Array<{ src: string; dst: string; type: string; assertion_id: string }>
-      for (const r of rows) for (const s of at.get(r.dst)!) add({ node: r.src, mode: r.type === 'references' ? 2 : s.mode, depth, next: s, assertion: r.assertion_id, via: s.via }, next)
-    }
-    if (states.size > NODE_BUDGET) { stopped = 'node_budget'; break }
-    frontier = next
-  }
 
-  const reached = [...states.values()].filter((s) => s.depth > 0)
-  load(reached.flatMap((s) => [s.node, ...(s.via ? [s.via] : [])]))
-  const best = new Map<string, State>()
-  for (const s of reached) if (!best.has(s.node) || s.mode < best.get(s.node)!.mode) best.set(s.node, s)
-  const rows: TestRow[] = [], chainStart = new Map<string, State>()
-  for (const [id, s] of best) {
-    const i = infos.get(id)
-    if (!i || !isTestRow(i)) continue
-    const evidence: Evidence = s.mode === 2 ? 'reference' : s.mode === 1 ? 'dispatch' : s.depth === 1 ? 'call' : 'transitive_call'
-    rows.push({ id, kind: i.kind, name: i.name, qualified_name: i.qualified_name, path: i.path, project: projectOfFile.get(i.file_id) ?? null, line: i.start_line, depth: s.depth, evidence, ...(s.mode === 1 && s.via ? { via: local(infos.get(s.via)!.qualified_name) } : {}) })
-    chainStart.set(id, s)
+  /** One breadth-first walk; with observedOnly it follows no inferred edge, so a test it reaches is reached by a chain of observed hops alone (FR184). */
+  const walk = (observedOnly: boolean) => {
+    let sawInferred = false
+    const peers = (id: string, subject: boolean): Array<{ id: string; dispatch: boolean }> => {
+      const up = (above.all(id) as Array<{ dst: string; inferred: number }>).filter((r) => { if (r.inferred) sawInferred = true; return !(observedOnly && r.inferred) }).map((r) => r.dst)
+      if (!TYPE_KINDS.has(kindOf.get(id) ?? '')) return up.map((m) => ({ id: m, dispatch: true }))
+      return subject ? [...(membersOf.get(id) ?? []).map((m) => ({ id: m, dispatch: false })), ...up.flatMap((i) => (membersOf.get(i) ?? []).map((m) => ({ id: m, dispatch: true })))] : []
+    }
+    const states = new Map<string, State>()
+    // A state is kept only when no state of its node is as strong; breadth first, the kept one is the shortest of its mode.
+    const add = (s: State, into: State[]) => {
+      for (let m = 0; m <= s.mode; m++) if (states.has(`${s.node}\u0000${m}`)) return
+      states.set(`${s.node}\u0000${s.mode}`, s)
+      into.push(s)
+      for (const p of peers(s.node, s.depth === 0)) add({ node: p.id, mode: p.dispatch ? Math.max(s.mode, 1) : s.mode, depth: s.depth, next: s, peer: true, via: p.dispatch ? p.id : s.via }, into)
+    }
+    let frontier: State[] = []
+    for (const id of roots) add({ node: id, mode: 0, depth: 0 }, frontier)
+    let stopped: 'max_depth' | 'node_budget' | null = null
+    for (let depth = 1; frontier.length; depth++) {
+      if (depth > maxDepth) { stopped = 'max_depth'; break }
+      // A test that reads or passes the subject references it; only the subject's own references count.
+      const types: string[] = depth === 1 ? [...RUNS, 'references'] : RUNS
+      const at = new Map<string, State[]>()
+      // A reference ends its chain: calling code that reads the subject is not reading it.
+      for (const s of frontier) if (s.mode < 2) at.set(s.node, [...(at.get(s.node) ?? []), s])
+      const nodes = [...at.keys()], next: State[] = []
+      for (let i = 0; i < nodes.length; i += 500) {
+        const chunk = nodes.slice(i, i + 500)
+        const rows = db.prepare(`select e.src, e.dst, e.type, e.assertion_id, ${inferredSql()} as inferred from edge e join assertion a on a.id = e.assertion_id where e.dst in (${chunk.map(() => '?').join(',')}) and e.type in (${types.map(() => '?').join(',')}) and e.resolution in ('resolved', 'resolved_external')`).all(...chunk, ...types) as Array<{ src: string; dst: string; type: string; assertion_id: string; inferred: number }>
+        for (const r of rows) {
+          if (r.inferred) sawInferred = true
+          if (observedOnly && r.inferred) continue
+          for (const s of at.get(r.dst)!) add({ node: r.src, mode: r.type === 'references' ? 2 : s.mode, depth, next: s, assertion: r.assertion_id, via: s.via }, next)
+        }
+      }
+      if (states.size > NODE_BUDGET) { stopped = 'node_budget'; break }
+      frontier = next
+    }
+
+    const reached = [...states.values()].filter((s) => s.depth > 0)
+    load(reached.flatMap((s) => [s.node, ...(s.via ? [s.via] : [])]))
+    const best = new Map<string, State>()
+    for (const s of reached) if (!best.has(s.node) || s.mode < best.get(s.node)!.mode) best.set(s.node, s)
+    const rows: TestRow[] = [], chainStart = new Map<string, State>()
+    for (const [id, s] of best) {
+      const i = infos.get(id)
+      if (!i || !isTestRow(i)) continue
+      const evidence: Evidence = s.mode === 2 ? 'reference' : s.mode === 1 ? 'dispatch' : s.depth === 1 ? 'call' : 'transitive_call'
+      rows.push({ id, kind: i.kind, name: i.name, qualified_name: i.qualified_name, path: i.path, project: projectOfFile.get(i.file_id) ?? null, line: i.start_line, depth: s.depth, evidence, basis: 'observed', ...(s.mode === 1 && s.via ? { via: local(infos.get(s.via)!.qualified_name) } : {}) })
+      chainStart.set(id, s)
+    }
+    return { states, reached, rows, chainStart, stopped, sawInferred }
   }
+  // A test is observed when a chain of observed hops reaches it, with that chain and its evidence; one only a chain through an inferred hop
+  // reaches is inferred. Only a walk that met an inferred edge can differ, so the second walk runs only then.
+  const all = walk(false)
+  const proved = all.sawInferred ? walk(true) : all
+  const { states, reached, stopped } = all
+  // A row of the observed walk replaces the all-edges row only when its evidence is at least as strong; a weaker observed chain would lose an executing test.
+  const observedRows = new Map(proved.rows.map((r) => [r.id, r]))
+  const useObserved = (r: TestRow) => { const o = observedRows.get(r.id); return o !== undefined && EVIDENCE.indexOf(o.evidence) <= EVIDENCE.indexOf(r.evidence) }
+  const rows: TestRow[] = proved === all ? [...all.rows] : all.rows.map((r) => (useObserved(r) ? observedRows.get(r.id)! : { ...r, basis: 'inferred' as const }))
+  const chainStart = new Map<string, State>(all.chainStart)
+  if (proved !== all) for (const r of rows) if (r.basis === 'observed') chainStart.set(r.id, proved.chainStart.get(r.id)!)
 
   // import_only: a test file that imports the subject (for a file subject, the file) and in which nothing reaches it.
   const touched = new Set(reached.map((s) => infos.get(s.node)?.file_id))
@@ -131,16 +152,16 @@ export function testReach(db: Database.Database, snapshotId: string, subjects: s
     if (w === 'any' || i.kind === 'module' || name.includes('.')) continue
     wanted.set(i.file_id, (w ?? new Set<string>()).add(name))
   }
-  const imports = wanted.size ? db.prepare(`select a.source_id as file, a.target_id as target, f.path, e.start_line as line, e.object_hash as hash, e.start_byte as start, e.end_byte as end
+  const imports = wanted.size ? db.prepare(`select a.source_id as file, a.target_id as target, f.path, e.start_line as line, e.object_hash as hash, e.start_byte as start, e.end_byte as end, a.origin, a.resolution, a.detail
     from assertion a join file f on f.id = a.source_id join assertion_evidence ae on ae.assertion_id = a.id join evidence e on e.id = ae.evidence_id
-    where a.type = 'imports' and a.resolution = 'resolved' and a.target_id in (${[...wanted.keys()].map(() => '?').join(',')}) order by f.path, e.start_byte`).all(...wanted.keys()) as Array<{ file: string; target: string; path: string; line: number; hash: string; start: number; end: number }> : []
+    where a.type = 'imports' and a.resolution = 'resolved' and a.target_id in (${[...wanted.keys()].map(() => '?').join(',')}) order by f.path, e.start_byte`).all(...wanted.keys()) as Array<{ file: string; target: string; path: string; line: number; hash: string; start: number; end: number; origin: string; resolution: string; detail: string | null }> : []
   const listed = new Set<string>()
   for (const r of imports) {
     if (listed.has(r.file) || touched.has(r.file) || !isTest(r.path, projectOfFile.get(r.file) ?? null)) continue
     const w = wanted.get(r.target)!
     if (w !== 'any' && !importedNames(read(r.hash)?.subarray(r.start, r.end).toString('utf8') ?? '').some((n) => n === '*' || w.has(n))) continue
     listed.add(r.file)
-    rows.push({ id: r.file, kind: 'file', name: r.path.slice(r.path.lastIndexOf('/') + 1), qualified_name: r.path, path: r.path, project: projectOfFile.get(r.file) ?? null, line: r.line, depth: 1, evidence: 'import_only' })
+    rows.push({ id: r.file, kind: 'file', name: r.path.slice(r.path.lastIndexOf('/') + 1), qualified_name: r.path, path: r.path, project: projectOfFile.get(r.file) ?? null, line: r.line, depth: 1, evidence: 'import_only', basis: basisOf(r)! })
   }
   rows.sort((a, b) => EVIDENCE.indexOf(a.evidence) - EVIDENCE.indexOf(b.evidence) || a.depth - b.depth || (a.path < b.path ? -1 : a.path > b.path ? 1 : 0) || a.line - b.line || (a.id < b.id ? -1 : 1))
 

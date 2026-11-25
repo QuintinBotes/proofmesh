@@ -13,6 +13,8 @@
 
 `list_queries` returns the contract versions above as `contract`, the manifest a client can check before it relies on a schema. A test fails when this table and the code disagree.
 
+Removed without a deprecation period: the `detail.inferred` values `name_match` and `package_directory` that constrained name matching wrote on a bound relationship row (#61). They were a stand-in for `basis` (FR188), which is derived from the row's resolution, origin and detail and so is on every row; read `basis` instead. A row's `detail.rule` stays. `detail.inferred` itself is still written by adapters and still makes a row `inferred`. The resolution version moved from 2 to 3, so snapshots built before are not reused and the next index rebuilds.
+
 Changed behaviour of C# test recognition (roles, protocol 1.1): a type that holds an xUnit, NUnit or MSTest attribute, and its members, are test code wherever the file sits, where only a `*Tests.cs` name or a test project made them so before; and `find_tests` lists only the attributed methods of a C# file that has any, where it listed every symbol of a test file. A C# file with no attribute is decided by its path and project as before. The C# names `Contest.cs` and `Latest.cs` still match the existing `Tests?.cs` file rule, which is case-insensitive and was not changed.
 
 Deprecations are listed in CHANGELOG.md under the release that announces them.
