@@ -148,7 +148,7 @@ describe('FR214 the precise tiers answer observed, and say where they fall short
     expect(rows.filter((r) => !/dispatch$/.test(r)).map(last)).toEqual([direct])
   })
 
-  it('FR214 FR224 scenario 2 is met for Python: total is a dispatch caller of Circle.area and a dependent in its impact, with report and totalOfTwo reached through it, all given rows and no stated gap', () => {
+  it('FR214 FR226 scenario 2 is met for Python: total is a dispatch caller of Circle.area and a dependent in its impact, with report and totalOfTwo reached through it, all given rows and no stated gap', () => {
     const section = of('python').section!
     for (const call of ['calls_circle_area', 'impact'] as const) expect(section.calls[call]!.not_at_tier ?? []).toEqual([])
     const impact = of('python').answers.impact!.rows.map((r) => r.split(' ')[0])

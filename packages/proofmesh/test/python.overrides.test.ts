@@ -3,7 +3,7 @@ import { indexedRepo, rows, symbolId, tool, withSnapshot } from './helpers.js'
 
 type Rel = { type: string; other: { qualified_name?: string }; via?: { qualified_name: string } }
 
-describe('FR224 the Python adapter records overrides, so a call through a base class reaches the subclass method', () => {
+describe('FR226 the Python adapter records overrides, so a call through a base class reaches the subclass method', () => {
   const overrides = (dataDir: string) => withSnapshot(dataDir, (db) => rows(db, 'overrides').map((r) => `${r.from} -> ${r.to} ${r.resolution} ${r.origin}`))
 
   it('a direct override and a two-level chain give one row each, and a method that overrides nothing gives none', async () => {

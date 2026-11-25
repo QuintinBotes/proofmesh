@@ -989,7 +989,7 @@
     "FR220": [
       "packages/proofmesh/test/rosetta.test.ts"
     ],
-    "FR224": [
+    "FR226": [
       "packages/proofmesh/test/python.overrides.test.ts",
       "packages/proofmesh/test/rosetta.test.ts"
     ]
