@@ -10,7 +10,7 @@ Reach through inferred edges (part of #21; SC-2, the per-language benchmark, and
 - A `candidate` site and an `ambiguous` site of at most five candidates are walked; a site with more is never followed, and the answer says how many it stopped at. The answer also says that candidate edges were followed and why, or how many candidate sites it did not follow (FR208, FR209).
 - Answers for a subject a precise adapter or a SCIP index analysed are byte-identical with the default input; a row an observed chain also reaches stays `observed` (FR204, FR210).
 - `trace_paths` lists a candidate site as a boundary only when it did not follow it; the lean `impact_completeness` summary ends with `; <n> inferred` when a dependent is inferred (FR206, FR207).
-- Existing expectations that change: `find_tests` on Go `Add` in `fixtures/tests-polyglot` now lists `TestAdd`, `BenchmarkAdd` and `ExampleAdd` as inferred calls and no longer says `Calls in Go are not resolved yet` (FR199 holds with `include_inferred` false, and for a language with no candidate calls); the Go and Java syntax-tier answers of the four tools that were empty are no longer empty.
+- Existing expectations that change: `find_tests` on Go `Add` in `fixtures/tests-polyglot` now lists its three Go tests (`TestAdd` among them) as inferred calls and no longer says `Calls in Go are not resolved yet` (FR199 holds with `include_inferred` false, and for a language with no candidate calls); the Go and Java syntax-tier answers of the four tools that were empty are no longer empty.
 
 Relationship basis (part of #10; the graph-bench scenario SC-2 is not run):
 
