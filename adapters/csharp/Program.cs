@@ -152,7 +152,7 @@ while (await stdin.ReadLineAsync() is { } line)
                 foreach (var ext in extensionPaths) toolchain[$"extension:{Path.GetFileName(ext)}"] = File.Exists(ext) ? Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(ext)))[..16] : "missing";
                 Send(new { jsonrpc = "2.0", id, result = new
                 {
-                    adapter = new { id = "csharp", version = AdapterVersion, protocol_version = "1.0", languages = new[] { "csharp" }, toolchain },
+                    adapter = new { id = "csharp", version = AdapterVersion, protocol_version = "1.1", languages = new[] { "csharp" }, toolchain },
                     capabilities = new Dictionary<string, bool> { ["syntax"] = true, ["symbols"] = true, ["imports"] = false, ["resolved_calls"] = true, ["references"] = true, ["framework"] = true },
                     external_inputs = externalInputs.ToArray(),
                     analysis_mode = mode,

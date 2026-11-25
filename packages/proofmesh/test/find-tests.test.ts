@@ -29,7 +29,7 @@ describe('FR019 find_tests: tests that statically reach code, with observed cove
     const env = tool(d, 'find_tests', { subject_ids: [symbolId(d, 'src/core:core')] })
     expect((env.data as any).tests.map((t: any) => [t.qualified_name, t.depth])).toEqual([['test/service.test:serviceAddsOne', 2]])
     expect((env.data as any).observed).toEqual({ available: false, reason: 'No coverage data has been imported for this snapshot.' })
-    expect(env.limitations).toContain('Test code is recognised by path and project naming, not by test framework attributes.')
+    expect(env.limitations).toContain('Test code is recognised by file convention and project naming, and by the roles an adapter gave each symbol (a test entry point, or code in a test-only scope).')
   })
 
   it('accepts a file and finds the tests of everything in it', () => {

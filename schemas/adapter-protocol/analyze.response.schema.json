@@ -102,6 +102,17 @@
               "string",
               "null"
             ]
+          },
+          "roles": {
+            "type": "array",
+            "description": "Optional (protocol 1.1). test: the symbol is a test entry point by its framework's marker. test_support: the symbol is test code without being an entry point, by its scope, such as the members of a Rust #[cfg(test)] module or the helpers of a test class. Absent or empty: no role.",
+            "uniqueItems": true,
+            "items": {
+              "enum": [
+                "test",
+                "test_support"
+              ]
+            }
           }
         }
       }

@@ -243,7 +243,20 @@ Acceptance: CI runs my pull request without secrets or release credentials; lice
 - FR104: MUST order `find_tests` rows by evidence (`call`, `transitive_call`, `dispatch`, `reference`, `import_only`), then depth, then path and line, list a test once per answer at its strongest evidence, and page the rows by `max_rows` with a cursor and totals over every row.
 - FR105: MUST split `find_tests` totals into `executing` (`call`, `transitive_call`, `dispatch`, observed) and `not_executing` (`reference`, `import_only`).
 - FR106: MUST provide `proofmesh tests <repository> <path | path#name> [--json]`, which prints the `find_tests` rows of the file or of the symbol `name` declared in it (with `--json`, the answer), exits 0 when at least one test executes the subject, 1 when none does, and 2 on a usage error or an unknown subject.
-- FR107: MUST recognise test code for `find_tests` by path and project naming, and say so in every answer, a lean answer through the tool's description.
+- FR107: MUST recognise test code for `find_tests` by path and project naming, and by symbol roles (FR191 to FR194), and say so in every answer, a lean answer through the tool's description.
+
+### Test recognition
+
+- FR191: MUST recognise test files by the conventions of each language, listed in `docs/proofmesh/languages.md`: Go `_test.go` only, Python `test_*.py`, `*_test.py` and `conftest.py`, Java and Kotlin `src/test/`, PHP `*Test.php`, Ruby `_spec.rb` and `_test.rb`, C and C++ `*_test.*` and `*_unittest.*`, Swift `Tests/`, and the TypeScript and C# patterns it already recognised. A Go directory named `test` that holds production code is not test code.
+- FR192: MUST recognise test entry points by their markers, from syntax alone: Go `Test`, `Benchmark`, `Fuzz` and `Example` functions with their testing parameter; Rust `#[test]` and `#[tokio::test]`; JUnit and Kotlin `@Test`, also an annotation imported under another name; pytest `test_` functions and `unittest.TestCase` methods; PHPUnit `test*` methods, `@test` and `#[Test]`; RSpec and Minitest blocks and methods; googletest `TEST`, `TEST_F` and `TEST_P`; XCTest `test*` methods; xUnit, NUnit and MSTest attributes in C#.
+- FR193: MUST let a symbol carry an optional `roles` list of `test` and `test_support`, as adapter protocol 1.1 (an optional field, A22) and an additive snapshot column (format 0.9); a symbol with none has none, and an adapter that sends none is valid.
+- FR194: MUST decide `include_tests`, `find_tests`, test reach and `impact_completeness` per symbol, by its file's convention, its project and its roles, not by its file alone, so that in a source file with a `#[cfg(test)]` module the production symbol is not test code and the module's members are.
+- FR195: MUST list as a test, where the language's adapter marks entry points, only a symbol with the role `test`, so a helper in a test file is not listed, and a test that calls a helper reaches the helper's callee through it; where it does not, every symbol in test code is a test as before.
+- FR196: MUST give the role `test_support` to test code that is no entry point by its scope: the members of a Rust `#[cfg(test)]` module, a class that holds a test or extends a test case, and the other members of such a class.
+- FR197: MUST name a test block that declares no name by its call and its first string argument (`it "adds"`), and a googletest macro as written (`TEST(Calc, Adds)`).
+- FR198: MUST match an annotation imported under another name through the import, and MUST NOT take one imported from outside the known test frameworks for a test annotation.
+- FR199: MUST say in a `find_tests` answer, as a limitation, that calls in a language are not resolved yet when the subject's file has no resolved calls, and list no test as executing it.
+- FR200: MUST list the conventions and markers of FR191 and FR192 and the roles of FR193 in `docs/proofmesh/languages.md`, and declare `roles` in the adapter protocol schema.
 
 ### Impact completeness
 

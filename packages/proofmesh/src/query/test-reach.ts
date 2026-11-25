@@ -1,5 +1,6 @@
 import type Database from 'better-sqlite3'
 import { structure, TYPE_KINDS } from './impact.js'
+import { hasRoles, isTestEntry, MARKED_LANGUAGES, parseRoles, rolesSql, type Roles } from './tests.js'
 
 /** How a test is known to reach its subject, strongest first (FR101, FR104). */
 export const EVIDENCE = ['call', 'transitive_call', 'dispatch', 'reference', 'import_only'] as const
@@ -11,7 +12,7 @@ type Hop = { name: string; path: string; line: number }
 export type TestRow = { id: string; kind: string; name: string; qualified_name: string; path: string; project: string | null; line: number; depth: number; evidence: Evidence; via?: string }
 /** A node on the way from a subject to a test; `next` leads back to the subject. mode 0 runs the subject, 1 runs it by dispatch, 2 only references it. */
 type State = { node: string; mode: number; depth: number; next?: State; assertion?: string; peer?: boolean; via?: string }
-type Info = { id: string; kind: string; name: string; qualified_name: string; start_line: number; file_id: string; path: string }
+type Info = { id: string; kind: string; name: string; qualified_name: string; start_line: number; file_id: string; path: string; roles: string | null; language: string | null }
 
 const NODE_BUDGET = 50000
 /** Kinds a call through an interface or base member can reach. */
@@ -41,7 +42,7 @@ function projectsOf(db: Database.Database, snapshotId: string): Map<string, stri
  * Breadth first back from the subjects along resolved relationships, as analyze_impact walks; a reference counts only into a subject.
  * `files` are the subjects named by path, whose every import counts for import_only.
  */
-export function testReach(db: Database.Database, snapshotId: string, subjects: string[], files: string[], read: (hash: string) => Buffer | undefined, maxDepth: number, isTest: (path: string, project: string | null) => boolean) {
+export function testReach(db: Database.Database, snapshotId: string, subjects: string[], files: string[], read: (hash: string) => Buffer | undefined, maxDepth: number, isTest: (path: string, project: string | null, roles?: Roles) => boolean) {
   const { membersOf, kindOf } = structure(db, snapshotId)
   const projectOfFile = projectsOf(db, snapshotId)
   const infos = new Map<string, Info>()
@@ -49,10 +50,14 @@ export function testReach(db: Database.Database, snapshotId: string, subjects: s
     const todo = [...new Set(ids)].filter((id) => !infos.has(id))
     for (let i = 0; i < todo.length; i += 500) {
       const chunk = todo.slice(i, i + 500)
-      for (const r of db.prepare(`select s.id, s.kind, s.name, s.qualified_name, s.start_line, s.file_id, f.path from symbol s join file f on f.id = s.file_id where s.id in (${chunk.map(() => '?').join(',')})`).all(...chunk) as Info[]) infos.set(r.id, r)
+      for (const r of db.prepare(`select s.id, s.kind, s.name, s.qualified_name, s.start_line, s.file_id, f.path, ${rolesSql(db)} as roles, f.language from symbol s join file f on f.id = s.file_id where s.id in (${chunk.map(() => '?').join(',')})`).all(...chunk) as Info[]) infos.set(r.id, r)
     }
   }
-  const testCode = (i: Info) => isTest(i.path, projectOfFile.get(i.file_id) ?? null)
+  const testCode = (i: Info) => isTest(i.path, projectOfFile.get(i.file_id) ?? null, parseRoles(i.roles))
+  // Where the language's adapter marks test entry points, only an entry point is a test and a helper in test code is not (FR194); where it
+  // does not, or the snapshot predates roles, every symbol in test code counts as a test.
+  const marked = hasRoles(db)
+  const isTestRow = (i: Info) => (marked && MARKED_LANGUAGES.has(i.language ?? '') ? isTestEntry(parseRoles(i.roles)) : testCode(i))
 
   // What a call to a node may run of it: a subject type's own members, and by dispatch the members of the interfaces it implements;
   // for a member, the interface and base members it implements or overrides. A type reached on the way runs only what reached it.
@@ -101,7 +106,7 @@ export function testReach(db: Database.Database, snapshotId: string, subjects: s
   const rows: TestRow[] = [], chainStart = new Map<string, State>()
   for (const [id, s] of best) {
     const i = infos.get(id)
-    if (!i || !testCode(i)) continue
+    if (!i || !isTestRow(i)) continue
     const evidence: Evidence = s.mode === 2 ? 'reference' : s.mode === 1 ? 'dispatch' : s.depth === 1 ? 'call' : 'transitive_call'
     rows.push({ id, kind: i.kind, name: i.name, qualified_name: i.qualified_name, path: i.path, project: projectOfFile.get(i.file_id) ?? null, line: i.start_line, depth: s.depth, evidence, ...(s.mode === 1 && s.via ? { via: local(infos.get(s.via)!.qualified_name) } : {}) })
     chainStart.set(id, s)

@@ -93,6 +93,17 @@
           ],
           "pattern": "^[0-9a-f]{64}$",
           "description": "SHA-256 of the declaration text with line endings, common indentation, trailing whitespace and the symbol's own name normalised (a module: its file text); null when the span is no more than the name, or the snapshot was sealed before hashes existed."
+        },
+        "roles": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "test",
+              "test_support"
+            ]
+          },
+          "description": "The roles the adapter gave the symbol, when it gave any: test (a test entry point) or test_support (test code that is no entry point)."
         }
       }
     }

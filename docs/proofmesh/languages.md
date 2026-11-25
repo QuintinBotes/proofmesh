@@ -150,6 +150,28 @@ A person who runs a SCIP indexer can name its output: `proofmesh scip add <repos
 - Memory (FR164): the index is read a document at a time and only each routed document's definitions stay in memory, so memory grows with the number of definitions, not the size of the index. `proofmesh scip add` reads it the same way. The metadata must come before the documents, as every indexer writes it. A length that no file could hold is refused before a buffer is made, and a document read again after the index file changed is refused.
 - Staleness: Proofmesh records each covered file's content when the index is named. A file edited after that, or every file of an index whose own file changed, goes back to its usual adapter, and its disposition says `scip_stale:<name>` until the person produces the index again and names it again.
 
+## Test recognition (FR191 to FR200)
+
+Test code is recognised in two ways, and a symbol is decided on its own: by the **file convention** of its language, and by the **marker** its test framework puts in code. `find_symbols` and `get_relationships` with `include_tests` false, `find_tests`, test reach and `impact_completeness` all use the per-symbol decision, so a Rust `#[cfg(test)]` module in a source file is test code and the production code beside it is not.
+
+- Go. Files: `_test.go` only; a directory named `test` holds packages like any other, and the package clause (`x_test`) does not matter. Entry points: a function `Test*`, `Benchmark*` or `Fuzz*` (no lower-case letter after the prefix) with one `*testing.T`, `*testing.B` or `*testing.F` parameter, or an `Example*` function with none; in a `_test.go` file only. A method and `TestMain` are no tests.
+- Rust. Files: none: tests live in the source file. Entry points: `#[test]`, `#[tokio::test]` and any attribute ending in `::test`, `#[rstest]`. A `#[cfg(test)]` item and everything in it is test support.
+- Python. Files: `test_*.py`, `*_test.py`, `conftest.py`. Entry points: in a test file, a `test_` function and the `test_` methods of a `Test` class; anywhere, the `test` methods of a `unittest.TestCase` subclass.
+- Java. Files: `src/test/`. Entry points: `@Test`, `@ParameterizedTest`, `@RepeatedTest`, `@TestFactory`, `@TestTemplate` (JUnit, TestNG), and the `test` methods of a `TestCase` subclass.
+- Kotlin. Files: `src/test/`. Entry points: `@Test`, also under another name: `import org.junit.Test as T` makes `@T` one. An annotation imported from outside the known test frameworks is not.
+- PHP. Files: `*Test.php`. Entry points: a method of a class extending a `TestCase` that is named `test*`, tagged `@test` in its docblock or carries `#[Test]`.
+- Ruby. Files: `_spec.rb`, `_test.rb`, `spec/`. Entry points: an RSpec `it`, `specify` or `example` block, and a `test_` method of a class extending `Minitest::Test` or a `TestCase`.
+- C and C++. Files: `*_test.*`, `*_unittest.*`. Entry points: googletest `TEST`, `TEST_F`, `TEST_P` and the typed variants.
+- Swift. Files: `Tests/`. Entry points: a `test*` method with no parameter of a class inheriting an `XCTestCase`, and a function marked `@Test`.
+- C#. Files: `*Tests.cs`, `*.Tests` projects. Entry points: `[Fact]`, `[Theory]`, `[Test]`, `[TestCase]`, `[TestCaseSource]`, `[TestMethod]` and `[DataTestMethod]`, matched by name under any namespace.
+- TypeScript and JavaScript. Files: `*.test.*`, `*.spec.*`, `tests/`, `__tests__/`, `spec/`. Entry points: none: a `test('name', fn)` callback is not a symbol.
+
+A symbol carries optional `roles` (adapter protocol 1.1, snapshot format 0.9): `test` for an entry point, `test_support` for test code that is none, by its scope: the members of a `#[cfg(test)]` module, a class holding a test and the helpers of a test class. A symbol with neither has no `roles`. An adapter that sends none is as valid as before, and a snapshot sealed earlier has none, so it is decided by its path.
+
+Where the adapter marks test entry points (Go, Rust, Python, Java, Kotlin, PHP, Ruby, C, C++ and Swift), `find_tests` lists only entry points: a helper that calls the subject is no test, but a test that calls the helper reaches the subject through it. Elsewhere every symbol in test code is a test, as before. A block that declares no name is named by its call and its description, `it "adds"`, and a googletest macro as it is written, `TEST(Calc, Adds)`.
+
+`find_tests` says when the subject's language has no resolved calls: `Calls in Go are not resolved yet`, and no test is listed as executing it. The markers are read from syntax alone, so no test framework needs to be installed.
+
 ## Other languages
 
 `proofmesh adapter add` installs an adapter a contributor wrote for another language (US18). Its capabilities are unverified until it passes the conformance kit; see `adapter-authoring.md`.

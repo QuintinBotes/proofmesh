@@ -475,6 +475,10 @@ path: string
 start_line: number
 end_line: number
 signature: (string | null)
+/**
+ * The roles the adapter gave the symbol, when it gave any: test (a test entry point) or test_support (test code that is no entry point).
+ */
+roles?: ("test" | "test_support")[]
 }[]
 }
 
@@ -507,7 +511,7 @@ cursor?: string
  */
 freshness?: ("snapshot" | "strict")
 /**
- * false leaves out test code, recognised by path and project naming (tests/, *.test.*, *Tests.cs, *.Tests projects).
+ * false leaves out test code: by the file conventions of each language (tests/, *.test.*, *_test.go, test_*.py, *Test.php, *Tests.cs, *.Tests projects) and by each symbol's own roles, so a #[cfg(test)] module in a source file goes and its production code stays.
  */
 include_tests?: boolean
 /**
@@ -1339,7 +1343,7 @@ cursor?: string
  */
 freshness?: ("snapshot" | "strict")
 /**
- * false leaves out test code, recognised by path and project naming (tests/, *.test.*, *Tests.cs, *.Tests projects).
+ * false leaves out test code: by the file conventions of each language (tests/, *.test.*, *_test.go, test_*.py, *Test.php, *Tests.cs, *.Tests projects) and by each symbol's own roles, so a #[cfg(test)] module in a source file goes and its production code stays.
  */
 include_tests?: boolean
 /**
@@ -1371,6 +1375,10 @@ stable_key: string
  * SHA-256 of the declaration text with line endings, common indentation, trailing whitespace and the symbol's own name normalised (a module: its file text); null when the span is no more than the name, or the snapshot was sealed before hashes existed.
  */
 body_hash: (string | null)
+/**
+ * The roles the adapter gave the symbol, when it gave any: test (a test entry point) or test_support (test code that is no entry point).
+ */
+roles?: ("test" | "test_support")[]
 }
 }
 
@@ -2886,6 +2894,10 @@ start_line: number
 end_line: number
 }
 signature: (string | null)
+/**
+ * Optional (protocol 1.1). test: the symbol is a test entry point by its framework's marker. test_support: the symbol is test code without being an entry point, by its scope, such as the members of a Rust #[cfg(test)] module or the helpers of a test class. Absent or empty: no role.
+ */
+roles?: ("test" | "test_support")[]
 }[]
 relationships: {
 type: ("calls" | "imports" | "contains" | "inherits" | "implements" | "overrides" | "references" | "injects" | "registered_as" | "exposes" | "maps_to" | "runs" | "dispatches_to" | "handles" | "publishes" | "consumes" | "sends_to" | "listens_on" | "evaluates_flag" | "reads_config" | "depends_on" | "depends_on_package" | "owned_by" | "calls_service" | "renders" | "uses_hook" | "provides_context" | "uses_context")

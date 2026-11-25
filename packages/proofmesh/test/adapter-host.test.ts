@@ -26,8 +26,8 @@ describe('A22 adapter protocol 1: semantic versioning', () => {
     try { await run(a) } finally { await a.shutdown().catch(() => {}) }
   }
 
-  it('the core speaks 1.0', () => {
-    expect(PROTOCOL_VERSION).toBe('1.0')
+  it('the core speaks 1.1', () => {
+    expect(PROTOCOL_VERSION).toBe('1.1')
   })
 
   it('an adapter of a newer 1.x minor version is accepted, and the fields this core does not know are dropped, not refused', async () => {

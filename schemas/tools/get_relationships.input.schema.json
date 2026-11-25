@@ -159,7 +159,7 @@
     "include_tests": {
       "type": "boolean",
       "default": true,
-      "description": "false leaves out test code, recognised by path and project naming (tests/, *.test.*, *Tests.cs, *.Tests projects)."
+      "description": "false leaves out test code: by the file conventions of each language (tests/, *.test.*, *_test.go, test_*.py, *Test.php, *Tests.cs, *.Tests projects) and by each symbol's own roles, so a #[cfg(test)] module in a source file goes and its production code stays."
     },
     "envelope": {
       "enum": [

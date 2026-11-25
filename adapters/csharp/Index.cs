@@ -115,6 +115,37 @@ public sealed class DeclarationIndex
             else if (node is FieldDeclarationSyntax field)
                 foreach (var v in field.Declaration.Variables) Register(model, tree, v, "field", field, list, path);
         }
+        GiveTestRoles(root, list);
+    }
+
+    /// <summary>The attributes that mark a test method: xUnit, NUnit and MSTest. Matched by name as written, under any namespace, with or without the Attribute suffix.</summary>
+    private static readonly HashSet<string> TestAttributes = ["Fact", "Theory", "Test", "TestCase", "TestCaseSource", "TestMethod", "DataTestMethod"];
+
+    private static bool IsTestMethod(MethodDeclarationSyntax method) => method.AttributeLists.SelectMany(l => l.Attributes).Any(a =>
+    {
+        var written = a.Name.ToString();
+        var name = written[(written.LastIndexOf('.') + 1)..];
+        return TestAttributes.Contains(name.EndsWith("Attribute") ? name[..^"Attribute".Length] : name);
+    });
+
+    /// <summary>A test method is an entry point (role test); its type, and every other member of that type, is test support (FR192, FR193).</summary>
+    private void GiveTestRoles(SyntaxNode root, List<FactSymbol> list)
+    {
+        var roles = new Dictionary<string, string[]>();
+        foreach (var type in root.DescendantNodes().OfType<TypeDeclarationSyntax>())
+        {
+            if (!type.Members.OfType<MethodDeclarationSyntax>().Any(IsTestMethod)) continue;
+            if (byNode.TryGetValue(type, out var typeId)) roles.TryAdd(typeId, ["test_support"]);
+            foreach (var member in type.Members)
+            {
+                var entry = member is MethodDeclarationSyntax m && IsTestMethod(m);
+                IEnumerable<SyntaxNode> declared = member is FieldDeclarationSyntax f ? f.Declaration.Variables : [member];
+                foreach (var node in declared)
+                    if (byNode.TryGetValue(node, out var id)) { if (entry) roles[id] = ["test"]; else roles.TryAdd(id, ["test_support"]); }
+            }
+        }
+        for (var i = 0; i < list.Count; i++)
+            if (roles.TryGetValue(list[i].LocalId, out var r)) list[i] = list[i] with { Roles = r };
     }
 
     private void Register(SemanticModel? model, SyntaxTree tree, SyntaxNode declNode, string kind, SyntaxNode rangeNode, List<FactSymbol> list, string path)

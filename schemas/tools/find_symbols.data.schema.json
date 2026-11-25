@@ -76,6 +76,17 @@
               "string",
               "null"
             ]
+          },
+          "roles": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "enum": [
+                "test",
+                "test_support"
+              ]
+            },
+            "description": "The roles the adapter gave the symbol, when it gave any: test (a test entry point) or test_support (test code that is no entry point)."
           }
         }
       }

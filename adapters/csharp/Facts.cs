@@ -6,7 +6,7 @@ namespace Proofmesh.Adapter.CSharp;
 public sealed record FactRange(int StartByte, int EndByte, int StartLine, int EndLine);
 
 public sealed record FactSymbol(string LocalId, string Path, string Kind, string Name, string QualifiedName, FactRange Range,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] string? Signature);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.Never)] string? Signature, string[]? Roles = null);
 
 /// <summary>Exactly one of Symbol, File, or External is set.</summary>
 public sealed record FactRef(string? Symbol = null, string? File = null, FactExternal? External = null)
