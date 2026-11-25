@@ -88,10 +88,6 @@
             {
               "role": "report",
               "row": "report.py:1"
-            },
-            {
-              "row": "test_shapes.py:1",
-              "known_defect": "known defect: include_tests false does not leave out an importing file that is test code (get_relationships, tools.ts notTest filter)"
             }
           ]
         },
@@ -112,10 +108,6 @@
             {
               "role": "totalOfTwo",
               "row": "test_total_of_two test_shapes.py:5 depth=2 calls"
-            },
-            {
-              "row": "Square.area shapes.py:18 depth=1 overrides",
-              "known_defect": "known defect: analyze_impact lists a sibling implementation of the same base member as a dependent of Circle.area"
             }
           ]
         },

@@ -8,6 +8,11 @@ Python overrides (closes #69; completes #20 scenario 2):
 
 - The Python adapter records `overrides` from a method to the method of the same name it overrides, through the class's resolved bases: one row per base branch that declares it, a chain one level at a time, nothing for a static method, a property, a method that overrides nothing or a base outside the repository. Callers and impact of a subclass method now include calls made through the base class, labelled `dispatch` (FR226, FR214).
 
+Test importers and sibling implementations (closes #67, #68):
+
+- `get_relationships` with `include_tests` false now leaves out an importer row whose source is a test file; the filter looked up a symbol, and an importer's source is the file (FR224).
+- `analyze_impact` on one implementation of an interface or base member no longer lists a sibling implementation as a dependent; callers of the member and dispatch callers are still reached (FR225). The four Rosetta known-defect rows these fixed (TypeScript imports and impact, Python imports, C# impact) are now plain expected rows.
+
 Syntax-tier structure, Kotlin, Rust, PHP and Ruby (#59, part 1):
 
 - The syntax tier records each Kotlin `import`, Rust `use` (a grouped one with `detail.names`, also inside a function body) and `mod x;`, PHP `use` clause and Ruby `require` or `require_relative` of a string as an unresolved `imports` row, and each Kotlin supertype, Rust `impl Trait for Type` and trait bound, PHP `extends` and `implements`, and Ruby superclass and `include` as an unresolved `inherits` or `implements` row from the declaring type (FR221 to FR223). The Rosetta gaps for these languages now state that the rows exist and have no target. Swift, Scala, C, C++ and Bash follow in part 2.
