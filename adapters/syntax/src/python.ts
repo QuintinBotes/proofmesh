@@ -444,6 +444,29 @@ async function inheritedTestRoles(file: string, f: FileFacts): Promise<void> {
   }
 }
 
+/** The methods a class body declares by name, with the node of each name. A static method and a property are not dispatched to, so they are left out. */
+async function methodsOf(id: string): Promise<Map<string, { id: string; name: Node }>> {
+  const f = await readFacts(fileOf(id)), kinds = new Map(f.symbols.map((s) => [s.local_id, s.kind])), out = new Map<string, { id: string; name: Node }>()
+  for (const c of f.classes.get(id)!.childForFieldName('body')?.namedChildren ?? []) {
+    const d = c.type === 'decorated_definition' ? c.childForFieldName('definition') ?? c : c
+    const mid = `${fileOf(id)}#${d.startIndex}`
+    if (d.type === 'function_definition' && kinds.get(mid) === 'method' && !(c.type === 'decorated_definition' && c.namedChildren.some((x) => x.type === 'decorator' && /^@\s*staticmethod\b/.test(x.text)))) out.set(d.childForFieldName('name')!.text, { id: mid, name: d.childForFieldName('name')! })
+  }
+  return out
+}
+
+/** The nearest declaration of a method name on each base branch above a class: a base that declares it stops its branch, so a chain links one level at a time. */
+async function overriddenIn(id: string, name: string, seen = new Set<string>()): Promise<string[]> {
+  const out: string[] = []
+  for (const b of await basesOf(id)) {
+    if (!b.symbol || seen.has(b.symbol)) continue
+    seen.add(b.symbol)
+    const own = (await methodsOf(b.symbol)).get(name)
+    out.push(...(own ? [own.id] : await overriddenIn(b.symbol, name, seen)))
+  }
+  return out
+}
+
 /** Every base outside the workspace a class derives from, directly or through its workspace bases. */
 async function ancestry(id: string, seen = new Set<string>()): Promise<string[]> {
   if (seen.has(id)) return []
@@ -843,6 +866,11 @@ async function analyseWithPyright(file: string) {
   await inheritedTestRoles(file, f)
   for (const id of f.classes.keys()) {
     for (const b of await basesOf(id)) if (b.symbol) relationships.push({ type: 'inherits', origin: 'semantic_resolver', source: { symbol: id }, site: { path: file, range: rangeOf(f, b.node) }, resolution: 'resolved', target: { symbol: b.symbol } })
+  }
+  for (const id of f.classes.keys()) {
+    for (const [name, m] of await methodsOf(id)) {
+      for (const target of new Set(await overriddenIn(id, name))) relationships.push({ type: 'overrides', origin: 'semantic_resolver', source: { symbol: m.id }, site: { path: file, range: rangeOf(f, m.name) }, resolution: 'resolved', target: { symbol: target } })
+    }
   }
   const resources = await resourcesIn(file)
   let resourceReferences = 0

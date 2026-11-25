@@ -139,7 +139,7 @@ describe('FR214 the precise tiers answer observed, and say where they fall short
     expect(CALLS.flatMap((c) => answers[c]!.basis).length, `${lang} has relationship rows to be observed`).toBeGreaterThan(0)
   })
 
-  it.each(['csharp', 'typescript'])('FR214 scenario 2: %s lists the callers of Circle.area as circleArea, direct, and total, by dispatch through Shape.area', (lang) => {
+  it.each(['csharp', 'python', 'typescript'])('FR214 scenario 2: %s lists the callers of Circle.area as circleArea, direct, and total, by dispatch through Shape.area', (lang) => {
     const rows = of(lang).answers.calls_circle_area!.rows
     expect(rows).toHaveLength(2)
     const [viaShape, direct] = lang === 'csharp' ? ['Total', 'CircleArea'] : ['total', 'circleArea']
@@ -148,13 +148,11 @@ describe('FR214 the precise tiers answer observed, and say where they fall short
     expect(rows.filter((r) => !/dispatch$/.test(r)).map(last)).toEqual([direct])
   })
 
-  it('FR214 scenario 2 is NOT met for Python: it gives no dispatch row, so total is missing from the callers of Circle.area; the file records it as a known defect', () => {
+  it('FR214 FR223 scenario 2 is met for Python: total is a dispatch caller of Circle.area and a dependent in its impact, with report and totalOfTwo reached through it, all given rows and no stated gap', () => {
     const section = of('python').section!
-    for (const [call, roles] of [['calls_circle_area', ['total']], ['impact', ['total', 'report', 'totalOfTwo']]] as const) {
-      expect(section.calls[call]!.not_at_tier!.map((g) => g.role)).toEqual(roles)
-      for (const g of section.calls[call]!.not_at_tier!) expect(g.reason).toMatch(/^known defect/)
-    }
-    expect(of('python').answers.calls_circle_area!.rows).toHaveLength(1)
+    for (const call of ['calls_circle_area', 'impact'] as const) expect(section.calls[call]!.not_at_tier ?? []).toEqual([])
+    const impact = of('python').answers.impact!.rows.map((r) => r.split(' ')[0])
+    expect(impact).toEqual(expect.arrayContaining(['circle_area', 'total', 'report', 'test_total_of_two']))
   })
 
   it.each([['typescript', 'imports'], ['typescript', 'impact'], ['python', 'imports'], ['csharp', 'impact']])('FR214 %s %s: a row the tool should not give is a known defect, not an extra and not support', (lang, call) => {
@@ -266,7 +264,7 @@ describe('FR217 a stated gap is a promise: a language that gains an answer chang
     expect(fs.readFileSync(path.join(ROOT, 'docs', 'proofmesh', 'languages.md'), 'utf8')).toContain(table)
     expect(table.split('\n')).toHaveLength(2 + LANGUAGES.length)
     expect(table).toContain('| `go` | syntax | 3/4 | 0/2 | 0/1 | 0/2 | 1/1 | 0/4 | 1/1 | 0/3 |')
-    expect(table).toContain('| `python` | precise | 4/4 | 0/2 | 1/1 | 1/2 | 1/1!1 | 1/4 | 1/1 | 3/3 |')
+    expect(table).toContain('| `python` | precise | 4/4 | 0/2 | 1/1 | 2/2 | 1/1!1 | 4/4 | 1/1 | 3/3 |')
   })
 })
 

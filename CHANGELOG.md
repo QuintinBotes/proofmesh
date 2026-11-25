@@ -4,6 +4,10 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 ## Unreleased
 
+Python overrides (closes #69; completes #20 scenario 2):
+
+- The Python adapter records `overrides` from a method to the method of the same name it overrides, through the class's resolved bases: one row per base branch that declares it, a chain one level at a time, nothing for a static method, a property, a method that overrides nothing or a base outside the repository. Callers and impact of a subclass method now include calls made through the base class, labelled `dispatch` (FR223, FR214).
+
 Rosetta suite (closes #20, SC-1 for the ten languages at the tiers they have; SC-2 is a rule for later slices):
 
 - `fixtures/rosetta/` holds one small program in each of ten languages (TypeScript, Python, C#, Go, Java, Rust, PHP, Ruby, Kotlin, C++), a hand-written `expected.json` per language and tier, and a `contract.json` of the eight calls. `packages/proofmesh/test/rosetta.test.ts` asks every language the same calls and compares the lean rows with the tier that analysed it (FR211 to FR216, FR219).
