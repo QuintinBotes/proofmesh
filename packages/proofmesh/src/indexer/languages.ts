@@ -126,6 +126,7 @@ export class Registry {
    * index was named against; a covered file that changed since, or whose index changed, stays with its usual adapter and says so.
    */
   route(d: Discovered, root: string): Discovered {
+    let unusable: Discovered | undefined
     for (const ix of this.scip) {
       const covered = ix.files[d.path]
       if (!covered) continue
@@ -133,9 +134,10 @@ export class Registry {
       if (owner && owner.id !== 'syntax') return d
       if (d.status !== 'capture' && !(d.status === 'unsupported' && d.detail?.startsWith('no_adapter:'))) return d
       if (ix.current && sha256File(path.join(root, d.path)) === covered.hash) return { ...d, status: 'capture', detail: null, role: 'source', language: d.language ?? covered.language, adapter: 'scip', scip: ix.name }
-      return { ...d, detail: ix.revoked ? `scip_revoked:${ix.name}:${ix.revoked}` : `scip_stale:${ix.name}` }
+      // A stale or revoked index does not stop the search: a later index may be valid. The first that is not is what is reported if none is.
+      unusable ??= { ...d, detail: ix.revoked ? `scip_revoked:${ix.name}:${ix.revoked}` : `scip_stale:${ix.name}` }
     }
-    return d
+    return unusable ?? d
   }
   sourceLanguage(fileName: string): string | undefined {
     const ext = path.posix.extname(fileName).toLowerCase()

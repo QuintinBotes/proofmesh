@@ -43,7 +43,7 @@ Usage: proofmesh [--data-dir DIR] <command>
   repo add <path> [--name N]        register a repository
   repo list                         registered repositories: id, name, root, trust
   repo move <repo> <new-path>       re-root a registered repository at another working tree of the same git repository
-  repo trust <repo> --build-evaluation   allow build logic to run while indexing (C#)
+  repo trust <repo> --build-evaluation   allow build logic to run for this repository: C# build evaluation while indexing, and scip run indexers
   repo untrust <repo>               revoke that trust
   repo conventions <repo> [<file> | --clear]   job bases, flag keys and team enums only the repository can name (data, runs nothing)
   extension add <file> [--adapter csharp]   install a rules extension for every repository (runs its code)
@@ -254,9 +254,9 @@ export async function main(argv: string[]): Promise<number> {
           }
           if (opts[0] === 'run' && opts[1]) {
             const language = take(opts, '--language'), container = take(opts, '--container'), moduleCache = take(opts, '--module-cache'), timeout = take(opts, '--timeout'), memory = take(opts, '--max-memory')
-            const number = (flag: string, v: string | undefined) => { if (v === undefined) return undefined; if (!/^[1-9]\d*$/.test(v)) throw new ProofmeshError('INVALID_ARGUMENT', `${flag} takes a positive whole number; got ${v}`); return Number(v) }
+            const number = (flag: string, v: string | undefined, max: number) => { if (v === undefined) return undefined; const n = Number(v); if (!/^[1-9]\d*$/.test(v) || !Number.isSafeInteger(n) || n > max) throw new ProofmeshError('INVALID_ARGUMENT', `${flag} takes a whole number from 1 to ${max}; got ${v.length > 40 ? `${v.slice(0, 40)}...` : v}`); return n }
             catalog.close()
-            const ran = await runScip(dataDir, opts[1], { ...(language ? { language } : {}), ...(container ? { container } : {}), ...(moduleCache ? { moduleCache } : {}), ...(timeout ? { timeoutS: number('--timeout', timeout)! } : {}), ...(memory ? { maxMemoryMb: number('--max-memory', memory)! } : {}) })
+            const ran = await runScip(dataDir, opts[1], { ...(language ? { language } : {}), ...(container ? { container } : {}), ...(moduleCache ? { moduleCache } : {}), ...(timeout ? { timeoutS: number('--timeout', timeout, 86400)! } : {}), ...(memory ? { maxMemoryMb: number('--max-memory', memory, 1048576)! } : {}) })
             for (const r of ran) {
               console.log(`SCIP index ${r.name} named: ${r.files} files covered; produced by ${r.indexer} ${r.version} (sha256 ${r.digest}) under grant ${r.grantId}; its log is ${r.log}`)
               if (r.isolation === 'process') console.log('The indexer ran in a disposable copy as a plain process: time, memory and output were limited, and network and filesystem policy were not enforced. Use --container <image@sha256:...> for isolation.')

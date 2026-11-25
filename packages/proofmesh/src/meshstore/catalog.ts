@@ -411,9 +411,15 @@ export class Catalog {
 
   /** Naming a SCIP index for a repository; only the CLI calls this, for a person. Naming it again replaces it. */
   addScip(repositoryId: string, s: Omit<ScipIndexRecord, 'added_by' | 'added_at' | 'run'> & { run?: ScipRun }, addedBy: string): ScipIndexRecord {
-    this.db.prepare(`insert into scip_index (repository_id, name, path, sha256, tool, files, added_by, added_at, run) values (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      on conflict(repository_id, name) do update set path = excluded.path, sha256 = excluded.sha256, tool = excluded.tool, files = excluded.files, added_by = excluded.added_by, added_at = excluded.added_at, run = excluded.run`)
-      .run(repositoryId, s.name, s.path, s.sha256, s.tool, JSON.stringify(s.files), addedBy, now(), s.run ? JSON.stringify(s.run) : null)
+    // An index a run produced is named only while its grant is not revoked, checked in the same transaction as the write (A38).
+    this.db.transaction(() => {
+      if (s.run && (this.db.prepare('select revoked_at from trust_grant where id = ? and repository_id = ?').get(s.run.grant_id, repositoryId) as { revoked_at: string | null } | undefined)?.revoked_at !== null) {
+        throw new ProofmeshError('TRUST_REQUIRED', `the build-evaluation grant ${s.run.grant_id} was revoked while ${s.run.indexer} ran; its output was discarded and no index was named`)
+      }
+      this.db.prepare(`insert into scip_index (repository_id, name, path, sha256, tool, files, added_by, added_at, run) values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        on conflict(repository_id, name) do update set path = excluded.path, sha256 = excluded.sha256, tool = excluded.tool, files = excluded.files, added_by = excluded.added_by, added_at = excluded.added_at, run = excluded.run`)
+        .run(repositoryId, s.name, s.path, s.sha256, s.tool, JSON.stringify(s.files), addedBy, now(), s.run ? JSON.stringify(s.run) : null)
+    }).immediate()
     return this.scipIndexes(repositoryId).find((x) => x.name === s.name)!
   }
 

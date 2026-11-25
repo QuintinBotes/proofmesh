@@ -2,6 +2,8 @@
 // repository a person trusted for build evaluation, and names the result. Running an indexer is running another program, so it follows
 // the launcher's rules: no shell, an allowlisted environment, SIGKILL on a time or memory limit, capped output, read on close. Only the
 // CLI imports this file; a test keeps it out of the MCP and HTTP servers.
+import crypto from 'node:crypto'
+import { execFile } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -56,10 +58,27 @@ function languagesOf(catalog: Catalog, repositoryId: string): string[] {
   try { return (db.prepare("select distinct language from file where content_hash is not null and language is not null").all() as Array<{ language: string }>).map((r) => r.language) } finally { db.close() }
 }
 
-/** The argv of a containerised run: no network, a read-only root, the cache read-only, and only the copy writable. */
-export function containerArgv(image: string, work: string, cache: string, env: Record<string, string>, maxMemoryMb: number, command: string[]): string[] {
-  return ['docker', 'run', '--rm', '--network', 'none', '--read-only', '--memory', `${maxMemoryMb}m`, '--tmpfs', '/tmp', '-v', `${work}:/work`, '-v', `${cache}:/cache:ro`, '-w', '/work',
+/** The argv of a containerised run, named so it can be removed: no network, a read-only root, the cache read-only, and only the copy writable. */
+export function containerArgv(image: string, work: string, cache: string, env: Record<string, string>, maxMemoryMb: number, command: string[], name: string): string[] {
+  return ['docker', 'run', '--rm', '--name', name, '--network', 'none', '--read-only', '--memory', `${maxMemoryMb}m`, '--tmpfs', '/tmp', '-v', `${work}:/work`, '-v', `${cache}:/cache:ro`, '-w', '/work',
     ...Object.entries(env).flatMap(([k, v]) => ['-e', `${k}=${v}`]), image, ...command]
+}
+
+const MAX_INDEX_BYTES = 2 * 1024 ** 3
+const lstat = (p: string) => { try { return fs.lstatSync(p) } catch { return undefined } }
+
+/** What `<executable> --version` prints, run under the same rules as an indexer: no shell, a short SIGKILL timeout, capped output. */
+async function versionOf(executable: string, dir: string, name: string, searchPath: string): Promise<string> {
+  const log = path.join(dir, `${name}-version.log`)
+  await execute([executable, '--version'], dir, { PATH: searchPath, HOME: dir }, 15_000, 8 * 1024, log, { group: true })
+  const text = fs.readFileSync(log, 'utf8')
+  fs.rmSync(log, { force: true })
+  return text
+}
+
+/** Removing a container by name kills it and waits until it is gone; bounded, no shell. */
+function removeContainer(name: string, searchPath: string): Promise<void> {
+  return new Promise((resolve) => execFile('docker', ['rm', '-f', name], { timeout: 20_000, killSignal: 'SIGKILL', env: { PATH: searchPath } }, () => resolve()))
 }
 
 export async function runScip(dataDir: string, repository: string, opts: ScipRunOptions = {}): Promise<ScipRunResult[]> {
@@ -86,23 +105,28 @@ export async function runScip(dataDir: string, repository: string, opts: ScipRun
     for (const indexer of chosen) {
       const pin = pinned[indexer.tool]
       const version = pin?.version ?? indexer.version
+      const runId = crypto.randomBytes(6).toString('hex')
+      const base = path.join(dataDir, 'scip-run', repo.id)
+      fs.mkdirSync(base, { recursive: true })
       let executable = indexer.tool, digest: string
       if (opts.container) digest = opts.container.slice(opts.container.lastIndexOf('@') + 1)
       else {
         const found = onPath(indexer.tool, searchPath)
         if (!found) throw fail('DEPENDENCY_UNAVAILABLE', `${indexer.tool} is not installed; Proofmesh never downloads an indexer. Install it with: ${indexer.install}`)
+        // The release assets are archives, so the executable's own digest is not published: its version is checked, and its digest is recorded in the index.
+        // A person who pinned a digest in indexers.json gets that enforced too.
         digest = sha256File(found)
-        const expected = pin?.sha256 ?? indexer.sha256[platform()]
-        if (!expected) throw fail('INTEGRITY_FAILURE', `no digest is pinned for ${indexer.tool} ${version} on ${platform()}. If ${found} is the build you trust, pin it by adding {"${indexer.tool}": {"version": "${version}", "sha256": "${digest}"}} to ${path.join(dataDir, 'indexers.json')}`)
-        if (digest !== expected) throw fail('INTEGRITY_FAILURE', `${found} has sha256 ${digest}, not the pinned ${expected} for ${indexer.tool} ${version}; install the pinned one: ${indexer.install}`)
+        if (pin?.sha256 && digest !== pin.sha256) throw fail('INTEGRITY_FAILURE', `${found} has sha256 ${digest}, not the ${pin.sha256} pinned in ${path.join(dataDir, 'indexers.json')}`)
+        const reported = await versionOf(found, base, `${indexer.tool}-${runId}`, searchPath)
+        if (!reported.includes(version.replace(/^v/, ''))) throw fail('INTEGRITY_FAILURE', `${found} reports "${reported.trim().slice(0, 200)}", not the pinned ${indexer.tool} ${version}. Install the pinned one: ${indexer.install}`)
         executable = found
       }
 
-      const base = path.join(dataDir, 'scip-run', repo.id), work = path.join(base, `work-${indexer.tool}`), log = path.join(base, `${indexer.tool}.log`)
+      const work = path.join(base, `work-${indexer.tool}-${runId}`), log = path.join(base, `${indexer.tool}-${runId}.log`)
       const cache = path.resolve(opts.moduleCache ?? path.join(dataDir, 'module-cache'))
       fs.mkdirSync(cache, { recursive: true })
-      fs.rmSync(work, { recursive: true, force: true })
       fs.mkdirSync(path.join(work, '.proofmesh-home'), { recursive: true })
+      const containerName = `proofmesh-scip-${runId}`
       try {
         exportSnapshot(catalog, snapshot.id, work)
         const inside = !!opts.container
@@ -113,27 +137,41 @@ export async function runScip(dataDir: string, repository: string, opts: ScipRun
         // The allowlist: PATH so the indexer finds its toolchain, a private HOME, and the indexer's offline settings. Nothing else of this environment.
         const env: Record<string, string> = { PATH: searchPath, HOME: ctx.home, ...indexer.env(ctx) }
         const maxMemoryMb = opts.maxMemoryMb ?? 4096
-        const argv = inside ? containerArgv(opts.container!, work, cache, env, maxMemoryMb, [indexer.tool, ...indexer.args(ctx)]) : [executable, ...indexer.args(ctx)]
-        fs.mkdirSync(base, { recursive: true })
+        const argv = inside ? containerArgv(opts.container!, work, cache, env, maxMemoryMb, [indexer.tool, ...indexer.args(ctx)], containerName) : [executable, ...indexer.args(ctx)]
         const pending = execute(argv, work, inside ? { PATH: searchPath } : env, (opts.timeoutS ?? 1800) * 1000, (opts.maxOutputKb ?? 256) * 1024, log, { group: true, ...(inside ? {} : { maxRssKb: maxMemoryMb * 1024 }) })
         await opts.whileRunning?.()
         const outcome = await pending
+        // Killing the docker client does not stop the container: the daemon owns it. Remove it by name, which kills it and waits.
+        if (inside && (outcome.timedOut || outcome.error)) await removeContainer(containerName, searchPath)
         const tail = () => { const t = fs.readFileSync(log, 'utf8'); return t.length > 2000 ? `...${t.slice(-2000)}` : t }
         if (outcome.error) throw fail('DEPENDENCY_UNAVAILABLE', `${indexer.tool} could not be started: ${outcome.error}`)
         if (outcome.timedOut) throw fail('BUDGET_EXCEEDED', `${indexer.tool} was stopped after ${opts.timeoutS ?? 1800} s; its partial output was discarded and no index was named. Its log is ${log}`)
         if (outcome.memoryExceeded) throw fail('BUDGET_EXCEEDED', `${indexer.tool} was stopped for using more than ${maxMemoryMb} MB; its partial output was discarded and no index was named. Its log is ${log}`)
         if (outcome.code !== 0) throw fail('INTERNAL_ERROR', `${indexer.tool} exited with ${outcome.signal ? `signal ${outcome.signal}` : `code ${outcome.code}`}${outcome.truncated ? ' (output truncated)' : ''}; no index was named. Its log:\n${tail()}`)
         const produced = path.join(work, 'index.scip')
-        if (!fs.existsSync(produced)) throw fail('INTERNAL_ERROR', `${indexer.tool} exited cleanly but wrote no index.scip; no index was named. Its log:\n${tail()}`)
+        // The indexer wrote this path: only a regular file under a size cap is read, never a FIFO that blocks or a link that leaves the copy.
+        const st = lstat(produced)
+        if (!st) throw fail('INTERNAL_ERROR', `${indexer.tool} exited cleanly but wrote no index.scip; no index was named. Its log:\n${tail()}`)
+        if (!st.isFile()) throw fail('INTERNAL_ERROR', `${indexer.tool} left index.scip as something other than a regular file; no index was named`)
+        if (st.size > MAX_INDEX_BYTES) throw fail('BUDGET_EXCEEDED', `${indexer.tool} wrote an index of ${st.size} bytes, over the ${MAX_INDEX_BYTES} limit; no index was named`)
         let covered: ReturnType<typeof indexCoverage>
         try { covered = indexCoverage(produced, work, work) } catch (e) { throw fail('INTERNAL_ERROR', `${indexer.tool} wrote a file that is not a SCIP index (${(e as Error).message}); no index was named`) }
-        // A grant revoked during the run no longer allows its result; a new one made meanwhile belongs to the next run.
-        if (catalog.trustGrant(grant.id)?.revoked_at) throw fail('TRUST_REQUIRED', `the build-evaluation grant ${grant.id} was revoked while ${indexer.tool} ran; its output was discarded and no index was named`)
-        const final = path.join(base, `${indexer.tool}.scip`)
-        fs.copyFileSync(produced, `${final}.tmp`)
-        fs.renameSync(`${final}.tmp`, final)
+        // The index file is named by its content, so concurrent runs never overwrite each other's.
+        const staged = path.join(base, `${indexer.tool}-${runId}.scip.tmp`)
+        fs.copyFileSync(produced, staged)
+        const sha = sha256File(staged), final = path.join(base, `${indexer.tool}-${sha.slice(0, 16)}.scip`)
+        const previous = catalog.scipIndexes(repo.id).find((i) => i.name === indexer.tool)?.path
+        fs.renameSync(staged, final)
         const isolation = opts.container ? 'container' : 'process'
-        const named = catalog.addScip(repo.id, { name: indexer.tool, path: final, sha256: sha256File(final), tool: covered.tool, files: covered.files, run: { indexer: indexer.tool, version, digest, grant_id: grant.id, isolation, module_cache: cache } }, os.userInfo().username)
+        // The catalog checks the grant in the transaction that names the index: one revoked since the run began discards the result.
+        let named
+        try {
+          named = catalog.addScip(repo.id, { name: indexer.tool, path: final, sha256: sha, tool: covered.tool, files: covered.files, run: { indexer: indexer.tool, version, digest, grant_id: grant.id, isolation, module_cache: cache } }, os.userInfo().username)
+        } catch (e) {
+          if (!catalog.scipIndexes(repo.id).some((i) => i.path === final)) fs.rmSync(final, { force: true })
+          throw e
+        }
+        if (previous && previous !== final && previous.startsWith(base)) fs.rmSync(previous, { force: true })
         results.push({ name: named.name, indexer: indexer.tool, version, digest, files: Object.keys(covered.files).length, isolation, log, grantId: grant.id })
       } finally {
         fs.rmSync(work, { recursive: true, force: true })

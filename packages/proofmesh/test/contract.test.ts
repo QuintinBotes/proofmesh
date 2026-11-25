@@ -40,7 +40,7 @@ describe('FR036 read, management and execution capabilities are separate', () =>
     expect(named('read')).toHaveLength(TOOLS.length - 4)
   })
 
-  it('FR036 FR042 FR224 execution is reachable only from the CLI: neither server loads the launcher or scip run', () => {
+  it('FR036 FR042 FR227 execution is reachable only from the CLI: neither server loads the launcher or scip run', () => {
     expect(reachable('mcp/server.ts')).toContain('query/tools.ts')
     expect(reachable('mcp/server.ts')).not.toContain('verification/launcher.ts')
     expect(reachable('http/server.ts')).not.toContain('verification/launcher.ts')
