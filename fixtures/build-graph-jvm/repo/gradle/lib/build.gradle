@@ -1,0 +1,12 @@
+plugins {
+    id 'java-library'
+}
+
+def extraDeps = ['com.example:extra-a:1.0', 'com.example:extra-b:1.0']
+
+dependencies {
+    api 'org.slf4j:slf4j-api:2.0.13'
+    for (d in extraDeps) {
+        implementation d
+    }
+}
