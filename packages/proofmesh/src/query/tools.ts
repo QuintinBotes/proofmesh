@@ -936,7 +936,7 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
       ...(ctx.lean ? [] : [
         'Static reach only: tests that reach the code through unresolved calls, reflection, or configuration are missed.',
         `Test code is recognised ${TEST_RECOGNISED}.`,
-        'Where the language has no test markers here (TypeScript, JavaScript, C#, and the languages with no adapter), every symbol in test code counts as a test, so a helper there, such as a fixture builder or a beforeEach body, is listed as one.',
+        'In a file whose adapter sent no test roles (TypeScript, JavaScript, a language with no markers, a file with no test attribute or marker), every symbol in test code counts as a test, so a helper there, such as a fixture builder or a beforeEach body, is listed as one.',
       ]),
       ...(noCalls.length ? [`Calls in ${noCalls.join(' and ')} are not resolved yet, so no test is listed as executing code in ${noCalls.length === 1 ? 'it' : 'them'}; a test that calls it is not found.`] : []),
       ...(r.unfollowed.length ? [`In this snapshot, calls through interfaces and base classes are not followed for ${r.unfollowed.join(', ')} code, so a test that reaches a member only by dispatch is missed.`] : []),

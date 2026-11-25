@@ -81,6 +81,7 @@ function header(n: Node): string {
  * Test roles (FR192, FR193). pytest collects the test_ functions of a test_*.py or *_test.py file and the test_ methods of its Test classes;
  * unittest collects the test methods of a TestCase subclass wherever it is. A collected function or method is a test; a class holding one, and the
  * other members of such a class, are test support; a helper function at the top of a test file is neither, and is test code by its file.
+ * pytest's python_functions default is the prefix `test`, so `testAdd` and `tester` are collected too.
  */
 function testRoles(file: string, declared: Array<{ id: string; node: Node; top: boolean; owner?: string }>, symbols: Sym[]): void {
   const pytestFile = /(^|\/)test_[^/]*\.py$|_test\.py$/.test(file)
@@ -93,7 +94,7 @@ function testRoles(file: string, declared: Array<{ id: string; node: Node; top: 
     if (d.node.type !== 'function_definition') continue
     const name = d.node.childForFieldName('name')!.text
     const kind = d.owner ? testClass.get(d.owner) : null
-    if ((d.top && pytestFile && /^test(_|$)/.test(name)) || (kind === 'unittest' && /^test/.test(name)) || (kind === 'pytest' && /^test(_|$)/.test(name))) entries.add(d.id)
+    if ((d.top && pytestFile && /^test/.test(name)) || (kind === 'unittest' && /^test/.test(name)) || (kind === 'pytest' && /^test/.test(name))) entries.add(d.id)
   }
   const holding = new Set(declared.filter((d) => d.node.type === 'class_definition' && (testClass.get(d.id) === 'unittest' || [...entries].some((e) => declared.find((x) => x.id === e)!.owner === d.id))).map((d) => d.id))
   for (const d of declared) {
@@ -406,6 +407,41 @@ function basesOf(id: string): Promise<Base[]> {
     bases.set(id, b)
   }
   return b
+}
+
+/** How far a base chain is followed through the workspace: a class, its base, and that base's base. */
+const TEST_HOPS = 2
+const UNITTEST_BASE = /(^|\.)\w*TestCase$/
+/** What a class's bases say: yes when a chain reaches a TestCase, unknown when it leaves the workspace by some other base, no otherwise. */
+async function testBase(id: string, hops: number, seen = new Set<string>()): Promise<'yes' | 'no' | 'unknown'> {
+  if (seen.has(id)) return 'no'
+  seen.add(id)
+  const out: Array<'yes' | 'no' | 'unknown'> = []
+  for (const b of await basesOf(id)) {
+    if (b.symbol) out.push(hops > 0 ? await testBase(b.symbol, hops - 1, seen) : 'no')
+    else out.push(UNITTEST_BASE.test(b.external ?? b.node.text) ? 'yes' : 'unknown')
+  }
+  return out.includes('yes') ? 'yes' : out.includes('unknown') ? 'unknown' : 'no'
+}
+
+/**
+ * A class whose base chain reaches a TestCase through the workspace is a test case (FR192), and so is a class named *Test or Test* in a test file whose
+ * bases leave the workspace; its test* methods are tests and its other members test support. Run once Pyright has resolved the bases.
+ */
+async function inheritedTestRoles(file: string, f: FileFacts): Promise<void> {
+  const testFile = /(^|\/)test_[^/]*\.py$|_test\.py$|(^|\/)tests?\//.test(file)
+  const bySymbol = new Map(f.symbols.map((s) => [s.local_id, s]))
+  for (const [id, node] of f.classes) {
+    if (bySymbol.get(id)!.roles) continue
+    const verdict = await testBase(id, TEST_HOPS)
+    if (verdict !== 'yes' && !(verdict === 'unknown' && testFile && /Tests?$|^Test/.test(node.childForFieldName('name')!.text))) continue
+    bySymbol.get(id)!.roles = ['test_support']
+    for (const c of node.childForFieldName('body')?.namedChildren ?? []) {
+      const d = c.type === 'decorated_definition' ? c.childForFieldName('definition') ?? c : c
+      const s = d.type === 'function_definition' ? bySymbol.get(`${file}#${d.startIndex}`) : undefined
+      if (s) s.roles = /^test/.test(d.childForFieldName('name')!.text) ? ['test'] : ['test_support']
+    }
+  }
 }
 
 /** Every base outside the workspace a class derives from, directly or through its workspace bases. */
@@ -804,6 +840,7 @@ async function analyseWithPyright(file: string) {
   }
   const refs = importRefs(file, f)
   for (const r of refs) for (const to of targets(r)) relationships.push({ type: 'imports', origin: 'semantic_resolver', source: { file }, site: { path: file, range: rangeOf(f, r.node) }, resolution: 'resolved', target: { file: to } })
+  await inheritedTestRoles(file, f)
   for (const id of f.classes.keys()) {
     for (const b of await basesOf(id)) if (b.symbol) relationships.push({ type: 'inherits', origin: 'semantic_resolver', source: { symbol: id }, site: { path: file, range: rangeOf(f, b.node) }, resolution: 'resolved', target: { symbol: b.symbol } })
   }

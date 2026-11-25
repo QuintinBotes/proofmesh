@@ -9,7 +9,7 @@ import { Parser, Query, type Node } from 'web-tree-sitter'
 import { byteOffsets, grammarsDir, language, lastLine, manifest, parser, send, toolchain, type Range } from './common.js'
 import { prismaFacts } from './prisma.js'
 import { callFacts } from './scope.js'
-import { gtestName, rubyBlocks, testRoles } from './tests.js'
+import { gtestName, isRubySpec, rubyBlocks, scanRepository, testRoles, unitDependencies, withoutCycles } from './tests.js'
 
 const VERSION = '0.1.0'
 const SYNTAX_LANGUAGES = Object.keys(manifest).filter((l) => l !== 'hcl')
@@ -139,7 +139,7 @@ async function analyse(file: string, callees = false) {
   // description, and a group block is a scope that names what it sits around (FR192).
   const examples = new Set<string>()
   if (lang === 'c' || lang === 'cpp') for (const d of defs) { const g = gtestName(d.node); if (g) { d.qualified = g; symbols.find((s) => s.local_id === d.id)!.name = g } }
-  if (lang === 'ruby') {
+  if (lang === 'ruby' && isRubySpec(file)) {
     const blocks = rubyBlocks(tree.rootNode)
     for (const e of blocks.examples) {
       const id = `${file}#${e.node.startIndex}`
@@ -200,8 +200,10 @@ readline.createInterface({ input: process.stdin }).on('line', async (line) => {
       await Parser.init()
       workspace = req.params.workspace
       for (const f of req.params.files) languageOf.set(f.path, f.language)
+      scanRepository(req.params.files, (p) => { try { return fs.readFileSync(path.join(workspace, p), 'utf8') } catch { return '' } })
+      const deps = withoutCycles(new Map(req.params.files.map((f: { path: string; language: string }) => [f.path, unitDependencies(f.path, f.language)])))
       // Each file's facts depend on that file alone, so each is its own unit and only changed files are parsed again (A16).
-      reply({ adapter: { id: 'syntax', version: VERSION, protocol_version: '1.1', languages: SYNTAX_LANGUAGES, toolchain: toolchain(SYNTAX_LANGUAGES) }, capabilities: { syntax: true, symbols: true, resolved_calls: false }, external_inputs: [], units: req.params.files.map((f: { path: string }) => ({ id: f.path, files: [f.path] })) })
+      reply({ adapter: { id: 'syntax', version: VERSION, protocol_version: '1.1', languages: SYNTAX_LANGUAGES, toolchain: toolchain(SYNTAX_LANGUAGES) }, capabilities: { syntax: true, symbols: true, resolved_calls: false }, external_inputs: [], units: req.params.files.map((f: { path: string }) => ({ id: f.path, files: [f.path], ...(deps.get(f.path)?.length ? { depends_on: deps.get(f.path) } : {}) })) })
     } else if (req.method === 'workspace') {
       reply({ symbols: [], relationships: [], file_results: [], diagnostics: [] })
     } else if (req.method === 'analyze' || req.method === 'analyze_calls') {

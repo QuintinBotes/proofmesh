@@ -24,9 +24,6 @@ export const parseRoles = (stored: string | null | undefined): string[] | null =
 export const roleTest = (roles: Roles) => !!roles?.some((r) => r === 'test' || r === 'test_support')
 /** Whether a symbol is a test entry point by its own marker. */
 export const isTestEntry = (roles: Roles) => !!roles?.includes('test')
-/** Languages whose adapters mark test entry points, so a symbol in their test code with no marker is a helper and no test (FR194). */
-export const MARKED_LANGUAGES = new Set(['go', 'rust', 'python', 'java', 'kotlin', 'php', 'ruby', 'c', 'cpp', 'swift'])
-
 const conventional = (path: string) => (isGo(path) ? GO_TEST.test(path) : TEST_PATH.test(path) || CONVENTIONS.some((c) => c.test(path)))
 /** Whether a symbol is test code: its file is a test file, its project a test project, or its roles say so. Decided per symbol, not per file. */
 export const isTestCode = (path: string, project: string | null, roles?: Roles): boolean =>

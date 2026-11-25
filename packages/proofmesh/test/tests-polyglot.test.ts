@@ -1,8 +1,14 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { beforeAll, describe, expect, it } from 'vitest'
+import Database from 'better-sqlite3'
+import { indexRepository } from '../src/indexer/coordinator.js'
+import { Registry } from '../src/indexer/languages.js'
+import { Catalog, initDataDir } from '../src/meshstore/catalog.js'
+import { sealedPath } from '../src/meshstore/snapshot.js'
+import { testReach } from '../src/query/test-reach.js'
 import { isTestCode, isTestPath } from '../src/query/tests.js'
-import { expectedFor, fixtureRepo, indexedDataDir, indexedRepo, ROOT, symbolId, tool, withSnapshot } from './helpers.js'
+import { expectedFor, fixtureRepo, indexedDataDir, indexedRepo, ROOT, symbolId, tmpDir, tool, withSnapshot } from './helpers.js'
 
 // Issue 11: tests are recognised the way each language and its frameworks define them, by file convention and by the marker in code.
 const EXPECTED = expectedFor('tests-polyglot')
@@ -220,5 +226,147 @@ describe('FR200 docs/proofmesh/languages.md lists the conventions and the marker
     const table = fs.readFileSync(path.join(ROOT, 'COMPATIBILITY.md'), 'utf8')
     expect(table).toMatch(/\| Adapter protocol \| 1\.1 \|/)
     expect(table).toMatch(/\| Snapshot file format \| 0\.9 \|/)
+  })
+})
+
+// Review fixes: roles are trusted only for files whose adapter sent some, and the markers follow base classes.
+const roleList = async (files: Record<string, string>) => {
+  const { dataDir } = await indexedRepo(files)
+  return withSnapshot(dataDir, (db) => (db.prepare("select s.name, s.roles from symbol s join file f on f.id = s.file_id where s.kind <> 'module' order by f.path, s.start_line, s.id").all() as Array<{ name: string; roles: string | null }>).map((r) => [r.name, r.roles ? (JSON.parse(r.roles) as string[]).join('+') : '-']))
+}
+
+describe('FR194 FR195 find_tests judges a file by whether its adapter sent roles', () => {
+  const NOROLES = new Registry([{ id: 'noroles', languages: new Set(['python']), extensions: { '.py': 'python' }, isConfig: () => false, entry: () => path.join(import.meta.dirname, 'fake-adapters', 'noroles.mjs'), unavailable: () => 'adapter_unavailable:noroles' }])
+  const FILES = { 'core.py': 'def core\n', 'test_core.py': 'def helper\n  call core\ndef test_it\n  call core\n' }
+
+  it('FR195 a 1.0 adapter that sends no roles for python files still lists the symbols of its test files, as before roles', async () => {
+    const repo = tmpDir('pm-noroles-')
+    for (const [p, text] of Object.entries(FILES)) fs.writeFileSync(path.join(repo, p), text)
+    const dataDir = tmpDir()
+    initDataDir(dataDir)
+    const c = Catalog.open(dataDir)
+    c.addRepository(repo)
+    c.close()
+    await indexRepository(dataDir, repo, undefined, NOROLES)
+    withSnapshot(dataDir, (db) => expect((db.prepare('select count(*) as n from symbol where roles is not null').get() as { n: number }).n).toBe(0))
+    const rows = (tool(dataDir, 'find_tests', { subject_ids: [symbolId(dataDir, 'core:core')] }).data as unknown as { tests: Array<{ name: string }> }).tests
+    expect(rows.map((t) => t.name).sort()).toEqual(['helper', 'test_it'])
+  }, 240000)
+
+  it('FR195 a snapshot sealed before roles (no roles column) is decided by its paths: every symbol of a test file is a test; with the column, only the entry point', async () => {
+    const { dataDir, snapshotId } = await indexedRepo({ 'pkg/__init__.py': '', 'pkg/calc.py': 'def add(a, b):\n    return a + b\n', 'pkg/test_calc.py': 'from pkg.calc import add\n\n\ndef make():\n    return add(0, 0)\n\n\ndef test_add():\n    assert add(1, 1) == 2\n' })
+    const names = (db: Database.Database, id: string) => testReach(db, id, [(db.prepare("select id from symbol where qualified_name = 'pkg/calc:add'").get() as { id: string }).id], [], () => undefined, 5, isTestCode).rows.map((r) => r.name).sort()
+    withSnapshot(dataDir, (db) => expect(names(db, snapshotId)).toEqual(['test_add']))
+    const copy = path.join(tmpDir('pm-old-'), 'old.db')
+    fs.copyFileSync(sealedPath(dataDir, snapshotId), copy)
+    fs.chmodSync(copy, 0o644)
+    const old = new Database(copy)
+    try {
+      old.exec('alter table symbol drop column roles')
+      expect(names(old, 'pre-roles')).toEqual(['make', 'test_add'])
+    } finally { old.close() }
+  }, 240000)
+})
+
+describe('FR192 FR196 a test class may reach its test-case base through the repository, or be one by convention', () => {
+  it('FR192 PHP: a test class extending an abstract base that extends TestCase is a test class, for one or two bases; a third hop is not followed; a base outside the repository leaves the convention (*Test in a test file); a base in the repository that is no test case does not', async () => {
+    expect(await roleList({
+      'src/AbstractIntegrationTest.php': '<?php\n\nabstract class AbstractIntegrationTest extends \\PHPUnit\\Framework\\TestCase\n{\n    public function setUp(): void {}\n}\n',
+      'src/FooTest.php': '<?php\n\nclass FooTest extends AbstractIntegrationTest\n{\n    public function testA() {}\n    public function helper() {}\n}\n',
+      'tests/BarTest.php': '<?php\n\nclass BarTest extends VendorBase\n{\n    public function testB() {}\n}\n',
+      'src/PlainBase.php': '<?php\n\nclass PlainBase\n{\n}\n',
+      'src/QuxTest.php': '<?php\n\nclass QuxTest extends PlainBase\n{\n    public function testQ() {}\n}\n',
+      'src/Chain.php': '<?php\n\nclass A0 extends \\PHPUnit\\Framework\\TestCase {}\nclass A1 extends A0\n{\n    public function testOne() {}\n}\nclass A2 extends A1\n{\n    public function testTwo() {}\n}\nclass A3 extends A2\n{\n    public function testThree() {}\n}\n',
+    })).toEqual([
+      ['AbstractIntegrationTest', 'test_support'], ['setUp', 'test_support'],
+      ['A0', 'test_support'], ['A1', 'test_support'], ['testOne', 'test'], ['A2', 'test_support'], ['testTwo', 'test'], ['A3', '-'], ['testThree', '-'],
+      ['FooTest', 'test_support'], ['testA', 'test'], ['helper', 'test_support'],
+      ['PlainBase', '-'],
+      ['QuxTest', '-'], ['testQ', '-'],
+      ['BarTest', 'test_support'], ['testB', 'test'],
+    ])
+  }, 240000)
+
+  it('FR192 Python: a class whose base is a TestCase subclass in the repository is a test case, a class named *Test with a base outside it is one by convention, and one whose repository base is no test case is not', async () => {
+    expect(await roleList({
+      'pkg/__init__.py': '',
+      'pkg/base.py': 'import unittest\n\n\nclass MyBase(unittest.TestCase):\n    pass\n',
+      'pkg/plain.py': 'class Plain:\n    pass\n',
+      'pkg/test_t.py': 'from pkg.base import MyBase\n\n\nclass T(MyBase):\n    def test_x(self):\n        pass\n\n    def util(self):\n        pass\n',
+      'pkg/test_u.py': 'from vendor import Thing\n\n\nclass UserTest(Thing):\n    def test_y(self):\n        pass\n',
+      'pkg/test_n.py': 'from pkg.plain import Plain\n\n\nclass NTest(Plain):\n    def test_z(self):\n        pass\n',
+    })).toEqual([
+      ['MyBase', 'test_support'], ['Plain', '-'],
+      ['NTest', '-'], ['test_z', '-'],
+      ['T', 'test_support'], ['test_x', 'test'], ['util', 'test_support'],
+      ['UserTest', 'test_support'], ['test_y', 'test'],
+    ])
+  }, 240000)
+
+  it('FR192 Java and Kotlin: JUnit 3 style test* methods of a class whose base extends TestCase in the repository, or of a *Test class with a base outside it', async () => {
+    expect(await roleList({
+      'src/test/java/a/AbstractT.java': 'package a;\n\npublic abstract class AbstractT extends junit.framework.TestCase {\n}\n',
+      'src/test/java/a/BTest.java': 'package a;\n\npublic class BTest extends AbstractT {\n    public void testX() {}\n    void helper() {}\n}\n',
+      'src/test/java/a/CTest.java': 'package a;\n\npublic class CTest extends Unknown {\n    public void testY() {}\n}\n',
+      'src/test/java/a/PlainBase.java': 'package a;\n\npublic class PlainBase {\n}\n',
+      'src/test/java/a/DTest.java': 'package a;\n\npublic class DTest extends PlainBase {\n    public void testZ() {}\n}\n',
+      'src/test/kotlin/AbstractK.kt': 'abstract class AbstractK : junit.framework.TestCase()\n',
+      'src/test/kotlin/KTest.kt': 'class KTest : AbstractK() {\n    fun testW() {}\n    fun helper() {}\n}\n',
+    })).toEqual([
+      ['AbstractT', 'test_support'], ['BTest', 'test_support'], ['testX', 'test'], ['helper', 'test_support'],
+      ['CTest', 'test_support'], ['testY', 'test'], ['DTest', '-'], ['testZ', '-'], ['PlainBase', '-'],
+      ['AbstractK', 'test_support'], ['KTest', 'test_support'], ['testW', 'test'], ['helper', 'test_support'],
+    ])
+  }, 240000)
+
+  it('FR192 Ruby: a test case may derive from ActionDispatch::IntegrationTest, ApplicationSystemTestCase, ActiveSupport::TestCase or any base ending in Test or TestCase; a base that does not end so is none', async () => {
+    expect(await roleList({
+      'test/a_test.rb': 'class AIntegration < ActionDispatch::IntegrationTest\n  def test_a\n  end\nend\n\nclass BSystem < ApplicationSystemTestCase\n  def test_b\n  end\nend\n\nclass CCase < ActiveSupport::TestCase\n  def test_c\n  end\nend\n\nclass DCheck < MyAppTest\n  def test_d\n  end\nend\n\nclass EOther < Foo::BarTestCase\n  def test_e\n  end\nend\n\nclass FPlain < Base\n  def test_f\n  end\nend\n\nclass GTester < Contester\n  def test_g\n  end\nend\n',
+    })).toEqual([
+      ['AIntegration', 'test_support'], ['test_a', 'test'], ['BSystem', 'test_support'], ['test_b', 'test'], ['CCase', 'test_support'], ['test_c', 'test'],
+      ['DCheck', 'test_support'], ['test_d', 'test'], ['EOther', 'test_support'], ['test_e', 'test'], ['FPlain', '-'], ['test_f', '-'], ['GTester', '-'], ['test_g', '-'],
+    ])
+  }, 240000)
+})
+
+describe('FR192 pytest collects every function whose name starts with test, as its default python_functions does', () => {
+  it('FR192 testAdd, test and tester in a test file are tests, as is testH in a Test class; helper is not', async () => {
+    expect(await roleList({
+      'pkg/__init__.py': '',
+      'pkg/test_a.py': 'def testAdd():\n    pass\n\n\ndef test():\n    pass\n\n\ndef tester():\n    pass\n\n\ndef helper():\n    pass\n\n\nclass TestG:\n    def testH(self):\n        pass\n',
+    })).toEqual([['testAdd', 'test'], ['test', 'test'], ['tester', 'test'], ['helper', '-'], ['TestG', 'test_support'], ['testH', 'test']])
+  }, 240000)
+})
+
+describe('FR192 FR197 RSpec blocks are tests in spec files only', () => {
+  it('FR192 an it block and a describe block in lib/ are an ordinary call, with no symbol and no role; the same in a spec file is a test', async () => {
+    expect(await roleList({
+      'lib/dsl.rb': 'module Dsl\n  it "does a thing" do\n  end\n\n  describe "group" do\n    def helper\n    end\n  end\nend\n',
+      'spec/real_spec.rb': 'describe Foo do\n  it "works" do\n  end\nend\n',
+    })).toEqual([['Dsl', '-'], ['helper', '-'], ['it "works"', 'test']])
+  }, 240000)
+})
+
+describe('FR193 FR194 a Rust module declared out of line as #[cfg(test)] mod tests; is test support', () => {
+  const FILES = { 'src/lib.rs': 'pub fn add() {}\n\n#[cfg(test)]\nmod tests;\n', 'src/tests.rs': 'fn assist() {}\n\n#[test]\nfn adds() {}\n', 'src/other.rs': 'pub fn other_helper() {}\n' }
+  it('FR193 the functions of src/tests.rs are test support, with #[test] ones tests; a module the parent does not mark is not', async () => {
+    expect(await roleList(FILES)).toEqual([['add', '-'], ['tests', 'test_support'], ['other_helper', '-'], ['assist', 'test_support'], ['adds', 'test']])
+  }, 240000)
+
+  it('FR194 include_tests false leaves out the helper of the out-of-line module, and keeps add', async () => {
+    const { dataDir } = await indexedRepo(FILES)
+    const names = (include: boolean) => (tool(dataDir, 'find_symbols', { text: 'a', kinds: ['function'], include_tests: include, limits: { max_rows: 100 } }).data as unknown as { symbols: Sym[] }).symbols.map((x) => x.name).sort()
+    expect(names(false)).toEqual(['add'])
+    expect(names(true)).toEqual(['add', 'adds', 'assist'])
+  }, 240000)
+})
+
+describe('FR194 a symbol with a test role is test code wherever it sits, which for C# changes the path-and-project rule', () => {
+  it('FR194 a C# type with a test attribute outside a test path or project is test code; without roles the path decides, as before', () => {
+    expect(isTestCode('src/Checks.cs', null, ['test_support'])).toBe(true)
+    expect(isTestCode('src/Checks.cs', null, ['test'])).toBe(true)
+    expect(isTestCode('src/Checks.cs', null)).toBe(false)
+    expect(isTestCode('src/Checks.cs', null, null)).toBe(false)
+    expect(isTestCode('src/CalcTests.cs', null)).toBe(true)
   })
 })
