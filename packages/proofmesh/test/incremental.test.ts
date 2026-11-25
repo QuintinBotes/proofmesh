@@ -67,6 +67,9 @@ const transitions: Transition[] = [
   { name: 'FR129 edit a go.mod', fixture: 'build-graph', reused: 6, change: (r) => write(r, 'svc/go.mod', (t) => t.replace('v1.8.1', 'v1.9.0')) },
   { name: 'FR129 add a Go file under a project', fixture: 'build-graph', reused: 13, change: (r) => fs.writeFileSync(path.join(r, 'lib/extra.go'), 'package lib\n\nfunc Extra() int {\n\treturn 1\n}\n') },
   { name: 'FR129 rename a package', fixture: 'build-graph', reused: 2, change: (r) => write(r, 'packages/core/package.json', (t) => t.replace('@acme/core', '@acme/kernel')) },
+  // build-graph-jvm: pom and Gradle facts are answered in `workspace` too, so an edited version never leaves a stale fact (FR160).
+  { name: 'FR160 edit a pom dependency version', fixture: 'build-graph-jvm', reused: 5, change: (r) => write(r, 'maven/web/pom.xml', (t) => t.replace('33.0.0-jre', '33.1.0-jre')) },
+  { name: 'FR160 edit a Gradle script dependency version', fixture: 'build-graph-jvm', reused: 5, change: (r) => write(r, 'gradle/app/build.gradle.kts', (t) => t.replace('3.9.0', '3.9.1')) },
 ]
 
 describe('SC004 FR008 FR014 A16 an incremental index seals exactly what a clean index of the same tree seals', () => {
