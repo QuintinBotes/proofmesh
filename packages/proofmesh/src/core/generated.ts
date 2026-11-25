@@ -272,6 +272,10 @@ freshness?: ("snapshot" | "strict")
  * lean, the default over MCP: plain text with no JSON and no structuredContent. A header `# <tool> · <n> rows · <snapshot> current` (stale when the snapshot is older than the repository's current one), one `<name> <path>:<line>` row per result, then `# ` lines for the limitations of this answer and `# more: cursor <c>` when a next page exists. The line is the call, import or reference site for relationship, impact and path rows and the declaration for symbol rows; tags follow: in or out when both directions are asked, depth=<n>, dispatch, external, candidate, ambiguous, unresolved:<reason>, and the relationship type when the query mixes types. A name or path with a space, quote or # is quoted as JSON. compact: the JSON envelope without the snapshot-wide parts an earlier answer gave (coverage, unresolved reasons, standing limitations). full: the whole JSON envelope. Ask for compact or full for ids, evidence and totals.
  */
 envelope?: ("full" | "compact" | "lean")
+/**
+ * Whether the walk follows candidate edges: a call site that binds one candidate, or an ambiguous one of at most five. true follows them, false never does, auto (the default) follows them when every subject's file was analysed by the syntax tier alone. Every row reached through one is inferred; a site with more than five candidates is never followed.
+ */
+include_inferred?: (boolean | "auto")
 }
 
 /**
@@ -674,6 +678,10 @@ envelope?: ("full" | "compact" | "lean")
  * The next_cursor of the previous page. It continues the same query on the same snapshot; it expires after an hour.
  */
 cursor?: string
+/**
+ * Whether the walk follows candidate edges: a call site that binds one candidate, or an ambiguous one of at most five. true follows them, false never does, auto (the default) follows them when every subject's file was analysed by the syntax tier alone. Every row reached through one is inferred; a site with more than five candidates is never followed.
+ */
+include_inferred?: (boolean | "auto")
 }
 
 export interface GetClaimsData {
@@ -1874,6 +1882,10 @@ envelope?: ("full" | "compact" | "lean")
  * The next_cursor of the previous page. It continues the same query on the same snapshots; it expires after an hour.
  */
 cursor?: string
+/**
+ * Whether the walk follows candidate edges: a call site that binds one candidate, or an ambiguous one of at most five. true follows them, false never does, auto (the default) follows them when every subject's file was analysed by the syntax tier alone. Every row reached through one is inferred; a site with more than five candidates is never followed.
+ */
+include_inferred?: (boolean | "auto")
 }
 
 export interface ListQueriesData {
@@ -2497,6 +2509,10 @@ freshness?: ("snapshot" | "strict")
  * lean, the default over MCP: plain text with no JSON and no structuredContent. A header `# <tool> · <n> rows · <snapshot> current` (stale when the snapshot is older than the repository's current one), one `<name> <path>:<line>` row per result, then `# ` lines for the limitations of this answer and `# more: cursor <c>` when a next page exists. The line is the call, import or reference site for relationship, impact and path rows and the declaration for symbol rows; tags follow: in or out when both directions are asked, depth=<n>, dispatch, external, candidate, ambiguous, unresolved:<reason>, and the relationship type when the query mixes types. A name or path with a space, quote or # is quoted as JSON. compact: the JSON envelope without the snapshot-wide parts an earlier answer gave (coverage, unresolved reasons, standing limitations). full: the whole JSON envelope. Ask for compact or full for ids, evidence and totals.
  */
 envelope?: ("full" | "compact" | "lean")
+/**
+ * Whether the walk follows candidate edges: a call site that binds one candidate, or an ambiguous one of at most five. true follows them, false never does, auto (the default) follows them when every subject's file was analysed by the syntax tier alone. Every row reached through one is inferred; a site with more than five candidates is never followed.
+ */
+include_inferred?: (boolean | "auto")
 }
 
 export interface VerifyClaimData {

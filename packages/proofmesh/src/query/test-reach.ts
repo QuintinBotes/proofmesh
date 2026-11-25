@@ -1,6 +1,7 @@
 import type Database from 'better-sqlite3'
 import { type Basis, basisOf, inferredSql } from './basis.js'
 import { structure, TYPE_KINDS } from './impact.js'
+import { candidatesTo, sitesNaming } from './inferred.js'
 import { hasRoles, isTestEntry, parseRoles, rolesSql, type Roles } from './tests.js'
 
 /** How a test is known to reach its subject, strongest first (FR101, FR104). */
@@ -51,7 +52,7 @@ function projectsOf(db: Database.Database, snapshotId: string): Map<string, stri
  * Breadth first back from the subjects along resolved relationships, as analyze_impact walks; a reference counts only into a subject.
  * `files` are the subjects named by path, whose every import counts for import_only.
  */
-export function testReach(db: Database.Database, snapshotId: string, subjects: string[], files: string[], read: (hash: string) => Buffer | undefined, maxDepth: number, isTest: (path: string, project: string | null, roles?: Roles) => boolean) {
+export function testReach(db: Database.Database, snapshotId: string, subjects: string[], files: string[], read: (hash: string) => Buffer | undefined, maxDepth: number, isTest: (path: string, project: string | null, roles?: Roles) => boolean, follow = false, budget = NODE_BUDGET) {
   const { membersOf, kindOf } = structure(db, snapshotId)
   const projectOfFile = projectsOf(db, snapshotId)
   const infos = new Map<string, Info>()
@@ -105,13 +106,18 @@ export function testReach(db: Database.Database, snapshotId: string, subjects: s
       for (let i = 0; i < nodes.length; i += 500) {
         const chunk = nodes.slice(i, i + 500)
         const rows = db.prepare(`select e.src, e.dst, e.type, e.assertion_id, ${inferredSql()} as inferred from edge e join assertion a on a.id = e.assertion_id where e.dst in (${chunk.map(() => '?').join(',')}) and e.type in (${types.map(() => '?').join(',')}) and e.resolution in ('resolved', 'resolved_external')`).all(...chunk, ...types) as Array<{ src: string; dst: string; type: string; assertion_id: string; inferred: number }>
+        // A candidate call names its caller through assertion_candidate; it is a call only while following (FR205).
+        if (follow) rows.push(...candidatesTo(db, chunk, types).map((c) => ({ ...c, inferred: 1 })))
         for (const r of rows) {
           if (r.inferred) sawInferred = true
           if (observedOnly && r.inferred) continue
           for (const s of at.get(r.dst)!) add({ node: r.src, mode: r.type === 'references' ? 2 : s.mode, depth, next: s, assertion: r.assertion_id, via: s.via }, next)
+          // Checked per row, so a hub with thousands of callers cannot overshoot the budget within one level (FR210).
+          if (states.size > budget) break
         }
+        if (states.size > budget) break
       }
-      if (states.size > NODE_BUDGET) { stopped = 'node_budget'; break }
+      if (states.size > budget) { stopped = 'node_budget'; break }
       frontier = next
     }
 
@@ -184,6 +190,8 @@ export function testReach(db: Database.Database, snapshotId: string, subjects: s
     const chunk = nodes.slice(i, i + 500)
     for (const r of db.prepare(`select distinct c.assertion_id as id from assertion_candidate c join assertion a on a.id = c.assertion_id where a.type = 'calls' and c.symbol_id in (${chunk.map(() => '?').join(',')})`).all(...chunk) as Array<{ id: string }>) ambiguous.add(r.id)
   }
+  // The candidate sites naming code of this walk that it never follows, for their cap (FR202); the others were followed or, off, are counted above.
+  const sites = sitesNaming(db, nodes, ['calls'])
   // Dispatch is followed only where an adapter records implements and overrides; a subject that dispatch could reach, declared by
   // an adapter that recorded none, may miss tests.
   // shortcut: an adapter that records heritage but met none in this repository is named too; harmless, since there is then no dispatch to miss.
@@ -191,5 +199,5 @@ export function testReach(db: Database.Database, snapshotId: string, subjects: s
   const records = db.prepare("select 1 from assertion where resolution = 'resolved' and type in ('implements', 'overrides') and adapter = ? limit 1")
   const unfollowed = [...new Set(roots.filter((id) => DISPATCHABLE.has(infos.get(id)!.kind)).map((id) => (extractor.get(id) as { extractor: string }).extractor))].filter((a) => !records.get(a)).sort()
 
-  return { rows, chain, stopped_by: stopped, ambiguous: ambiguous.size, unfollowed }
+  return { rows, chain, stopped_by: stopped, ambiguous: ambiguous.size, sites, unfollowed }
 }

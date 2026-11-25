@@ -19,6 +19,7 @@ import { overview } from './overview.js'
 import { getEcosystem } from './ecosystem.js'
 import { type Basis, basisOf, byBasis, inferredSql } from './basis.js'
 import { analyzeImpact, IMPACT_TYPES, type Impact } from './impact.js'
+import { CANDIDATE_TYPES, candidatesFrom, inferredNotes, resolveFollow, sitesNaming } from './inferred.js'
 import { ADAPTER_LANGUAGE_NAMES } from '../indexer/language-detect.js'
 import { hasRoles, isTestCode, isTestPath, parseRoles, roleTest, rolesSql } from './tests.js'
 import { EXECUTING, testReach, type TestRow } from './test-reach.js'
@@ -667,13 +668,15 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     if (!subjects.length) throw new ProofmeshError('INVALID_ARGUMENT', 'name at least one subject_id or path')
     for (const id of subjects) if (!ctx.db.prepare(`select 1 from ${id.startsWith('ext_') ? 'external_symbol' : id.startsWith('file_') ? 'file' : 'symbol'} where id = ?`).get(id)) throw new ProofmeshError('NOT_FOUND', `symbol ${id} is not in snapshot ${ctx.snapshot.id}`)
     const types = (input.types as string[] | undefined) ?? [...IMPACT_TYPES]
-    const { reached_by, ...r } = analyzeImpact(ctx.db, ctx.snapshot.id, subjects, types, ctx.limits.max_depth, ctx.limits.max_rows)
+    const follow = resolveFollow(ctx.db, input.include_inferred, subjects)
+    const { reached_by, sites, ...r } = analyzeImpact(ctx.db, ctx.snapshot.id, subjects, types, ctx.limits.max_depth, ctx.limits.max_rows, undefined, follow.on)
     const calls = snapshotSummary(ctx.db, ctx.snapshot.id).unresolved_calls
     // Lean states only what applies to this answer; the tool description carries the standing caveat.
     const limitations = [
       ...(ctx.lean ? [] : ['Potential impact, not a safety proof: only resolved relationships of the listed types are followed.']),
       ...(calls.count ? [`${calls.count} unresolved call site${calls.count === 1 ? '' : 's'} in this snapshot ${calls.count === 1 ? 'has an unknown target and' : 'have unknown targets and'} could also reach these symbols.`] : []),
       ...(r.stopped_by ? [`The search stopped at the ${r.stopped_by === 'max_depth' ? 'depth limit' : 'node budget'}; more code may be affected.`] : []),
+      ...inferredNotes(follow, sites, subjects.length),
       ...(!types.includes('imports') && subjects.some((id) => id.startsWith('file_') || fileAlias(ctx.db, id) !== undefined) ? ['A file is reached only through imports; add imports to types for the files that depend on it.'] : []),
       ...leanReferencesNote(ctx, types),
     ]
@@ -724,7 +727,7 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
       const includeTests = input.include_tests === true
       // Test code changed by the diff is evidence for the rest, not a changed symbol of its own, unless asked for.
       const done = changedSymbols(headSnap, baseSnap, diff, read).filter((c) => includeTests || !inTestCode(c.snap.db, c.sym, isTestCode))
-        .map((c) => complete(c, { head: headSnap, base: baseSnap, depth, includeTests, isTest: isTestCode, read, readHash: (h) => ctx.store.read(h), maxDepth: ctx.limits.max_depth }))
+        .map((c) => complete(c, { head: headSnap, base: baseSnap, depth, includeTests, isTest: isTestCode, read, readHash: (h) => ctx.store.read(h), maxDepth: ctx.limits.max_depth, include: input.include_inferred }))
       const all = done.map((d) => d.changed), stopped = done.reduce((n, d) => n + d.stopped, 0), unfollowed = [...new Set(done.flatMap((d) => d.unfollowed))].sort()
       const deps = all.flatMap((c) => c.dependents)
       const count = (s: string) => deps.filter((x) => x.status === s).length
@@ -737,6 +740,7 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
         stop_reasons: all.length > end ? ['max_rows'] : [], more: all.length > end, shrink: 'changed',
         limitations: [
           ...(ctx.lean ? [summaryLine(totals)] : []),
+          ...inferredNotesFor(done),
           ...(stopped ? [`The test search stopped at the depth limit for ${stopped} row${stopped === 1 ? '' : 's'}; a row marked neither may have a test further away.`] : []),
           ...(unfollowed.length ? [`Calls through interfaces and base classes are not followed for ${unfollowed.join(', ')} code, so a row marked neither may have a test that reaches it by dispatch.`] : []),
           ...(unanalysed.length ? [`The diff touches ${unanalysed.length} file${unanalysed.length === 1 ? '' : 's'} no snapshot analyses, so their changes are not listed: ${unanalysed.slice(0, 20).join(', ')}${unanalysed.length > 20 ? ', ...' : ''}.`] : []),
@@ -923,12 +927,15 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
       files.push(f.id)
     }
     if (!ids.length) throw new ProofmeshError('INVALID_ARGUMENT', 'name at least one symbol or path')
-    const r = testReach(ctx.db, ctx.snapshot.id, ids, files, (h) => ctx.store.read(h), ctx.limits.max_depth, isTestCode)
+    const follow = resolveFollow(ctx.db, input.include_inferred, ids)
+    const r = testReach(ctx.db, ctx.snapshot.id, ids, files, (h) => ctx.store.read(h), ctx.limits.max_depth, isTestCode, follow.on)
     const end = ctx.page.offset + ctx.limits.max_rows, executing = r.rows.filter((t) => EXECUTING.has(t.evidence)).length
     // A subject whose file's calls are not resolved has no call to find a test through: say so, since no row would not mean no test.
+    // Not for a subject whose candidate calls were followed: it has candidate sites of its own, so some of its calls are read, as inferred (FR205).
+    const ownSites = (id: string) => { const n = sitesNaming(ctx.db, [id], ['calls']); return n.followable + n.capped > 0 }
     const noCalls = [...new Set(ids.flatMap((id) => {
       const f = ctx.db.prepare("select f.language, json_extract(f.capabilities, '$.resolved_calls') as calls from symbol s join file f on f.id = s.file_id where s.id = ?").get(id) as { language: string | null; calls: string | null } | undefined
-      return f?.language && f.calls === 'unsupported' ? [ADAPTER_LANGUAGE_NAMES[f.language] ?? f.language] : []
+      return f?.language && f.calls === 'unsupported' && !(follow.on && ownSites(id)) ? [ADAPTER_LANGUAGE_NAMES[f.language] ?? f.language] : []
     }))].sort()
     const byProject = new Map<string, number>()
     for (const t of r.rows) byProject.set(t.project ?? '(no project)', (byProject.get(t.project ?? '(no project)') ?? 0) + 1)
@@ -941,7 +948,7 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
       ]),
       ...(noCalls.length ? [`Calls in ${noCalls.join(' and ')} are not resolved yet, so no test is listed as executing code in ${noCalls.length === 1 ? 'it' : 'them'}; a test that calls it is not found.`] : []),
       ...(r.unfollowed.length ? [`In this snapshot, calls through interfaces and base classes are not followed for ${r.unfollowed.join(', ')} code, so a test that reaches a member only by dispatch is missed.`] : []),
-      ...(r.ambiguous ? [`${r.ambiguous} call site${r.ambiguous === 1 ? '' : 's'} with no single resolved target name${r.ambiguous === 1 ? 's' : ''} code on these paths as a candidate; a test that reaches the subject only through one is not listed.`] : []),
+      ...(follow.on ? inferredNotes(follow, r.sites, ids.length) : r.ambiguous ? [`${r.ambiguous} call site${r.ambiguous === 1 ? '' : 's'} with no single resolved target name${r.ambiguous === 1 ? 's' : ''} code on these paths as a candidate; a test that reaches the subject only through one is not listed.`] : []),
       ...(r.rows.some((t) => t.evidence === 'import_only') ? ['An import_only row is a test file that imports the subject by name, its whole module, or for a file subject the file, and in which nothing calls or references it.'] : []),
       ...(ctx.catalog.workspaces().some((w) => w.members.includes(ctx.repo.id)) ? ['Tests in the other repositories of this workspace are not searched.'] : []),
       ...(r.stopped_by ? [`The search stopped at the ${r.stopped_by === 'max_depth' ? 'depth limit' : 'node budget'}; more tests may reach this code.`] : []),
@@ -1199,14 +1206,16 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     const moduleOf = new Map<string, string>(), fileOf = new Map<string, string>()
     if (types.includes('imports')) for (const r of ctx.db.prepare("select id, file_id from symbol where kind = 'module' order by id desc").all() as Array<{ id: string; file_id: string }>) { moduleOf.set(r.file_id, r.id); fileOf.set(r.id, r.file_id) }
     const one = (id: string) => moduleOf.get(id) ?? id
-    const sqlite = new SqliteEdges(ctx.db)
+    const source = end(input.source_id, input.source_path, 'source'), target = end(input.target_id, input.target_path, 'target')
+    const follow = resolveFollow(ctx.db, input.include_inferred, [source, target])
+    const sqlite = new SqliteEdges(ctx.db, follow.on ? (nodes) => candidatesFrom(ctx.db, nodes, types) : undefined)
     const withFiles = (nodes: string[]) => [...nodes, ...nodes.flatMap((n) => fileOf.get(n) ?? [])]
     const edges = { outEdges: (nodes: string[], ty: string[], rs: string[]) => sqlite.outEdges(withFiles(nodes), ty, rs).map((e) => ({ ...e, src: one(e.src), dst: one(e.dst) })) }
-    const source = end(input.source_id, input.source_path, 'source'), target = end(input.target_id, input.target_path, 'target')
     const t = trace(edges, { source, target, types, resolutions, maxDepth: ctx.limits.max_depth, maxRows: ctx.limits.max_rows, deadline: ctx.started + ctx.limits.timeout_ms })
     const expanded = withFiles(t.expanded)
     const boundaries = expanded.length
-      ? boundariesFrom(ctx.db, types, `a.source_id in (${expanded.map(() => '?').join(',')})`, ctx.limits.max_rows, ...expanded)
+      // A candidate site the walk followed is no gap in it; one it never follows, for its cap, still is.
+      ? boundariesFrom(ctx.db, types, `a.source_id in (${expanded.map(() => '?').join(',')})${follow.on ? ` and not (a.resolution in ('candidate', 'ambiguous') and a.type in (${CANDIDATE_TYPES.map((x) => `'${x}'`).join(',')}) and json_extract(a.detail, '$.more') is null)` : ''}`, ctx.limits.max_rows, ...expanded)
       : NO_BOUNDARIES
     const conclusion = t.paths.length ? 'path_found' : t.stopped_by ? 'no_path_within_bounds' : boundaries.count ? 'no_resolved_path' : 'no_path_exhaustive'
     const limitations = conclusion === 'no_path_within_bounds' ? ['No path was found within the limits. This is not evidence that no path exists.']
@@ -1218,6 +1227,7 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     // Lean states the dispatch caveat only when the path it shows has a dispatch hop, and says when it shows one of several paths.
     if (types.some(isDispatch) && (!ctx.lean || !!t.paths[0]?.assertions.some((a) => isDispatch(hopType(a))))) limitations.push('implements and overrides hops run both ways: a call to an interface or virtual member may dispatch to any implementation, and the path shows the one found.')
     limitations.push(...leanReferencesNote(ctx, types))
+    limitations.push(...inferredNotes(follow, sitesNaming(ctx.db, expanded, types, 'src'), 2))
     if (ctx.lean && t.paths.length > 1) limitations.push(`${t.paths.length - 1} other shortest path${t.paths.length === 2 ? '' : 's'} of the same length; envelope compact lists them.`)
     const ids = new Set<string>([source, target, ...t.paths.flatMap((p) => p.nodes), ...t.horizon.map((h) => h.id), ...boundaries.items.map((b) => b.from_id), ...t.explored.flatMap((e) => [e.from, e.to])])
     const nodes: Record<string, unknown> = {}
@@ -1284,6 +1294,14 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     })
     return { data: { evidence }, evidence_ids: ids, shrink: 'evidence' }
   },
+}
+
+/** What impact_completeness says about candidate edges: for the changed symbols that followed them, and for those that did not (FR209). */
+const inferredNotesFor = (done: Array<{ follow: { on: boolean; asked: boolean }; sites: { followable: number; capped: number } }>): string[] => {
+  const group = (on: boolean) => done.filter((d) => d.follow.on === on)
+  const sum = (list: typeof done) => ({ followable: list.reduce((n, d) => n + d.sites.followable, 0), capped: list.reduce((n, d) => n + d.sites.capped, 0) })
+  const followed = group(true)
+  return [...(followed.length ? inferredNotes({ on: true, asked: followed.some((d) => d.follow.asked) }, sum(followed), followed.length) : []), ...inferredNotes({ on: false, asked: group(false).some((d) => d.follow.asked) }, sum(group(false)), 0)]
 }
 
 /** Whether a snapshot analyses a path. */

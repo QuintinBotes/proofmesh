@@ -4,6 +4,7 @@ import { spawnSync } from 'node:child_process'
 import type Database from 'better-sqlite3'
 import { ProofmeshError } from '../core/errors.js'
 import { type Basis, basisOf, inferredSql } from './basis.js'
+import { candidatesTo, resolveFollow, sitesNaming } from './inferred.js'
 import { leanName, leanRow, quote } from './lean.js'
 import { innermost } from './symbol-at.js'
 import { hasRoles, parseRoles, type Roles } from './tests.js'
@@ -132,15 +133,17 @@ const rolesOf = (db: Database.Database, id: string): string[] | null => (hasRole
 export const inTestCode = (db: Database.Database, s: { id?: string; path: string; file_id: string }, isTest: (path: string, project: string | null, roles?: Roles) => boolean) => isTest(s.path, projectOf(db, s.file_id), s.id ? rolesOf(db, s.id) : null)
 
 /** What `complete` needs: both sides, the depth, whether test code counts, and readers for file and object text. */
-export type Options = { head: Snap; base: Snap; depth: number; includeTests: boolean; isTest: (path: string, project: string | null, roles?: Roles) => boolean; read: (db: Database.Database, path: string) => string | undefined; readHash: (hash: string) => Buffer | undefined; maxDepth: number }
+export type Options = { head: Snap; base: Snap; depth: number; includeTests: boolean; isTest: (path: string, project: string | null, roles?: Roles) => boolean; read: (db: Database.Database, path: string) => string | undefined; readHash: (hash: string) => Buffer | undefined; maxDepth: number; include?: unknown }
 
 /**
  * One changed symbol with its dependents (FR111) and every status (FR112): callers (dispatch included, via the member called), implementers,
  * overriders, subclasses, references, then importers whose import binds it as file rows, unless the file already has a row; callers of
  * callers to `depth`, via the caller they reach it through.
  */
-export function complete(c: { sym: Sym; change: Changed['change']; snap: Snap }, o: Options): { changed: Changed; stopped: number; unfollowed: string[] } {
+export function complete(c: { sym: Sym; change: Changed['change']; snap: Snap }, o: Options): { changed: Changed; stopped: number; unfollowed: string[]; follow: ReturnType<typeof resolveFollow>; sites: { followable: number; capped: number } } {
   const { db, ranges } = c.snap, other = c.snap === o.head ? o.base : o.head
+  // Candidate calls are followed per changed symbol: where no precise tier analysed its file, or when asked (FR201, FR207).
+  const follow = resolveFollow(db, o.include, [c.sym.id])
   // Changed on either side: a deletion inside a symbol leaves no head line, and an insertion no base line.
   const changedIn = (s: Sym) => overlaps(ranges.get(s.path), s.start_line, s.end_line) || (() => {
     const t = other.db.prepare(`${SYMBOL_SQL} where s.kind = ? and s.qualified_name = ? and ${SAME_FILE}`).get(s.kind, s.qualified_name, s.path) as Sym | undefined
@@ -149,13 +152,16 @@ export function complete(c: { sym: Sym; change: Changed['change']; snap: Snap },
   const testCode = (s: { id?: string; path: string; file_id: string }) => inTestCode(db, s, o.isTest)
   const site = db.prepare('select f.path, e.start_line as line from assertion_evidence ae join evidence e on e.id = ae.evidence_id join file f on f.id = e.file_id where ae.assertion_id = ? order by e.start_byte limit 1')
   const symbol = db.prepare(`${SYMBOL_SQL} where s.id = ?`)
-  const inbound = (id: string, types: string[]) => db.prepare(`select e.src, e.type, e.assertion_id, ${inferredSql()} as inferred from edge e join assertion a on a.id = e.assertion_id where e.dst = ? and e.resolution = 'resolved' and e.type in (${types.map(() => '?').join(',')})`).all(id, ...types) as Array<{ src: string; type: string; assertion_id: string; inferred: number }>
+  const inbound = (id: string, types: string[]) => [
+    ...db.prepare(`select e.src, e.type, e.assertion_id, ${inferredSql()} as inferred from edge e join assertion a on a.id = e.assertion_id where e.dst = ? and e.resolution = 'resolved' and e.type in (${types.map(() => '?').join(',')})`).all(id, ...types) as Array<{ src: string; type: string; assertion_id: string; inferred: number }>,
+    ...(follow.on ? candidatesTo(db, [id], types).map((x) => ({ src: x.src, type: x.type, assertion_id: x.assertion_id, inferred: 1 })) : []),
+  ]
 
   // The test nearest a symbol or file that executes it, by find_tests' evidence (FR112); a search cut short is counted, so neither can say so.
   let stopped = 0
   const unfollowed = new Set<string>()
   const nearest = (ids: string[], files: string[]): Test | null => {
-    const r = testReach(db, c.snap.id, ids, files, o.readHash, o.maxDepth, o.isTest)
+    const r = testReach(db, c.snap.id, ids, files, o.readHash, o.maxDepth, o.isTest, follow.on)
     const t = r.rows.find((x) => EXECUTING.has(x.evidence))
     if (!t) {
       if (r.stopped_by) stopped++
@@ -240,7 +246,9 @@ export function complete(c: { sym: Sym; change: Changed['change']; snap: Snap },
     return { ...r, ...statusOf(changedIn(s), [s.id], []) }
   }).sort((x, y) => RELATIONS.indexOf(x.relation) - RELATIONS.indexOf(y.relation) || (x.path < y.path ? -1 : x.path > y.path ? 1 : x.line - y.line))
   const test = nearest([c.sym.id], module ? [c.sym.file_id] : [])
-  return { changed: { id: c.sym.id, name: leanName(c.sym), path: c.sym.path, line: c.sym.start_line, change: c.change, status: test ? 'tested' : 'neither', test, dependents }, stopped, unfollowed: [...unfollowed] }
+  // The candidate sites naming the symbol or a dependent: followed, or counted so the answer can say it did not follow them.
+  const sites = sitesNaming(db, [c.sym.id, ...dependents.map((d) => d.id)], ['calls', 'inherits', 'implements'])
+  return { changed: { id: c.sym.id, name: leanName(c.sym), path: c.sym.path, line: c.sym.start_line, change: c.change, status: test ? 'tested' : 'neither', test, dependents }, stopped, unfollowed: [...unfollowed], follow, sites }
 }
 
 const statusText = (s: { status: string; test: Test | null }) => s.test
@@ -256,5 +264,5 @@ export function completenessRows(changed: Changed[]): string[] {
 }
 
 /** The `summary:` line of the lean answer (FR113). */
-export const summaryLine = (t: { changed_symbols: number; dependents: number; changed: number; tested: number; neither: number }) =>
-  `summary: ${t.changed_symbols} changed symbol${t.changed_symbols === 1 ? '' : 's'}; ${t.dependents} dependent${t.dependents === 1 ? '' : 's'}: ${t.changed} changed, ${t.tested} tested, ${t.neither} neither`
+export const summaryLine = (t: { changed_symbols: number; dependents: number; changed: number; tested: number; neither: number; by_basis: { inferred: number } }) =>
+  `summary: ${t.changed_symbols} changed symbol${t.changed_symbols === 1 ? '' : 's'}; ${t.dependents} dependent${t.dependents === 1 ? '' : 's'}: ${t.changed} changed, ${t.tested} tested, ${t.neither} neither${t.by_basis.inferred ? `; ${t.by_basis.inferred} inferred` : ''}`

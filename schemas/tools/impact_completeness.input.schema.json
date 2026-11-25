@@ -73,6 +73,17 @@
       "minLength": 1,
       "maxLength": 4096,
       "description": "The next_cursor of the previous page. It continues the same query on the same snapshots; it expires after an hour."
+    },
+    "include_inferred": {
+      "oneOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "const": "auto"
+        }
+      ],
+      "description": "Whether the walk follows candidate edges: a call site that binds one candidate, or an ambiguous one of at most five. true follows them, false never does, auto (the default) follows them when every subject's file was analysed by the syntax tier alone. Every row reached through one is inferred; a site with more than five candidates is never followed."
     }
   }
 }
