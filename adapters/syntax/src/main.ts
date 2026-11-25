@@ -84,7 +84,7 @@ async function analyse(file: string, callees = false) {
   const scopes: Array<{ node: Node; qualified: string }> = []
   const calls: Array<{ name: string; site: Range; node: Node; at: Range; facts: Record<string, string> }> = []
   const imports: Array<{ node: Node; detail?: Record<string, string> }> = []
-  const supertypes: Array<{ type: string; relation?: string; node: Node }> = []
+  const supertypes: Array<{ type: string; relation?: string; node: Node; owner?: Node }> = []
   const tables: Array<{ name: Node; parts: string[] }> = []
   const locals: Array<{ node: Node; name: string }> = []
   for (const m of query.matches(tree.rootNode)) {
@@ -97,16 +97,16 @@ async function analyse(file: string, callees = false) {
     // An import statement, and a supertype a type names, need no @name: the module and the supertype are their own captures.
     const statement = role('import')
     if (statement) {
-      const spec = role('import.module'), alias = role('import.alias')
+      const spec = role('import.module'), alias = role('import.alias'), names = role('import.names')
       // A wildcard import's module runs to its `*`, as written.
-      const detail = spec ? { module: text.slice(spec.startIndex, (role('import.wildcard') ?? spec).endIndex).replace(/^["`](.*)["`]$/s, '$1'), ...(alias ? { alias: alias.text } : {}), ...(lang === 'java' && /^import\s+static\b/.test(statement.text) ? { static: 'true' } : {}) } : undefined
+      const detail = spec ? { module: text.slice(spec.startIndex, (role('import.wildcard') ?? spec).endIndex).replace(/^["'`](.*)["'`]$/s, '$1'), ...(alias ? { alias: alias.text } : {}), ...(names ? { names: names.text.replace(/^\{|\}$/g, '').replace(/\s+/g, ' ').trim() } : {}), ...(lang === 'java' && /^import\s+static\b/.test(statement.text) ? { static: 'true' } : {}) } : undefined
       imports.push({ node: statement, ...(detail ? { detail } : {}) })
       continue
     }
     const heritage = m.captures.find((c) => /^(inherits|implements)(\.|$)/.test(c.name))
     if (heritage) {
       const [type, relation] = heritage.name.split('.')
-      supertypes.push({ type: type!, ...(relation ? { relation } : {}), node: heritage.node })
+      supertypes.push({ type: type!, ...(relation ? { relation } : {}), node: heritage.node, ...(role('owner') ? { owner: role('owner')! } : {}) })
       continue
     }
     if (!name) continue
@@ -179,7 +179,14 @@ async function analyse(file: string, callees = false) {
   const relationships: Array<Record<string, unknown>> = calls.map((c) => ({ type: 'calls', origin: 'syntax', source: { symbol: enclosing(c.node) }, site: { path: file, range: c.site }, resolution: 'unresolved', reason: 'outside_capability', detail: { callee: c.name, ...c.facts, ...(callees ? { callee_start: String(c.at.start_byte), callee_end: String(c.at.end_byte) } : {}) } }))
   for (const i of imports) relationships.push({ type: 'imports', origin: 'syntax', source: { file }, site: { path: file, range: range(i.node) }, resolution: 'unresolved', reason: 'outside_capability', ...(i.detail ? { detail: i.detail } : {}) })
   // A supertype is named, never resolved (FR117): the constrained-resolution slice binds it.
-  for (const h of supertypes) relationships.push({ type: h.type, origin: 'syntax', source: { symbol: enclosing(h.node) }, site: { path: file, range: range(h.node) }, resolution: 'unresolved', reason: 'outside_capability', detail: { name: h.node.text, ...(h.relation ? { relation: h.relation } : {}) } })
+  // A Rust impl runs from the type it is for: the type this file declares under that name, else the file's module, with the type in `detail.for`.
+  const typeKinds = new Set(['class', 'struct', 'enum', 'interface', 'type_alias'])
+  for (const h of supertypes) {
+    const owner = h.owner?.text.replace(/<.*$/s, '').replace(/^[&\s]+/, '').split('::').at(-1)?.trim()
+    const declared = owner ? defs.find((d) => d.qualified === owner && typeKinds.has(String(symbols.find((s) => s.local_id === d.id)?.kind)))?.id : undefined
+    // A Kotlin supertype's type arguments are no part of its name.
+    relationships.push({ type: h.type, origin: 'syntax', source: { symbol: h.owner ? declared ?? moduleId : enclosing(h.node) }, site: { path: file, range: range(h.node) }, resolution: 'unresolved', reason: 'outside_capability', detail: { name: h.node.text.replace(/<.*$/s, ''), ...(h.relation ? { relation: h.relation } : {}), ...(owner && !declared ? { for: owner } : {}) } })
+  }
   // A table this file declares under the name a query uses is a candidate; any other is named and left unresolved.
   const references = tables.filter((t) => !locals.some((l) => t.parts.length === 1 && l.name === t.parts[0]!.toLowerCase() && within(t.name, l.node)))
   for (const t of references) {

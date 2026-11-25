@@ -48,11 +48,11 @@
           "not_at_tier": [
             {
               "role": "Circle",
-              "reason": "languages.md (what the tier records per language, FR118): no heritage is recorded for Rust"
+              "reason": "slice 59a, languages.md (Kotlin, Rust, PHP and Ruby, FR222): `impl Shape for Circle` is recorded as an implements row (FR222) but unresolved, with no target, so no row reaches Shape; constrained name matching does not cover Rust yet"
             },
             {
               "role": "Square",
-              "reason": "languages.md (what the tier records per language, FR118): no heritage is recorded for Rust"
+              "reason": "slice 59a, languages.md (Kotlin, Rust, PHP and Ruby, FR222): `impl Shape for Circle` is recorded as an implements row (FR222) but unresolved, with no target, so no row reaches Shape; constrained name matching does not cover Rust yet"
             }
           ]
         },
@@ -84,7 +84,7 @@
           "not_at_tier": [
             {
               "role": "report",
-              "reason": "languages.md (what the tier records per language, FR118): no imports are recorded for Rust"
+              "reason": "slice 59a, languages.md (Kotlin, Rust, PHP and Ruby, FR221): the tier records each Rust import as an unresolved row with no target, so no row points at the file; constrained name matching does not cover Rust yet"
             }
           ]
         },

@@ -4,6 +4,10 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 ## Unreleased
 
+Syntax-tier structure, Kotlin, Rust, PHP and Ruby (#59, part 1):
+
+- The syntax tier records each Kotlin `import`, Rust `use` (a grouped one with `detail.names`, also inside a function body) and `mod x;`, PHP `use` clause and Ruby `require` or `require_relative` of a string as an unresolved `imports` row, and each Kotlin supertype, Rust `impl Trait for Type` and trait bound, PHP `extends` and `implements`, and Ruby superclass and `include` as an unresolved `inherits` or `implements` row from the declaring type (FR221 to FR223). The Rosetta gaps for these languages now state that the rows exist and have no target. Swift, Scala, C, C++ and Bash follow in part 2.
+
 Rosetta suite (closes #20, SC-1 for the ten languages at the tiers they have; SC-2 is a rule for later slices):
 
 - `fixtures/rosetta/` holds one small program in each of ten languages (TypeScript, Python, C#, Go, Java, Rust, PHP, Ruby, Kotlin, C++), a hand-written `expected.json` per language and tier, and a `contract.json` of the eight calls. `packages/proofmesh/test/rosetta.test.ts` asks every language the same calls and compares the lean rows with the tier that analysed it (FR211 to FR216, FR219).
