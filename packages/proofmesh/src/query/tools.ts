@@ -1156,7 +1156,7 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
       for (const r of ctx.db.prepare(`select case when x.resolution = 'unresolved' then 'none' when ${inferredSql('x')} then 'inferred' else 'observed' end as basis, count(*) as n from (${from}) x group by basis`).all(...params) as Array<{ basis: keyof typeof c; n: number }>) c[r.basis] = r.n
       return { ...c, total: c.observed + c.inferred + c.none }
     }
-    const outCount = direction === 'in' ? null : counted(`select * from assertion where source_id in (${sp}) and type in (${tp}) and resolution in (${rp})${outFilter}`, [...ids, ...types, ...resolutions])
+    const outCount = direction === 'in' ? null : counted(`select * from assertion where source_id in (${sp}) and type in (${tp}) and resolution in (${rp})${outFilter}${notTest('assertion.target_id')}`, [...ids, ...types, ...resolutions])
     const inCount = direction === 'out' ? null : counted(inbound, inboundParams)
     const inheritedBasis = byBasis(inherited.map((a) => ({ basis: basisOf(a) })))
     const outExternal = hideExternal ? (ctx.db.prepare(`select count(*) as n from assertion where source_id in (${sp}) and type = 'calls' and resolution = 'resolved_external'`).get(...ids) as { n: number }).n : 0

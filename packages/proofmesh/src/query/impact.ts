@@ -61,15 +61,16 @@ export function analyzeImpact(db: Database.Database, snapshotId: string, subject
   /** One breadth-first walk; with observedOnly it follows no inferred edge, so what it reaches is reached by a chain of observed hops alone. */
   const walk = (observedOnly: boolean) => {
     let sawInferred = false
-    // Members reached upward through dispatch: their other implementers are siblings of the subject, not dependents of it.
+    // Members first reached upward through dispatch: their other implementers are siblings of the subject, not dependents of it.
+    // A member the walk already reached (an interface member that is itself the subject) is not upward: its implementers are dependents.
     const upward = new Set<string>()
     const follow = (rows: Array<{ dst: string; inferred: number }>) => rows.filter((r) => { if (r.inferred) sawInferred = true; return !(observedOnly && r.inferred) }).map((r) => r.dst)
     const peers = (id: string): string[] => {
       const out: string[] = []
       if (TYPE_KINDS.has(kindOf.get(id) ?? '')) {
         out.push(...(membersOf.get(id) ?? []))
-        for (const dst of follow(above.all(id) as Array<{ dst: string; inferred: number }>)) for (const m of membersOf.get(dst) ?? []) { upward.add(m); out.push(m) }
-      } else for (const dst of follow(overrides.all(id) as Array<{ dst: string; inferred: number }>)) { upward.add(dst); out.push(dst) }
+        for (const dst of follow(above.all(id) as Array<{ dst: string; inferred: number }>)) for (const m of membersOf.get(dst) ?? []) { if (!depthOf.has(m)) upward.add(m); out.push(m) }
+      } else for (const dst of follow(overrides.all(id) as Array<{ dst: string; inferred: number }>)) { if (!depthOf.has(dst)) upward.add(dst); out.push(dst) }
       if (files) out.push(...(db.prepare("select id from symbol where file_id = ? and kind = 'module' union select file_id from symbol where id = ? and kind = 'module'").all(id, id) as Array<{ id: string }>).map((r) => r.id))
       return out
     }
