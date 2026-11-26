@@ -10,6 +10,7 @@ import { byteOffsets, send, type Range } from './common.js'
 import { parseStarlark, type SNode, type StarlarkFile } from './starlark.js'
 import { parseToml, type JNode } from './toml.js'
 import { MAX_DEPTH, openApiEndpoints, parseYaml } from './openapi.js'
+import { graphqlDocument, protoContracts } from './contracts.js'
 import { ParseError, catalogLookup, parseXml, readBuildScript, readCatalog, readPom, readSettings, type Catalog, type GradleDep, type Pom, type XNode } from './jvm.js'
 
 const VERSION = '0.1.0'
@@ -185,6 +186,8 @@ const diagnostics: Array<{ level: 'warning'; message: string; path: string }> = 
 
 /** The names an API description goes by (FR253): `openapi.yaml`, `swagger.json`, `orders.openapi.yaml`, `orders-swagger.json`. */
 export const OPENAPI_NAME = /^((openapi|swagger)([.\-_].+)?|.+[.\-_](openapi|swagger))\.(ya?ml|json)$/i
+/** Schema-first contracts (FR400, FR401): protobuf, and GraphQL SDL. */
+export const CONTRACT_NAME = /\.(proto|graphql|gql)$/i
 const MAX_EXPANDED = 4096, MAX_SUBSTITUTIONS = 256
 const dirOf = (p: string) => (path.posix.dirname(p) === '.' ? '' : path.posix.dirname(p))
 const lineOf = (m: Manifest, offset: number) => { let lo = 0, hi = m.lines.length - 1; while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (m.lines[mid]! <= offset) lo = mid; else hi = mid - 1 } return lo + 1 }
@@ -336,6 +339,11 @@ function compute(): { symbols: Fact[]; relationships: Fact[] } {
           symbols.push({ local_id: id, path: file, kind: 'endpoint', name: e.name.split(' ')[1], qualified_name: e.name, range: rangeOf(m, e.start, e.end), signature: e.operationId ? `operationId: ${e.operationId}` : null })
         }
         if (found?.skipped) partial(file, `${found.skipped} path item${found.skipped === 1 ? '' : 's'} not read: only an inline path item is read, a $ref is not followed`)
+      } else if (CONTRACT_NAME.test(base)) {
+        // A schema-first contract (FR400, FR401): its RPCs, root fields, messages and types are declared where it states them.
+        for (const c of /\.proto$/i.test(base) ? protoContracts(m.text) : graphqlDocument(m.text, file.replace(/\.[^./]+$/, '')).contracts) {
+          symbols.push({ local_id: `${file}#${c.kind}#${c.qualified_name}#${c.start}`, path: file, kind: c.kind, name: c.name, qualified_name: c.qualified_name, range: rangeOf(m, c.start, c.end), signature: c.signature })
+        }
       } else {
         const root = parseJson(m.text, false, base === 'composer.json')
         if (base === 'composer.json') {
@@ -348,7 +356,7 @@ function compute(): { symbols: Fact[]; relationships: Fact[] } {
         } else if (!ignored) tsconfigs.push({ m, root })
       }
       results.set(file, { ...results.get(file), status: 'ok' })
-    } catch (e) { fail(file, e, m, OPENAPI_NAME.test(base) ? 'invalid_openapi' : base.startsWith('go.') ? `invalid_${base.replace('.', '_')}` : base === 'pom.xml' ? 'invalid_xml' : base === 'Cargo.toml' || base === 'pyproject.toml' ? 'invalid_toml' : /^(BUILD|BUILD\.bazel|BUCK)$/.test(base) ? 'invalid_starlark' : /gradle|toml/.test(base) ? 'invalid_gradle' : 'invalid_json') }
+    } catch (e) { fail(file, e, m, OPENAPI_NAME.test(base) ? 'invalid_openapi' : CONTRACT_NAME.test(base) ? (/\.proto$/i.test(base) ? 'invalid_proto' : 'invalid_graphql') : base.startsWith('go.') ? `invalid_${base.replace('.', '_')}` : base === 'pom.xml' ? 'invalid_xml' : base === 'Cargo.toml' || base === 'pyproject.toml' ? 'invalid_toml' : /^(BUILD|BUILD\.bazel|BUCK)$/.test(base) ? 'invalid_starlark' : /gradle|toml/.test(base) ? 'invalid_gradle' : 'invalid_json') }
   }
 
   // Every captured file, in a fixed order.

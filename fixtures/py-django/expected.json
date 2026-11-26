@@ -20,7 +20,11 @@
     { "from": "shop/models:Customer", "to": "shop/models:TimeStamped", "line": 11, "site_text": "TimeStamped" },
     { "from": "shop/models:Order", "to": "shop/models:TimeStamped", "line": 15, "site_text": "TimeStamped" },
     { "from": "shop/models:OpenOrder", "to": "shop/models:Order", "line": 22, "site_text": "Order" },
-    { "from": "shop/models:GiftOrder", "to": "shop/models:Order", "line": 27, "site_text": "Order" }
+    { "from": "shop/models:GiftOrder", "to": "shop/models:Order", "line": 27, "site_text": "Order" },
+    { "from": "billing/models/invoice:Invoice", "to": "unresolved django.db.models.Model", "line": 4, "site_text": "Model" },
+    { "from": "shop/models:TimeStamped", "to": "unresolved django.db.models.Model", "line": 4, "site_text": "models.Model" },
+    { "from": "shop/models:Tag", "to": "unresolved django.db.models.Model", "line": 31, "site_text": "models.Model" },
+    { "from": "shop/views:GiftView", "to": "unresolved django.views.View", "line": 18, "site_text": "View" }
   ],
   "table_reach": [
     { "table": "sales_orders", "path": "shop/models.py", "entities": [["shop/models:Order", "maps_to"], ["shop/models:GiftOrder", "inherits"], ["shop/models:OpenOrder", "inherits"]], "reach": [{ "kind": "endpoint", "qualified_name": "POST shop/gifts", "path": "shop/urls.py", "depth": 5 }] },

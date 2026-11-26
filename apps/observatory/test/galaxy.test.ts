@@ -33,7 +33,7 @@ describe('A11 the Galaxy payload: every symbol of the snapshot in one compact bi
       { name: 'packages/format/src', count: 1, files: { ...none, indexed: 2 }, calls: { sites: 1, unresolved: 0 }, gaps: [] },
       { name: 'packages/legacy/src', count: 1, files: { ...none, indexed: 1 }, calls: { sites: 1, unresolved: 0 }, gaps: [] },
       { name: '(root)', count: 0, files: { ...none, indexed: 1, unsupported: 1 }, calls: { sites: 0, unresolved: 0 }, gaps: [['no_adapter:.md', 1]] },
-      { name: 'packages/api', count: 0, files: { ...none, unsupported: 1 }, calls: { sites: 0, unresolved: 0 }, gaps: [['no_adapter:.graphql', 1]] },
+      { name: 'packages/api', count: 0, files: { ...none, unsupported: 1 }, calls: { sites: 0, unresolved: 0 }, gaps: [['no_adapter:.avsc', 1]] },
       { name: 'packages/billing/dist', count: 0, files: { ...none, excluded: 1 }, calls: { sites: 0, unresolved: 0 }, gaps: [['**/dist/**', 1]] },
     ])
   })

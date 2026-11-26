@@ -1,1 +1,0 @@
-type Invoice { total: String! }

@@ -8,9 +8,9 @@
       "indexed",
       null
     ],
-    "packages/api/schema.graphql": [
+    "packages/api/schema.avsc": [
       "unsupported",
-      "no_adapter:.graphql"
+      "no_adapter:.avsc"
     ],
     "packages/api/src/handler.ts": [
       "indexed",

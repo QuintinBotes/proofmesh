@@ -24,7 +24,8 @@ function tableFacts(dataDir: string) {
       maps_to: mapsTo.filter((r) => r.resolution === 'resolved').map((r) => ({ from: qn(db, r.source_id), to: qn(db, r.target_id!), rule: JSON.parse(r.detail!).rule, ...site(r.id) })),
       maps_to_unresolved: mapsTo.filter((r) => r.resolution === 'unresolved').map((r) => ({ from: qn(db, r.source_id), reason: r.reason, rule: JSON.parse(r.detail!).rule, ...site(r.id) })),
       inferred_maps_to: mapsTo.filter((r) => r.resolution === 'resolved' && JSON.parse(r.detail!).inferred).map((r) => qn(db, r.source_id)).sort(),
-      inherits: inherits.map((r) => ({ from: qn(db, r.source_id), to: qn(db, r.target_id!), ...site(r.id) })),
+      // A base outside the repository is named, unresolved (FR403).
+      inherits: inherits.map((r) => ({ from: qn(db, r.source_id), to: r.target_id ? qn(db, r.target_id) : `unresolved ${JSON.parse(r.detail!).name}`, ...site(r.id) })),
       total: mapsTo.length,
     }
   })

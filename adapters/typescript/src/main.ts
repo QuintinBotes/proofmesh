@@ -4,6 +4,7 @@ import { builtinModules, createRequire } from 'node:module'
 import path from 'node:path'
 import readline from 'node:readline'
 import type * as TS from 'typescript'
+import { graphqlDocument } from '../../syntax/src/contracts.js'
 
 const ts = createRequire(import.meta.url)('typescript') as typeof TS
 const VERSION = '0.1.0'
@@ -33,6 +34,8 @@ const prismaTables = new Map<string, { qualified: string; name: string }>()
 /** Candidate Express registrations and decorated classes in index order, read once every file is indexed; then the route facts by file. */
 const routeSites: Array<TS.CallExpression | TS.ClassDeclaration> = []
 const routeFacts = new Map<string, Array<Record<string, unknown>>>()
+/** GraphQL resolver maps' root objects, `Query: { ... }` and the like, in index order (FR402). */
+const resolverRoots: TS.PropertyAssignment[] = []
 const keyOf = (n: TS.Node) => `${n.getSourceFile().fileName}|${n.pos}|${n.end}|${n.kind}`
 const symbolsByFile = new Map<string, Array<Record<string, unknown>>>()
 /**
@@ -156,6 +159,7 @@ function buildProjects(): void {
     indexDeclarations(sf)
   }
   indexRoutes()
+  indexResolvers()
 }
 
 const readJson = (file: string): Record<string, any> | undefined => { try { return JSON.parse(ts.sys.readFile(file) ?? '') } catch { return undefined } }
@@ -307,6 +311,7 @@ function indexDeclarations(sf: TS.SourceFile): void {
       out.push({ local_id: local, path: p, kind: 'resource', name: r.name, qualified_name: `${base}:${r.token}::${r.name}`, range: range(sf, n.getStart(sf), n.getEnd()), signature: `resource "${r.token}"` })
     }
     if (isRouteSite(n)) routeSites.push(n)
+    if (ts.isPropertyAssignment(n) && GRAPHQL_ROOTS.has(keyName(n.name, sf)) && ts.isObjectLiteralExpression(n.initializer)) resolverRoots.push(n)
     const access = prismaAccess(n), table = access && prismaTables.get(access.accessor)
     if (table && !declaredTables.has(table.qualified)) {
       declaredTables.add(table.qualified)
@@ -447,7 +452,8 @@ function heritageFacts(d: Heritable, p: string, sf: TS.SourceFile): Array<Record
     const type = ts.isClassDeclaration(d) && h.token === ts.SyntaxKind.ImplementsKeyword ? 'implements' : 'inherits'
     for (const t of h.types) {
       const targets = new Set(heritable(t.expression).map((s) => declLocal.get(keyOf(s))).filter((l): l is string => !!l))
-      if (!targets.size) out.push({ type, origin: 'semantic_resolver', source: { symbol: source }, site: site(t), ...resolveCall(t.expression) })
+      // A supertype that does not bind keeps the name it is written with, which the gRPC server rule reads (FR403).
+      if (!targets.size) { const r = resolveCall(t.expression); out.push({ type, origin: 'semantic_resolver', source: { symbol: source }, site: site(t), ...r, ...(r.resolution === 'unresolved' ? { detail: { name: t.expression.getText(sf) } } : {}) }) }
       for (const target of targets) out.push({ type, origin: 'semantic_resolver', source: { symbol: source }, site: site(t), resolution: 'resolved', target: { symbol: target } })
     }
   }
@@ -788,6 +794,59 @@ function indexRoutes(): void {
   }
 }
 
+const GRAPHQL_ROOTS = new Set(['Query', 'Mutation', 'Subscription'])
+const keyName = (n: TS.PropertyName, sf: TS.SourceFile) => n.getText(sf).replace(/^['"]|['"]$/g, '')
+
+/**
+ * GraphQL resolver maps (FR402): each function of a `Query`, `Mutation` or `Subscription` object in an object literal is the resolver of the
+ * root field it is keyed by, so an endpoint `graphql <Root>.<field>` exposes it, rule graphql_resolver_map. An inline function becomes a
+ * function symbol named by the keys down to it, as an inline route handler does; a named one is the function its name resolves to.
+ */
+// shortcut: shorthand properties and `{ resolve }` objects are not read; add them when a repository relies on them.
+function indexResolvers(): void {
+  for (const root of resolverRoots) {
+    const sf = root.getSourceFile(), file = rel(sf.fileName)
+    use(projectOf.get(file)!)
+    const keys: string[] = []
+    for (let n: TS.Node = root; !ts.isSourceFile(n); n = n.parent) {
+      if (ts.isPropertyAssignment(n)) keys.unshift(keyName(n.name, sf))
+      else if (ts.isVariableDeclaration(n) && ts.isIdentifier(n.name)) { keys.unshift(n.name.text); break }
+    }
+    for (const m of (root.initializer as TS.ObjectLiteralExpression).properties) {
+      if (!m.name || !(ts.isMethodDeclaration(m) || ts.isPropertyAssignment(m))) continue
+      const field = keyName(m.name, sf), fn = ts.isMethodDeclaration(m) ? m : m.initializer
+      let handler = declLocal.get(keyOf(fn))
+      if (!handler && (ts.isMethodDeclaration(fn) || isFunctionLike(fn))) {
+        const qualified = `${noExt(file)}:${[...keys, field].join('.')}`, r = range(sf, fn.getStart(sf), fn.getEnd())
+        handler = `${file}#function#${qualified}#${r.start_byte}`
+        declLocal.set(keyOf(fn), handler)
+        symbolsByFile.get(file)!.push({ local_id: handler, path: file, kind: 'function', name: field, qualified_name: qualified, range: r, signature: signatureOf(field, fn as TS.ArrowFunction) })
+      } else if (!handler && (ts.isIdentifier(fn) || ts.isPropertyAccessExpression(fn))) {
+        const named = resolveCall(fn)
+        if (named.resolution === 'resolved' && named.target && 'symbol' in named.target) handler = named.target.symbol
+      }
+      if (!handler) continue
+      const name = `graphql ${keyName(root.name, sf)}.${field}`, id = `${file}#resolver#${name}#${m.getStart(sf)}`, site = { path: file, range: range(sf, m.getStart(sf), m.getEnd()) }
+      symbolsByFile.get(file)!.push({ local_id: id, path: file, kind: 'endpoint', name: name.slice('graphql '.length), qualified_name: name, range: site.range, signature: null })
+      const facts = routeFacts.get(file) ?? routeFacts.set(file, []).get(file)!
+      facts.push({ type: 'exposes', origin: 'framework_adapter', source: { symbol: id }, site, resolution: 'resolved', target: { symbol: handler }, detail: { rule: 'graphql_resolver_map' } })
+    }
+  }
+}
+
+/** The text of a `gql` or `graphql` tagged template, each substitution blanked so offsets stay those of the source, and where it starts. */
+function graphqlTemplate(node: TS.TaggedTemplateExpression, sf: TS.SourceFile): { text: string; at: number } | undefined {
+  const tag = ts.isIdentifier(node.tag) ? node.tag.text : ts.isPropertyAccessExpression(node.tag) ? node.tag.name.text : ''
+  if (tag !== 'gql' && tag !== 'graphql') return undefined
+  const t = node.template, at = t.getStart(sf) + 1
+  let text = sf.text.slice(at, t.getEnd() - 1)
+  if (ts.isTemplateExpression(t)) for (const span of t.templateSpans) {
+    const from = span.expression.getFullStart() - 2 - at, to = span.literal.getStart(sf) + 1 - at
+    text = text.slice(0, from) + ' '.repeat(to - from) + text.slice(to)
+  }
+  return { text, at }
+}
+
 function owner(node: TS.Node): string | undefined {
   for (let n: TS.Node | undefined = node.parent; n; n = n.parent) {
     const local = declLocal.get(keyOf(n))
@@ -949,7 +1008,7 @@ function analyze(paths: string[]) {
     }
     use(project)
     symbols.push(...(symbolsByFile.get(p) ?? []))
-    let unresolvedCalls = 0, unresolvedImports = 0
+    let unresolvedCalls = 0, unresolvedImports = 0, graphqlUnread = 0
     const endpoints = new Set<string>(), clientEndpoints: Array<Record<string, unknown>> = []
     /** One reference per user and target, cited at its first site, with every way the user uses the target. */
     const references = new Map<string, { from: string; target: string; site: TS.Node; uses: Set<string> }>()
@@ -988,6 +1047,19 @@ function analyze(paths: string[]) {
           if (prisma) relationships.push({ source: { symbol: from }, ...prisma })
         }
       }
+      const gql = ts.isTaggedTemplateExpression(node) ? graphqlTemplate(node, sf) : undefined
+      if (gql) {
+        // A `gql` template (FR402): an operation dispatches_to each root field it selects, rule graphql_operation; SDL declares its types and root fields.
+        const from = owner(node) ?? declLocal.get(keyOf(sf))!
+        let doc: ReturnType<typeof graphqlDocument> | undefined
+        try { doc = graphqlDocument(gql.text, noExt(p)) } catch (e) { diagnostics.push({ level: 'warning', message: `a gql template that is no GraphQL document is not read: ${(e as Error).message}`, path: p }); graphqlUnread++ }
+        for (const c of doc?.contracts ?? []) clientEndpoints.push({ local_id: `${p}#graphql-schema#${c.qualified_name}#${gql.at + c.start}`, path: p, kind: c.kind, name: c.name, qualified_name: c.qualified_name, range: range(sf, gql.at + c.start, gql.at + c.end), signature: c.signature })
+        for (const o of doc?.operations ?? []) {
+          const r = range(sf, gql.at + o.start, gql.at + o.end), local = `${p}#endpoint#${o.endpoint}`
+          if (!endpoints.has(local)) { endpoints.add(local); clientEndpoints.push({ local_id: local, path: p, kind: 'endpoint', name: o.endpoint.slice('graphql '.length), qualified_name: o.endpoint, range: r, signature: null }) }
+          relationships.push({ type: 'dispatches_to', origin: 'framework_adapter', source: { symbol: from }, site: { path: p, range: r }, resolution: 'resolved', target: { symbol: local }, detail: { direction: 'outbound', rule: 'graphql_operation' } })
+        }
+      }
       if (ts.isClassDeclaration(node)) relationships.push(...typeormFacts(node, p, sf))
       if (ts.isClassDeclaration(node) || ts.isInterfaceDeclaration(node)) relationships.push(...heritageFacts(node, p, sf))
       if (ts.isVariableDeclaration(node)) relationships.push(...literalFacts(node, p, sf))
@@ -1013,7 +1085,7 @@ function analyze(paths: string[]) {
     symbols.push(...clientEndpoints)
     file_results.push({
       path: p, status: 'ok',
-      capabilities: { text: 'complete', syntax: 'complete', symbols: 'complete', imports: unresolvedImports ? 'partial' : 'complete', references: 'partial', resolved_calls: unresolvedCalls ? 'partial' : 'complete', framework: clientEndpoints.length ? 'partial' : 'unsupported' },
+      capabilities: { text: 'complete', syntax: 'complete', symbols: 'complete', imports: unresolvedImports ? 'partial' : 'complete', references: 'partial', resolved_calls: unresolvedCalls ? 'partial' : 'complete', framework: clientEndpoints.length || graphqlUnread ? 'partial' : 'unsupported' },
     })
   }
   return { symbols, relationships, file_results, diagnostics }

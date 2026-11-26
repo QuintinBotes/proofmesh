@@ -881,7 +881,8 @@ async function analyseWithPyright(file: string) {
   for (const r of refs) for (const to of targets(r)) relationships.push({ type: 'imports', origin: 'semantic_resolver', source: { file }, site: { path: file, range: rangeOf(f, r.node) }, resolution: 'resolved', target: { file: to } })
   await inheritedTestRoles(file, f)
   for (const id of f.classes.keys()) {
-    for (const b of await basesOf(id)) if (b.symbol) relationships.push({ type: 'inherits', origin: 'semantic_resolver', source: { symbol: id }, site: { path: file, range: rangeOf(f, b.node) }, resolution: 'resolved', target: { symbol: b.symbol } })
+    // A base outside the repository is named, unresolved, as the syntax tier names one; the gRPC server rule reads it (FR403).
+    for (const b of await basesOf(id)) relationships.push({ type: 'inherits', origin: 'semantic_resolver', source: { symbol: id }, site: { path: file, range: rangeOf(f, b.node) }, ...(b.symbol ? { resolution: 'resolved', target: { symbol: b.symbol } } : { resolution: 'unresolved', reason: 'outside_capability', detail: { name: b.external! } }) })
   }
   for (const id of f.classes.keys()) {
     for (const [name, m] of await methodsOf(id)) {
