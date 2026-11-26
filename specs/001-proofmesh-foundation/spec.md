@@ -384,6 +384,18 @@ Acceptance: CI runs my pull request without secrets or release credentials; lice
 - FR327: MUST keep queries and `status` answering from the published snapshot while an index writes.
 - FR328: MUST make `gc` and an index exclude each other: `gc` holds a data-directory lock for its whole run and refuses while any index holds a lock, and an index that finds `gc` running (checked after taking its own lock) steps aside and waits, or with `--no-wait` refuses; and MUST end a wait for a lock with `CANCELLED` when `watch` is aborted.
 - FR329: MUST record the holder's process start time in a lock and treat a pid whose start time differs as gone; MUST release every lock this process holds when it exits or is ended by SIGINT, SIGTERM or SIGHUP; MUST keep a job that waits behind a live lock `queued` by refreshing its heartbeat, so a poller does not start a second index; MUST name a lock's temporary files with the host and a random nonce; MUST retry the fact cache's first `create table`; and MUST read `PROOFMESH_BUSY_TIMEOUT_MS` only with `PROOFMESH_TEST_HARNESS` set, as a finite positive number of at most ten minutes.
+- FR335: MUST keep the facts of every analysis batch that finished in the fact cache when an index fails, so a rerun replays them and analyses only what did not finish.
+- FR336: MUST resume an identical rerun of a failed index from its checkpoint: only the files of batches that did not finish are analysed, and the sealed snapshot equals a clean index's.
+- FR337: MUST, after a file is edited between a failed index and its rerun, replay from the cache the finished files whose unit did not change, and analyse only the edited ones and the unfinished ones.
+- FR338: MUST say, when an index fails on an adapter, how many batches were kept and that indexing again resumes them, and record the count as `batches_kept` in the failed job's result.
+- FR339: MUST leave the previous snapshot current when an index fails.
+- FR340: MUST fail the index and publish nothing when an adapter dies and `--allow-partial` is not given, for an adapter with no syntax tier under it.
+- FR341: MUST, with `index --allow-partial`, publish a partial snapshot when an adapter dies: the files it analysed are indexed, the files it did not reach are `failed` with `adapter_died`.
+- FR342: MUST record in a partial snapshot's meta `partial` the failed adapters, the count and the first 20 paths of the missing files, and the reason without the adapter's stderr.
+- FR343: MUST state in the `limitations` of every answer from a partial snapshot, compact envelope included, that it is partial, which adapter failed and how many files are missing; an answer from a complete snapshot says nothing of it.
+- FR344: MUST report a partial snapshot in the job's result and in a line of `index` output.
+- FR345: MUST, after a partial snapshot, ask the adapter again on the next index (the identity takes a `retry` number), replay the finished files from the cache and publish a complete snapshot.
+- FR346: MUST NOT cache the facts of a file the adapter died on, so a rerun never replays a failure.
 
 ### Impact completeness
 

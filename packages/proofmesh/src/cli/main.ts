@@ -71,7 +71,7 @@ Usage: proofmesh [--data-dir DIR] <command>
   gc [--keep N] [--dry-run]         retire old snapshots and unreferenced evidence; never current, pinned or linked ones
   snapshot pin <id> | snapshot unpin <id>
   mcp-config [--client claude-code|codex] [--scope project|user] [--write .mcp.json]   print the client registration
-  index <repository-id or path> [--rev <commit-ish>] [--no-wait]   capture, analyse, seal, and publish a snapshot; --rev indexes a commit without touching the working tree; one index per repository at a time: a second waits, or with --no-wait exits INDEX_IN_PROGRESS; progress on stderr
+  index <repository-id or path> [--rev <commit-ish>] [--no-wait] [--allow-partial]   capture, analyse, seal, and publish a snapshot; --rev indexes a commit without touching the working tree; one index per repository at a time: a second waits, or with --no-wait exits INDEX_IN_PROGRESS; progress on stderr
   watch <repository> [--interval S] [--quiet-ms MS] [--poll]   keep the snapshot current; --poll ignores file notifications
   completeness <repository> <base>[..<head>] [--depth N] [--json]   every symbol the change made and what calls, implements, references or imports it, each changed, tested or neither; indexes a side with no snapshot and waits; exits 0 when no dependent is neither, 1 when one is, 2 on a usage error or unknown commit
   tests <repository> <path | path#name> [--json]   the tests that reach a file or symbol, how each is known and its chain; exits 0 when one executes it, 1 when none does, 2 on a usage error or unknown subject
@@ -411,8 +411,8 @@ export async function main(argv: string[]): Promise<number> {
       }
       case 'index': {
         const opts = [...rest]
-        const jobFlag = take(opts, '--job'), rev = take(opts, '--rev'), keepCurrent = has(opts, '--keep-current'), noWait = has(opts, '--no-wait')
-        if (!opts[0]) throw new ProofmeshError('INVALID_ARGUMENT', 'usage: proofmesh index <repository-id or path> [--rev <commit-ish> [--keep-current]] [--no-wait]')
+        const jobFlag = take(opts, '--job'), rev = take(opts, '--rev'), keepCurrent = has(opts, '--keep-current'), noWait = has(opts, '--no-wait'), allowPartial = has(opts, '--allow-partial')
+        if (!opts[0]) throw new ProofmeshError('INVALID_ARGUMENT', 'usage: proofmesh index <repository-id or path> [--rev <commit-ish> [--keep-current]] [--no-wait] [--allow-partial]')
         const jobs = Catalog.open(dataDir)
         let jobId: string
         // Every index is a job row, so status and get_job see it; one the MCP server spawned names its row with --job.
@@ -444,7 +444,7 @@ export async function main(argv: string[]): Promise<number> {
             report.update(p)
             recordAdapters()
           }, undefined, rev, keepCurrent && !!rev, {
-            wait: !noWait, onNotice: (line) => process.stderr.write(`${line}\n`),
+            wait: !noWait, allowPartial, onNotice: (line) => process.stderr.write(`${line}\n`),
             // A job waiting behind another index is alive: refresh its heartbeat so no poller reads it as interrupted and starts another.
             onWait: () => { const at = Date.now(); if (at - beat >= 10_000) { beat = at; jobs.updateJob(jobId, { progress_at: new Date(at).toISOString() }) } },
           })
@@ -452,16 +452,18 @@ export async function main(argv: string[]): Promise<number> {
           report.stop()
           const failure = asProofmeshError(e)
           // The run report names the adapter that failed and those that had finished, so a failed index says where it broke.
-          const { failed_adapter: failedAdapter, completed_adapters: completedAdapters } = failure.details
-          jobs.updateJob(jobId, { state: 'failed', finished_at: new Date().toISOString(), error: storedMessage(failure), ...(failedAdapter ? { result: JSON.stringify({ failed_adapter: failedAdapter, completed_adapters: completedAdapters ?? [] }) } : {}) })
+          const { failed_adapter: failedAdapter, completed_adapters: completedAdapters, batches_kept: kept, batches_total: keptOf } = failure.details
+          jobs.updateJob(jobId, { state: 'failed', finished_at: new Date().toISOString(), error: storedMessage(failure), ...(failedAdapter ? { result: JSON.stringify({ failed_adapter: failedAdapter, completed_adapters: completedAdapters ?? [], ...(kept ? { batches_kept: kept } : {}) }) } : {}) })
+          if (kept) process.stderr.write(`${kept} of ${keptOf} batches were kept; index again to resume, or with --allow-partial to publish what was analysed\n`)
           jobs.close()
           throw e
         }
         const phases = report.stop()
         // A finished job keeps counts that mean something: the files indexed, not the last phase's zero.
-        jobs.updateJob(jobId, { state: 'succeeded', finished_at: new Date().toISOString(), phase: 'done', done: r.counts.indexed, total: r.counts.indexed, progress_at: new Date().toISOString(), result: JSON.stringify({ snapshot_id: r.snapshotId, status: r.status, counts: r.counts, reuse: r.reuse ?? null, commit: r.commit ?? null, ...(r.memoryRestarts ? { memory_restarts: r.memoryRestarts } : {}), ...(r.fallbacks ? { fallbacks: r.fallbacks } : {}) }) })
+        jobs.updateJob(jobId, { state: 'succeeded', finished_at: new Date().toISOString(), phase: 'done', done: r.counts.indexed, total: r.counts.indexed, progress_at: new Date().toISOString(), result: JSON.stringify({ snapshot_id: r.snapshotId, status: r.status, counts: r.counts, reuse: r.reuse ?? null, commit: r.commit ?? null, ...(r.memoryRestarts ? { memory_restarts: r.memoryRestarts } : {}), ...(r.fallbacks ? { fallbacks: r.fallbacks } : {}), ...(r.partial ? { partial: r.partial } : {}) }) })
         jobs.close()
         for (const f of r.fallbacks ?? []) console.log(`adapter ${f.adapter} could not analyse ${f.files} file${f.files === 1 ? '' : 's'}, so the syntax tier read them: ${f.reason}`)
+        if (r.partial) console.log(`partial snapshot: adapter ${r.partial.adapters.join(', ')} failed, ${r.partial.missing} of ${r.partial.files} files are missing; they are failed with adapter_died, and indexing again asks the adapter again`)
         if (r.resumed) console.log(`resumed from checkpoint: ${r.resumed.done} of ${r.resumed.total} batches were already done`)
         if (r.reuse?.reused) console.log(`reused the facts of ${r.reuse.reused} of ${r.reuse.reused + r.reuse.analysed} files whose inputs did not change`)
         console.log(`snapshot ${r.snapshotId} ${r.status}${r.commit ? ` from commit ${r.commit} (${rev}); the working tree was not read` : ''}${r.analysisMode === 'trusted_build' ? ' (analysed with build execution)' : ''}`)

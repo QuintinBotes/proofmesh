@@ -1279,6 +1279,42 @@
     ],
     "FR329": [
       "packages/proofmesh/test/concurrent-index.test.ts"
+    ],
+    "FR335": [
+      "packages/proofmesh/test/resumable-index.test.ts"
+    ],
+    "FR336": [
+      "packages/proofmesh/test/resumable-index.test.ts"
+    ],
+    "FR337": [
+      "packages/proofmesh/test/resumable-index.test.ts"
+    ],
+    "FR338": [
+      "packages/proofmesh/test/resumable-index.test.ts"
+    ],
+    "FR339": [
+      "packages/proofmesh/test/resumable-index.test.ts"
+    ],
+    "FR340": [
+      "packages/proofmesh/test/resumable-index.test.ts"
+    ],
+    "FR341": [
+      "packages/proofmesh/test/resumable-index.test.ts"
+    ],
+    "FR342": [
+      "packages/proofmesh/test/resumable-index.test.ts"
+    ],
+    "FR343": [
+      "packages/proofmesh/test/resumable-index.test.ts"
+    ],
+    "FR344": [
+      "packages/proofmesh/test/resumable-index.test.ts"
+    ],
+    "FR345": [
+      "packages/proofmesh/test/resumable-index.test.ts"
+    ],
+    "FR346": [
+      "packages/proofmesh/test/resumable-index.test.ts"
     ]
   },
   "manual": {

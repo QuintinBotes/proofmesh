@@ -327,7 +327,11 @@ function envelope(ctx: Ctx, tool: ToolName, requested: Limits | undefined, r: Pa
       : null,
     missing.length ? `${missing.length} external input${missing.length === 1 ? ' was' : 's were'} missing when this snapshot was built; ${blamed} unresolved site${blamed === 1 ? ' is' : 's are'} blamed on them as dependency_missing, and workspace_status counts them by package.` : null,
   ].filter((x): x is string => !!x)
-  const limitations = [...clampNotes, ...(r.limitations ?? []), ...(ctx.compact ? [] : standing)]
+  // A snapshot published with files missing says so in every answer, compact and lean included (FR343).
+  const lost = db.prepare("select value from meta where key = 'partial'").get() as { value: string } | undefined
+  const partial = lost ? (JSON.parse(lost.value) as { adapters: string[]; missing: number; files: number }) : undefined
+  const partialNote = partial ? [`partial: adapter ${partial.adapters.join(', ')} failed, ${partial.missing} of ${partial.files} files are missing (failed with adapter_died); answers leave them out. Index again to complete the snapshot.`] : []
+  const limitations = [...partialNote, ...clampNotes, ...(r.limitations ?? []), ...(ctx.compact ? [] : standing)]
   const order = ['max_rows', 'max_depth', 'max_bytes', 'timeout'] as const
   const env: Envelope = {
     schema_version: ENVELOPE_VERSION,
