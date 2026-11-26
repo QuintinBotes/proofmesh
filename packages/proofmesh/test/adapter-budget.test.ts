@@ -37,7 +37,7 @@ const names = (n: number) => Array.from({ length: n }, (_, i) => `f${String(i).p
 
 describe('FR270 an adapter process is held to a memory budget the host enforces, and an overrun names the adapter, the budget and the peak', () => {
   it('FR270 scenario 1: an adapter whose resident memory passes its budget is stopped and the call fails with an AdapterBudgetError naming all three', async () => {
-    const a = new AdapterProcess(memlang, 60000, 20, 'memlang', 128)
+    const a = new AdapterProcess(memlang, 60000, 20, 'memlang', undefined, 128)
     try {
       await a.initialize({ protocol_version: PROTOCOL_VERSION, workspace: tmpDir('pm-ws-'), analysis_mode: 'no_execution', files: [], config: MODEL })
       const e = await a.analyze(['a.mem', 'b.mem', 'c.mem', 'd.mem']).then(() => undefined, (x: unknown) => x as AdapterBudgetError)

@@ -114,7 +114,7 @@ export function overview(db: Database.Database, snapshotId: string, input: { pat
 }
 
 function fileOverview(db: Database.Database, fileId: string, path: string, like: string | null, maxRows: number): Overview {
-  const symbols = db.prepare("select id, kind, name, qualified_name from symbol where file_id = ? and kind <> 'module' order by start_byte, id").all(fileId) as Array<{ id: string; kind: string; name: string; qualified_name: string }>
+  const symbols = db.prepare("select id, kind, name, qualified_name from symbol where file_id = ? and kind <> 'module' order by start_byte, qualified_name, kind, id").all(fileId) as Array<{ id: string; kind: string; name: string; qualified_name: string }>
   const matching = like ? new Set((db.prepare(`select id from symbol where file_id = ? and id in (select symbol_id from symbol_fts where name like ? escape '\\' or qualified_name like ? escape '\\')`).all(fileId, like, like) as Array<{ id: string }>).map((r) => r.id)) : null
   const shown = symbols.filter((s) => !matching || matching.has(s.id)).slice(0, maxRows)
   const ids = new Set(shown.map((s) => s.id))

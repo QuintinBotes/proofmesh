@@ -1,15 +1,19 @@
 import { execFile, spawn, type ChildProcess } from 'node:child_process'
 import { createRequire } from 'node:module'
 import path from 'node:path'
+import { StringDecoder } from 'node:string_decoder'
 import { checkAdapterMessage as check } from '../core/schemas.js'
 import { log } from '../core/log.js'
 import type { AnalyzeResponse, InitializeRequest, InitializeResponse } from '../core/generated.js'
 
-export class AdapterProtocolError extends Error {}
+/** `stored` is the message without the adapter's stderr: stderr can hold source text or environment values, so only the live error carries it. */
+export class AdapterProtocolError extends Error {
+  constructor(message: string, readonly stored: string = message) { super(message) }
+}
 
 /** An adapter stopped because it passed its memory budget: the host's own measure, or the engine's out-of-memory under the budget. */
 export class AdapterBudgetError extends AdapterProtocolError {
-  constructor(message: string, readonly budgetMb: number, readonly peakRssKb: number | undefined) { super(message) }
+  constructor(message: string, readonly budgetMb: number, readonly peakRssKb: number | undefined, stored?: string) { super(message, stored) }
 }
 
 /**
@@ -26,12 +30,13 @@ export function adapterBudgetMb(config: Record<string, unknown>): number {
 /** What an error keeps of an adapter's stderr: the last lines, each cut short, so a flood cannot grow a message. */
 const STDERR_TAIL_LINES = 10
 const STDERR_LINE_CHARS = 300
-/** A reply line longer than this is not a reply; the adapter is stopped instead of buffered without end. */
-const MAX_REPLY_LINE_CHARS = 256 * 1024 * 1024
+/** A reply line longer than this many bytes is not a reply; the adapter is stopped instead of buffered without end. */
+const MAX_REPLY_LINE_BYTES = 256 * 1024 * 1024
 /** After the adapter closes its input and keeps running, how long it has to exit with its own status before it is stopped. */
 const CLOSED_INPUT_GRACE_MS = 1000
 /** After 'exit', how long the streams have to drain before a descendant that keeps them open no longer holds the result back. */
 const DRAIN_GRACE_MS = 2000
+const OOM_OVERLAP = 40
 const OUT_OF_MEMORY = /out of memory|outofmemory|cannot allocate memory|\boom\b/i
 
 /** Silence allowed while an adapter initializes: it compiles the workspace then, sometimes in one synchronous call. */
@@ -45,6 +50,24 @@ export function typescriptAdapterPath(): string {
 /** .NET adapters run under `dotnet`; JavaScript adapters run under this Node. */
 /** A .dll runs on .NET, a JavaScript file on this Node, and anything else as an executable, so an adapter can be written in any language. */
 const launcher = (entry: string, budgetMb?: number): [string, string[]] => (entry.endsWith('.dll') ? ['dotnet', [entry]] : /\.[cm]?js$/.test(entry) ? [process.execPath, [...(budgetMb ? [`--max-old-space-size=${budgetMb}`] : []), entry]] : [entry, []])
+
+/**
+ * Every running adapter, and the signal handlers that exist only while one runs. Adapters are detached, so the terminal's
+ * SIGINT does not reach them, and a killed index runs no `finally`; the handler stops each group and exits with the shell's code.
+ */
+const live = new Set<AdapterProcess>()
+const EXIT_CODES: Record<string, number> = { SIGINT: 130, SIGTERM: 143, SIGHUP: 129 }
+const onSignal = (signal: NodeJS.Signals) => { for (const a of live) a.killNow(); process.exit(EXIT_CODES[signal]) }
+const track = (a: AdapterProcess) => { if (!live.size) for (const s of Object.keys(EXIT_CODES)) process.on(s as NodeJS.Signals, onSignal); live.add(a) }
+const untrack = (a: AdapterProcess) => { if (live.delete(a) && !live.size) for (const s of Object.keys(EXIT_CODES)) process.off(s as NodeJS.Signals, onSignal) }
+
+/** A promise that resolves after ms, and can be cancelled so a finished wait leaves no timer holding the process open. */
+const after = (ms: number): Promise<void> & { cancel: () => void } => {
+  let timer: NodeJS.Timeout
+  const p = new Promise<void>((resolve) => { timer = setTimeout(resolve, ms) }) as Promise<void> & { cancel: () => void }
+  p.cancel = () => clearTimeout(timer)
+  return p
+}
 
 /** One adapter subprocess speaking JSON-RPC 2.0, one JSON object per line. */
 /** The adapter protocol version this core speaks; it accepts any adapter that speaks 1.x (A22). */
@@ -70,7 +93,7 @@ export class AdapterProcess {
   peakRssKb?: number
 
   /** `budgetMb`: the most resident memory the adapter may use; the host stops it past that, and passes the limit to the engine where it can (Node, .NET). */
-  constructor(private readonly entry: string, private readonly timeoutMs = 60000, private readonly rssSampleMs = 3000, private readonly name = path.basename(entry), private readonly budgetMb?: number) {
+  constructor(private readonly entry: string, private readonly timeoutMs = 60000, private readonly rssSampleMs = 3000, private readonly name = path.basename(entry), private readonly maxReplyBytes = MAX_REPLY_LINE_BYTES, private readonly budgetMb?: number) {
     this.start()
   }
 
@@ -104,26 +127,32 @@ export class AdapterProcess {
     const [command, args] = launcher(this.entry, this.budgetMb)
     const child = this.child = spawn(command, args, {
       stdio: ['pipe', 'pipe', 'pipe'],
+      // Its own process group, so a stop reaches what the adapter started (such as MSBuild nodes) and not only the adapter.
+      detached: process.platform !== 'win32',
       env: { PATH: process.env.PATH ?? '', HOME: process.env.HOME ?? '', PROOFMESH_LOG_LEVEL: process.env.PROOFMESH_LOG_LEVEL ?? 'info', DOTNET_CLI_TELEMETRY_OPTOUT: '1', DOTNET_NOLOGO: '1', ...(this.budgetMb ? { DOTNET_GCHeapHardLimit: `0x${(this.budgetMb * 1048576).toString(16)}` } : {}), ...(process.env.DOTNET_ROOT ? { DOTNET_ROOT: process.env.DOTNET_ROOT } : {}) },
     })
     let hostKilled: string | undefined, exit: { code: number | null; signal: NodeJS.Signals | null } | undefined, settled = false
     let inputTimer: NodeJS.Timeout | undefined, drainTimer: NodeJS.Timeout | undefined
     /** Stops the adapter for a reason of the host's own; SIGKILL, because a child that ignores SIGTERM would hang the index. */
-    const stop = (why: string) => { hostKilled ??= why; child.kill('SIGKILL') }
+    const stop = (why: string) => { hostKilled ??= why; this.killGroup(child) }
     this.stopChild = stop
+    track(this)
     // The result is read on 'close', when every stream has ended, so the last stderr lines are in the message. 'exit' alone can come first.
     const settle = (what: string, restartable: boolean) => {
       if (settled) return
       settled = true
+      untrack(this)
       clearInterval(this.rssTimer); clearTimeout(inputTimer); clearTimeout(drainTimer)
+      this.killGroup(child)
       child.stdout!.destroy(); child.stderr!.destroy(); child.stdin!.destroy()
       this.exited = true
       this.noRestart = !restartable
       const first = [...this.pending.values()][0]
+      const head = `adapter ${this.name} ${what}${first?.context ? ` while ${first.context}` : ''}`
       const cause = this.stderrTail.length ? `; the adapter's last output: ${this.stderrTail.join(' | ')}` : ''
-      const message = `adapter ${this.name} ${what}${first?.context ? ` while ${first.context}` : ''}${cause}`
       // Under a budget, the engine's own out-of-memory exit is the budget at work, not the machine's.
-      this.failure = this.overBudgetKb !== undefined || (this.budgetMb && this.stderrOom && !hostKilled) ? new AdapterBudgetError(message, this.budgetMb!, this.processPeakKb) : new AdapterProtocolError(message)
+      const stored = `${head}${this.stderrTail.length ? `; ${this.stderrTail.length} lines of its stderr are not stored` : ''}`
+      this.failure = this.overBudgetKb !== undefined || (this.budgetMb && this.stderrOom && !hostKilled) ? new AdapterBudgetError(`${head}${cause}`, this.budgetMb!, this.processPeakKb, stored) : new AdapterProtocolError(`${head}${cause}`, stored)
       this.failAll(this.failure)
     }
     // A stream error (EPIPE, ECONNRESET) is a fact about the adapter, never an unhandled event: the exit status follows on 'close'.
@@ -133,26 +162,34 @@ export class AdapterProcess {
     })
     child.stdout!.on('error', (e) => log('debug', 'adapter stdout error', { code: (e as NodeJS.ErrnoException).code }))
     child.stderr!.on('error', (e) => log('debug', 'adapter stderr error', { code: (e as NodeJS.ErrnoException).code }))
-    child.stdout!.setEncoding('utf8')
-    let partial = ''
-    child.stdout!.on('data', (chunk: string) => {
-      const lines = (partial + chunk).split('\n')
+    const decoder = new StringDecoder('utf8')
+    let partial = '', lineBytes = 0
+    child.stdout!.on('data', (chunk: Buffer) => {
+      // The cap counts raw bytes of the unfinished line, before decoding and splitting: multi-byte text and a newline inside this chunk cannot hide a long line.
+      const firstNewline = chunk.indexOf(10)
+      const longest = firstNewline < 0 ? lineBytes + chunk.length : lineBytes + firstNewline
+      lineBytes = firstNewline < 0 ? lineBytes + chunk.length : chunk.length - chunk.lastIndexOf(10) - 1
+      if (longest > this.maxReplyBytes) { partial = ''; stop(`wrote a reply line longer than ${this.maxReplyBytes} bytes (stopped with SIGKILL)`); return }
+      const lines = (partial + decoder.write(chunk)).split('\n')
       partial = lines.pop()!
       for (const line of lines) this.onLine(line.endsWith('\r') ? line.slice(0, -1) : line)
-      if (partial.length > MAX_REPLY_LINE_CHARS) { partial = ''; stop(`wrote a reply line longer than ${MAX_REPLY_LINE_CHARS} characters (stopped with SIGKILL)`) }
     })
-    child.stdout!.on('end', () => { if (partial) this.onLine(partial); partial = '' })
+    child.stdout!.on('end', () => { partial += decoder.end(); if (partial) this.onLine(partial); partial = '' })
     // The last stderr lines travel with the exit error: a crash must name its cause, not just its exit code. Only the head of each line is kept.
     child.stderr!.setEncoding('utf8')
     let current = ''
     const keep = () => {
       log('debug', 'adapter stderr', { line: current })
-      if (OUT_OF_MEMORY.test(current)) this.stderrOom = true
       this.stderrTail.push(current)
       if (this.stderrTail.length > STDERR_TAIL_LINES) this.stderrTail.shift()
       current = ''
     }
+    // The whole stream is scanned for the marker, a chunk at a time with the end of the one before, because the line kept for the message is cut short.
+    let seen = ''
     child.stderr!.on('data', (chunk: string) => {
+      const window = seen + chunk
+      if (OUT_OF_MEMORY.test(window)) this.stderrOom = true
+      seen = window.slice(-OOM_OVERLAP)
       const parts = chunk.split('\n')
       parts.forEach((part, i) => {
         if (current.length < STDERR_LINE_CHARS) current += part.slice(0, STDERR_LINE_CHARS - current.length)
@@ -173,6 +210,17 @@ export class AdapterProcess {
     child.on('close', () => settle(describe(), restartable()))
   }
 
+  /** SIGKILL to the adapter's process group (the adapter and what it started); the adapter alone where groups do not exist. */
+  private killGroup(child: ChildProcess): void {
+    try {
+      if (process.platform !== 'win32' && child.pid) process.kill(-child.pid, 'SIGKILL')
+      else child.kill('SIGKILL')
+    } catch { /* already gone */ }
+  }
+
+  /** Stops the adapter's process group at once; used when the index process itself is being stopped. */
+  killNow(): void { this.killGroup(this.child) }
+
   private stopChild: (why: string) => void = () => {}
 
   private onLine(line: string): void {
@@ -180,12 +228,12 @@ export class AdapterProcess {
     try {
       msg = JSON.parse(line)
     } catch {
-      this.failAll(new AdapterProtocolError('adapter wrote a line that is not JSON'))
+      this.stopChild('wrote a line that is not JSON (stopped with SIGKILL)')
       return
     }
     if (msg.method === 'log') {
       const problem = check('adapter-protocol/log.notification.schema.json', msg.params)
-      if (problem) this.failAll(new AdapterProtocolError(`invalid log notification: ${problem}`))
+      if (problem) this.stopChild(`sent an invalid log notification: ${problem} (stopped with SIGKILL)`)
       // The timeout measures silence, not duration: an adapter that reports progress may work as long as it needs.
       else for (const id of this.pending.keys()) this.arm(id)
       return
@@ -228,7 +276,7 @@ export class AdapterProcess {
     const spoken = (result as { adapter?: { protocol_version?: unknown } })?.adapter?.protocol_version
     if (typeof spoken !== 'string' || !/^1\.(0|[1-9][0-9]*)$/.test(spoken)) throw new AdapterProtocolError(`the adapter speaks protocol ${String(spoken)} and this core speaks 1.x`)
     const problem = check('adapter-protocol/initialize.response.schema.json', result)
-    if (problem) throw new AdapterProtocolError(`invalid initialize response: ${problem}`)
+    if (problem) { this.stopChild(`sent an invalid initialize response (stopped with SIGKILL)`); throw new AdapterProtocolError(`invalid initialize response: ${problem}`) }
     return result as InitializeResponse
   }
 
@@ -236,7 +284,7 @@ export class AdapterProcess {
   async workspace(): Promise<AnalyzeResponse> {
     const result = await this.request('workspace', {}, undefined, 'reading workspace facts')
     const problem = check('adapter-protocol/analyze.response.schema.json', result)
-    if (problem) throw new AdapterProtocolError(`invalid workspace response: ${problem}`)
+    if (problem) { this.stopChild(`sent an invalid workspace response (stopped with SIGKILL)`); throw new AdapterProtocolError(`invalid workspace response: ${problem}`) }
     return result as AnalyzeResponse
   }
 
@@ -258,7 +306,7 @@ export class AdapterProcess {
 
   /** Starts the adapter again and initializes it as before; for a caller that retries with less work after a budget overrun. */
   async restart(): Promise<void> {
-    this.child.kill('SIGKILL')
+    this.killGroup(this.child)
     this.start()
     await this.initialize(this.initParams!)
   }
@@ -266,7 +314,7 @@ export class AdapterProcess {
   private async analyzeOnce(paths: string[]): Promise<AnalyzeResponse> {
     const result = await this.request('analyze', { paths }, undefined, `analysing ${paths[0] ?? 'no file'}${paths.length > 1 ? ` and ${paths.length - 1} more of its batch` : ''}`)
     const problem = check('adapter-protocol/analyze.response.schema.json', result)
-    if (problem) throw new AdapterProtocolError(`invalid analyze response: ${problem}`)
+    if (problem) { this.stopChild(`sent an invalid analyze response (stopped with SIGKILL)`); throw new AdapterProtocolError(`invalid analyze response: ${problem}`) }
     return result as AnalyzeResponse
   }
 
@@ -275,21 +323,24 @@ export class AdapterProcess {
     if (this.exited) return false
     const closed = new Promise<boolean>((resolve) => this.child.once('close', () => resolve(true)))
     const answered = this.request('shutdown', {}).then(() => true, () => false)
-    const clean = await Promise.race([Promise.all([answered, closed]).then(([a, e]) => a && e), new Promise<boolean>((r) => setTimeout(() => r(false), ms))])
-    this.child.kill('SIGKILL')
+    const limit = after(ms)
+    const clean = await Promise.race([Promise.all([answered, closed]).then(([a, e]) => a && e), limit.then(() => false)]).finally(() => limit.cancel())
+    this.killGroup(this.child)
     return clean
   }
 
   async shutdown(): Promise<void> {
     if (this.exited) return
     const closed = new Promise<void>((resolve) => this.child.once('close', () => resolve()))
+    const answerLimit = after(2000)
     try {
-      await Promise.race([this.request('shutdown', {}), new Promise((r) => setTimeout(r, 2000))])
+      await Promise.race([this.request('shutdown', {}), answerLimit])
     } catch {
       // The adapter may exit before answering; shutdown is best effort.
-    }
+    } finally { answerLimit.cancel() }
     // It was asked to exit; one that ignores the request, or SIGTERM, would keep the index process alive.
-    await Promise.race([closed, new Promise((r) => setTimeout(r, 1000))])
-    this.child.kill('SIGKILL')
+    const closeLimit = after(1000)
+    await Promise.race([closed, closeLimit]).finally(() => closeLimit.cancel())
+    this.killGroup(this.child)
   }
 }

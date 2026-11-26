@@ -1056,6 +1056,22 @@
     "FR230": [
       "packages/proofmesh/test/scip-run.test.ts"
     ],
+    "FR234": [
+      "packages/proofmesh/test/reproducible-order.test.ts",
+      "packages/proofmesh/test/rosetta.test.ts"
+    ],
+    "FR235": [
+      "packages/proofmesh/test/order-review.test.ts"
+    ],
+    "FR236": [
+      "packages/proofmesh/test/order-review.test.ts"
+    ],
+    "FR237": [
+      "packages/proofmesh/test/order-review.test.ts"
+    ],
+    "FR238": [
+      "packages/proofmesh/test/order-review.test.ts"
+    ],
     "FR250": [
       "packages/proofmesh/test/seams-http.test.ts"
     ],
@@ -1102,6 +1118,18 @@
       "packages/proofmesh/test/adapter-failure.test.ts"
     ],
     "FR265": [
+      "packages/proofmesh/test/adapter-failure.test.ts"
+    ],
+    "FR266": [
+      "packages/proofmesh/test/adapter-failure.test.ts"
+    ],
+    "FR267": [
+      "packages/proofmesh/test/adapter-failure.test.ts"
+    ],
+    "FR268": [
+      "packages/proofmesh/test/adapter-failure.test.ts"
+    ],
+    "FR269": [
       "packages/proofmesh/test/adapter-failure.test.ts"
     ],
     "FR270": [

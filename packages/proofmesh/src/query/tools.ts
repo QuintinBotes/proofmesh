@@ -9,6 +9,7 @@ import { FORMAT_VERSION, openSnapshot } from '../meshstore/snapshot.js'
 import { PROTOCOL_VERSION } from '../indexer/adapter-host.js'
 import { LINK_FORMAT_VERSION } from '../links/index.js'
 import { DISPATCH_TYPES, SqliteEdges, trace } from '../meshstore/traversal.js'
+import { assertionKey, bySite, byKey, evidenceKey, hasSites, nodeKey, siteCols, siteOrder, type Sited } from '../meshstore/order.js'
 import { staticPropertyReads } from './static-reads.js'
 import { externalUsage, type UsageGroup } from './external-usage.js'
 import { findQuerySource, WEIGHED } from './query-source.js'
@@ -390,7 +391,7 @@ const symbolRow = (s: Pick<SymbolRow, 'id' | 'kind' | 'name' | 'qualified_name' 
 
 /** The symbol a `{ name, path }` names: its lean name, else its plain name, unique in that file (FR100). */
 function symbolNamed(db: Database.Database, named: { name: string; path: string }): string {
-  const inFile = db.prepare(`${SYMBOL_SQL} where f.path = ? order by s.start_line, s.id`).all(named.path) as SymbolRow[]
+  const inFile = db.prepare(`${SYMBOL_SQL} where f.path = ? order by s.start_line, s.start_byte, s.qualified_name, s.kind, s.id`).all(named.path) as SymbolRow[]
   const exact = inFile.filter((s) => leanName(s) === named.name)
   const hits = exact.length ? exact : inFile.filter((s) => s.name === named.name)
   if (hits.length === 1) return hits[0]!.id
@@ -437,9 +438,9 @@ function withNamedIds(db: Database.Database, tool: string, input: Record<string,
 }
 
 function siteOf(db: Database.Database, assertionId: string): { path: string; start_line: number; end_line: number; evidence: string[] } {
-  const rows = db.prepare('select e.id, f.path, e.start_line, e.end_line from assertion_evidence ae join evidence e on e.id = ae.evidence_id join file f on f.id = e.file_id where ae.assertion_id = ? order by e.start_byte').all(assertionId) as Array<{ id: string; path: string; start_line: number; end_line: number }>
+  const rows = db.prepare('select e.id, f.path, e.start_line, e.end_line from assertion_evidence ae join evidence e on e.id = ae.evidence_id join file f on f.id = e.file_id where ae.assertion_id = ? order by f.path, e.start_byte').all(assertionId) as Array<{ id: string; path: string; start_line: number; end_line: number }>
   const first = rows[0]!
-  return { path: first.path, start_line: first.start_line, end_line: first.end_line, evidence: rows.map((r) => r.id).sort() }
+  return { path: first.path, start_line: first.start_line, end_line: first.end_line, evidence: rows.map((r) => r.id) }
 }
 
 /**
@@ -517,15 +518,15 @@ function incomingBoundaries(ctx: Ctx, subject: string, via: Map<string, string>)
   const arity = parameterCount(subj.signature)
   const byName = `from assertion a where a.type = 'calls' and a.resolution = 'unresolved' and json_extract(a.detail, '$.callee') = ?`
   const nameMatched = (db.prepare(`select count(*) as n ${byName}`).get(subj.name) as { n: number }).n
-  const matched = db.prepare(`select a.id, a.type, a.resolution, a.reason, a.source_id ${byName} order by (json_extract(a.detail, '$.arity') = ?) desc, a.id limit ?`).all(subj.name, arity === null ? null : String(arity), limit) as Row[]
+  const matched = db.prepare(`select a.id, a.type, a.resolution, a.reason, a.source_id, (json_extract(a.detail, '$.arity') = ?) as _arity, ${siteCols(db)} ${byName} order by _arity desc, ${siteOrder(db)} limit ?`).all(arity === null ? null : String(arity), subj.name, limit) as Row[]
   const dir = subj.path.slice(0, subj.path.lastIndexOf('/') + 1)
   const nearest = (prefix: string, n: number, exclude: string[]): Row[] => n <= 0 ? [] : db.prepare(`select a.id, a.type, a.resolution, a.reason, a.source_id from assertion a join assertion_evidence ae on ae.assertion_id = a.id join evidence e on e.id = ae.evidence_id join file f on f.id = e.file_id
-    where a.resolution = 'unresolved' and a.type = 'calls' and a.source_id <> ? and coalesce(json_extract(a.detail, '$.callee'), '') <> ? and f.path like ? escape '\\'${exclude.length ? ` and a.id not in (${exclude.map(() => '?').join(',')})` : ''} group by a.id order by a.id limit ?`).all(subject, subj.name, `${prefix.replace(/[\\%_]/g, (c) => `\\${c}`)}%`, ...exclude, n) as Row[]
+    where a.resolution = 'unresolved' and a.type = 'calls' and a.source_id <> ? and coalesce(json_extract(a.detail, '$.callee'), '') <> ? and f.path like ? escape '\\'${exclude.length ? ` and a.id not in (${exclude.map(() => '?').join(',')})` : ''} group by a.id order by min(f.path), min(e.start_byte), (select s.qualified_name from symbol s where s.id = a.source_id), a.id limit ?`).all(subject, subj.name, `${prefix.replace(/[\\%_]/g, (c) => `\\${c}`)}%`, ...exclude, n) as Row[]
   const callers = new Set(matched.map((r) => r.id))
   const others = Math.min(UNRESOLVED_SHOWN, limit - matched.length)
   const near = nearest(dir, others, [])
   const rows = [
-    ...(db.prepare(`select distinct a.id, a.type, a.resolution, a.reason, a.source_id ${candidates} order by a.id limit ?`).all(...named, limit) as Row[]),
+    ...(db.prepare(`select distinct a.id, a.type, a.resolution, a.reason, a.source_id, ${siteCols(db)} ${candidates} order by ${siteOrder(db)} limit ?`).all(...named, limit) as Row[]),
     ...matched,
     ...near,
     ...nearest('', others - near.length, near.map((r) => r.id)),
@@ -546,7 +547,7 @@ function incomingBoundaries(ctx: Ctx, subject: string, via: Map<string, string>)
 function boundariesFrom(db: Database.Database, types: string[], where: string, limit: number, ...params: unknown[]): Boundaries {
   const from = `from assertion a where a.type in (${types.map(() => '?').join(',')}) and a.resolution in ('unresolved','candidate','ambiguous') and ${where}`
   const groups = db.prepare(`select a.resolution, a.reason, count(*) as n ${from} group by a.resolution, a.reason`).all(...types, ...params) as Array<{ resolution: string; reason: string | null; n: number }>
-  const rows = db.prepare(`select a.id, a.type, a.resolution, a.reason, a.source_id ${from} order by a.id limit ?`).all(...types, ...params, limit) as Array<{ id: string; type: string; resolution: string; reason: string; source_id: string }>
+  const rows = db.prepare(`select a.id, a.type, a.resolution, a.reason, a.source_id, ${siteCols(db)} ${from} order by ${siteOrder(db)} limit ?`).all(...types, ...params, limit) as Array<{ id: string; type: string; resolution: string; reason: string; source_id: string }>
   return {
     count: groups.reduce((n, g) => n + g.n, 0),
     by_reason: Object.fromEntries(groups.filter((g) => g.resolution === 'unresolved' && g.reason).map((g) => [g.reason!, g.n])),
@@ -656,7 +657,7 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
       order by case when lower(s.name) = @lower then 0 when lower(s.name) like @prefix escape '\\' then 1 when lower(s.name) like @like escape '\\' then 2 else 3 end,
         case s.kind when 'project' then 0 when 'module' then 2 when 'method' then 3 when 'function' then 3 when 'property' then 3 when 'field' then 3
           when 'constructor' then 3 when 'variable' then 3 else 1 end,
-        s.qualified_name, f.path, s.id
+        s.qualified_name, f.path, s.start_line, s.start_byte, s.kind, s.id
       limit @limit offset @offset`).all({ like: `%${escape(text)}%`, prefix: `${escape(lower)}%`, lower, limit: ctx.limits.max_rows + 1, offset: ctx.page.offset, ...(prefix ? { path: `${escape(prefix)}%` } : {}), ...Object.fromEntries((kinds ?? []).map((k, i) => [`k${i}`, k])) }) as SymbolRow[]
     const symbols = withRoles(ctx.db, rows.slice(0, ctx.limits.max_rows).map(publicSymbol))
     // A path prefix that names no indexed file says so, so an empty answer is not read as "no such symbol" (FR015).
@@ -1005,7 +1006,7 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     const loadedNotUsed = [...new Map(rows.filter((r) => r.read_kind === 'orm' && !appRead.has(`${r.endpoint}\u0000${r.entity}\u0000${r.property}`)).map((r) => [`${r.endpoint}\u0000${r.entity}\u0000${r.property}`, { endpoint: r.endpoint, entity: r.entity, property: r.property }])).values()]
     // Mapped properties of the entity that no import mentions at all, when the snapshot knows the entity's properties.
     const unread = entity
-      ? (ctx.db.prepare("select id, name from symbol where kind in ('property', 'field') and qualified_name like ? escape '\\' order by name").all(`${entity.replace(/[\\%_]/g, (c) => `\\${c}`)}.%`) as Array<{ id: string; name: string }>)
+      ? (ctx.db.prepare("select id, name from symbol where kind in ('property', 'field') and qualified_name like ? escape '\\' order by name, qualified_name, start_byte").all(`${entity.replace(/[\\%_]/g, (c) => `\\${c}`)}.%`) as Array<{ id: string; name: string }>)
           .filter((p) => !p.name.includes('.') && !rows.some((r) => r.property === p.name)).map((p) => ({ entity, property: p.name, symbol_id: p.id }))
       : []
     const limitations: string[] = [
@@ -1103,15 +1104,22 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     // With include_tests false, a row whose other side lives in test code is left out in SQL, so paging stays a slice of one order.
     // An importer's source is the file itself, so a file id is looked up as well as a symbol id.
     const notTest = (side: string) => input.include_tests === false ? ` and coalesce((select pm_is_test(f.path, ${rolesSql(ctx.db)}) from symbol s join file f on f.id = s.file_id where s.id = ${side}), (select pm_is_test(f.path) from file f where f.id = ${side}), 0) = 0` : ''
-    type A = { id: string; type: string; origin: string; resolution: string; source_kind: string; source_id: string; target_kind: string | null; target_id: string | null; reason: string | null; detail: string | null }
+    type A = Sited & { origin: string; resolution: string; source_kind: string; source_id: string; target_kind: string | null; target_id: string | null; reason: string | null; detail: string | null }
     const all: Array<A & { direction: 'in' | 'out' }> = []
-    // Outgoing then incoming, each by assertion ID: fetching offset + cap of each keeps every page a slice of one total order.
+    // Outgoing then incoming, each by site (path, then position), then type, then id: fetching offset + cap of each keeps every page a slice of one total order.
     const offset = ctx.page.offset, cap = offset + ctx.limits.max_rows + 1
     // Ownership is recorded on the file module (FR016); every symbol in the file inherits its owners.
     const inherited = !isFile && !isExternal && direction !== 'in' && types.includes('owned_by')
-      ? ctx.db.prepare(`select a.* from assertion a join symbol m on m.id = a.source_id where m.kind = 'module' and m.id <> ? and m.file_id = (select file_id from symbol where id = ?) and a.type = 'owned_by' and a.resolution in (${rp}) order by a.id`).all(subject, subject, ...resolutions) as A[]
+      ? ctx.db.prepare(`select a.*, ${siteCols(ctx.db)} from assertion a join symbol m on m.id = a.source_id where m.kind = 'module' and m.id <> ? and m.file_id = (select file_id from symbol where id = ?) and a.type = 'owned_by' and a.resolution in (${rp})`).all(subject, subject, ...resolutions) as A[]
       : []
-    if (direction !== 'in') all.push(...[...(ctx.db.prepare(`select * from assertion where source_id in (${sp}) and type in (${tp}) and resolution in (${rp})${outFilter}${notTest('assertion.target_id')} order by id limit ?`).all(...ids, ...types, ...resolutions, cap) as A[]), ...inherited].sort((a, b) => (a.id < b.id ? -1 : 1)).slice(0, cap).map((a) => ({ ...a, direction: 'out' as const })))
+    // The unary plus keeps type and resolution out of the index lookup, so the index order of the site is what the query returns.
+    // One index-ordered read for each id the subject answers to, so no read sorts more than the rows it returns.
+    const indexed = (idx: string) => (hasSites(ctx.db) ? ` indexed by ${idx}` : '')
+    const mergeInto = (rows: A[][], dir: 'in' | 'out') => {
+      const seen = new Set<string>()
+      return rows.flat().filter((a) => !seen.has(a.id) && seen.add(a.id)).sort(bySite).slice(0, cap).map((a) => ({ ...a, direction: dir }))
+    }
+    if (direction !== 'in') all.push(...mergeInto([...ids.map((id) => ctx.db.prepare(`select a.*, ${siteCols(ctx.db)} from assertion a${indexed('assertion_by_source_site')} where a.source_id = ? and +a.type in (${tp}) and +a.resolution in (${rp})${outFilter}${notTest('a.target_id')} order by ${siteOrder(ctx.db)} limit ?`).all(id, ...types, ...resolutions, cap) as A[]), inherited], 'out'))
     // Inbound: assertions that target the subject, and candidate or ambiguous calls whose candidates name it (A18). A call or reference
     // to a member the subject implements or overrides may dispatch to it, so those come too, each saying which member it named.
     const via = !isFile && !isExternal && direction !== 'out' ? dispatchedFrom(ctx.db, subject) : new Map<string, string>()
@@ -1119,7 +1127,11 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     const vp = [...via.keys()].map(() => '?').join(','), dp = dispatched.map(() => '?').join(','), np = named.map(() => '?').join(',')
     const inbound = `select * from assertion where (target_id in (${sp}) and type in (${tp})${via.size && dispatched.length ? ` or target_id in (${vp}) and type in (${dp})` : ''}) and resolution in (${rp})${notTest('assertion.source_id')} union select a.* from assertion_candidate c join assertion a on a.id = c.assertion_id where c.symbol_id in (${np}) and a.type in (${tp}) and a.resolution in (${rp})${notTest('a.source_id')}`
     const inboundParams = [...ids, ...types, ...(via.size && dispatched.length ? [...via.keys(), ...dispatched] : []), ...resolutions, ...named, ...types, ...resolutions]
-    if (direction !== 'out') all.push(...(ctx.db.prepare(`${inbound} order by id limit ?`).all(...inboundParams, cap) as A[]).map((a) => ({ ...a, direction: 'in' as const })))
+    if (direction !== 'out') {
+      const byTarget = (id: string, tys: string[]) => ctx.db.prepare(`select a.*, ${siteCols(ctx.db)} from assertion a${indexed('assertion_by_target_site')} where a.target_id = ? and +a.type in (${tys.map(() => '?').join(',')}) and +a.resolution in (${rp})${notTest('a.source_id')} order by ${siteOrder(ctx.db)} limit ?`).all(id, ...tys, ...resolutions, cap) as A[]
+      const byCandidate = (id: string) => ctx.db.prepare(`select a.*, ${siteCols(ctx.db, 'a', 'c')} from assertion_candidate c${indexed('candidate_by_site')} join assertion a on a.id = c.assertion_id where c.symbol_id = ? and +a.type in (${tp}) and +a.resolution in (${rp})${notTest('a.source_id')} order by ${siteOrder(ctx.db, 'a', 'c', 'c.assertion_id')} limit ?`).all(id, ...types, ...resolutions, cap) as A[]
+      all.push(...mergeInto([...ids.map((id) => byTarget(id, types)), ...(via.size && dispatched.length ? [...via.keys()].map((id) => byTarget(id, dispatched)) : []), ...named.map(byCandidate)], 'in'))
+    }
     const viaOf = (a: A & { direction: 'in' | 'out' }): string | undefined => {
       if (a.direction !== 'in' || !via.size) return undefined
       if (a.target_id) return via.has(a.target_id) ? a.target_id : undefined
@@ -1176,7 +1188,7 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     ]
     return {
       data: { relationships: relationships.slice(0, ctx.limits.max_rows), boundaries: boundaries.items, totals },
-      evidence_ids: [...new Set(relationships.slice(0, ctx.limits.max_rows).flatMap((r) => r.evidence_ids))].sort(),
+      evidence_ids: [...new Set(relationships.slice(0, ctx.limits.max_rows).flatMap((r) => r.evidence_ids))].sort(byKey((i) => evidenceKey(ctx.db, i))),
       unresolved: { scope: 'query', items: [...boundaries.items, ...outUnresolved], count: boundaries.count + outGroups.reduce((n, g) => n + g.n, 0), by_reason: byReason },
       stop_reasons: truncated ? ['max_rows'] : [], more: relationships.length > ctx.limits.max_rows, limitations, shrink: 'relationships',
       // One row per site: the other side's name at the call, import or reference line, tagged with what a plain row would hide (FR096).
@@ -1213,7 +1225,7 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     const sqlite = new SqliteEdges(ctx.db, follow.on ? (nodes) => candidatesFrom(ctx.db, nodes, types) : undefined)
     const withFiles = (nodes: string[]) => [...nodes, ...nodes.flatMap((n) => fileOf.get(n) ?? [])]
     const edges = { outEdges: (nodes: string[], ty: string[], rs: string[]) => sqlite.outEdges(withFiles(nodes), ty, rs).map((e) => ({ ...e, src: one(e.src), dst: one(e.dst) })) }
-    const t = trace(edges, { source, target, types, resolutions, maxDepth: ctx.limits.max_depth, maxRows: ctx.limits.max_rows, deadline: ctx.started + ctx.limits.timeout_ms })
+    const t = trace(edges, { source, target, types, resolutions, maxDepth: ctx.limits.max_depth, maxRows: ctx.limits.max_rows, deadline: ctx.started + ctx.limits.timeout_ms, rank: (id) => (id.startsWith('as_') ? assertionKey(ctx.db, id) : nodeKey(ctx.db, id)) })
     const expanded = withFiles(t.expanded)
     const boundaries = expanded.length
       // A candidate site the walk followed is no gap in it; one it never follows, for its cap, still is.
@@ -1233,7 +1245,7 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     if (ctx.lean && t.paths.length > 1) limitations.push(`${t.paths.length - 1} other shortest path${t.paths.length === 2 ? '' : 's'} of the same length; envelope compact lists them.`)
     const ids = new Set<string>([source, target, ...t.paths.flatMap((p) => p.nodes), ...t.horizon.map((h) => h.id), ...boundaries.items.map((b) => b.from_id), ...t.explored.flatMap((e) => [e.from, e.to])])
     const nodes: Record<string, unknown> = {}
-    for (const id of [...ids].sort()) {
+    for (const id of [...ids].sort(byKey((i) => nodeKey(ctx.db, i)))) {
       const s = ctx.db.prepare(`${SYMBOL_SQL} where s.id = ?`).get(id) as SymbolRow | undefined
       if (s) { nodes[id] = { kind: s.kind, name: s.name, qualified_name: s.qualified_name, path: s.path, start_line: s.start_line }; continue }
       const x = ctx.db.prepare('select module, name from external_symbol where id = ?').get(id) as { module: string; name: string } | undefined
@@ -1244,7 +1256,7 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     }
     const relationships: Record<string, unknown> = {}
     const hopBasis = new Map<string, Basis>()
-    for (const id of [...new Set([...t.paths.flatMap((p) => p.assertions), ...t.explored.map((e) => e.assertion_id)])].sort()) {
+    for (const id of [...new Set([...t.paths.flatMap((p) => p.assertions), ...t.explored.map((e) => e.assertion_id)])].sort(byKey((i) => assertionKey(ctx.db, i)))) {
       const a = ctx.db.prepare('select type, origin, resolution, detail from assertion where id = ?').get(id) as { type: string; origin: string; resolution: string; detail: string | null }
       const basis = basisOf(a) ?? 'observed'
       hopBasis.set(id, basis)
@@ -1265,7 +1277,7 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     }
     return {
       data: { conclusion, paths, search: { levels: t.levels, stopped_by: t.stopped_by, horizon: t.horizon, explored: t.explored, explored_truncated: t.explored_truncated }, boundaries: boundaries.items, nodes, relationships },
-      evidence_ids: [...new Set(t.paths.flatMap((p) => p.assertions.flatMap((a) => siteOf(ctx.db, a).evidence)))].sort(),
+      evidence_ids: [...new Set(t.paths.flatMap((p) => p.assertions.flatMap((a) => siteOf(ctx.db, a).evidence)))].sort(byKey((i) => evidenceKey(ctx.db, i))),
       unresolved: { scope: 'query', items: boundaries.items, count: boundaries.count, by_reason: boundaries.by_reason }, stop_reasons: stop, limitations, shrink: ['search.explored', 'boundaries', 'search.horizon', 'paths'], keep: 1, prune,
       // The first path's hops in order: each node at its call to the next (at its declaration for a dispatch hop), then the target (FR098).
       lean: (data) => {

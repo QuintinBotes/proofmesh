@@ -3,7 +3,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type Database from 'better-sqlite3'
 import { canonicalJson, derivedId, sha256, sha256File } from '../core/hash.js'
-import { ProofmeshError } from '../core/errors.js'
+import { ProofmeshError, storedMessage } from '../core/errors.js'
 import { log } from '../core/log.js'
 import type { AnalyzeResponse, InitializeResponse } from '../core/generated.js'
 import { Catalog, LEASE_OWNER } from '../meshstore/catalog.js'
@@ -72,8 +72,10 @@ function resumable(file: string): boolean {
   }
 }
 /** A failed adapter call as the index reports it: the adapter named once, and which adapters had finished, for the run report. */
-const adapterFailure = (id: string, finished: string[], what: string, e: Error, extra: Record<string, unknown> = {}) =>
-  new ProofmeshError('ADAPTER_UNSUPPORTED', e.message.startsWith(`adapter ${id} `) ? e.message : `adapter ${id} ${what}: ${e.message}`, { failed_adapter: id, completed_adapters: finished, ...extra })
+const adapterFailure = (id: string, finished: string[], what: string, e: AdapterProtocolError, extra: Record<string, unknown> = {}) => {
+  const say = (text: string) => (text.startsWith(`adapter ${id} `) ? text : `adapter ${id} ${what}: ${text}`)
+  return new ProofmeshError('ADAPTER_UNSUPPORTED', say(e.message), { failed_adapter: id, completed_adapters: finished, stored_message: say(e.stored), ...extra })
+}
 const DISPOSITION: Record<Discovered['status'], string> = { capture: 'pending', excluded: 'excluded_by_rule', unsupported: 'unsupported', failed: 'failed' }
 /** Every file row reports each capability separately (FR003): what its adapter reported, and `fill` for each it left out. */
 const capabilities = (reported: Record<string, string>, fill: string) => canonicalJson({ ...Object.fromEntries(CAPS.map((k) => [k, fill])), ...reported })
@@ -154,7 +156,7 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
     }
     for (const run of runs) {
       catalog.verifyExtensions(run.spec.id)
-      run.process = new AdapterProcess(run.spec.entry()!, undefined, Number(process.env.PROOFMESH_ADAPTER_RSS_SAMPLE_MS) || undefined, run.spec.id, run.budgetMb)
+      run.process = new AdapterProcess(run.spec.entry()!, undefined, Number(process.env.PROOFMESH_ADAPTER_RSS_SAMPLE_MS) || undefined, run.spec.id, undefined, run.budgetMb)
       progress({ phase: 'initialize', adapter: run.spec.id, language: languagesOf(run), done: 0, total: run.sources.length + run.configs.length })
       const init = await run.process.initialize({
         // External inputs such as installed packages are read from the registered working tree, also for a commit.
@@ -375,6 +377,7 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
         }
       })()
       // Hashing needs each file's captured text and the declared spans, so it follows the last write and costs adapters nothing (FR130).
+      fillSites(db)
       const unreadable = fillBodyHashes(db, store)
       if (unreadable.length) db.prepare("insert into meta (key, value) values ('body_hash_missing', ?)").run(canonicalJson({ count: unreadable.length, paths: unreadable.slice(0, 20) }))
       // A key the core had to disambiguate means an adapter named two declarations alike: recorded, never silent (FR147).
@@ -402,7 +405,7 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
       return { snapshotId, status: 'published', analysisMode, counts, reuse, commit: checkout?.git.commit, adapterPeakRssKb: await peaks(), ...(memoryRestarts.length ? { memoryRestarts } : {}), ...(batches.done ? { resumed: batches } : {}) }
     } catch (e) {
       if (db.open) db.close()
-      catalog.markFailed(snapshotId, e instanceof Error ? e.message : String(e))
+      catalog.markFailed(snapshotId, storedMessage(e))
       // Only an interruption during analysis is resumable; a run that failed after it starts clean next time.
       if (analysed) fs.rmSync(stagingDir(dataDir, snapshotId), { recursive: true, force: true })
       throw e
@@ -634,6 +637,13 @@ class FactWriter {
 }
 
 /** Publication contract: every check must pass before a snapshot can be sealed. */
+/** The site rows are ordered by, from each assertion's first evidence by path then position, so a page of rows is read in that order without sorting them all (FR234). */
+function fillSites(db: Database.Database): void {
+  const first = (col: string) => `(select ${col} from assertion_evidence ae join evidence e on e.id = ae.evidence_id join file f on f.id = e.file_id where ae.assertion_id = assertion.id order by f.path, e.start_byte limit 1)`
+  db.exec(`update assertion set site_path = coalesce(${first('f.path')}, ''), site_byte = coalesce(${first('e.start_byte')}, 0)`)
+  db.exec('update assertion_candidate set type = a.type, site_path = a.site_path, site_byte = a.site_byte from assertion a where a.id = assertion_candidate.assertion_id')
+}
+
 function validate(db: Database.Database, store: EvidenceStore): void {
   const fail = (what: string) => { throw new ProofmeshError('INTERNAL_ERROR', `snapshot validation failed: ${what}`) }
   const one = <T>(sql: string) => db.prepare(sql).get() as T
