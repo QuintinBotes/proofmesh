@@ -830,6 +830,39 @@
       "packages/proofmesh/test/build-graph-jvm.test.ts",
       "packages/proofmesh/test/incremental.test.ts"
     ],
+    "FR240": [
+      "packages/proofmesh/test/build-graph.test.ts"
+    ],
+    "FR241": [
+      "packages/proofmesh/test/build-graph.test.ts"
+    ],
+    "FR242": [
+      "packages/proofmesh/test/build-graph.test.ts"
+    ],
+    "FR243": [
+      "packages/proofmesh/test/build-graph.test.ts"
+    ],
+    "FR244": [
+      "packages/proofmesh/test/build-graph.test.ts"
+    ],
+    "FR245": [
+      "packages/proofmesh/test/build-graph.test.ts",
+      "packages/proofmesh/test/build-graph-jvm.test.ts",
+      "packages/proofmesh/test/incremental.test.ts"
+    ],
+    "FR246": [
+      "packages/proofmesh/test/build-graph-jvm.test.ts"
+    ],
+    "FR247": [
+      "packages/proofmesh/test/build-graph-jvm.test.ts"
+    ],
+    "FR248": [
+      "packages/proofmesh/test/build-graph-jvm.test.ts"
+    ],
+    "FR249": [
+      "packages/proofmesh/test/build-graph.test.ts",
+      "packages/proofmesh/test/build-graph-jvm.test.ts"
+    ],
     "FR136": [
       "packages/proofmesh/test/census.test.ts"
     ],
@@ -1038,6 +1071,36 @@
     ],
     "FR238": [
       "packages/proofmesh/test/order-review.test.ts"
+    ],
+    "FR250": [
+      "packages/proofmesh/test/seams-http.test.ts"
+    ],
+    "FR251": [
+      "packages/proofmesh/test/seams-http.test.ts"
+    ],
+    "FR252": [
+      "packages/proofmesh/test/seams-http.test.ts"
+    ],
+    "FR253": [
+      "packages/proofmesh/test/seams-http.test.ts"
+    ],
+    "FR254": [
+      "packages/proofmesh/test/seams-http.test.ts"
+    ],
+    "FR255": [
+      "packages/proofmesh/test/seams-http.test.ts"
+    ],
+    "FR256": [
+      "packages/proofmesh/test/seams-http.test.ts"
+    ],
+    "FR257": [
+      "packages/proofmesh/test/seams-http.test.ts"
+    ],
+    "FR258": [
+      "packages/proofmesh/test/seams-http.test.ts"
+    ],
+    "FR259": [
+      "packages/proofmesh/test/seams-http.test.ts"
     ]
   },
   "manual": {

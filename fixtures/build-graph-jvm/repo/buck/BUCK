@@ -1,0 +1,5 @@
+cxx_library(
+    name = "calc",
+    srcs = ["calc.cpp"],
+    exported_headers = ["calc.h"],
+)
