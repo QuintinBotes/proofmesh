@@ -36,6 +36,8 @@ export type IndexResult = {
   resumed?: { done: number; total: number }
   /** Source files whose cached facts were replayed because nothing they depend on changed, and files the adapters analysed (A16). */
   reuse?: { reused: number; analysed: number }
+  /** Set when an adapter died and `allowPartial` published what it had analysed: the adapters, and how many files are missing. */
+  partial?: { adapters: string[]; missing: number; files: number }
   /** The commit indexed when one was named instead of the working tree. */
   commit?: string
   /** The largest resident set size each adapter process reached, in KiB, where it could be sampled. */
@@ -50,7 +52,7 @@ export type IndexResult = {
 type Mode = 'no_execution' | 'trusted_build'
 type Captured = Discovered & { hash: string }
 type Rel = AnalyzeResponse['relationships'][number]
-type AdapterRun = { spec: AdapterSpec; sources: Discovered[]; configs: Discovered[]; process?: AdapterProcess; manifest?: InitializeResponse['adapter']; inputs?: string[]; mode: Mode; units?: InitializeResponse['units']; keys?: Map<string, string>; entrySha256?: string; budgetMb?: number; budgetSource?: 'setting' | 'machine'; config?: Record<string, unknown>; unstartable?: AdapterBudgetError; cap?: number; streak?: number; /** Why a fallback adapter could not start or answer workspace: it is not asked again, and its files go to the syntax tier. */ initFailure?: AdapterProtocolError }
+type AdapterRun = { spec: AdapterSpec; sources: Discovered[]; configs: Discovered[]; process?: AdapterProcess; manifest?: InitializeResponse['adapter']; inputs?: string[]; mode: Mode; units?: InitializeResponse['units']; keys?: Map<string, string>; entrySha256?: string; budgetMb?: number; budgetSource?: 'setting' | 'machine'; config?: Record<string, unknown>; unstartable?: AdapterBudgetError; /** The failure an adapter died with: files it has no cached facts for are not asked of it again. */ dead?: AdapterProtocolError; cap?: number; streak?: number; /** Why a fallback adapter could not start or answer workspace: it is not asked again, and its files go to the syntax tier. */ initFailure?: AdapterProtocolError }
 type Producer = { id: string; version: string; mode: Mode }
 /** Import kinds, strongest first: a file that imports another both for its values and for its types depends on it at run time. */
 const IMPORT_KINDS = ['static', 're_export', 'type_only']
@@ -103,7 +105,7 @@ export type Progress = { phase: 'discover' | 'capture' | 'prepare' | 'initialize
  * registry: the conformance kit indexes with the adapter it checks first; everything else uses the data directory's own.
  * rev: a commit to index instead of the working tree. Its snapshot becomes current like any other, unless keepCurrent and the repository has one.
  */
-export async function indexRepository(dataDir: string, repoIdOrPath: string, onProgress?: (p: Progress) => void, registry?: Registry, rev?: string, keepCurrent = false, lock: { wait?: boolean; onNotice?: (line: string) => void; onWait?: () => void; signal?: AbortSignal } = {}): Promise<IndexResult> {
+export async function indexRepository(dataDir: string, repoIdOrPath: string, onProgress?: (p: Progress) => void, registry?: Registry, rev?: string, keepCurrent = false, lock: { wait?: boolean; onNotice?: (line: string) => void; onWait?: () => void; signal?: AbortSignal; /** Publish what was analysed when an adapter dies, the files it did not reach failed with `adapter_died` (FR340). */ allowPartial?: boolean } = {}): Promise<IndexResult> {
   const catalog = Catalog.open(dataDir)
   let held: HeldLock | undefined
   const progress = (p: Progress) => onProgress?.(p)
@@ -196,7 +198,7 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
         // An adapter that cannot even start within its budget fails its own files, rather than the index; asking it again would pass the same budget.
         if (e instanceof AdapterBudgetError) { run.unstartable = e; memoryRestarts.push({ adapter: run.spec.id, ...peakOf(e), files: run.sources.length, action: 'adapter_failed' }); return undefined }
         // A fallback adapter that cannot start gives its files to the syntax tier; every later call of it fails with the same reason.
-        if (e instanceof AdapterProtocolError && canFallBack(run.spec)) { run.initFailure = e; return undefined }
+        if (e instanceof AdapterProtocolError && (canFallBack(run.spec) || lock.allowPartial)) { run.initFailure = e; return undefined }
         throw e instanceof AdapterProtocolError ? adapterFailure(run.spec.id, finished, 'failed to initialize', e) : e
       })
       if (!init) { run.manifest = { id: run.spec.id, version: run.unstartable ? 'not_started' : 'failed_to_initialize', protocol_version: PROTOCOL_VERSION, languages: [...run.spec.languages], toolchain: {} }; run.inputs = []; continue }
@@ -223,8 +225,15 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
       const db = openSnapshot(catalog, row)
       try { return (JSON.parse((db.prepare("select value from meta where key = 'fallbacks'").get() as { value: string } | undefined)?.value ?? '{"handoffs":[]}') as { handoffs: Array<{ adapter: string; files: number; reason: string; kind: string }> }).handoffs } finally { db.close() }
     }
+    const wasPartial = (id: string): boolean => {
+      const row = catalog.snapshot(id)
+      if (row?.state !== 'published') return false
+      const db = openSnapshot(catalog, row)
+      try { return !!db.prepare("select 1 from meta where key = 'partial'").get() } finally { db.close() }
+    }
     let retry = 0, identityJson = canonicalJson(identity)
-    while (recorded(`snap_${sha256(identityJson).slice(0, 24)}`).some((h) => h.kind === 'failed')) identityJson = canonicalJson({ ...identity, retry: ++retry })
+    // A partial snapshot is not a function of the inputs either: the next index asks the adapter again, and the cache replays what finished.
+    while (recorded(`snap_${sha256(identityJson).slice(0, 24)}`).some((h) => h.kind === 'failed') || wasPartial(`snap_${sha256(identityJson).slice(0, 24)}`)) identityJson = canonicalJson({ ...identity, retry: ++retry })
     const snapshotId = `snap_${sha256(identityJson).slice(0, 24)}`
     const adapterBudgets = Object.fromEntries(runs.map((r) => [r.spec.id, { mb: r.budgetMb!, source: r.budgetSource! }]))
     const peaks = async () => {
@@ -275,6 +284,7 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
       const done = new Set((db.prepare('select adapter, batch from resume_batch').all() as Array<{ adapter: string; batch: number }>).map((r) => `${r.adapter}#${r.batch}`))
       const markDone = db.prepare('insert into resume_batch (adapter, batch) values (?, ?)')
       const batches = { done: 0, total: 0 }
+      const partial = new Map<string, { paths: string[]; reason: string }>()
       const reuse = { reused: 0, analysed: 0 }
       // Files a fallback adapter could not analyse are read by the syntax tier in a run of its own, after every other adapter, so one process sees them all (FR311, FR313).
       const byPath = new Map(captured.map((c, i) => [c.path, { c, i }]))
@@ -337,7 +347,7 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
             if (!(e instanceof AdapterProtocolError)) throw e
             if (!(e instanceof AdapterBudgetError)) {
               // Precise file facts are never published without their workspace facts: a fallback adapter that cannot answer gives all its files to the syntax tier.
-              if (!canFallBack(run.spec)) throw adapterFailure(run.spec.id, finished, 'failed to answer workspace', e)
+              if (!canFallBack(run.spec) && !lock.allowPartial) throw adapterFailure(run.spec.id, finished, 'failed to answer workspace', e)
               run.initFailure = e
               ws = { symbols: [], relationships: [], file_results: [], diagnostics: [] }
               wsFailed = true
@@ -405,6 +415,7 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
           const keys = run.keys!
           const cached = new Map(batch.flatMap((p) => { const hit = cache!.get(keys.get(p)!); return hit ? [[p, hit] as const] : [] }))
           const missing = batch.filter((p) => !cached.has(p))
+          if (run.dead && missing.length) throw run.dead
           const fresh = missing.length ? await withinBudget(missing) : new Map<string, FileFacts>()
           // A file the budget failed is not cached: under a larger budget it would be analysed.
           cache!.put(repo.id, run.spec.id, missing.filter((p) => fresh.get(p)!.file_result?.detail !== 'memory_budget' && !(run.spec.fallback && fresh.get(p)!.file_result?.status === 'failed')).map((p) => [keys.get(p)!, fresh.get(p)!]))
@@ -428,7 +439,8 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
               raw = await analyse(batch)
             } catch (e) {
               if (!(e instanceof AdapterProtocolError)) throw e
-              if (!canFallBack(run.spec)) throw adapterFailure(run.spec.id, finished, 'failed on a batch', e, { paths: batch.length })
+              if (!canFallBack(run.spec) && !lock.allowPartial) throw adapterFailure(run.spec.id, finished, 'failed on a batch', e, { paths: batch.length })
+              run.dead = e
               // The adapter is gone: the files it had cached facts for keep them, and the rest are failed, which hands them to the syntax tier. The journal records the handoff, so a resumed run makes it again.
               raw = { ...assemble(batch.map((p) => (run.initFailure ? undefined : cache!.get(run.keys!.get(p)!)) ?? died(p))), diagnostics: [{ level: 'error', message: adapterFailure(run.spec.id, finished, 'failed on a batch', e).details.stored_message as string }] }
             }
@@ -440,8 +452,11 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
           note(response.symbols, producer)
           for (const r of response.relationships) pending.push({ rel: r, producer })
           for (const fr of response.file_results) fileResults.set(fr.path, { status: fr.status, ...(fr.detail ? { detail: fr.detail } : {}), capabilities: fr.capabilities as Record<string, string> })
+          // A file of an adapter with no syntax tier under it that died on it: kept in the snapshot as failed, and named as missing (FR342).
+          const lost = response.file_results.filter((f) => f.status === 'failed' && f.detail === DIED).map((f) => f.path)
+          if (lost.length) { const seen = partial.get(run.spec.id); partial.set(run.spec.id, { paths: [...(seen?.paths ?? []), ...lost], reason: seen?.reason ?? response.diagnostics[0]?.message ?? 'died' }) }
         }
-        finished.push(run.spec.id)
+        if (!partial.has(run.spec.id)) finished.push(run.spec.id)
       }
       analysed = true
       // A file edited after capture would make the snapshot a mix of two trees, so it is not published (FR013).
@@ -508,12 +523,19 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
       // A file the syntax tier read for a fallback adapter that could not: what the adapter's job reports, kept with the snapshot (FR313).
       const fallbacks = [...handoffs].map(([adapter, h]) => ({ adapter, files: h.files, reason: h.reason }))
       if (handoffs.size) db.prepare("insert into meta (key, value) values ('fallbacks', ?)").run(canonicalJson({ handoffs: [...handoffs].map(([adapter, h]) => ({ adapter, ...h })), ...(late ? { syntax: late.manifest } : {}) }))
+      const missing = [...partial.values()].reduce((n, p) => n + p.paths.length, 0)
+      const partialResult: IndexResult['partial'] = partial.size ? { adapters: [...partial.keys()].sort(), missing, files: runs.filter((r) => partial.has(r.spec.id)).reduce((n, r) => n + r.sources.length, 0) } : undefined
+      if (partialResult) db.prepare("insert into meta (key, value) values ('partial', ?)").run(canonicalJson({ ...partialResult, paths: [...partial.values()].flatMap((p) => p.paths).sort().slice(0, 20), reason: [...partial].map(([a, p]) => `${a}: ${p.reason}`).join('; ') }))
       progress({ phase: 'seal', done: 0, total: 0 })
       sealAndPublish(catalog, db, stagingFile, snapshotId, repo.id, keepCurrent)
       fs.rmSync(stagingDir(dataDir, snapshotId), { recursive: true, force: true })
       for (const run of runs) cache.prune(repo.id, run.spec.id, run.keys!.values())
-      return { snapshotId, status: 'published', analysisMode, counts, reuse, commit: checkout?.git.commit, adapterPeakRssKb: await peaks(), adapterBudgets, ...(memoryRestarts.length ? { memoryRestarts } : {}), ...(fallbacks.length ? { fallbacks } : {}), ...(batches.done ? { resumed: batches } : {}) }
+      return { snapshotId, status: 'published', analysisMode, counts, reuse, commit: checkout?.git.commit, adapterPeakRssKb: await peaks(), adapterBudgets, ...(memoryRestarts.length ? { memoryRestarts } : {}), ...(fallbacks.length ? { fallbacks } : {}), ...(batches.done ? { resumed: batches } : {}), ...(partialResult ? { partial: partialResult } : {}) }
     } catch (e) {
+      // The batches the checkpoint holds survive the failure: the next index resumes them, and their facts are in the cache.
+      if (db.open && !analysed && e instanceof ProofmeshError && e.details.failed_adapter) {
+        try { const kept = (db.prepare('select count(*) as n from resume_batch where batch >= 0').get() as { n: number }).n; { e.details.batches_kept = kept; e.details.batches_total = runs.reduce((n, r) => n + Math.ceil(r.sources.length / BATCH()), 0) } } catch { /* a checkpoint that cannot be read is not reported */ }
+      }
       if (db.open) db.close()
       catalog.markFailed(snapshotId, storedMessage(e))
       // Only an interruption during analysis is resumable; a run that failed after it starts clean next time.

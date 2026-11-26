@@ -14,7 +14,7 @@ import { staticPropertyReads } from './static-reads.js'
 import { externalUsage, type UsageGroup } from './external-usage.js'
 import { findQuerySource, WEIGHED } from './query-source.js'
 import { EvidenceStore } from '../evidence/store.js'
-import { hubsOf, snapshotSummary, UNRESOLVED_REASONS } from './summary.js'
+import { hubsOf, partialLimitations, snapshotSummary, UNRESOLVED_REASONS } from './summary.js'
 import type { ModuleCycle } from '../indexer/module-cycles.js'
 import { overview } from './overview.js'
 import { getEcosystem } from './ecosystem.js'
@@ -327,7 +327,9 @@ function envelope(ctx: Ctx, tool: ToolName, requested: Limits | undefined, r: Pa
       : null,
     missing.length ? `${missing.length} external input${missing.length === 1 ? ' was' : 's were'} missing when this snapshot was built; ${blamed} unresolved site${blamed === 1 ? ' is' : 's are'} blamed on them as dependency_missing, and workspace_status counts them by package.` : null,
   ].filter((x): x is string => !!x)
-  const limitations = [...clampNotes, ...(r.limitations ?? []), ...(ctx.compact ? [] : standing)]
+  // A snapshot published with files missing says so in every answer, compact and lean included (FR343).
+  const partialNote = partialLimitations(db, ctx.snapshot.id)
+  const limitations = [...partialNote, ...clampNotes, ...(r.limitations ?? []), ...(ctx.compact ? [] : standing)]
   const order = ['max_rows', 'max_depth', 'max_bytes', 'timeout'] as const
   const env: Envelope = {
     schema_version: ENVELOPE_VERSION,
@@ -768,6 +770,7 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
         stop_reasons: all.length > end ? ['max_rows'] : [], more: all.length > end, shrink: 'changed',
         limitations: [
           ...(ctx.lean ? [summaryLine(totals)] : []),
+          ...[baseRow!, headRow!].filter((row, i, rows) => row.id !== ctx.snapshot.id && rows.findIndex((x) => x.id === row.id) === i).flatMap((row) => partialLimitations(row.id === baseRow!.id ? baseDb : headDb, row.id)),
           ...inferredNotesFor(done),
           ...(stopped ? [`The test search stopped at the depth limit for ${stopped} row${stopped === 1 ? '' : 's'}; a row marked neither may have a test further away.`] : []),
           ...(unfollowed.length ? [`Calls through interfaces and base classes are not followed for ${unfollowed.join(', ')} code, so a row marked neither may have a test that reaches it by dispatch.`] : []),
@@ -849,7 +852,7 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
       for (const a of symbols.ambiguous) { markGenerated(a.removed, was); markGenerated(a.added, now) }
       const inHead = (p: string) => !!ctx.db.prepare('select 1 from file where path = ?').get(p)
       for (const c of files.disposition_changes) if ((inHead(c.path) ? now : was).has(c.path)) c.generated = true
-      return { data: r.data, stop_reasons: r.truncated ? ['max_rows'] : [], limitations: ['Symbols are matched by kind and qualified name; a removed and an added symbol that match by body hash are paired instead.', ...r.limitations] }
+      return { data: r.data, stop_reasons: r.truncated ? ['max_rows'] : [], limitations: [...partialLimitations(db, base.id), 'Symbols are matched by kind and qualified name; a removed and an added symbol that match by body hash are paired instead.', ...r.limitations] }
     } finally {
       db.close()
     }

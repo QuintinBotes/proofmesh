@@ -1304,11 +1304,9 @@
     "FR357": [
       "packages/proofmesh/test/adapter-defaults.test.ts"
     ],
-
     "FR358": [
       "packages/proofmesh/test/adapter-defaults.test.ts"
     ],
-
     "FR359": [
       "packages/proofmesh/test/adapter-defaults.test.ts"
     ],
@@ -1326,6 +1324,51 @@
     ],
     "FR364": [
       "packages/proofmesh/test/database-busy.test.ts"
+    ],
+    "FR335": [
+      "packages/proofmesh/test/resumable-index.test.ts"
+    ],
+    "FR336": [
+      "packages/proofmesh/test/resumable-index.test.ts"
+    ],
+    "FR337": [
+      "packages/proofmesh/test/resumable-index.test.ts"
+    ],
+    "FR338": [
+      "packages/proofmesh/test/resumable-index.test.ts"
+    ],
+    "FR339": [
+      "packages/proofmesh/test/resumable-index.test.ts"
+    ],
+    "FR340": [
+      "packages/proofmesh/test/resumable-index.test.ts"
+    ],
+    "FR341": [
+      "packages/proofmesh/test/resumable-index.test.ts"
+    ],
+    "FR342": [
+      "packages/proofmesh/test/resumable-index.test.ts"
+    ],
+    "FR343": [
+      "packages/proofmesh/test/resumable-index.test.ts"
+    ],
+    "FR344": [
+      "packages/proofmesh/test/resumable-index.test.ts"
+    ],
+    "FR345": [
+      "packages/proofmesh/test/resumable-index.test.ts"
+    ],
+    "FR346": [
+      "packages/proofmesh/test/resumable-index.test.ts"
+    ],
+    "FR347": [
+      "packages/proofmesh/test/resumable-index.test.ts"
+    ],
+    "FR348": [
+      "packages/proofmesh/test/resumable-index.test.ts"
+    ],
+    "FR349": [
+      "packages/proofmesh/test/resumable-index.test.ts"
     ]
   },
   "manual": {

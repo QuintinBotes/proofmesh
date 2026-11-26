@@ -8,7 +8,7 @@ import { ENVELOPE_VERSION } from '../core/schemas.js'
 import { applyLimits } from '../core/limits.js'
 import { Catalog, type LinkFileRecord } from '../meshstore/catalog.js'
 import { openSnapshot } from '../meshstore/snapshot.js'
-import { snapshotSummary } from './summary.js'
+import { partialLimitations, snapshotSummary } from './summary.js'
 
 export { openLinkFile } from '../links/index.js'
 import { openLinkFile } from '../links/index.js'
@@ -89,7 +89,7 @@ export function getEcosystem(dataDir: string, input: Record<string, unknown>): E
       for (const s of summaries) for (const k of Object.keys(dispositions) as Array<keyof typeof dispositions>) dispositions[k] += s.dispositions[k]
       const capabilities = Object.fromEntries((Object.keys(RANK) as never[]).length ? (Object.keys(summaries[0]?.capabilities ?? {}) as Array<keyof Coverage['capabilities']>).map((k) => [k, summaries.map((s) => s.capabilities[k]).sort((a, b) => RANK[b] - RANK[a])[0]]) : []) as Coverage['capabilities']
       const unresolvedCount = rows.filter((l) => l.resolution === 'unresolved').length
-      const limitations = [...clampNotes, 'Links are matched from the member snapshots the link file was built from; a member whose current snapshot is newer is marked current: false until the workspace is linked again.', ...(unresolvedCount ? [`${unresolvedCount} client fact${unresolvedCount === 1 ? '' : 's'} matched nothing in this workspace; each is a boundary, not an absence of a counterpart elsewhere.`] : [])]
+      const limitations = [...[...members.values()].flatMap((m) => partialLimitations(m.db, m.snapshot_id)), ...clampNotes, 'Links are matched from the member snapshots the link file was built from; a member whose current snapshot is newer is marked current: false until the workspace is linked again.', ...(unresolvedCount ? [`${unresolvedCount} client fact${unresolvedCount === 1 ? '' : 's'} matched nothing in this workspace; each is a boundary, not an absence of a counterpart elsewhere.`] : [])]
       if (stop.size) limitations.push('Results were truncated and this tool does not page; raise the limits.')
       return {
         schema_version: ENVELOPE_VERSION, query_id: queryId(), tool: 'get_ecosystem',
