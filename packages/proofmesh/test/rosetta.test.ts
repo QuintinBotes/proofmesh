@@ -240,6 +240,16 @@ describe('FR216 the lean answer has one form in every language', () => {
   })
 })
 
+describe('FR234 the suite asserts row order, not only the rows', () => {
+  it('FR234 every call of the contract is compared in order, and an answer with its rows swapped is a difference', () => {
+    expect(CALLS.filter((c) => CONTRACT.calls[c]!.order !== 'exact')).toEqual([])
+    const { section, answers } = of('python')
+    const copy = structuredClone(section!)
+    copy.calls.calls_circle_area!.rows.reverse()
+    expect(differences(copy, 'calls_circle_area', answers.calls_circle_area!)).toHaveLength(1)
+  })
+})
+
 describe('FR217 a stated gap is a promise: a language that gains an answer changes its expected file in the same change', () => {
   it('FR217 every gap in every file names a reason of at least a sentence fragment, and no gap is both stated and given', async () => {
     const { sectionProblems } = await checker()

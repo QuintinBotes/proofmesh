@@ -1000,6 +1000,10 @@
     "FR226": [
       "packages/proofmesh/test/python.overrides.test.ts",
       "packages/proofmesh/test/rosetta.test.ts"
+    ],
+    "FR234": [
+      "packages/proofmesh/test/reproducible-order.test.ts",
+      "packages/proofmesh/test/rosetta.test.ts"
     ]
   },
   "manual": {

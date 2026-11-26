@@ -31,7 +31,7 @@ const unreadableNote = (u: { count: number; paths: string[] }, side: string) =>
   `The content of ${u.paths.join(', ')}${u.count > u.paths.length ? ` and ${u.count - u.paths.length} more` : ''} was unavailable when the ${side} snapshot was sealed, so its symbols there have no body hash and are never paired.`
 
 function symbols(db: Database.Database): Map<string, Sym> {
-  const rows = db.prepare(`select s.id, s.name, s.qualified_name, s.kind, f.path, s.stable_key, ${hasBodyHash(db) ? 's.body_hash, s.body_tokens' : 'null as body_hash, null as body_tokens'}, s.signature, s.start_line, s.end_line from symbol s join file f on f.id = s.file_id order by s.qualified_name, s.kind, s.id`).all() as Sym[]
+  const rows = db.prepare(`select s.id, s.name, s.qualified_name, s.kind, f.path, s.stable_key, ${hasBodyHash(db) ? 's.body_hash, s.body_tokens' : 'null as body_hash, null as body_tokens'}, s.signature, s.start_line, s.end_line from symbol s join file f on f.id = s.file_id order by s.qualified_name, s.kind, f.path, s.start_line, s.id`).all() as Sym[]
   // shortcut: two declarations with one kind and qualified name (overloads, partial classes) collapse to the last; split by signature when that matters.
   return new Map(rows.map((s) => [symbolKey(s), s]))
 }

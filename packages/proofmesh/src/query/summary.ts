@@ -36,7 +36,7 @@ export function computeSummary(db: Database.Database): SnapshotSummary {
     where a.resolution = 'unresolved' group by a.id order by f.path, e.start_byte limit 20`).all() as SnapshotSummary['unresolved']['sample'])
   const hubs = (db.prepare(`select e.dst as id, s.kind, s.name, s.qualified_name, f.path, count(*) as inbound from edge e
     join symbol s on s.id = e.dst join file f on f.id = s.file_id where e.resolution = 'resolved'
-    group by e.dst order by inbound desc, e.dst limit 12`).all() as SnapshotSummary['hubs'])
+    group by e.dst order by inbound desc, s.qualified_name, f.path, s.start_byte, e.dst limit 12`).all() as SnapshotSummary['hubs'])
   const calls = Object.fromEntries((db.prepare("select reason, count(*) as n from assertion where resolution = 'unresolved' and type = 'calls' group by reason order by reason").all() as Array<{ reason: string; n: number }>).map((r) => [r.reason, r.n]))
   // Which missing packages the dependency_missing sites are blamed on, from the detail the adapter attached.
   // A site names every package its project lacks; it counts once under each, so the counts say what restoring one package could fix.
