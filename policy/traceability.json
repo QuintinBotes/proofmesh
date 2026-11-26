@@ -692,6 +692,15 @@
     "FR223": [
       "packages/proofmesh/test/syntax-structure.test.ts"
     ],
+    "FR231": [
+      "packages/proofmesh/test/syntax-structure.test.ts"
+    ],
+    "FR232": [
+      "packages/proofmesh/test/syntax-structure.test.ts"
+    ],
+    "FR233": [
+      "packages/proofmesh/test/syntax-structure.test.ts"
+    ],
     "FR119": [
       "packages/proofmesh/test/symbol-at.test.ts"
     ],
