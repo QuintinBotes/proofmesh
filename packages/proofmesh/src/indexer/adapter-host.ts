@@ -1,4 +1,5 @@
-import { execFile, spawn, type ChildProcess } from 'node:child_process'
+import { spawn, type ChildProcess } from 'node:child_process'
+import { psOutput } from '../core/ps.js'
 import { createRequire } from 'node:module'
 import path from 'node:path'
 import { StringDecoder } from 'node:string_decoder'
@@ -108,13 +109,13 @@ export class AdapterProcess {
   sampleRss(): Promise<void> {
     const child = this.child, pid = child.pid
     if (this.exited || !pid) return Promise.resolve()
-    return new Promise((resolve) => execFile('ps', ['-A', '-o', 'pid=,pgid=,rss='], { env: { PATH: process.env.PATH ?? '' }, timeout: 5000, killSignal: 'SIGKILL', maxBuffer: 8 * 1024 * 1024 }, (e, out) => {
+    return psOutput(['-A', '-o', 'pid=,pgid=,rss='], { env: { PATH: process.env.PATH ?? '' }, timeout: 5000, killSignal: 'SIGKILL', maxBuffer: 8 * 1024 * 1024 }).then((out) => {
       let kb = 0
       for (const line of (out ?? '').split('\n')) {
         const [, g, r] = line.trim().split(/\s+/).map(Number)
         if (g === pid && r! > 0) kb += r!
       }
-      if (!e && kb > 0 && child === this.child) {
+      if (out !== undefined && kb > 0 && child === this.child) {
         this.peakRssKb = Math.max(this.peakRssKb ?? 0, kb)
         this.processPeakKb = Math.max(this.processPeakKb ?? 0, kb)
         if (this.budgetMb && kb > this.budgetMb * 1024 && !this.exited && this.overBudgetKb === undefined) {
@@ -124,8 +125,7 @@ export class AdapterProcess {
             : `exceeded its memory budget of ${this.budgetMb} MB (peak resident memory ${Math.round(kb / 1024)} MB; raise it with adapter_memory_mb) and was stopped with SIGKILL`)
         }
       }
-      resolve()
-    }))
+    })
   }
 
   private start(): void {

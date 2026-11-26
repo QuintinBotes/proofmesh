@@ -1,7 +1,8 @@
 // The host-side launcher (D07, FR046): the only code that runs an approved recipe. The MCP and query layers never import it; a
 // test enforces that boundary. It consumes the approval before running, exports the snapshot's captured files into a disposable
 // directory, never the repository, and signs what happened.
-import { execFile, spawn, spawnSync } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
+import { psOutput } from '../core/ps.js'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -72,9 +73,7 @@ export type ExecuteOptions = { group?: boolean; maxRssKb?: number; rssSampleMs?:
 
 /** The resident size of a process group, as `ps` reports it (a group leader's pgid is its pid). */
 function groupRssKb(pgid: number): Promise<number> {
-  return new Promise((resolve) => execFile('ps', ['-A', '-o', 'pgid=,rss='], (e, out) => {
-    resolve(e ? 0 : out.split('\n').reduce((sum, line) => { const [g, r] = line.trim().split(/\s+/).map(Number); return g === pgid ? sum + (r ?? 0) : sum }, 0))
-  }))
+  return psOutput(['-A', '-o', 'pgid=,rss=']).then((out) => (out ?? '').split('\n').reduce((sum, line) => { const [g, r] = line.trim().split(/\s+/).map(Number); return g === pgid ? sum + (r ?? 0) : sum }, 0))
 }
 
 export function execute(argv: string[], cwd: string, env: Record<string, string>, timeoutMs: number, maxBytes: number, log: string, opts: ExecuteOptions = {}): Promise<Outcome> {
