@@ -68,7 +68,12 @@ describe('#27 repo move re-roots a registration at another working tree of the s
     const snapshot = tool(d, 'workspace_status', { repository_id: id }).snapshot!.id
     const clone = path.join(tmpDir('pm-move-'), 'shop')
     git(path.dirname(clone), 'clone', '-q', repo, clone)
-    const unrelated = twoCommits()
+    // Its own history: two twoCommits() repos made within one second share commit ids, so would not be unrelated.
+    const unrelated = tmpDir('pm-unrelated-')
+    git(unrelated, 'init', '-q')
+    fs.writeFileSync(path.join(unrelated, 'README.md'), 'an unrelated repository\n')
+    git(unrelated, 'add', '-A')
+    git(unrelated, 'commit', '-q', '-m', 'unrelated')
 
     const refused = cli(['--data-dir', d, 'repo', 'move', id, unrelated])
     expect(refused.status).toBe(1)
