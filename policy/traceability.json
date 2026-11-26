@@ -1279,6 +1279,18 @@
     ],
     "FR329": [
       "packages/proofmesh/test/concurrent-index.test.ts"
+    ],
+    "FR360": [
+      "packages/proofmesh/test/database-busy.test.ts"
+    ],
+    "FR361": [
+      "packages/proofmesh/test/database-busy.test.ts"
+    ],
+    "FR362": [
+      "packages/proofmesh/test/database-busy.test.ts"
+    ],
+    "FR363": [
+      "packages/proofmesh/test/database-busy.test.ts"
     ]
   },
   "manual": {

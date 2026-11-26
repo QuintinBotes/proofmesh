@@ -385,6 +385,13 @@ Acceptance: CI runs my pull request without secrets or release credentials; lice
 - FR328: MUST make `gc` and an index exclude each other: `gc` holds a data-directory lock for its whole run and refuses while any index holds a lock, and an index that finds `gc` running (checked after taking its own lock) steps aside and waits, or with `--no-wait` refuses; and MUST end a wait for a lock with `CANCELLED` when `watch` is aborted.
 - FR329: MUST record the holder's process start time in a lock and treat a pid whose start time differs as gone; MUST release every lock this process holds when it exits or is ended by SIGINT, SIGTERM or SIGHUP; MUST keep a job that waits behind a live lock `queued` by refreshing its heartbeat, so a poller does not start a second index; MUST name a lock's temporary files with the host and a random nonce; MUST retry the fact cache's first `create table`; and MUST read `PROOFMESH_BUSY_TIMEOUT_MS` only with `PROOFMESH_TEST_HARNESS` set, as a finite positive number of at most ten minutes.
 
+### Busy databases, again
+
+- FR360: MUST let two indexes that meet contention on the catalog (job rows) and on the fact cache at the same moment both publish, every time, whatever the load.
+- FR361: MUST set a connection's busy timeout before any other statement on it, WAL included, and retry its pragmas, `exec` calls, reads and writes, so a database another run is creating or holding is waited for.
+- FR362: MUST end a write still busy after the retry budget as a `BUSY` error that names the database file and the statement, never as `INTERNAL_ERROR`.
+- FR363: MUST report a busy or locked error from any connection, including ones with no retry of their own, as `BUSY`.
+
 ### Impact completeness
 
 - FR108: MUST provide `impact_completeness` with `base`, a commit-ish, optional `head` (omitted, the working tree), `depth` (default 1, at most 5), `include_tests` and the usual limits, and the CLI `proofmesh completeness <repository> <base>[..<head>] [--depth N] [--json]`.
