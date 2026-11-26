@@ -68,13 +68,16 @@ function resumable(file: string): boolean {
     db.close()
   }
 }
+/** A failed adapter call as the index reports it: the adapter named once, and which adapters had finished, for the run report. */
+const adapterFailure = (id: string, finished: string[], what: string, e: Error, extra: Record<string, unknown> = {}) =>
+  new ProofmeshError('ADAPTER_UNSUPPORTED', e.message.startsWith(`adapter ${id} `) ? e.message : `adapter ${id} ${what}: ${e.message}`, { failed_adapter: id, completed_adapters: finished, ...extra })
 const DISPOSITION: Record<Discovered['status'], string> = { capture: 'pending', excluded: 'excluded_by_rule', unsupported: 'unsupported', failed: 'failed' }
 /** Every file row reports each capability separately (FR003): what its adapter reported, and `fill` for each it left out. */
 const capabilities = (reported: Record<string, string>, fill: string) => canonicalJson({ ...Object.fromEntries(CAPS.map((k) => [k, fill])), ...reported })
 const NOT_RUN = capabilities({}, 'not_run')
 
 /** write is relationship resolution; initialize and analyze name the adapter. */
-export type Progress = { phase: 'discover' | 'capture' | 'initialize' | 'analyze' | 'write' | 'check' | 'seal'; adapter?: string; done: number; total: number; plan?: { mode: 'incremental' | 'full'; analyse: number; reuse: number } }
+export type Progress = { phase: 'discover' | 'capture' | 'prepare' | 'initialize' | 'analyze' | 'write' | 'check' | 'seal'; adapter?: string; done: number; total: number; plan?: { mode: 'incremental' | 'full'; analyse: number; reuse: number } }
 
 /**
  * registry: the conformance kit indexes with the adapter it checks first; everything else uses the data directory's own.
@@ -86,6 +89,7 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
   catalog.acquireLease(owner)
   const progress = (p: Progress) => { catalog.renewLease(owner); onProgress?.(p) }
   let runs: AdapterRun[] = []
+  const finished: string[] = []
   let jobDir: string | undefined
   let cache: FactCache | undefined
   try {
@@ -125,6 +129,9 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
       if (d.status !== 'capture') continue
       captured.push({ ...d, hash: store.put(fs.readFileSync(path.join(root, d.path))) })
     }
+    progress({ phase: 'capture', done: discovered.length, total: discovered.length })
+    // What follows capture has its own stage line: a crash must show where it stopped, not only that capture had ended.
+    progress({ phase: 'prepare', done: 0, total: 0 })
     const hashOf = new Map(captured.map((c) => [c.path, c.hash]))
     // A build manifest is a source of the build adapter, and still configuration as evidence (FR129).
     const configPaths = new Set(captured.filter((c) => c.role === 'config' || (c.role === 'source' && registry!.manifestLanguage(path.posix.basename(c.path)))).map((c) => c.path))
@@ -138,14 +145,14 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
     }
     for (const run of runs) {
       catalog.verifyExtensions(run.spec.id)
-      run.process = new AdapterProcess(run.spec.entry()!)
+      run.process = new AdapterProcess(run.spec.entry()!, undefined, undefined, run.spec.id)
       progress({ phase: 'initialize', adapter: run.spec.id, done: 0, total: run.sources.length + run.configs.length })
       const init = await run.process.initialize({
         // External inputs such as installed packages are read from the registered working tree, also for a commit.
         protocol_version: PROTOCOL_VERSION, workspace, repository_root: repo.root, analysis_mode: requestedMode,
         files: [...run.sources, ...run.configs].map((c) => ({ path: c.path, content_hash: hashOf.get(c.path)!, language: c.language! })),
         config: { ...catalog.adapterConfig(repo.id, run.spec.id), ...run.spec.config?.() },
-      })
+      }).catch((e) => { throw e instanceof AdapterProtocolError ? adapterFailure(run.spec.id, finished, 'failed to initialize', e) : e })
       run.manifest = init.adapter
       run.inputs = [...(init.external_inputs ?? [])].sort()
       run.mode = init.analysis_mode ?? 'no_execution'
@@ -227,7 +234,7 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
             ws = await run.process!.workspace()
           } catch (e) {
             if (!(e instanceof AdapterProtocolError)) throw e
-            throw new ProofmeshError('ADAPTER_UNSUPPORTED', `adapter ${run.spec.id} failed to answer workspace: ${e.message}`)
+            throw adapterFailure(run.spec.id, finished, 'failed to answer workspace', e)
           }
           fs.writeFileSync(wsJournal, JSON.stringify(ws))
           db.transaction(() => { writer.symbols(ws.symbols, producer); markDone.run(run.spec.id, -1) })()
@@ -261,7 +268,7 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
               response = await analyse(batch)
             } catch (e) {
               if (!(e instanceof AdapterProtocolError)) throw e
-              throw new ProofmeshError('ADAPTER_UNSUPPORTED', `adapter ${run.spec.id} failed on a batch: ${e.message}`, { paths: batch.length })
+              throw adapterFailure(run.spec.id, finished, 'failed on a batch', e, { paths: batch.length })
             }
             fs.writeFileSync(journal, JSON.stringify(response))
             db.transaction(() => { writer.symbols(response.symbols, producer); markDone.run(run.spec.id, number) })()
@@ -271,6 +278,7 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
           for (const r of response.relationships) pending.push({ rel: r, producer })
           for (const fr of response.file_results) fileResults.set(fr.path, { status: fr.status, ...(fr.detail ? { detail: fr.detail } : {}), capabilities: fr.capabilities as Record<string, string> })
         }
+        finished.push(run.spec.id)
       }
       analysed = true
       // A file edited after capture would make the snapshot a mix of two trees, so it is not published (FR013).

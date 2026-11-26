@@ -4,6 +4,14 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 ## Unreleased
 
+A dying adapter fails the index with its name and exit status, instead of crashing it (closes #78; FR260 to FR265):
+
+- Every stream of an adapter child has an error handler. A write to an adapter that has exited, been killed or closed its input (`EPIPE`, `ECONNRESET`) fails that adapter's call instead of raising an unhandled `error` event that ended the process. The failure names the adapter, its exit code or signal, the last 10 stderr lines (cut at 300 characters) and the file it was on, and says so when the exit looks like memory pressure (a signal, exit 137 or an out-of-memory message); such an adapter is not restarted.
+- The result is read on `close`, not `exit`; a silent adapter is stopped with SIGKILL at its timeout, so one that ignores SIGTERM no longer hangs the index; an adapter that closes its input and keeps running is stopped; a reply line over 256 MiB stops the adapter; after a failure every later call fails at once with the same reason.
+- The index still fails with a non-zero exit and the previous snapshot stays current. The failed job's result now records `failed_adapter` and `completed_adapters`.
+- Progress prints a `prepare` stage line when capture ends, before the adapters start. The syntax-span and verification child processes also handle stream errors.
+- Not done: partial or resumable snapshots after an adapter failure (a follow-up issue).
+
 HTTP seams in one repository (closes #12; FR250 to FR259):
 
 - The TypeScript adapter records `fetch` and `axios` calls (`axios.<verb>`, `axios(...)`, `axios.request`, `axios.create` clients) with a literal, template, concatenated or constant path as outbound `dispatches_to` endpoints, rules `fetch_client` and `axios_client`, named `VERB path` as the Python client rule names them. A path on a base the code does not state keeps its literal suffix with `detail.prefix_unknown`.
