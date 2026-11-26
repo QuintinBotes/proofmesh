@@ -139,6 +139,10 @@
               "generated": {
                 "type": "boolean",
                 "description": "Present and true when the file is generated (FR292); absent otherwise."
+              },
+              "key": {
+                "type": "string",
+                "description": "The stable_key of the symbol on the far side (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file."
               }
             }
           },
@@ -202,6 +206,10 @@
               },
               "qualified_name": {
                 "type": "string"
+              },
+              "key": {
+                "type": "string",
+                "description": "The stable_key of the member the call or reference names (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file."
               }
             }
           }
@@ -261,6 +269,10 @@
           "generated": {
             "type": "boolean",
             "description": "Present and true when the file is generated (FR292); absent otherwise."
+          },
+          "from_key": {
+            "type": "string",
+            "description": "The stable_key of the symbol the unresolved site is in (from_id) (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file."
           }
         }
       }

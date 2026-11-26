@@ -176,6 +176,10 @@
                 "type": "boolean",
                 "description": "The diff changes the test itself."
               },
+              "key": {
+                "type": "string",
+                "description": "The stable_key of the test (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file."
+              },
               "generated": {
                 "type": "boolean",
                 "description": "Present and true when the file is generated (FR292); absent otherwise."
@@ -295,11 +299,19 @@
                       "type": "boolean",
                       "description": "The diff changes the test itself."
                     },
+                    "key": {
+                      "type": "string",
+                      "description": "The stable_key of the test (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file."
+                    },
                     "generated": {
                       "type": "boolean",
                       "description": "Present and true when the file is generated (FR292); absent otherwise."
                     }
                   }
+                },
+                "key": {
+                  "type": "string",
+                  "description": "The stable_key of the dependent; absent for an importing file (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file."
                 },
                 "generated": {
                   "type": "boolean",
@@ -307,6 +319,10 @@
                 }
               }
             }
+          },
+          "key": {
+            "type": "string",
+            "description": "The stable_key of the changed symbol (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file."
           },
           "generated": {
             "type": "boolean",

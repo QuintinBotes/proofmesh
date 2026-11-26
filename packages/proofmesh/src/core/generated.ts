@@ -179,6 +179,10 @@ generated?: boolean
  * Present and true when the file is generated (FR292); absent otherwise.
  */
 generated?: boolean
+/**
+ * The stable_key of the dependent (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file.
+ */
+key?: string
 }[]
 totals: {
 dependents: number
@@ -451,6 +455,10 @@ target: string
  * Present and true when the file is generated (FR292); absent otherwise.
  */
 generated?: boolean
+/**
+ * The stable_key of the candidate (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file.
+ */
+key?: string
 }[]
 /**
  * Endpoints and jobs that reach any of the tables.
@@ -514,6 +522,10 @@ roles?: ("test" | "test_support")[]
  * Present and true when the file is generated (FR292); absent otherwise.
  */
 generated?: boolean
+/**
+ * The stable_key of the symbol (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file.
+ */
+key?: string
 }[]
 }
 
@@ -602,11 +614,19 @@ line: number
  * Present and true when the file is generated (FR292); absent otherwise.
  */
 generated?: boolean
+/**
+ * The stable_key of the symbol at this hop (FR280).
+ */
+key?: string
 }[]
 /**
  * Present and true when the file is generated (FR292); absent otherwise.
  */
 generated?: boolean
+/**
+ * The stable_key of the test (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file.
+ */
+key?: string
 }[]
 totals: {
 /**
@@ -816,9 +836,17 @@ link_id: string
  */
 source: string
 /**
+ * The stable_key of that symbol in its member snapshot (FR280); absent when the end is no symbol.
+ */
+source_key?: string
+/**
  * Qualified name of the target symbol, or null for a repository-level link.
  */
 target: (string | null)
+/**
+ * The stable_key of that symbol in its member snapshot (FR280); absent when the end is no symbol.
+ */
+target_key?: string
 confidence: number
 rule: string
 }[]
@@ -836,6 +864,10 @@ count: number
 sample: {
 link_id: string
 source: string
+/**
+ * The stable_key of that symbol in its member snapshot (FR280); absent when the end is no symbol.
+ */
+source_key?: string
 reason: string
 }[]
 }[]
@@ -1112,6 +1144,10 @@ kind: ("directory" | "file" | "symbol")
 symbols: number
 matches: (number | null)
 symbol_kind: (string | null)
+/**
+ * The stable_key of a symbol child (key is its id) (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file.
+ */
+symbol_key?: string
 }[]
 links: {
 from: string
@@ -1186,6 +1222,10 @@ declaring_type: (string | null)
 read_kind: ("orm" | "application")
 calls: (number | null)
 callers: string[]
+/**
+ * The stable_key of the mapped property (symbol_id) (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file.
+ */
+symbol_key?: string
 }[]
 /**
  * Properties the ORM loaded on an endpoint that no application read touched in the window.
@@ -1202,6 +1242,10 @@ unread_mapped_properties: {
 entity: string
 property: string
 symbol_id: string
+/**
+ * The stable_key of the mapped property (symbol_id) (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file.
+ */
+symbol_key?: string
 }[]
 /**
  * With an endpoint: properties of mapped entities (their subtypes and base types) that code on a resolved path from the endpoint reads. Static reach, not load: an upper bound on executed branches, blind past unresolved calls and to reflection or serialization.
@@ -1221,6 +1265,10 @@ read_by: string[]
  * Hops from the endpoint to the nearest reader.
  */
 depth: number
+/**
+ * The stable_key of the mapped property (symbol_id) (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file.
+ */
+symbol_key?: string
 }[]
 static_bound: (null | {
 endpoints: number
@@ -1312,6 +1360,10 @@ start_line?: number
  * Present and true when the file is generated (FR292); absent otherwise.
  */
 generated?: boolean
+/**
+ * The stable_key of the symbol on the far side (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file.
+ */
+key?: string
 }
 site: {
 path: string
@@ -1333,6 +1385,10 @@ detail: ({
 via?: {
 id: string
 qualified_name: string
+/**
+ * The stable_key of the member the call or reference names (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file.
+ */
+key?: string
 }
 }[]
 boundaries: {
@@ -1350,6 +1406,10 @@ calls_name?: boolean
  * Present and true when the file is generated (FR292); absent otherwise.
  */
 generated?: boolean
+/**
+ * The stable_key of the symbol the unresolved site is in (from_id) (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file.
+ */
+from_key?: string
 }[]
 /**
  * Every matching relationship in each direction, before row and byte limits.
@@ -1613,6 +1673,10 @@ path: string
  * Present and true when the file is generated (FR292); absent otherwise.
  */
 generated?: boolean
+/**
+ * The stable_key of the symbol (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file.
+ */
+key?: string
 }[]
 entities: {
 id: string
@@ -1621,6 +1685,10 @@ qualified_name: string
  * maps_to: mapped to the table; inherits: a subtype of a mapped entity, sharing its table (table-per-hierarchy).
  */
 via: ("maps_to" | "inherits")
+/**
+ * The stable_key of the entity (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file.
+ */
+key?: string
 }[]
 reach: {
 id: string
@@ -1640,6 +1708,10 @@ basis: ("observed" | "inferred")
  * Present and true when the file is generated (FR292); absent otherwise.
  */
 generated?: boolean
+/**
+ * The stable_key of the endpoint or job (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file.
+ */
+key?: string
 }[]
 /**
  * True when a limit stopped the search, so the reach is a lower bound.
@@ -1681,6 +1753,10 @@ declaring_type: (string | null)
 read_kind: ("orm" | "application")
 calls: (number | null)
 callers: string[]
+/**
+ * The stable_key of the mapped property (symbol_id) (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file.
+ */
+symbol_key?: string
 }[]
 /**
  * DbSet properties of the table's entities, and how many members read them: code reading one reaches the table even when no call path does.
@@ -1689,11 +1765,19 @@ accessors: {
 id: string
 qualified_name: string
 readers: number
+/**
+ * The stable_key of the accessor (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file.
+ */
+key?: string
 }[]
 /**
  * Present and true when the file is generated (FR292); absent otherwise.
  */
 generated?: boolean
+/**
+ * The stable_key of the table (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file.
+ */
+key?: string
 }[]
 stopped_by: ("max_depth" | "node_budget" | null)
 }
@@ -1852,6 +1936,10 @@ depth: number
  */
 changed: boolean
 /**
+ * The stable_key of the test (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file.
+ */
+key?: string
+/**
  * Present and true when the file is generated (FR292); absent otherwise.
  */
 generated?: boolean
@@ -1895,15 +1983,27 @@ depth: number
  */
 changed: boolean
 /**
+ * The stable_key of the test (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file.
+ */
+key?: string
+/**
  * Present and true when the file is generated (FR292); absent otherwise.
  */
 generated?: boolean
 } | null)
 /**
+ * The stable_key of the dependent; absent for an importing file (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file.
+ */
+key?: string
+/**
  * Present and true when the file is generated (FR292); absent otherwise.
  */
 generated?: boolean
 }[]
+/**
+ * The stable_key of the changed symbol (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file.
+ */
+key?: string
 /**
  * Present and true when the file is generated (FR292); absent otherwise.
  */
@@ -2398,6 +2498,10 @@ symbol: (null | {
 id: string
 kind: string
 qualified_name: string
+/**
+ * The stable_key of the symbol the hit is in (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file.
+ */
+key?: string
 })
 /**
  * Present and true when the file is generated (FR292); absent otherwise.
@@ -2476,6 +2580,10 @@ stopped_by: (null | ("max_rows" | "max_depth" | "max_bytes" | "timeout"))
 horizon: {
 id: string
 unexplored_edges: number
+/**
+ * The stable_key of the frontier node (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file.
+ */
+key?: string
 }[]
 /**
  * Edges the search followed to discover nodes, in search order; at most 500.
@@ -2498,6 +2606,10 @@ line: number
 from_id: string
 type: string
 /**
+ * The stable_key of the symbol the unresolved site is in (from_id) (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file.
+ */
+from_key?: string
+/**
  * Present and true when the file is generated (FR292); absent otherwise.
  */
 generated?: boolean
@@ -2509,6 +2621,10 @@ name: string
 qualified_name: string
 path: string
 start_line: number
+/**
+ * The stable_key of the node (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file.
+ */
+key?: string
 /**
  * Present and true when the file is generated (FR292); absent otherwise.
  */
@@ -2825,6 +2941,10 @@ name: string
 qualified_name: string
 path: string
 inbound: number
+/**
+ * The stable_key of the hub (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file.
+ */
+key?: string
 /**
  * Present and true when the file is generated (FR292); absent otherwise.
  */
