@@ -20,10 +20,14 @@ afterAll(async () => { await client?.close() })
 const TOOLS = ['analyze_impact', 'compare_snapshots', 'find_query_source', 'find_symbols', 'find_tests', 'get_claims', 'get_ecosystem', 'get_external_usage', 'get_job', 'get_memory', 'get_overview', 'get_property_reads', 'get_relationships', 'get_symbol', 'get_symbols_at', 'get_table_reach', 'get_verification', 'impact_completeness', 'list_queries', 'list_repositories', 'list_snapshots', 'list_workspaces', 'prepare_verification', 'read_evidence', 'request_index', 'save_memory', 'search_sources', 'trace_paths', 'verify_claim', 'workspace_status']
 
 describe('AC22 MCP tool contracts', () => {
-  it('FR035 lists exactly the M0 tools plus the M2, M3, M5 and M6 tools, each with its input schema file unchanged', async () => {
-    const { tools } = await client.listTools()
-    expect(tools.map((t) => t.name).sort()).toEqual(TOOLS)
-    for (const t of tools) expect(t.inputSchema).toEqual(loadSchema(`tools/${t.name}.input.schema.json`))
+  it('FR035 FR421 with --tools all lists exactly the M0 tools plus the M2, M3, M5 and M6 tools, each with its input schema file unchanged', async () => {
+    // The default lists the core profile only (FR420); --tools all is the whole surface.
+    const all = await mcpClient(d, '--tools', 'all')
+    try {
+      const { tools } = await all.listTools()
+      expect(tools.map((t) => t.name).sort()).toEqual(TOOLS)
+      for (const t of tools) expect(t.inputSchema).toEqual(loadSchema(`tools/${t.name}.input.schema.json`))
+    } finally { await all.close() }
   })
 
   it('tells every client when to reach for the graph and how to ask for framework relationships', () => {

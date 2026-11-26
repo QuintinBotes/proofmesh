@@ -1,5 +1,5 @@
 {
   "mcpServers": {
-    "proofmesh": { "command": "proofmesh", "args": ["mcp"] }
+    "proofmesh": { "command": "proofmesh", "args": ["mcp", "--tools", "core,data,claims"] }
   }
 }

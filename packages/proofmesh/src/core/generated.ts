@@ -2117,6 +2117,10 @@ workspace_scoped: boolean
  * read answers from snapshots and the catalog; management asks the workspace to start or keep something (an index job, a note proposal, a prepared verification); execution runs repository code, which no tool does: a person runs an approved verification with the CLI.
  */
 capability: ("read" | "management" | "execution")
+/**
+ * The MCP tool profile that lists this tool. proofmesh mcp lists core unless started with --tools <profile[,profile]> or --tools all.
+ */
+profile: ("core" | "data" | "claims" | "extra")
 }[]
 /**
  * The version of every public contract this server speaks; COMPATIBILITY.md states the policy for each.

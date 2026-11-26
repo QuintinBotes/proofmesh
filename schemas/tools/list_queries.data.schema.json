@@ -22,7 +22,8 @@
           "data_schema",
           "paged",
           "workspace_scoped",
-          "capability"
+          "capability",
+          "profile"
         ],
         "properties": {
           "name": {
@@ -50,6 +51,15 @@
               "execution"
             ],
             "description": "read answers from snapshots and the catalog; management asks the workspace to start or keep something (an index job, a note proposal, a prepared verification); execution runs repository code, which no tool does: a person runs an approved verification with the CLI."
+          },
+          "profile": {
+            "enum": [
+              "core",
+              "data",
+              "claims",
+              "extra"
+            ],
+            "description": "The MCP tool profile that lists this tool. proofmesh mcp lists core unless started with --tools <profile[,profile]> or --tools all."
           }
         }
       }

@@ -2,6 +2,22 @@
 
 Proofmesh serves its tools over MCP on stdio (`proofmesh mcp`) and over Streamable HTTP on loopback (`proofmesh mcp --http`). Both transports build the same server around the same query service, so a client sees the same tools, schemas and answers on either (FR034).
 
+## Tool profiles (FR420 to FR423)
+
+A client that does not defer tool loading puts every listed tool's name, description and input schema into the model's context before the first question. So `proofmesh mcp` lists only the `core` profile, whose `tools/list` stays under 20,000 bytes (a test asserts it; 18,338 bytes for 13 tools at this change, against 86,473 for all 30):
+
+| Profile | Tools |
+|---|---|
+| `core` (default) | `find_symbols`, `get_symbol`, `get_symbols_at`, `get_relationships`, `trace_paths`, `analyze_impact`, `find_tests`, `search_sources`, `read_evidence`, `workspace_status`, `list_repositories`, `get_overview`, `list_queries` |
+| `data` | `get_table_reach`, `get_property_reads`, `find_query_source`, `get_external_usage` |
+| `claims` | `verify_claim`, `get_claims`, `prepare_verification`, `get_verification` |
+| `extra` | `list_snapshots`, `list_workspaces`, `get_ecosystem`, `compare_snapshots`, `impact_completeness`, `request_index`, `get_job`, `get_memory`, `save_memory` |
+
+- `proofmesh mcp --tools core,data` (or any comma-separated list) lists those profiles; `--tools all` lists every tool exactly as its schema file declares it. Both transports take it. In a client configuration, put the option after `mcp` in the arguments, for example `"args": ["mcp", "--tools", "all"]` in `.mcp.json`. A client restarts the server to change profile.
+- Outside `all`, a listed tool keeps its description and every field of its input schema, with types, enums, patterns, defaults and required fields, but not the per-field descriptions; `envelope` keeps its first sentence. The full schemas are `schemas/tools/<tool>.input.schema.json`, and the server validates every call against them whatever the profile.
+- `list_queries` lists every tool with its `profile`, loaded or not, and says how to load the others.
+- A call to a tool of a profile the server was not started with is `INVALID_ARGUMENT` with `details.profile` naming the profile, and the message says which `--tools` option loads it.
+
 ## Read, management and execution (FR036)
 
 `list_queries` gives every tool a `capability`:
