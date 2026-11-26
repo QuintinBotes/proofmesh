@@ -405,6 +405,14 @@ Acceptance: CI runs my pull request without secrets or release credentials; lice
 - FR358: MUST tell the host supervisor apart by a dedicated marker, not by a heap flag, so a person's own `--max-old-space-size` still gets the named host out-of-memory error; and MUST take a host out-of-memory only from V8's fatal-error text together with an abort exit.
 - FR359: MUST print the index host heap on its own line whether or not any adapter ran, and the synthetic script MUST refuse a `--sample-ms` that is not a positive number.
 
+### Busy databases, again
+
+- FR360: MUST let two indexes that meet contention on the catalog (job rows) and on the fact cache at the same moment both publish, every time, whatever the load.
+- FR361: MUST set a connection's busy timeout before any other statement on it, WAL included, and retry its pragmas, `exec` calls, reads and writes, so a database another run is creating or holding is waited for.
+- FR362: MUST end a write still busy after the retry budget as a `BUSY` error that names the database file and the statement, never as `INTERNAL_ERROR`.
+- FR363: MUST report a busy or locked error from any connection, including ones with no retry of their own, as `BUSY`.
+- FR364: MUST name `BEGIN IMMEDIATE` in the `BUSY` error of a transaction that cannot begin, MUST retry reads (`get`, `all`) like writes, and MUST seal a link file from a staging directory of the run's own, harden its connection like the others, and let the first run to seal an id keep its file, so two runs writing workspace links together neither delete each other's staging nor leave a record that does not match the file.
+
 ### Impact completeness
 
 - FR108: MUST provide `impact_completeness` with `base`, a commit-ish, optional `head` (omitted, the working tree), `depth` (default 1, at most 5), `include_tests` and the usual limits, and the CLI `proofmesh completeness <repository> <base>[..<head>] [--depth N] [--json]`.
