@@ -3,7 +3,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 import Database from 'better-sqlite3'
 import { ProofmeshError } from '../core/errors.js'
-import { canonicalJson, sha256, sha256File } from '../core/hash.js'
+import { canonicalJson, randomToken, sha256, sha256File } from '../core/hash.js'
+import { hardenDatabase } from '../core/busy.js'
 import { EvidenceStore } from '../evidence/store.js'
 import { readSql } from '../core/schemas.js'
 import { Catalog, type LinkFileRecord } from '../meshstore/catalog.js'
@@ -340,10 +341,11 @@ export function buildLinkFile(catalog: Catalog, dataDir: string, workspace: stri
     const existing = catalog.linkFile(id)
     if (existing) { openLinkFile(catalog, existing).close(); return { record: existing, created: false, counts: countLinks(catalog, existing) } }
     const links = matchAll(members, store)
-    const staging = path.join(dataDir, 'staging', id, 'links.db')
-    fs.rmSync(path.dirname(staging), { recursive: true, force: true })
+    // A directory of its own per run: another run sealing the same link file must not have its staging removed or overwritten.
+    const staging = path.join(dataDir, 'staging', `${id}.${process.pid}.${randomToken().slice(0, 8)}`, 'links.db')
     fs.mkdirSync(path.dirname(staging), { recursive: true })
     const db = new Database(staging)
+    hardenDatabase(db)
     db.exec(readSql(`link-format/${LINK_FORMAT_VERSION}.sql`))
     const meta = db.prepare('insert into meta (key, value) values (?, ?)')
     for (const [k, v] of Object.entries({ format_version: LINK_FORMAT_VERSION, link_file_id: id, workspace, identity, rules: JSON.stringify(RULES), sealed_at: new Date().toISOString() })) meta.run(k, v)
@@ -366,12 +368,13 @@ export function buildLinkFile(catalog: Catalog, dataDir: string, workspace: stri
     })()
     db.pragma('journal_mode = DELETE')
     db.close()
-    const digest = sha256File(staging)
     fs.chmodSync(staging, 0o444)
     const target = linkPath(dataDir, id)
     fs.mkdirSync(path.dirname(target), { recursive: true })
-    fs.renameSync(staging, target)
+    // The first run to seal an id keeps its file; a run that lost the race records that file's digest, so the record always matches what is on disk.
+    try { fs.linkSync(staging, target) } catch (e) { if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e }
     fs.rmSync(path.dirname(staging), { recursive: true, force: true })
+    const digest = sha256File(target)
     catalog.recordLinkFile({ id, workspace, digest, members: members.map((m) => ({ repository_id: m.repository_id, snapshot_id: m.snapshot_id })) })
     const record = catalog.linkFile(id)!
     return { record, created: true, counts: countLinks(catalog, record) }

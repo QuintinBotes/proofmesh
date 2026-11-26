@@ -391,6 +391,7 @@ Acceptance: CI runs my pull request without secrets or release credentials; lice
 - FR361: MUST set a connection's busy timeout before any other statement on it, WAL included, and retry its pragmas, `exec` calls, reads and writes, so a database another run is creating or holding is waited for.
 - FR362: MUST end a write still busy after the retry budget as a `BUSY` error that names the database file and the statement, never as `INTERNAL_ERROR`.
 - FR363: MUST report a busy or locked error from any connection, including ones with no retry of their own, as `BUSY`.
+- FR364: MUST name `BEGIN IMMEDIATE` in the `BUSY` error of a transaction that cannot begin, MUST retry reads (`get`, `all`) like writes, and MUST seal a link file from a staging directory of the run's own, harden its connection like the others, and let the first run to seal an id keep its file, so two runs writing workspace links together neither delete each other's staging nor leave a record that does not match the file.
 
 ### Impact completeness
 

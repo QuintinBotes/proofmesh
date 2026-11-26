@@ -2,9 +2,10 @@ import { spawn, type ChildProcess } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { asProofmeshError } from '../src/core/errors.js'
+import { hardenDatabase } from '../src/core/busy.js'
+import { asProofmeshError, type ProofmeshError } from '../src/core/errors.js'
 import { Catalog, initDataDir } from '../src/meshstore/catalog.js'
-import { CLI, copyFixture, tmpDir } from './helpers.js'
+import { CLI, ROOT, cli, copyFixture, tmpDir } from './helpers.js'
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 const GATED = path.join(import.meta.dirname, 'fake-adapters', 'gated.mjs')
@@ -126,5 +127,60 @@ describe('FR362 a write still contended past the retry budget is a BUSY error na
     expect(run.out.stderr).not.toContain('INTERNAL_ERROR')
     expect(run.out.stderr).toContain(`${db} stayed busy`)
     expect(run.out.stderr).toContain(statement)
+  }, 240000)
+})
+
+describe('FR364 reads, transactions and the shared link store hold up under contention too', () => {
+  const busy = () => Object.assign(new Error('database is locked'), { code: 'SQLITE_BUSY' })
+  /** A connection whose statements are busy a set number of times first, so the wrappers are exercised without a second process. */
+  function fake(times: number) {
+    let left = times
+    const hit = <T,>(v: T): T => { if (left-- > 0) throw busy(); return v }
+    const stmt = { run: () => hit('ran'), get: () => hit('row'), all: () => hit(['row']) }
+    const db = { name: '/data/catalog.db', pragma: () => 0, exec: () => hit(undefined), prepare: () => stmt, transaction: (fn: () => unknown) => Object.assign(fn, { immediate: () => hit(fn()) }) }
+    hardenDatabase(db as never)
+    return db as unknown as { prepare: (s: string) => typeof stmt; transaction: (fn: () => unknown) => () => unknown }
+  }
+
+  it('a read busy for a few tries is retried: get and all', () => {
+    const db = fake(3)
+    expect(db.prepare('select 1').get()).toBe('row')
+    const again = fake(3)
+    expect(again.prepare('select 1').all()).toEqual(['row'])
+  })
+
+  it('a transaction that cannot begin names BEGIN IMMEDIATE, the database and no internal error', async () => {
+    const { d, roots } = setup(1)
+    const holder = await hold(path.join(d, 'catalog.db'), releaseFile())
+    const r = cli(['--data-dir', d, 'workspace', 'add', 'w', roots[0]!], { PROOFMESH_BUSY_TIMEOUT_MS: '20', PROOFMESH_TEST_HARNESS: '1' })
+    holder.release()
+    expect(r.status).toBe(1)
+    expect(r.stderr).toMatch(/proofmesh: BUSY: catalog\.db stayed busy after \d+ tries: BEGIN IMMEDIATE/)
+    expect(() => fake(100).transaction(() => 1)()).toThrow(/catalog\.db stayed busy.*BEGIN IMMEDIATE/)
+    try { fake(100).transaction(() => 1)() } catch (e) { expect((e as ProofmeshError).code).toBe('BUSY') }
+  }, 240000)
+
+  it('a link build leaves the staging file of another run building the same link file alone, and seals', () => {
+    const d = tmpDir(), a = tmpDir('pm-links-a-'), b = tmpDir('pm-links-b-')
+    fs.cpSync(path.join(ROOT, 'fixtures', 'cs-links/repo-a'), a, { recursive: true })
+    fs.cpSync(path.join(ROOT, 'fixtures', 'cs-links/repo-b'), b, { recursive: true })
+    for (const args of [['init'], ['repo', 'add', a, '--name', 'store'], ['repo', 'add', b, '--name', 'shop'], ['index', a], ['index', b], ['workspace', 'add', 'retail', a, b]]) {
+      const r = cli(['--data-dir', d, ...args]); expect(r.status, r.stderr).toBe(0)
+    }
+    const first = cli(['--data-dir', d, 'workspace', 'link', 'retail'])
+    expect(first.status, first.stderr).toBe(0)
+    const id = /link file (link_\w+)/.exec(first.stdout)![1]!
+    // Another run is part way through the same link file: its staging file sits where the first version of this code put it.
+    const c = Catalog.open(d)
+    c.db.prepare('delete from link_file where id = ?').run(id)
+    c.close()
+    fs.rmSync(path.join(d, 'links', `${id}.db`), { force: true })
+    const other = path.join(d, 'staging', id, 'links.db')
+    fs.mkdirSync(path.dirname(other), { recursive: true })
+    fs.writeFileSync(other, 'another run is writing this')
+    const again = cli(['--data-dir', d, 'workspace', 'link', 'retail'])
+    expect(again.status, again.stderr).toBe(0)
+    expect(fs.readFileSync(other, 'utf8')).toBe('another run is writing this')
+    expect(again.stdout).toContain(`link file ${id} sealed`)
   }, 240000)
 })

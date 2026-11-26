@@ -57,7 +57,7 @@ export function hardenDatabase(db: Database.Database): void {
   }
   any.transaction = (fn) => {
     const tx = transaction(fn)
-    const run = (...a: unknown[]) => retryBusy(() => tx.immediate(...a), name, 'transaction')
+    const run = (...a: unknown[]) => retryBusy(() => tx.immediate(...a), name, 'BEGIN IMMEDIATE (transaction)')
     // Callers that name a mode get the same immediate, retried run.
     return Object.assign(run, { immediate: run, deferred: run, exclusive: run }) as never
   }
