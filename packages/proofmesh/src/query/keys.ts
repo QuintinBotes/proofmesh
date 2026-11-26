@@ -13,7 +13,6 @@ const KEYED: Partial<Record<ToolName, Array<[string, string, string]>>> = {
   trace_paths: [['nodes{}', '$', 'key'], ['search.horizon[]', 'id', 'key'], ['boundaries[]', 'from_id', 'from_key']],
   analyze_impact: [['dependents[]', 'id', 'key']],
   find_tests: [['tests[]', 'id', 'key']],
-  search_sources: [['hits[].symbol', 'id', 'key']],
   find_query_source: [['candidates[]', 'id', 'key']],
   // A file child's key is its path; only a symbol child's is an id.
   get_overview: [['children[]', 'key', 'symbol_key']],

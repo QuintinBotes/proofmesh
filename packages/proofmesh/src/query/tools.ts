@@ -342,9 +342,20 @@ function envelope(ctx: Ctx, tool: ToolName, requested: Limits | undefined, r: Pa
   const text = (cursor: string | null) => leanText(tool, ctx.snapshot.id, current === ctx.snapshot.id, r.lean!(r.data), limitations, cursor)
   // The byte budget is the whole answer's, measured with the lines it may still gain: a truncation note, or a lean answer's cursor.
   const over = () => (ctx.lean ? Buffer.byteLength(text(null)) + LEAN_RESERVE : Buffer.byteLength(JSON.stringify(env)) + CONTINUED.length + 4) > ctx.limits.max_bytes
+  // A key `a[].b` is the list b of every item of a, shortened from the last item's: a nested list the answer holds per table or per row.
+  const listsAt = (key: string): unknown[][] => {
+    const [head, tail] = key.split('[].')
+    if (tail === undefined) return [listAt(key) ?? []]
+    return (listAt(head!) ?? []).flatMap((item) => { const l = tail.split('.').reduce<unknown>((o, k) => (o as Record<string, unknown> | undefined)?.[k], item); return Array.isArray(l) ? [l] : [] })
+  }
   for (const [i, key] of keys.entries()) {
-    const list = listAt(key), floor = i === keys.length - 1 ? (r.keep ?? 0) : 0
-    while (list && list.length > floor && over()) { list.pop(); r.prune?.(r.data); stop.add('max_bytes'); cut = true }
+    const floor = i === keys.length - 1 ? (r.keep ?? 0) : 0
+    for (;;) {
+      const lists = listsAt(key), total = lists.reduce((n, l) => n + l.length, 0)
+      if (total <= floor || !over()) break
+      lists.filter((l) => l.length).at(-1)!.pop()
+      r.prune?.(r.data); stop.add('max_bytes'); cut = true
+    }
   }
   // An envelope that alone overflows the byte budget is compacted rather than sent over it.
   if (!ctx.compact && over()) {
@@ -632,7 +643,7 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
         calls: { sites: snapshotSummary(ctx.db, ctx.snapshot.id).call_sites, unresolved: snapshotSummary(ctx.db, ctx.snapshot.id).unresolved_calls.count, by_reason: snapshotSummary(ctx.db, ctx.snapshot.id).unresolved_calls.by_reason, dependency_missing_by_package: snapshotSummary(ctx.db, ctx.snapshot.id).unresolved_calls.dependency_missing_by_package },
       },
       stop_reasons: all.length > ctx.limits.max_rows ? ['max_rows'] : [],
-      shrink: 'files',
+      shrink: ['files', 'hubs'],
       more: all.length > ctx.limits.max_rows,
       limitations: [
         ...cycles.map((c) => `Warning: build modules ${c.modules.join(', ')} form a cycle through syntax-tier name matches, and ${c.ecosystem} forbids module cycles; the edges are ${c.edges.map((e) => `${e.from} to ${e.to} (${e.type}, ${e.sites} site${e.sites === 1 ? '' : 's'}, first ${e.path}:${e.line})`).join(', ')}.`),
@@ -994,7 +1005,7 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
       ...(data.some((t) => t.observed.length) ? ['observed in window, not load from code: observation counts come from a metrics file a person imported, not from the code.'] : []),
       ...(data.some((t) => t.property_reads.length) ? [PROPERTY_READS_NOTE] : []),
     ]
-    return { data: { tables: data, stopped_by: stopped }, stop_reasons: [...(stopped === 'max_depth' ? ['max_depth' as const] : []), ...(reached.some((t) => t.horizon && t.stopped_by !== 'max_depth') ? ['max_rows' as const] : [])], limitations }
+    return { data: { tables: data, stopped_by: stopped }, stop_reasons: [...(stopped === 'max_depth' ? ['max_depth' as const] : []), ...(reached.some((t) => t.horizon && t.stopped_by !== 'max_depth') ? ['max_rows' as const] : [])], limitations, shrink: ['tables[].property_reads', 'tables[].reach', 'tables[].accessors', 'tables[].entities', 'tables[].symbols'] }
   },
 
   get_property_reads(ctx, input) {
@@ -1030,7 +1041,7 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     if (statics && endpoints.length) limitations.push(`Static reads are static reach, not load: properties read on any resolved path from the endpoint, an upper bound on what one request reads, and blind past the ${statics.unresolved_calls} call${statics.unresolved_calls === 1 ? '' : 's'} with no single resolved target and to reads by reflection or serialization (an entity returned whole is serialized property by property).`)
     return {
       data: { reads, loaded_not_used: loadedNotUsed, unread_mapped_properties: unread, static_reads: (statics?.reads ?? []).slice(0, ctx.limits.max_rows), static_bound: statics ? { endpoints: endpoints.length, methods: statics.methods, unresolved_calls: statics.unresolved_calls, stopped_by: statics.stopped_by } : null, comparison },
-      stop_reasons: [...(rows.length > ctx.limits.max_rows || (statics?.reads.length ?? 0) > ctx.limits.max_rows ? ['max_rows' as const] : []), ...(statics?.stopped_by === 'max_depth' ? ['max_depth' as const] : [])], limitations, shrink: 'reads',
+      stop_reasons: [...(rows.length > ctx.limits.max_rows || (statics?.reads.length ?? 0) > ctx.limits.max_rows ? ['max_rows' as const] : []), ...(statics?.stopped_by === 'max_depth' ? ['max_depth' as const] : [])], limitations, shrink: ['reads', 'static_reads', 'unread_mapped_properties', 'loaded_not_used'],
     }
   },
   get_external_usage(ctx, input) {
@@ -1192,7 +1203,7 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
       data: { relationships: relationships.slice(0, ctx.limits.max_rows), boundaries: boundaries.items, totals },
       evidence_ids: [...new Set(relationships.slice(0, ctx.limits.max_rows).flatMap((r) => r.evidence_ids))].sort(byKey((i) => evidenceKey(ctx.db, i))),
       unresolved: { scope: 'query', items: [...boundaries.items, ...outUnresolved], count: boundaries.count + outGroups.reduce((n, g) => n + g.n, 0), by_reason: byReason },
-      stop_reasons: truncated ? ['max_rows'] : [], more: relationships.length > ctx.limits.max_rows, limitations, shrink: 'relationships',
+      stop_reasons: truncated ? ['max_rows'] : [], more: relationships.length > ctx.limits.max_rows, limitations, shrink: ['relationships', 'boundaries'],
       // One row per site: the other side's name at the call, import or reference line, tagged with what a plain row would hide (FR096).
       lean: (data) => (data.relationships as typeof relationships).map((r) => {
         const o = r.other as { kind: string; symbol_kind?: string; name?: string; qualified_name?: string; path?: string }

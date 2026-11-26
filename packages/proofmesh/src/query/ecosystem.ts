@@ -79,7 +79,8 @@ export function getEcosystem(dataDir: string, input: Record<string, unknown>): E
       data.boundaries = [...bounds.values()]
       const stop = new Set<'max_rows' | 'max_bytes' | 'timeout'>()
       if (data.links.length > applied.max_rows) { data.links.length = applied.max_rows; stop.add('max_rows') }
-      while (data.links.length && Buffer.byteLength(JSON.stringify(data)) > applied.max_bytes) { data.links.pop(); stop.add('max_bytes') }
+      // Links go first, then the unresolved boundaries, which carry samples of their own.
+      while ((data.links.length || data.boundaries.length) && Buffer.byteLength(JSON.stringify(data)) > applied.max_bytes) { (data.links.length ? data.links : data.boundaries).pop(); stop.add('max_bytes') }
       if (Date.now() - started > applied.timeout_ms) stop.add('timeout')
 
       // Coverage spans the members: counts add up, and a capability is as weak as its weakest member.

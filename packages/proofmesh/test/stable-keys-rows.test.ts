@@ -41,6 +41,24 @@ function everyRowKeyed(db: Database.Database, data: unknown): number {
   return checked
 }
 
+const KEY_FIELDS = new Set(['key', 'from_key', 'symbol_key', 'source_key', 'target_key'])
+const SLOP = 64
+const bytes = (x: unknown) => Buffer.byteLength(JSON.stringify(x))
+/** The answer as it was before keys: every key field left out (never an overview child's `key`, which is its id). */
+const withoutKeys = <T>(x: T): T => JSON.parse(JSON.stringify(x), function (this: Record<string, unknown>, k, v) { return KEY_FIELDS.has(k) && typeof v === 'string' && !('matches' in this) ? undefined : v })
+
+/** An answer the keys alone push over max_bytes is cut by whole rows to fit it, and says so, as every other tool does (FR280 to FR289). */
+function fitsWithoutItsKeys(d: string, name: string, input: Record<string, unknown>) {
+  const full = tool(d, name, input)
+  const budget = bytes(withoutKeys(full))
+  expect(bytes(full), `${name} answers over ${budget} with its keys`).toBeGreaterThan(budget)
+  const tight = tool(d, name, { ...input, limits: { ...(input.limits as object | undefined), max_bytes: budget } })
+  // The pruner reserves a fixed length for the note and flags a cut answer gains, so a cut answer may pass the budget by a few dozen bytes; the keys are hundreds.
+  expect(bytes(tight), `${name} within max_bytes ${budget}`).toBeLessThanOrEqual(budget + SLOP)
+  expect(tight.completion.truncated, `${name} says it was cut`).toBe(true)
+  expect(tight.completion.stop_reasons).toContain('max_bytes')
+}
+
 const git = (cwd: string, ...args: string[]) => execFileSync('git', ['-c', 'user.name=Test', '-c', 'user.email=test@example.com', '-c', 'commit.gpgsign=false', ...args], { cwd, encoding: 'utf8' }).trim()
 const idOf = (db: Database.Database, qualified: string) => (db.prepare('select id from symbol where qualified_name = ?').get(qualified) as { id: string }).id
 const keyOf = (db: Database.Database, qualified: string) => (db.prepare('select stable_key from symbol where qualified_name = ?').get(qualified) as { stable_key: string }).stable_key
@@ -128,6 +146,115 @@ describe('FR280 FR281 FR282 FR283 FR284 every structured row that names a symbol
   }, 240000)
 })
 
+describe('FR280 to FR289 the keys count against max_bytes: every keyed list is cut by the byte budget (fixtures/change-reach, prisma-schema)', () => {
+  let d: string
+  beforeAll(async () => {
+    const repo = fs.realpathSync(tmpDir('pm-rowkeys-budget-'))
+    const fx = path.join(ROOT, 'fixtures', 'change-reach')
+    fs.cpSync(path.join(fx, 'base'), repo, { recursive: true })
+    fs.copyFileSync(path.join(fx, 'tsconfig.json'), path.join(repo, 'tsconfig.json'))
+    ;({ dataDir: d } = await indexedDataDir(repo))
+  }, 240000)
+  const mean = () => withSnapshot(d, (db) => idOf(db, 'src/stats:mean'))
+
+  it('relationships, impact, tests, symbols, hubs and source hits stay within max_bytes and report the cut', () => {
+    fitsWithoutItsKeys(d, 'get_relationships', { subject_id: mean(), direction: 'in' })
+    fitsWithoutItsKeys(d, 'analyze_impact', { subject_ids: [mean()], limits: { max_depth: 3 } })
+    fitsWithoutItsKeys(d, 'find_tests', { subject_ids: [mean()] })
+    fitsWithoutItsKeys(d, 'find_symbols', { text: 'a' })
+    fitsWithoutItsKeys(d, 'workspace_status', {})
+  })
+
+  it('search_sources counts a hit\'s key in its own byte budget, which holds the hits less 128 bytes for the envelope', () => {
+    const r = tool(d, 'search_sources', { text: 'export', limits: { max_bytes: 1000 } })
+    const hits = (r.data as { hits: Array<{ symbol: { key?: string } | null }> }).hits
+    expect(hits.some((h) => h.symbol?.key)).toBe(true)
+    expect(bytes(hits)).toBeLessThanOrEqual(1000 - 128)
+    expect(r.completion.stop_reasons).toContain('max_bytes')
+  })
+
+  it('trace_paths keeps its path and cuts the nodes', () => {
+    const source = withSnapshot(d, (db) => idOf(db, 'test/analyst.test:analystScoreDoubles'))
+    fitsWithoutItsKeys(d, 'trace_paths', { source_id: source, target_id: mean() })
+  })
+
+  it('get_table_reach cuts the lists of a table (fixtures/prisma-schema)', async () => {
+    const { dataDir } = await indexedDataDir(fixtureRepo('prisma-schema'))
+    fitsWithoutItsKeys(dataDir, 'get_table_reach', { table: expectedFor('prisma-schema').table_reach[0].table })
+  }, 240000)
+})
+
+describe('FR286 get_ecosystem trims unresolved boundaries to max_bytes too', () => {
+  it('a workspace whose links are all unresolved answers within max_bytes, cut by whole boundaries', async () => {
+    const d = tmpDir()
+    initDataDir(d)
+    const members: Array<{ repository_id: string; snapshot_id: string; name: string; fns: string[] }> = []
+    for (const [fixture, name] of [['ts-invoicing', 'alpha'], ['ts-packages', 'beta']] as const) {
+      const repo = tmpDir(`pm-eco-${name}-`)
+      fs.cpSync(fixtureRepo(fixture), repo, { recursive: true })
+      const c = Catalog.open(d)
+      const id = c.addRepository(repo, name).id
+      c.close()
+      const { snapshotId } = await indexRepository(d, id)
+      const c2 = Catalog.open(d)
+      const db = openSnapshot(c2, c2.snapshot(snapshotId)!)
+      const fns = (db.prepare("select id from symbol where kind = 'function' order by qualified_name limit 6").all() as Array<{ id: string }>).map((f) => f.id)
+      db.close(); c2.close()
+      members.push({ repository_id: id, snapshot_id: snapshotId, name, fns })
+    }
+    const c = Catalog.open(d)
+    c.addToWorkspace('shop', members.map((m) => m.repository_id), 'test')
+    c.close()
+    const links = members.flatMap((m) => (['calls_endpoint', 'messages'] as const).flatMap((type) => m.fns.map((fn) => ({ type, rule: type === 'messages' ? 'messaging' : 'http_route', source: [m.repository_id, fn] as [string, string], confidence: 1, resolution: 'unresolved' as const, reason: 'no_match' }))))
+    writeLinkFile(d, 'shop', members, links, { http_route: '1', messaging: '1' })
+    const full = tool(d, 'get_ecosystem', { workspace: 'shop' })
+    const data = full.data as { boundaries: unknown[] }
+    expect(data.boundaries.length).toBeGreaterThan(2)
+    expect(full.completion.truncated).toBe(false)
+    const budget = bytes({ ...full.data, boundaries: [] }) + 400
+    expect(bytes(full.data)).toBeGreaterThan(budget)
+    const tight = tool(d, 'get_ecosystem', { workspace: 'shop', limits: { max_bytes: budget } })
+    expect(bytes(tight.data)).toBeLessThanOrEqual(budget)
+    expect((tight.data as { boundaries: unknown[] }).boundaries.length).toBeLessThan(data.boundaries.length)
+    expect(tight.completion.truncated).toBe(true)
+    expect(tight.completion.stop_reasons).toContain('max_bytes')
+  }, 240000)
+})
+
+describe('FR280 FR282 rows of a dispatch, an unresolved site, a frontier and a boundary carry key (a TypeScript interface, its implementation and an untyped caller)', () => {
+  let d: string
+  beforeAll(async () => {
+    const repo = fs.realpathSync(tmpDir('pm-rowkeys-dispatch-'))
+    fs.writeFileSync(path.join(repo, 'tsconfig.json'), '{ "compilerOptions": { "strict": true, "target": "es2022", "module": "esnext", "moduleResolution": "bundler" }, "include": ["*.ts"] }\n')
+    fs.writeFileSync(path.join(repo, 'iface.ts'), 'export interface Shape {\n  area(): number\n}\nexport class Square implements Shape {\n  area(): number {\n    return 1\n  }\n}\n')
+    fs.writeFileSync(path.join(repo, 'use.ts'), "import { Shape } from './iface'\nexport function total(s: Shape): number {\n  return s.area()\n}\ndeclare const loose: any\nexport function dyn(): number {\n  return loose.area()\n}\nexport function top(): number {\n  return total({ area: () => 2 })\n}\n")
+    ;({ dataDir: d } = await indexedDataDir(repo))
+  }, 240000)
+  const id = (q: string) => withSnapshot(d, (db) => idOf(db, q))
+
+  it('get_relationships: an inbound row names the member it dispatches through (via) and each unresolved site its symbol (from_key)', () => {
+    const data = tool(d, 'get_relationships', { subject_id: id('iface:Square.area'), direction: 'in' }).data as { relationships: Array<{ via?: { id: string; key?: string } }>; boundaries: Array<{ from_id: string; from_key?: string }> }
+    const via = data.relationships.filter((r) => r.via)
+    expect(via.length, 'a dispatch row').toBeGreaterThan(0)
+    expect(via.every((r) => r.via!.key === withSnapshot(d, (db) => (db.prepare('select stable_key from symbol where id = ?').get(r.via!.id) as { stable_key: string }).stable_key))).toBe(true)
+    expect(data.boundaries.length, 'an unresolved site').toBeGreaterThan(0)
+    expect(data.boundaries.every((b) => typeof b.from_key === 'string')).toBe(true)
+    expect(withSnapshot(d, (db) => everyRowKeyed(db, data))).toBeGreaterThanOrEqual(via.length + data.boundaries.length)
+  })
+
+  it('trace_paths: a search stopped by max_depth keys its frontier, and an unresolved call keys its boundary', () => {
+    const horizon = tool(d, 'trace_paths', { source_id: id('use:top'), target_id: id('iface:Square.area'), limits: { max_depth: 1 } }).data as { conclusion: string; search: { horizon: Array<{ id: string; key?: string }> } }
+    expect(horizon.conclusion).toBe('no_path_within_bounds')
+    expect(horizon.search.horizon.length, 'a frontier').toBeGreaterThan(0)
+    expect(withSnapshot(d, (db) => everyRowKeyed(db, horizon))).toBeGreaterThanOrEqual(horizon.search.horizon.length)
+    expect(horizon.search.horizon.every((h) => typeof h.key === 'string')).toBe(true)
+    const bounded = tool(d, 'trace_paths', { source_id: id('use:dyn'), target_id: id('iface:Square.area') }).data as { boundaries: Array<{ from_id: string; from_key?: string }> }
+    expect(bounded.boundaries.length, 'a boundary').toBeGreaterThan(0)
+    expect(bounded.boundaries.every((b) => typeof b.from_key === 'string')).toBe(true)
+    expect(withSnapshot(d, (db) => everyRowKeyed(db, bounded))).toBeGreaterThanOrEqual(bounded.boundaries.length)
+  })
+})
+
 describe('FR285 get_table_reach rows carry key (fixtures/prisma-schema)', () => {
   it('the table, the symbols declaring it and the entity mapped to it', async () => {
     const { dataDir } = await indexedDataDir(fixtureRepo('prisma-schema'))
@@ -199,6 +326,14 @@ describe('FR287 FR288 FR289 property reads, table reach and query-source rows ca
     expect(t.reach.length + t.entities.length).toBeGreaterThan(1)
     // table + entities + reach rows
     expect(csDb(d, (db) => everyRowKeyed(db, r))).toBeGreaterThanOrEqual(1 + t.entities.length + t.reach.length)
+  }, 240000)
+
+  it('FR287 FR288 get_property_reads and get_table_reach stay within max_bytes and report the cut (fixtures/cs-reads, cs-tables)', async () => {
+    const { dataDir: r } = await indexedDataDir(fixtureRepo('cs-reads'))
+    fitsWithoutItsKeys(r, 'get_property_reads', { endpoint: expectedFor('cs-reads').endpoint })
+    const { dataDir: t, repoId } = await indexedDataDir(fixtureRepo('cs-tables'))
+    expect(cli(['--data-dir', t, 'observe', 'import', repoId, path.join(ROOT, 'fixtures', 'cs-tables', 'property-reads-0.3.json')]).status).toBe(0)
+    fitsWithoutItsKeys(t, 'get_table_reach', { table: 'Orders' })
   }, 240000)
 
   it('FR289 find_query_source: every candidate carries key (fixtures/cs-query-source)', async () => {
