@@ -141,7 +141,7 @@ describe('FR141 proofmesh status prints the census, one line per language, and -
     expect(lines[at]).toBe('languages 10')
     const printed = lines.slice(at + 1, at + 11)
     expect(printed.map((l) => l.replace(/^ {2}/, '').split(':')[0])).toEqual(rows.map((r) => r.language))
-    expect(printed[0]).toBe('  C: 1 file, tier syntax, weakest imports=unsupported, remedy: ' + rows[0]!.remedy)
+    expect(printed[0]).toBe('  C: 1 file, tier syntax, weakest references=unsupported, remedy: ' + rows[0]!.remedy)
     const go = printed[rows.findIndex((r) => r.language === 'Go')]!
     expect(go).toMatch(/^ {2}Go: 1 file, tier syntax, weakest \w+=\w+, remedy: .*scip-go/)
     const ts = printed[rows.findIndex((r) => r.language === 'TypeScript')]!

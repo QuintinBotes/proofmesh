@@ -7,7 +7,8 @@ import { asProofmeshError, ProofmeshError } from '../core/errors.js'
 import { resolveDataDir } from '../core/paths.js'
 import { Catalog, initDataDir, LEASE_OWNER, type IndexJob } from '../meshstore/catalog.js'
 import { runVerificationCommand } from './verification.js'
-import { repositoryPath, scanScip } from '../scip/decode.js'
+import { indexCoverage } from '../scip/coverage.js'
+import { runScip } from '../scip/run.js'
 import { sameRepository } from '../indexer/discovery.js'
 import { runWorkspaceLink } from './workspace-link.js'
 import { sha256File } from '../core/hash.js'
@@ -42,7 +43,7 @@ Usage: proofmesh [--data-dir DIR] <command>
   repo add <path> [--name N]        register a repository
   repo list                         registered repositories: id, name, root, trust
   repo move <repo> <new-path>       re-root a registered repository at another working tree of the same git repository
-  repo trust <repo> --build-evaluation   allow build logic to run while indexing (C#)
+  repo trust <repo> --build-evaluation   allow build logic to run for this repository: C# build evaluation while indexing, and scip run indexers
   repo untrust <repo>               revoke that trust
   repo conventions <repo> [<file> | --clear]   job bases, flag keys and team enums only the repository can name (data, runs nothing)
   extension add <file> [--adapter csharp]   install a rules extension for every repository (runs its code)
@@ -51,6 +52,7 @@ Usage: proofmesh [--data-dir DIR] <command>
   adapter list | adapter remove <id>
   adapter check <id or entry> --fixture <dir> [--expected <file>] [--json]   run the public conformance kit
   scip add <repository> <index.scip> [--name N]   name a SCIP index you produced; Proofmesh reads it and never runs an indexer
+  scip run <repository> [--language L] [--container IMAGE@sha256:...] [--module-cache DIR] [--timeout S] [--max-memory MB]   run a pinned indexer (scip-go, scip-java, rust-analyzer) in a disposable copy; only for a repository trusted for build evaluation
   scip list <repository> | scip remove <repository> <name>
   workspace add <name> <repository>... [--registry <repository>:<path>]   group repositories into an ecosystem; links and the overview are per workspace; --registry names the file a member lists its service callers in
   workspace list | workspace remove <name> [<repository>...]
@@ -242,21 +244,24 @@ export async function main(argv: string[]): Promise<number> {
             if (!fs.existsSync(file) || !fs.statSync(file).isFile()) throw new ProofmeshError('INVALID_ARGUMENT', `${file} is not a file`)
             // A27: each covered file's hash as the tree stands now, on the assumption that the person just built the index from it.
             // The index is read a document at a time, so naming a very large one holds no more than one document (FR164).
-            const files: Record<string, { hash: string; language: string }> = {}
-            let missing = 0, tool = '', meta = { projectRoot: '' }
-            try {
-              scanScip(file, {
-                metadata: (m) => { tool = `${m.tool.name} ${m.tool.version}`.trim(); meta = m },
-                document: (doc) => {
-                  const rel = repositoryPath(meta, doc, repo.root), abs = rel ? path.join(repo.root, rel) : undefined
-                  if (rel && abs && fs.existsSync(abs) && fs.lstatSync(abs).isFile()) files[rel] = { hash: sha256File(abs), language: doc.language || 'unknown' }
-                  else missing++
-                },
-              })
-            } catch (e) { throw new ProofmeshError('INVALID_ARGUMENT', `${file} is not a SCIP index: ${(e as Error).message}`) }
+            let covered: ReturnType<typeof indexCoverage>
+            try { covered = indexCoverage(file, repo.root) } catch (e) { throw new ProofmeshError('INVALID_ARGUMENT', `${file} is not a SCIP index: ${(e as Error).message}`) }
+            const { files, missing, tool } = covered
             const s = catalog.addScip(repo.id, { name, path: file, sha256: sha256File(file), tool, files }, os.userInfo().username)
             console.log(`SCIP index ${s.name} named for ${repo.name}: ${Object.keys(s.files).length} files covered${missing ? `, ${missing} of its documents ${missing === 1 ? 'names' : 'name'} no file in the repository` : ''}; produced by ${s.tool || 'an unnamed indexer'}; by ${s.added_by} at ${s.added_at}`)
             console.log('Proofmesh reads it at every index and never runs an indexer. Files no semantic adapter covers get its symbols and references while they keep their content as of now; after an edit a file falls back to its usual adapter until you produce the index again and add it again.')
+            return 0
+          }
+          if (opts[0] === 'run' && opts[1]) {
+            const language = take(opts, '--language'), container = take(opts, '--container'), moduleCache = take(opts, '--module-cache'), timeout = take(opts, '--timeout'), memory = take(opts, '--max-memory')
+            const number = (flag: string, v: string | undefined, max: number) => { if (v === undefined) return undefined; const n = Number(v); if (!/^[1-9]\d*$/.test(v) || !Number.isSafeInteger(n) || n > max) throw new ProofmeshError('INVALID_ARGUMENT', `${flag} takes a whole number from 1 to ${max}; got ${v.length > 40 ? `${v.slice(0, 40)}...` : v}`); return n }
+            catalog.close()
+            const ran = await runScip(dataDir, opts[1], { ...(language ? { language } : {}), ...(container ? { container } : {}), ...(moduleCache ? { moduleCache } : {}), ...(timeout ? { timeoutS: number('--timeout', timeout, 86400)! } : {}), ...(memory ? { maxMemoryMb: number('--max-memory', memory, 1048576)! } : {}) })
+            for (const r of ran) {
+              console.log(`SCIP index ${r.name} named: ${r.files} files covered; produced by ${r.indexer} ${r.version} (sha256 ${r.digest}) under grant ${r.grantId}; its log is ${r.log}`)
+              if (r.isolation === 'process') console.log('The indexer ran in a disposable copy as a plain process: time, memory and output were limited, and network and filesystem policy were not enforced. Use --container <image@sha256:...> for isolation.')
+            }
+            console.log('Facts from it are recorded as trusted_build. Index the repository to use it; revoking the grant (proofmesh repo untrust) sends its files back to their usual tier.')
             return 0
           }
           if (opts[0] === 'remove' && opts[1] && opts[2]) {
@@ -269,11 +274,11 @@ export async function main(argv: string[]): Promise<number> {
             if (!all.length) console.log(`no SCIP indexes named for ${repo.name}`)
             for (const s of all) {
               const state = !fs.existsSync(s.path) ? 'missing' : sha256File(s.path) !== s.sha256 ? 'changed since it was added' : 'current'
-              console.log(`${s.name}  ${s.path}  ${Object.keys(s.files).length} files  ${s.tool}  ${state}  by ${s.added_by} at ${s.added_at}`)
+              console.log(`${s.name}  ${s.path}  ${Object.keys(s.files).length} files  ${s.tool}  ${state}  by ${s.added_by} at ${s.added_at}${s.run ? `  run by proofmesh: ${s.run.indexer} ${s.run.version} sha256 ${s.run.digest}, grant ${s.run.grant_id}, ${s.run.isolation}` : ''}`)
             }
             return 0
           }
-          throw new ProofmeshError('INVALID_ARGUMENT', 'usage: proofmesh scip add <repository> <index.scip> [--name N] | scip list <repository> | scip remove <repository> <name>')
+          throw new ProofmeshError('INVALID_ARGUMENT', 'usage: proofmesh scip add <repository> <index.scip> [--name N] | scip run <repository> [--language L] [--container IMAGE@sha256:...] [--module-cache DIR] [--timeout S] [--max-memory MB] | scip list <repository> | scip remove <repository> <name>')
         } finally {
           catalog.close()
         }

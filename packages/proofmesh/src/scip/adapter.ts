@@ -136,7 +136,7 @@ const MEMBER_KINDS = new Set(['method', 'property', 'field', 'constructor'])
 const CALLABLE_KINDS = new Set(['function', 'method', 'constructor'])
 const TYPE_KINDS = new Set(['class', 'struct', 'interface', 'enum'])
 
-async function initialize(params: { workspace: string; repository_root?: string; files: Array<{ path: string; content_hash: string; language: string }>; config?: { indexes?: Array<{ name: string; path: string; sha256: string }> } }) {
+async function initialize(params: { workspace: string; repository_root?: string; files: Array<{ path: string; content_hash: string; language: string }>; config?: { indexes?: Array<{ name: string; path: string; sha256: string; run?: { indexer: string; version: string; digest: string; isolation: string } }> } }) {
   workspace = params.workspace
   for (const f of params.files) routedFiles.set(f.path, f)
   const indexes = params.config?.indexes ?? []
@@ -180,7 +180,10 @@ async function initialize(params: { workspace: string; repository_root?: string;
   }
   return {
     adapter: { id: 'scip', version: VERSION, protocol_version: '1.0', languages: [...new Set([...documents.values()].map((d) => d.language || 'unknown'))].sort(), toolchain: tools },
-    capabilities: { symbols: true, references: true, resolved_calls: true }, external_inputs: indexes.map((ix) => `scip:${ix.name}/${ix.sha256}`).sort(),
+    capabilities: { symbols: true, references: true, resolved_calls: true },
+    // An index Proofmesh ran an indexer for is build evaluation (A38): its mode, and the indexer's identity, are part of snapshot identity.
+    analysis_mode: indexes.some((ix) => ix.run) ? 'trusted_build' : 'no_execution',
+    external_inputs: indexes.flatMap((ix) => [`scip:${ix.name}/${ix.sha256}`, ...(ix.run ? [`scip-run:${ix.name}/${ix.run.indexer} ${ix.run.version} ${ix.run.digest} ${ix.run.isolation}`] : [])]).sort(),
   }
 }
 

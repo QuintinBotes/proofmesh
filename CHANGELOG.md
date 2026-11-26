@@ -8,6 +8,12 @@ Reproducible order (closes #70):
 
 - Rows that tie on rank are now ordered by repository-relative path, then position, then name, then kind, instead of by ids that depend on where the repository is checked out, so the same repository in two directories gives the same rows in the same order from every tool. Rosetta now asserts row order for every call (FR234).
 
+Pinned SCIP indexers for a trusted repository (closes #23, option B; amends A24 as A38; FR227 to FR230):
+
+- `proofmesh scip run <repository> [--language L]` refuses with `TRUST_REQUIRED` without a build-evaluation grant (printing the grant command and the indexer command to run by hand) and starts nothing. With the grant it runs scip-go, scip-java or rust-analyzer (build scripts and procedural macros off), whose executable must have the pinned digest, in a disposable copy of the current snapshot: no shell, an allowlisted environment, a private HOME, dependencies from a declared module cache only, SIGKILL on a time or memory limit, capped output, `--container` for `--network none`. Partial output is discarded, never named. No MCP or HTTP tool can start a run.
+- The index records the indexer, version, digest and grant (catalog migration 0019); its facts carry `trusted_build` and its identity is part of snapshot identity. `proofmesh repo untrust` stops it being read: files return to their usual tier with unchanged keys and the census names `scip_revoked:<index>:<grant>`.
+- Pins: scip-go v0.2.9, scip-java v0.13.2 and rust-analyzer 2026-11-09 (releases over two weeks old), each platform's release asset and its published sha256 recorded in the table as install provenance; the installed executable must report the pinned version and its own sha256 is recorded in the index. A digest pinned in `<data dir>/indexers.json` is enforced. Not done: the container run is covered by its argv and a fake `docker` only, and without `--container` the module cache is declared by offline settings per indexer, not enforced.
+
 Python overrides (closes #69; completes #20 scenario 2):
 
 - The Python adapter records `overrides` from a method to the method of the same name it overrides, through the class's resolved bases: one row per base branch that declares it, a chain one level at a time, nothing for a static method, a property, a method that overrides nothing or a base outside the repository. Callers and impact of a subclass method now include calls made through the base class, labelled `dispatch` (FR226, FR214).
@@ -16,6 +22,10 @@ Test importers and sibling implementations (closes #67, #68):
 
 - `get_relationships` with `include_tests` false now leaves out an importer row whose source is a test file; the filter looked up a symbol, and an importer's source is the file (FR224).
 - `analyze_impact` on one implementation of an interface or base member no longer lists a sibling implementation as a dependent; callers of the member and dispatch callers are still reached (FR225). The four Rosetta known-defect rows these fixed (TypeScript imports and impact, Python imports, C# impact) are now plain expected rows.
+
+Syntax-tier structure, Swift, Scala, C, C++ and Bash (closes #59, part 2; part 1 is #66):
+
+- The syntax tier records each Swift `import`, Scala `import` (also inside a function body, with `detail.names` for braces), C and C++ `#include` (`detail.system`, and `detail.conditional` inside `#if`) and Bash `source` or `.` of a literal path as an unresolved `imports` row, and each Swift supertype, Scala `extends` and `with` and C++ base class as an unresolved `inherits` or `implements` row from the declaring type (FR231, FR232). C and C++ call sites are recorded, from the function or method that holds them, a macro call included (FR233). `docs/proofmesh/languages.md` and the Rosetta rows for C++ state what is recorded.
 
 Syntax-tier structure, Kotlin, Rust, PHP and Ruby (#59, part 1):
 
