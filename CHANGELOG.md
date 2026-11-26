@@ -4,6 +4,12 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 ## Unreleased
 
+Discover skips directories git ignores as a whole (closes #102; FR380 to FR384):
+
+- A directory that git ignores as a whole, such as build output in `bin/`, `obj/` or `node_modules/` when `.gitignore` names it, is now one `excluded_by_rule` entry with detail `gitignore` and a path ending in `/`. Discovery no longer reads anything inside it, which on a built C# working tree was most of the stage's file calls.
+- A directory git ignores only in part is walked as before. A file a negation re-includes (`obj/*` with `!obj/keep.txt`) is still found. An index of a commit (`--rev`) is unchanged.
+- Upgrade note: snapshot counts and identity change once. The files inside such a directory are no longer listed one by one, and the census counts it in an unknown `(ignored directory)` row. The analysis configuration records `ignored_dirs: one_entry`, so the first index after upgrading builds and publishes a new snapshot instead of finding the old one unchanged. Adapter facts of unchanged files are still replayed from the fact cache.
+
 A long `discover` stage reports progress and stops on SIGTERM (closes #96; FR370 to FR373):
 
 - Cause: the whole discover walk was one synchronous call, so for its length no timer, progress line or signal handler could run. On a slow or loaded filesystem the stage read as hung (no CPU, no output, no counter in `status`) and SIGTERM waited until the walk ended.

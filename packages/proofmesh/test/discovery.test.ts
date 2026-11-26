@@ -33,11 +33,12 @@ describe('A19 discovery honours git ignore rules, and lists what it ignores', ()
     fs.appendFileSync(path.join(root, '.git/info/exclude'), 'notes/\n')
     // A tracked file matching an ignore pattern is still content, as git treats it.
     git(root, 'add', '-f', 'src/kept.gen.ts')
+    // A directory git ignores as a whole is one entry (FR380): .claude/ holds nothing but the ignored worktrees.
     expect(statuses(root)).toEqual({
-      '.claude/worktrees/copy/src/app.ts': 'excluded:gitignore',
+      '.claude/': 'excluded:gitignore',
       '.gitignore': 'unsupported',
       'dist/out.js': 'excluded:**/dist/**',
-      'notes/private.ts': 'excluded:gitignore',
+      'notes/': 'excluded:gitignore',
       'src/app.ts': 'capture',
       'src/kept.gen.ts': 'capture',
       'src/schema.gen.ts': 'excluded:gitignore',

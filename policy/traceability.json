@@ -1411,6 +1411,21 @@
     ],
     "FR373": [
       "packages/proofmesh/test/discover-stall.test.ts"
+    ],
+    "FR380": [
+      "packages/proofmesh/test/ignored-dirs.test.ts"
+    ],
+    "FR381": [
+      "packages/proofmesh/test/ignored-dirs.test.ts"
+    ],
+    "FR382": [
+      "packages/proofmesh/test/ignored-dirs.test.ts"
+    ],
+    "FR383": [
+      "packages/proofmesh/test/ignored-dirs.test.ts"
+    ],
+    "FR384": [
+      "packages/proofmesh/test/ignored-dirs.test.ts"
     ]
   },
   "manual": {

@@ -179,7 +179,9 @@ describe('FR136 every file is in exactly one language row', () => {
     expect(rs.reduce((a, r) => a + r.files, 0)).toBe(total)
     expect(rs.reduce((a, r) => a + Object.values(r.dispositions).reduce((x, y) => x + y, 0), 0)).toBe(total)
     const by = (l: string, ext?: string) => rs.find((r) => r.language === l && (ext === undefined || r.extension === ext))!
-    expect(by('Go')).toMatchObject({ files: 2, excluded: { gitignore: 1 }, dispositions: { indexed: 1, excluded: 1, unsupported: 0, failed: 0 }, tier: 'syntax' })
+    // gen/ is ignored as a whole, so it is one entry in its own row, not a Go file (FR380).
+    expect(by('Go')).toMatchObject({ files: 1, dispositions: { indexed: 1, excluded: 0, unsupported: 0, failed: 0 }, tier: 'syntax' })
+    expect(by('unknown', '(ignored directory)')).toMatchObject({ files: 1, excluded: { gitignore: 1 } })
     expect(by('Python')).toMatchObject({ files: 1, excluded: { 'max_file_bytes:1048576': 1 }, tier: 'none', reason: 'excluded' })
     expect(by('JavaScript')).toMatchObject({ files: 1, excluded: { '**/node_modules/**': 1 } })
     expect(by('binary')).toMatchObject({ kind: 'binary', files: 2, reason: 'binary' })
