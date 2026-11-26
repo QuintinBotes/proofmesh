@@ -53,24 +53,29 @@ describe('request_index and get_job: background indexing with progress', () => {
   })
 })
 
-describe('the index lease of a process that died is free at once', () => {
+describe('the index lock of a process that died is free at once', () => {
   it('a dead holder on this host blocks nothing and its job reads interrupted; a live holder still blocks', async () => {
     const { spawnSync } = await import('node:child_process')
     const os = await import('node:os')
+    const path = await import('node:path')
     const { Catalog, initDataDir } = await import('../src/meshstore/catalog.js')
+    const { acquireIndexLock, lockFile } = await import('../src/meshstore/index-lock.js')
     const d = tmpDir()
     initDataDir(d)
     const catalog = Catalog.open(d)
+    const repo = catalog.addRepository(tmpDir())
     const dead = spawnSync(process.execPath, ['-e', '0']).pid
     const deadOwner = `pid:${dead}@${os.hostname()}`
-    catalog.acquireLease(deadOwner)
-    const repo = catalog.addRepository(tmpDir())
+    fs.mkdirSync(path.join(d, 'locks'))
+    fs.writeFileSync(lockFile(d, repo.id), JSON.stringify({ pid: dead, host: os.hostname(), started_at: new Date().toISOString() }))
     const job = catalog.requestJob(repo.id, 'test')
     catalog.updateJob(job.id, { state: 'running', started_at: new Date().toISOString(), owner: deadOwner })
     expect(catalog.job(job.id)!.state).toBe('interrupted')
-    expect(() => catalog.acquireLease('pid:1@elsewhere')).not.toThrow()
-    catalog.releaseLease('pid:1@elsewhere')
-    catalog.acquireLease(`pid:${process.pid}@${os.hostname()}`)
-    expect(() => catalog.acquireLease('pid:2@elsewhere')).toThrow(`another index job (pid:${process.pid}@${os.hostname()}) holds the lease`)
+    const held = await acquireIndexLock(d, repo.id, 'repo', { wait: false })
+    expect(catalog.leaseHolder(repo.id)!.owner).toBe(`pid:${process.pid}@${os.hostname()}`)
+    await expect(acquireIndexLock(d, repo.id, 'repo', { wait: false })).rejects.toThrow('already being indexed')
+    held.release()
+    expect(catalog.leaseHolder(repo.id)).toBeUndefined()
+    catalog.close()
   })
 })

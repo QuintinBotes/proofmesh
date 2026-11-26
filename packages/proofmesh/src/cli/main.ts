@@ -71,7 +71,7 @@ Usage: proofmesh [--data-dir DIR] <command>
   gc [--keep N] [--dry-run]         retire old snapshots and unreferenced evidence; never current, pinned or linked ones
   snapshot pin <id> | snapshot unpin <id>
   mcp-config [--client claude-code|codex] [--scope project|user] [--write .mcp.json]   print the client registration
-  index <repository-id or path> [--rev <commit-ish>]   capture, analyse, seal, and publish a snapshot; --rev indexes a commit without touching the working tree; progress on stderr
+  index <repository-id or path> [--rev <commit-ish>] [--no-wait]   capture, analyse, seal, and publish a snapshot; --rev indexes a commit without touching the working tree; one index per repository at a time: a second waits, or with --no-wait exits INDEX_IN_PROGRESS; progress on stderr
   watch <repository> [--interval S] [--quiet-ms MS] [--poll]   keep the snapshot current; --poll ignores file notifications
   completeness <repository> <base>[..<head>] [--depth N] [--json]   every symbol the change made and what calls, implements, references or imports it, each changed, tested or neither; indexes a side with no snapshot and waits; exits 0 when no dependent is neither, 1 when one is, 2 on a usage error or unknown commit
   tests <repository> <path | path#name> [--json]   the tests that reach a file or symbol, how each is known and its chain; exits 0 when one executes it, 1 when none does, 2 on a usage error or unknown subject
@@ -411,8 +411,8 @@ export async function main(argv: string[]): Promise<number> {
       }
       case 'index': {
         const opts = [...rest]
-        const jobFlag = take(opts, '--job'), rev = take(opts, '--rev'), keepCurrent = has(opts, '--keep-current')
-        if (!opts[0]) throw new ProofmeshError('INVALID_ARGUMENT', 'usage: proofmesh index <repository-id or path> [--rev <commit-ish> [--keep-current]]')
+        const jobFlag = take(opts, '--job'), rev = take(opts, '--rev'), keepCurrent = has(opts, '--keep-current'), noWait = has(opts, '--no-wait')
+        if (!opts[0]) throw new ProofmeshError('INVALID_ARGUMENT', 'usage: proofmesh index <repository-id or path> [--rev <commit-ish> [--keep-current]] [--no-wait]')
         const jobs = Catalog.open(dataDir)
         let jobId: string
         // Every index is a job row, so status and get_job see it; one the MCP server spawned names its row with --job.
@@ -426,7 +426,7 @@ export async function main(argv: string[]): Promise<number> {
           jobs.updateJob(jobId, { progress_at: new Date().toISOString(), adapter_progress: JSON.stringify(live ? { [live.adapter]: live } : {}) })
         }
         const report = progressReporter((line) => process.stderr.write(`${line}\n`), testMs('PROOFMESH_TEST_PROGRESS_INTERVAL_MS', 50, 60000), recordAdapters)
-        let started = false, phase = ''
+        let started = false, phase = '', beat = 0
         const plan: Record<string, { mode: string; analyse: number; reuse: number }> = {}
         let r: Awaited<ReturnType<typeof indexRepository>>
         try {
@@ -443,7 +443,11 @@ export async function main(argv: string[]): Promise<number> {
             phase = label
             report.update(p)
             recordAdapters()
-          }, undefined, rev, keepCurrent && !!rev)
+          }, undefined, rev, keepCurrent && !!rev, {
+            wait: !noWait, onNotice: (line) => process.stderr.write(`${line}\n`),
+            // A job waiting behind another index is alive: refresh its heartbeat so no poller reads it as interrupted and starts another.
+            onWait: () => { const at = Date.now(); if (at - beat >= 10_000) { beat = at; jobs.updateJob(jobId, { progress_at: new Date(at).toISOString() }) } },
+          })
         } catch (e) {
           report.stop()
           const failure = asProofmeshError(e)
