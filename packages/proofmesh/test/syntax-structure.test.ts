@@ -61,7 +61,7 @@ describe('FR115 FR116 FR117 the syntax tier records imports and heritage in Go a
 
   it('FR118 languages.md states imports, heritage and calls for every syntax-tier language', () => {
     const doc = fs.readFileSync(path.join(ROOT, 'docs', 'proofmesh', 'languages.md'), 'utf8')
-    const rows = new Map(doc.split('\n').filter((l) => /^\| [A-Z]/.test(l) && !l.startsWith('| Language')).flatMap((l) => { const [names, ...cells] = l.split('|').slice(1, -1).map((c) => c.trim()); return names!.split(', ').map((n) => [n.toLowerCase().replace('c++', 'cpp'), cells] as const) }))
+    const rows = new Map(doc.split('\n').filter((l) => /^\| [A-Z]/.test(l) && !l.startsWith('| Language')).flatMap((l) => { const [names, ...cells] = l.split('|').slice(1, -1).map((c) => c.trim()); return names!.split(', ').map((n) => [n.toLowerCase().replace('c++', 'cpp').replace('c#', 'csharp'), cells] as const) }))
     const grammars = JSON.parse(fs.readFileSync(path.join(ROOT, 'adapters', 'syntax', 'dist', 'grammars', 'grammars.json'), 'utf8')) as Record<string, unknown>
     // Python goes to its own adapter, and HCL to the Terraform adapter.
     expect([...rows.keys()].sort()).toEqual(Object.keys(grammars).filter((l) => l !== 'hcl' && l !== 'python').sort())

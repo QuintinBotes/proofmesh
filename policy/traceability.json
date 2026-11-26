@@ -1162,6 +1162,40 @@
     "FR269": [
       "packages/proofmesh/test/adapter-failure.test.ts"
     ],
+    "FR310": [
+      "packages/proofmesh/test/syntax-floor.test.ts",
+      "packages/proofmesh/test/syntax-tier.test.ts"
+    ],
+    "FR311": [
+      "packages/proofmesh/test/syntax-floor.test.ts"
+    ],
+    "FR312": [
+      "packages/proofmesh/test/syntax-floor.test.ts",
+      "packages/proofmesh/test/census.test.ts"
+    ],
+    "FR313": [
+      "packages/proofmesh/test/syntax-floor.test.ts"
+    ],
+    "FR314": [
+      "packages/proofmesh/test/syntax-floor.test.ts",
+      "packages/proofmesh/test/adapter-failure.test.ts"
+    ],
+    "FR315": [
+      "packages/proofmesh/test/syntax-floor.test.ts"
+    ],
+    "FR316": [
+      "packages/proofmesh/test/syntax-floor.test.ts",
+      "packages/proofmesh/test/csharp.syntax-floor.test.ts"
+    ],
+    "FR317": [
+      "packages/proofmesh/test/syntax-floor.test.ts"
+    ],
+    "FR318": [
+      "packages/proofmesh/test/syntax-floor.test.ts"
+    ],
+    "FR319": [
+      "packages/proofmesh/test/syntax-floor.test.ts"
+    ],
     "FR290": [
       "packages/proofmesh/test/generated-vendored.test.ts"
     ],
@@ -1230,6 +1264,36 @@
     ],
     "FR277": [
       "packages/proofmesh/test/adapter-budget.test.ts"
+    ],
+    "FR320": [
+      "packages/proofmesh/test/concurrent-index.test.ts"
+    ],
+    "FR321": [
+      "packages/proofmesh/test/concurrent-index.test.ts"
+    ],
+    "FR322": [
+      "packages/proofmesh/test/concurrent-index.test.ts"
+    ],
+    "FR323": [
+      "packages/proofmesh/test/concurrent-index.test.ts"
+    ],
+    "FR324": [
+      "packages/proofmesh/test/concurrent-index.test.ts"
+    ],
+    "FR325": [
+      "packages/proofmesh/test/concurrent-index.test.ts"
+    ],
+    "FR326": [
+      "packages/proofmesh/test/concurrent-index.test.ts"
+    ],
+    "FR327": [
+      "packages/proofmesh/test/concurrent-index.test.ts"
+    ],
+    "FR328": [
+      "packages/proofmesh/test/concurrent-index.test.ts"
+    ],
+    "FR329": [
+      "packages/proofmesh/test/concurrent-index.test.ts"
     ]
   },
   "manual": {

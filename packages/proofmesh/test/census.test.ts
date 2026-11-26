@@ -46,7 +46,8 @@ describe('FR138 workspace_status lists every language with its kind, files, tier
   it('scenario 1: exactly the spec rows, code and template first, then by file count, then by name', () => {
     expect(rows.map((r) => [r.language, r.kind, r.files, r.tier, r.reason])).toEqual([
       ['C', 'code', 1, 'syntax', 'no_precise_tier'],
-      ['C#', 'code', 1, 'none', 'adapter_unavailable:csharp'],
+      // FR312: the syntax tier reads the file the precise adapter could not, and the row says why it is not precise.
+      ['C#', 'code', 1, 'syntax', 'adapter_unavailable:csharp'],
       ['Elixir', 'code', 1, 'none', 'no_grammar'],
       ['Go', 'code', 1, 'syntax', 'no_precise_tier'],
       ['Shell', 'code', 1, 'syntax', 'no_precise_tier'],
@@ -73,7 +74,7 @@ describe('FR138 workspace_status lists every language with its kind, files, tier
     expect(row('Go').capabilities.symbols).toMatchObject({ partial: 1 })
     expect(row('Go').capabilities.resolved_calls).toMatchObject({ complete: 0 })
     // A file no adapter ran on has run nothing.
-    expect(row('C#').capabilities.symbols).toMatchObject({ not_run: 1 })
+    expect(row('C#').capabilities.symbols).toMatchObject({ partial: 1 })
     expect(row('Elixir').capabilities.resolved_calls).toMatchObject({ not_run: 1 })
   })
 
@@ -81,7 +82,7 @@ describe('FR138 workspace_status lists every language with its kind, files, tier
     const files = (tool(d, 'workspace_status', { files: { disposition: ['indexed'] } }).data.files as Array<{ path: string; capabilities: Record<string, string> }>)
     const tier = Object.fromEntries(files.map((f) => [f.path, f.capabilities.tier]))
     expect(tier).toMatchObject({ 'web/app.ts': 'precise:typescript', 'svc/main.go': 'syntax', 'include/util.h': 'syntax', 'scripts/deploy': 'syntax' })
-    expect(tier['api/Orders.cs']).toBeUndefined()
+    expect(tier['api/Orders.cs']).toBe('syntax')
     // The new key never counts as a capability of the snapshot.
     const caps = tool(d, 'find_symbols', { text: 'greet', envelope: 'full' }).coverage!.capabilities
     expect(Object.keys(caps)).not.toContain('tier')

@@ -34,6 +34,7 @@
             "APPROVAL_REQUIRED",
             "APPROVAL_INVALID",
             "CANCELLED",
+            "INDEX_IN_PROGRESS",
             "INTERNAL_ERROR"
           ]
         },

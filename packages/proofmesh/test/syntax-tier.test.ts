@@ -34,7 +34,8 @@ describe('A6 A23 the Tree-sitter syntax tier', () => {
     const require = createRequire(path.join(ROOT, 'adapters', 'syntax', 'package.json'))
     const wasm = fs.readFileSync(path.join(path.dirname(require.resolve('tree-sitter-python/package.json')), 'tree-sitter-python.wasm'))
     expect(toolchain['grammar:python']).toBe(`tree-sitter-python@0.25.0 ${createHash('sha256').update(wasm).digest('hex').slice(0, 16)}`)
-    expect(Object.keys(toolchain).filter((k) => k.startsWith('grammar:')).sort()).toEqual(['bash', 'c', 'cpp', 'go', 'java', 'kotlin', 'php', 'prisma', 'python', 'ruby', 'rust', 'scala', 'sql', 'swift'].map((l) => `grammar:${l}`))
+    // FR310: the TypeScript, TSX and C# grammars are pinned with the others.
+    expect(Object.keys(toolchain).filter((k) => k.startsWith('grammar:')).sort()).toEqual(['bash', 'c', 'cpp', 'csharp', 'go', 'java', 'kotlin', 'php', 'prisma', 'python', 'ruby', 'rust', 'scala', 'sql', 'swift', 'tsx', 'typescript'].map((l) => `grammar:${l}`))
     // Built from their packages' source by adapters/syntax/grammars/rebuild.mjs, because the packages ship no WebAssembly.
     expect([toolchain['grammar:swift'], toolchain['grammar:sql'], toolchain['grammar:prisma']]).toEqual(['tree-sitter-swift@0.7.1 24a6afb13db61ffd', '@derekstride/tree-sitter-sql@0.3.13 3c7acad1cda9d565', 'tree-sitter-prisma@1.6.0 5df064fd975d5b8e'])
   }, 240000)

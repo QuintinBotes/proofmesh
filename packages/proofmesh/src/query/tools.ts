@@ -283,7 +283,7 @@ function strictFreshness(ctx: Ctx, root: string): Envelope['freshness'] {
   const stale = `the working tree differs from snapshot ${ctx.snapshot.id} (${changed.length || 'its file inventory'} changed)`
   const found = { detail: 'working_tree_changed', snapshot_id: ctx.snapshot.id, changed_count: changed.length, changed: changed.slice(0, 20) }
   // Another process, such as a watcher, is indexing: a job started now could only fail on its lease, so the refusal names that index.
-  const holder = ctx.catalog.leaseHolder()
+  const holder = ctx.catalog.leaseHolder(ctx.repo.id)
   if (holder && holder.owner !== LEASE_OWNER) {
     throw new ProofmeshError('STALE_INPUT', `${stale}; the index already running in ${holder.owner} will publish a current snapshot`, { ...found, indexing_by: holder.owner })
   }

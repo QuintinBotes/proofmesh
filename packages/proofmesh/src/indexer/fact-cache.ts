@@ -1,5 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import { hardenDatabase } from '../core/busy.js'
 import Database from 'better-sqlite3'
 import { canonicalJson, sha256 } from '../core/hash.js'
 import type { AnalyzeResponse, InitializeResponse } from '../core/generated.js'
@@ -82,7 +83,7 @@ export class FactCache {
   constructor(dataDir: string) {
     fs.mkdirSync(path.join(dataDir, 'cache'), { recursive: true })
     this.db = new Database(path.join(dataDir, 'cache', 'facts.db'))
-    this.db.pragma('journal_mode = WAL')
+    hardenDatabase(this.db)
     this.db.exec('create table if not exists fact (key text primary key, repository text not null, adapter text not null, facts text not null)')
   }
 

@@ -328,12 +328,25 @@ Acceptance: CI runs my pull request without secrets or release credentials; lice
 - FR261: MUST name in that failure the adapter, its exit code or signal, the last lines of its stderr (at most 10, each cut at 300 characters) and the file it was on (the first file of the batch and how many more); MUST say so when the adapter was killed by a signal or exited 137 or wrote an out-of-memory message anywhere in its stderr, and MUST NOT restart an adapter in that case.
 - FR262: MUST read an adapter's result on `close`, not `exit`, so its last output is in the failure; MUST keep only a capped tail of stderr however much the adapter writes, and MUST stop an adapter that writes a reply line longer than 256 MiB, counted in bytes.
 - FR263: MUST stop an adapter that stays silent past its timeout with SIGKILL, so one that ignores SIGTERM cannot hang the index, and MUST NOT call an adapter again for the rest of the run once it has failed: every later call fails at once with the same reason; output that is not a valid protocol message ends an adapter the same way.
-- FR264: MUST fail the index with a non-zero exit when an adapter fails, leaving the previous snapshot current, and MUST record in the failed job's result which adapter failed and which adapters had finished.
+- FR264: MUST fail the index with a non-zero exit when an adapter that has no syntax-tier fallback (FR314) fails, leaving the previous snapshot current, and MUST record in the failed job's result which adapter failed and which adapters had finished.
 - FR266: MUST keep an adapter's stderr out of every stored record (the failed job's error, the snapshot's failure): the live error carries the tail, the stored text carries the adapter, its exit status, the file and the count of lines withheld.
 - FR267: MUST run each adapter in its own process group and stop the whole group, so a process the adapter started does not outlive a timeout or a failure.
 - FR268: MUST, while any adapter runs, stop every adapter's process group on SIGINT, SIGTERM or SIGHUP and exit with the conventional code (130, 143, 129), so an interrupted index leaves no adapter holding memory.
 - FR269: MUST have each built-in adapter (typescript, syntax, python, terraform, build, scip, csharp) exit when its input ends.
 - FR265: MUST print a stage line when capture ends (`prepare`) and when each later stage starts, so a crash shows where the index stopped.
+
+### Syntax floor
+
+- FR310: MUST cover TypeScript, JavaScript (with JSX and TSX) and C# in the syntax tier, through the TypeScript, TSX and C# Tree-sitter grammars shipped as pinned WebAssembly like the others (the package version and the hash of each grammar join the adapter's identity, its license ships beside it, nothing is fetched at run time), recording declarations, call sites without targets, imports, and for TypeScript the `extends` and `implements` of a type; the tier reads these languages only as the fallback of their precise adapter, never by extension, so an index whose adapters run is unchanged.
+- FR311: MUST analyse in the same index, by the syntax tier, each source file whose TypeScript or C# adapter is unavailable, recording tier `syntax` and the disposition detail `adapter_unavailable:<adapter>`; its calls are unresolved with their callee names and claim no target.
+- FR312: MUST report in the language census, for a language whose files the syntax tier read because their adapter could not, the tier `syntax` and the reason `adapter_unavailable:<adapter>` or `adapter_failed:<adapter>`, with the remedy (the SDK to install for the first).
+- FR313: MUST analyse by the syntax tier a file its precise adapter answers `failed` for, recording tier `syntax` and the detail `adapter_failed:<adapter>:<adapter's detail>`, leaving every other file its precise facts, and MUST publish the snapshot; the finished job's result lists, per adapter, how many files fell back and the stored reason.
+- FR314: MUST, when a TypeScript or C# adapter dies, exhausts its restarts, cannot start or sends output the host cannot read, give the files it had not analysed to the syntax tier instead of failing the index, and MUST name the adapter and the failure in the job's result, in a line the CLI prints and in the snapshot's meta `fallbacks`, without the adapter's stderr; an adapter with no fallback still fails the index (FR264).
+- FR315: MUST treat a change of the adapter that analyses a file as a change of its facts, so that an index which moved a file between tiers equals a clean index in the same state, a declaration keeps its key, and a note that references it is `tier_changed`.
+- FR316: MUST name a C# declaration in the syntax tier as the C# adapter does, in namespace form (block and file-scoped namespaces, nested types, generic types with their parameters, an overload not told apart by parameter types), so every declaration the syntax tier finds has the same key under both tiers.
+- FR317: MUST give every TypeScript and JavaScript file symbols from the syntax tier when the TypeScript adapter cannot run, and say so in the census.
+- FR318: MUST apply the floor only on unavailability or failure: with a working adapter no file reaches the syntax tier and the job reports no fallback.
+- FR319: MUST report framework rules and resolved calls `unsupported` on a file the syntax tier read as a fallback.
 
 ### Generated and vendored code
 
@@ -363,6 +376,19 @@ Acceptance: CI runs my pull request without secrets or release credentials; lice
 - FR275: MUST provide a large benchmark tier, `bench/graph-bench/run-large.sh`, on a pinned public repository of at least 20,000 source files in at least three languages, reporting as the median of three runs, with the machine described (NFR005), the cold index time, the peak memory of each adapter process, the store size, the time and files re-analysed for a one-file edit and seconds per file; no time or size budget is promised before it has measured one.
 - FR276: MUST print the seconds per analysed file of each adapter in the index summary, and `docs/proofmesh/operations.md` MUST record the Python adapter's measured figure.
 - FR277: MUST make each adapter's budget part of the snapshot's identity, so that raising a budget indexes again, while cached facts are still replayed.
+
+### Concurrent indexes
+
+- FR320: MUST open the catalog and the fact cache in WAL mode with a busy timeout of two minutes (`PROOFMESH_BUSY_TIMEOUT_MS` overrides it), so a run that meets another process's write waits rather than fails.
+- FR321: MUST retry a write that is still busy after that wait, up to ten tries, each transaction beginning immediate so the retry happens before any of it ran, and MUST log each retry; it MUST NOT fail with `SQLITE_BUSY` while a try is left.
+- FR322: MUST let indexes of different repositories run at the same time in one data directory: both publish, each query is scoped to its own repository, and a workspace query sees both.
+- FR323: MUST allow one index of a repository at a time, held by a lock file `locks/index-<repository id>.lock` in the data directory (created atomically; it records the pid, host and start time), taken by `index` and by each `watch` cycle; a second index of the same repository waits and says so, then finds the first one's snapshot current, so exactly one job publishes.
+- FR324: MUST, with `index --no-wait`, refuse while another index of the repository runs with `INDEX_IN_PROGRESS`, naming its pid, host and start time, and MUST leave the running index untouched.
+- FR325: MUST treat a lock whose pid is not alive on this host as stale, take it over and say so; a lock held from another host counts as live.
+- FR326: MUST finish a write that was contended for longer than one busy wait once the other writer lets go.
+- FR327: MUST keep queries and `status` answering from the published snapshot while an index writes.
+- FR328: MUST make `gc` and an index exclude each other: `gc` holds a data-directory lock for its whole run and refuses while any index holds a lock, and an index that finds `gc` running (checked after taking its own lock) steps aside and waits, or with `--no-wait` refuses; and MUST end a wait for a lock with `CANCELLED` when `watch` is aborted.
+- FR329: MUST record the holder's process start time in a lock and treat a pid whose start time differs as gone; MUST release every lock this process holds when it exits or is ended by SIGINT, SIGTERM or SIGHUP; MUST keep a job that waits behind a live lock `queued` by refreshing its heartbeat, so a poller does not start a second index; MUST name a lock's temporary files with the host and a random nonce; MUST retry the fact cache's first `create table`; and MUST read `PROOFMESH_BUSY_TIMEOUT_MS` only with `PROOFMESH_TEST_HARNESS` set, as a finite positive number of at most ten minutes.
 
 ### Impact completeness
 

@@ -21,6 +21,8 @@ export type AdapterSpec = {
   unavailable: () => string
   /** For an adapter a person installed: the hash its entry file had then, which joins snapshot identity. */
   sha256?: string
+  /** The syntax tier reads this adapter's files when it is unavailable, fails on a file, or dies (FR311, FR313). */
+  fallback?: boolean
   /** Settings the core passes at initialize, beside the repository's own configuration for the adapter. */
   config?: () => Record<string, unknown>
 }
@@ -51,14 +53,14 @@ const TS = { '.ts': 'typescript', '.tsx': 'typescript', '.mts': 'typescript', '.
 
 export const BUILT_IN: AdapterSpec[] = [
   {
-    id: 'typescript', languages: new Set(['typescript', 'javascript']), extensions: TS,
+    id: 'typescript', languages: new Set(['typescript', 'javascript']), extensions: TS, fallback: true,
     // Prisma schemas name the tables Prisma Client code queries (A36); the syntax tier still analyses them as sources.
     isConfig: (name) => /^(tsconfig|jsconfig)(\..+)?\.json$/.test(name) || name === 'package.json' || /\.prisma$/i.test(name),
     entry: () => process.env.PROOFMESH_TS_ADAPTER ?? createRequire(import.meta.url).resolve('@proofmesh/adapter-typescript'),
     unavailable: () => 'adapter_unavailable:typescript',
   },
   {
-    id: 'csharp', languages: new Set(['csharp']), extensions: { '.cs': 'csharp' },
+    id: 'csharp', languages: new Set(['csharp']), extensions: { '.cs': 'csharp' }, fallback: true,
     isConfig: (name) => /\.(csproj|props|targets|sln|slnx)$/i.test(name) || ['global.json', 'nuget.config'].includes(name.toLowerCase()),
     entry: csharpAdapterPath,
     unavailable: () => 'adapter_unavailable:csharp',
@@ -85,7 +87,8 @@ export const BUILT_IN: AdapterSpec[] = [
     entry: () => createRequire(import.meta.url).resolve('@proofmesh/adapter-syntax/build'),
     unavailable: () => 'adapter_unavailable:build',
   },
-  // The Tree-sitter syntax tier (A6, A23) comes after the semantic adapters, so it takes only the languages they do not cover.
+  // The Tree-sitter syntax tier (A6, A23) comes after the semantic adapters, so it takes only the languages they do not cover; a file whose
+  // adapter has `fallback` reaches it by the coordinator's handoff, never by its extension (FR311).
   {
     id: 'syntax', languages: new Set(Object.values(SYNTAX)), extensions: SYNTAX,
     isConfig: () => false,
