@@ -2,6 +2,8 @@ import type { Progress } from '../indexer/coordinator.js'
 
 /** A phase as a person reads it, and as a job row records it: the adapter is named during its own phases. */
 export const phaseLabel = (p: Progress): string => (p.adapter ? `${p.phase} ${p.adapter}` : p.phase)
+/** How far a phase is: done of total, or for discover, which has no total, the files found so far (FR370). */
+export const countLabel = (done: number | null, total: number | null): string => (total ? ` ${done}/${total}` : done ? ` ${done} files found` : '')
 
 export const duration = (ms: number): string => {
   const s = Math.round(ms / 1000)
@@ -32,7 +34,7 @@ export function progressReporter(write: (line: string) => void, intervalMs = 500
   const line = (p: Progress, repeat = false) => {
     const a = repeat && p === latest ? current() : undefined
     const rate = a ? ` (${a.language}: ${a.files_per_second} files/s, ${a.eta_seconds === null ? 'no estimate yet' : `about ${duration(a.eta_seconds * 1000)} left`})` : ''
-    return `[${duration(Date.now() - started)}] ${phaseLabel(p)}${p.total ? ` ${p.done}/${p.total}` : ''}${rate}`
+    return `[${duration(Date.now() - started)}] ${phaseLabel(p)}${countLabel(p.done, p.total)}${rate}`
   }
   const say = (text: string) => { printed = Date.now(); write(text) }
   // The timer covers phases that wait on an adapter; a phase that blocks the event loop, such as the write transaction, cannot fire

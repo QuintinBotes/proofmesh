@@ -226,7 +226,7 @@ function runRepositoryTool(dataDir: string, tool: string, input: Record<string, 
     }
     if (!snapshot) {
       const job = catalog.openJobs(repo.id).at(-1)
-      throw new ProofmeshError('SNAPSHOT_UNAVAILABLE', `no published snapshot for this repository; ${job ? `index job ${job.id} is ${job.state}${job.phase ? ` (${job.phase}${job.total ? ` ${job.done}/${job.total}` : ''})` : ''}; poll it with get_job` : 'run "proofmesh index" first'}`, { detail: 'none', ...(job ? { job_id: job.id } : {}) })
+      throw new ProofmeshError('SNAPSHOT_UNAVAILABLE', `no published snapshot for this repository; ${job ? `index job ${job.id} is ${job.state}${job.phase ? ` (${job.phase}${job.total ? ` ${job.done}/${job.total}` : job.done ? ` ${job.done} files found` : ''})` : ''}; poll it with get_job` : 'run "proofmesh index" first'}`, { detail: 'none', ...(job ? { job_id: job.id } : {}) })
     }
     const db = openSnapshot(catalog, snapshot)
     try {

@@ -18,7 +18,7 @@ import { manifestHash, unstable } from './freshness.js'
 import { fillBodyHashes } from './body-hash.js'
 import { adapterBudget, AdapterBudgetError, AdapterProcess, AdapterProtocolError, PROTOCOL_VERSION } from './adapter-host.js'
 import { assemble, FactCache, fileKeys, splitByFile, type FileFacts } from './fact-cache.js'
-import { analysisConfig, checkoutCommit, discover, gitInfo, type Discovered } from './discovery.js'
+import { analysisConfig, checkoutCommit, discoverAsync, gitInfo, type Discovered } from './discovery.js'
 import { registryFor, type AdapterSpec, type Registry } from './languages.js'
 import { buildCensus } from './census.js'
 import { GENERATED_POLICY } from './generated-vendored.js'
@@ -126,7 +126,8 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
     progress({ phase: 'discover', done: 0, total: 0 })
     registry ??= registryFor(dataDir, repo.id)
     // A checked-out commit holds tracked files only, and git never ignores a tracked file (A19).
-    const discovered = discover(root, registry, checkout ? () => false : undefined)
+    // The walk lets the event loop run, so a signal, the heartbeat and a cancel are seen during it, and it reports the files found (FR370, FR371).
+    const discovered = await discoverAsync(root, registry, checkout ? () => false : undefined, { onFound: (done) => progress({ phase: 'discover', done, total: 0 }), signal: lock.signal })
 
     // One adapter per file: the first in registry order that claims its language, unless a SCIP index takes it (A27).
     const owner = (language: string) => registry!.specs.find((s) => s.languages.has(language))

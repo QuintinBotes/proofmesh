@@ -34,7 +34,7 @@ import { runGc } from './gc.js'
 import { runMcpConfig } from './mcp-config.js'
 import { runConventions } from './conventions.js'
 import { weakestCapability, type CensusRow } from '../indexer/census.js'
-import { duration, phaseLabel, progressReporter } from './progress.js'
+import { countLabel, duration, phaseLabel, progressReporter } from './progress.js'
 
 export const VERSION = '0.1.0'
 const USAGE = `proofmesh ${VERSION}: a code graph that shows its work
@@ -530,7 +530,7 @@ export async function main(argv: string[]): Promise<number> {
         const env = runTool(dataDir, 'workspace_status', named ? { repository_id: named } : {})
         if (json) console.log(JSON.stringify(env, null, 2))
         else {
-          for (const j of (env.data.jobs as IndexJob[] | undefined) ?? []) console.log(`index job ${j.id} ${j.state}${j.started_at ? ` since ${j.started_at}` : `, requested ${j.requested_at}`} by ${j.requested_by}${j.phase ? `: ${j.phase}${j.total ? ` ${j.done}/${j.total}` : ''}` : ''}`)
+          for (const j of (env.data.jobs as IndexJob[] | undefined) ?? []) console.log(`index job ${j.id} ${j.state}${j.started_at ? ` since ${j.started_at}` : `, requested ${j.requested_at}`} by ${j.requested_by}${j.phase ? `: ${j.phase}${countLabel(j.done, j.total)}` : ''}`)
           const d = env.coverage!.dispositions
           console.log(`snapshot ${env.snapshot!.id} (${env.snapshot!.analysis_mode})${env.snapshot!.commit ? ` of commit ${env.snapshot!.commit} (${env.snapshot!.ref})` : ''}, published ${env.snapshot!.published_at}`)
           console.log(`files ${env.coverage!.files_discovered}: indexed ${d.indexed}, excluded ${d.excluded_by_rule}, unsupported ${d.unsupported}, failed ${d.failed}, pending ${d.pending}`)
