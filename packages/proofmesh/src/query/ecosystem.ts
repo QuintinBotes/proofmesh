@@ -19,9 +19,10 @@ type Capability = Coverage['capabilities'][keyof Coverage['capabilities']]
 const RANK: Record<Capability, number> = { complete: 0, partial: 1, unsupported: 2, not_run: 3, failed: 4 }
 const SAMPLE = 5
 
-export function getEcosystem(dataDir: string, input: Record<string, unknown>): Envelope {
+/** `now` is the clock the deadline is read from; a test passes its own. */
+export function getEcosystem(dataDir: string, input: Record<string, unknown>, now: () => number = Date.now): Envelope {
   // The input schema admits no freshness: a workspace tool answers only from its sealed link file.
-  const started = Date.now()
+  const started = now()
   const { applied, limitations: clampNotes } = applyLimits(input.limits as Limits | undefined)
   const catalog = Catalog.open(dataDir)
   try {
@@ -79,9 +80,6 @@ export function getEcosystem(dataDir: string, input: Record<string, unknown>): E
       data.boundaries = [...bounds.values()]
       const stop = new Set<'max_rows' | 'max_bytes' | 'timeout'>()
       if (data.links.length > applied.max_rows) { data.links.length = applied.max_rows; stop.add('max_rows') }
-      // Links go first, then the unresolved boundaries, which carry samples of their own.
-      while ((data.links.length || data.boundaries.length) && Buffer.byteLength(JSON.stringify(data)) > applied.max_bytes) { (data.links.length ? data.links : data.boundaries).pop(); stop.add('max_bytes') }
-      if (Date.now() - started > applied.timeout_ms) stop.add('timeout')
 
       // Coverage spans the members: counts add up, and a capability is as weak as its weakest member.
       const summaries = [...members.values()].map((m) => snapshotSummary(m.db, m.snapshot_id))
@@ -90,8 +88,7 @@ export function getEcosystem(dataDir: string, input: Record<string, unknown>): E
       const capabilities = Object.fromEntries((Object.keys(RANK) as never[]).length ? (Object.keys(summaries[0]?.capabilities ?? {}) as Array<keyof Coverage['capabilities']>).map((k) => [k, summaries.map((s) => s.capabilities[k]).sort((a, b) => RANK[b] - RANK[a])[0]]) : []) as Coverage['capabilities']
       const unresolvedCount = rows.filter((l) => l.resolution === 'unresolved').length
       const limitations = [...[...members.values()].flatMap((m) => partialLimitations(m.db, m.snapshot_id)), ...clampNotes, 'Links are matched from the member snapshots the link file was built from; a member whose current snapshot is newer is marked current: false until the workspace is linked again.', ...(unresolvedCount ? [`${unresolvedCount} client fact${unresolvedCount === 1 ? '' : 's'} matched nothing in this workspace; each is a boundary, not an absence of a counterpart elsewhere.`] : [])]
-      if (stop.size) limitations.push('Results were truncated and this tool does not page; raise the limits.')
-      return {
+      const build = (): Envelope => ({
         schema_version: ENVELOPE_VERSION, query_id: queryId(), tool: 'get_ecosystem',
         snapshot: { id: record.id, repository_id: `ws_${workspace.name}`, analysis_mode: 'no_execution', published_at: record.sealed_at, members: record.members },
         freshness: { mode: 'snapshot', status: 'as_of_snapshot' },
@@ -100,8 +97,20 @@ export function getEcosystem(dataDir: string, input: Record<string, unknown>): E
         unresolved: { count: unresolvedCount, scope: 'query', sample: [], by_reason: rows.filter((l) => l.resolution === 'unresolved').reduce<Record<string, number>>((acc, l) => ({ ...acc, [l.reason ?? 'no_match']: (acc[l.reason ?? 'no_match'] ?? 0) + 1 }), {}) },
         completion: { truncated: stop.size > 0, stop_reasons: (['max_rows', 'max_bytes', 'timeout'] as const).filter((s) => stop.has(s)), timed_out: stop.has('timeout'), next_cursor: null },
         limits: { requested: (input.limits as Limits | undefined) ?? {}, applied },
-        limitations,
+        limitations: stop.size ? [...limitations, 'Results were truncated and this tool does not page; raise the limits.'] : limitations,
+      })
+      // The budget is the whole answer's, measured with the note and flags a cut adds. Links go first, then the unresolved boundaries.
+      const size = (e: Envelope) => Buffer.byteLength(JSON.stringify(e))
+      // The deadline is read again after every cut, so one that passes while trimming is reported.
+      let out: Envelope
+      for (;;) {
+        if (now() - started > applied.timeout_ms) stop.add('timeout')
+        out = build()
+        if (size(out) <= applied.max_bytes || !(data.links.length || data.boundaries.length)) break
+        (data.links.length ? data.links : data.boundaries).pop(); stop.add('max_bytes')
       }
+      if (size(out) > applied.max_bytes) throw new ProofmeshError('INVALID_ARGUMENT', `max_bytes ${applied.max_bytes} is too small for a get_ecosystem answer; its envelope alone takes ${size(out)} bytes`, { detail: 'max_bytes_too_small', max_bytes: applied.max_bytes, needed: size(out) })
+      return out
     } finally {
       links.close()
       for (const m of members.values()) m.db.close()

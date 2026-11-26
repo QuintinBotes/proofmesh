@@ -1226,6 +1226,36 @@
     "FR299": [
       "packages/proofmesh/test/generated-vendored.test.ts"
     ],
+    "FR330": [
+      "packages/proofmesh/test/max-bytes-exact.test.ts"
+    ],
+    "FR331": [
+      "packages/proofmesh/test/max-bytes-exact.test.ts"
+    ],
+    "FR332": [
+      "packages/proofmesh/test/max-bytes-exact.test.ts"
+    ],
+    "FR333": [
+      "packages/proofmesh/test/max-bytes-exact.test.ts"
+    ],
+    "FR334": [
+      "packages/proofmesh/test/max-bytes-exact.test.ts"
+    ],
+    "FR368": [
+      "packages/proofmesh/test/max-bytes-exact.test.ts"
+    ],
+    "FR369": [
+      "packages/proofmesh/test/max-bytes-exact.test.ts"
+    ],
+    "FR365": [
+      "packages/proofmesh/test/cache-intact.test.ts"
+    ],
+    "FR366": [
+      "packages/proofmesh/test/cache-intact.test.ts"
+    ],
+    "FR367": [
+      "packages/proofmesh/test/cache-intact.test.ts"
+    ],
     "FR270": [
       "packages/proofmesh/test/adapter-budget.test.ts"
     ],

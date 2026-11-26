@@ -34,7 +34,7 @@ describe('trace_paths conclusions', () => {
   it('under a byte budget the explored edges go before the path: a found path is never reported with an empty paths list', () => {
     const input = { source_id: id('packages/api/src/handler:handleInvoice'), target_id: id('packages/format/src/currency:formatAmount') }
     const full = tool(d, 'trace_paths', input)
-    const env = tool(d, 'trace_paths', { ...input, limits: { max_bytes: Math.floor(Buffer.byteLength(JSON.stringify(full.data)) / 2) } })
+    const env = tool(d, 'trace_paths', { ...input, limits: { max_bytes: Buffer.byteLength(JSON.stringify(full)) - 100 } })
     expect(env.data.conclusion).toBe('path_found')
     expect((env.data.paths as any[]).map((p) => names(env, p.nodes))).toEqual([['packages/api/src/handler:handleInvoice', 'packages/billing/src/invoice:invoiceTotal', 'packages/format/src/currency:formatAmount']])
     expect(env.completion.stop_reasons).toContain('max_bytes')

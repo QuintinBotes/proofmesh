@@ -42,7 +42,6 @@ function everyRowKeyed(db: Database.Database, data: unknown): number {
 }
 
 const KEY_FIELDS = new Set(['key', 'from_key', 'symbol_key', 'source_key', 'target_key'])
-const SLOP = 64
 const bytes = (x: unknown) => Buffer.byteLength(JSON.stringify(x))
 /** The answer as it was before keys: every key field left out (never an overview child's `key`, which is its id). */
 const withoutKeys = <T>(x: T): T => JSON.parse(JSON.stringify(x), function (this: Record<string, unknown>, k, v) { return KEY_FIELDS.has(k) && typeof v === 'string' && !('matches' in this) ? undefined : v })
@@ -53,8 +52,7 @@ function fitsWithoutItsKeys(d: string, name: string, input: Record<string, unkno
   const budget = bytes(withoutKeys(full))
   expect(bytes(full), `${name} answers over ${budget} with its keys`).toBeGreaterThan(budget)
   const tight = tool(d, name, { ...input, limits: { ...(input.limits as object | undefined), max_bytes: budget } })
-  // The pruner reserves a fixed length for the note and flags a cut answer gains, so a cut answer may pass the budget by a few dozen bytes; the keys are hundreds.
-  expect(bytes(tight), `${name} within max_bytes ${budget}`).toBeLessThanOrEqual(budget + SLOP)
+  expect(bytes(tight), `${name} within max_bytes ${budget}`).toBeLessThanOrEqual(budget)
   expect(tight.completion.truncated, `${name} says it was cut`).toBe(true)
   expect(tight.completion.stop_reasons).toContain('max_bytes')
 }
@@ -166,10 +164,10 @@ describe('FR280 to FR289 the keys count against max_bytes: every keyed list is c
   })
 
   it('search_sources counts a hit\'s key in its own byte budget, which holds the hits less 128 bytes for the envelope', () => {
-    const r = tool(d, 'search_sources', { text: 'export', limits: { max_bytes: 1000 } })
+    const r = tool(d, 'search_sources', { text: 'export', limits: { max_bytes: 2500 } })
     const hits = (r.data as { hits: Array<{ symbol: { key?: string } | null }> }).hits
     expect(hits.some((h) => h.symbol?.key)).toBe(true)
-    expect(bytes(hits)).toBeLessThanOrEqual(1000 - 128)
+    expect(bytes(hits)).toBeLessThanOrEqual(2500 - 128)
     expect(r.completion.stop_reasons).toContain('max_bytes')
   })
 
@@ -211,10 +209,10 @@ describe('FR286 get_ecosystem trims unresolved boundaries to max_bytes too', () 
     const data = full.data as { boundaries: unknown[] }
     expect(data.boundaries.length).toBeGreaterThan(2)
     expect(full.completion.truncated).toBe(false)
-    const budget = bytes({ ...full.data, boundaries: [] }) + 400
-    expect(bytes(full.data)).toBeGreaterThan(budget)
+    const budget = bytes({ ...full, data: { ...full.data, boundaries: [] } }) + 400
+    expect(bytes(full)).toBeGreaterThan(budget)
     const tight = tool(d, 'get_ecosystem', { workspace: 'shop', limits: { max_bytes: budget } })
-    expect(bytes(tight.data)).toBeLessThanOrEqual(budget)
+    expect(bytes(tight)).toBeLessThanOrEqual(budget)
     expect((tight.data as { boundaries: unknown[] }).boundaries.length).toBeLessThan(data.boundaries.length)
     expect(tight.completion.truncated).toBe(true)
     expect(tight.completion.stop_reasons).toContain('max_bytes')

@@ -22,8 +22,9 @@ describe('AC20 FR015 limits', () => {
   })
 
   it('max_bytes shrinks list results and reports it', () => {
-    const env = tool(d, 'workspace_status', { limits: { max_bytes: 400 } })
-    expect((env.data.files as any[]).length).toBeLessThan(10)
+    const budget = Buffer.byteLength(JSON.stringify(tool(d, 'workspace_status'))) - 600
+    const env = tool(d, 'workspace_status', { limits: { max_bytes: budget } })
+    expect(Buffer.byteLength(JSON.stringify(env))).toBeLessThanOrEqual(budget)
     expect(env.completion.stop_reasons).toContain('max_bytes')
   })
 

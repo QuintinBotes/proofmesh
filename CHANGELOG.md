@@ -4,6 +4,14 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 ## Unreleased
 
+A cut answer fits max_bytes exactly, note and flags included (closes #88 and #92; FR330 to FR334, FR365 to FR367):
+
+- `max_bytes` is measured on the answer as it is sent, with its truncation note, `truncated`, `stop_reasons` and cursor, and a list is cut until that answer fits, so a cut answer no longer passes the budget by the size of what the cut adds. A lean answer is measured on its text.
+- A `max_bytes` too small for the envelope with its note is refused as `INVALID_ARGUMENT` (`detail: max_bytes_too_small`) instead of answered over budget. **Behaviour change:** a budget below about the size of the bare envelope used to return an oversized answer.
+- `search_sources` drops whole files to fit and its cursor continues at the first one dropped; `get_ecosystem` is measured on its whole envelope. Catalog tools (`list_repositories`, `list_snapshots`, `list_workspaces`, `get_job`) have nothing to cut and are unchanged.
+- `search_sources` never cuts inside its first file (a budget that cannot hold it is refused as `max_bytes_too_small`), and `get_ecosystem` reads its deadline again after each cut (FR368, FR369).
+- Cutting an answer to `max_bytes` works on a copy of its data, and the cached snapshot summary is frozen, so a cut no longer shortens cached lists for later answers in the same process.
+
 Keep the facts of finished batches when an index fails, so the next run resumes (closes #79; FR335 to FR346):
 
 - Checked first: the fact cache was already written batch by batch and a failed index already kept its checkpoint, so a rerun replayed finished work. Tests now pin this (a fake adapter that dies after N batches): an identical rerun analyses only the unfinished files, and after an edit it replays the unchanged finished ones from the cache.

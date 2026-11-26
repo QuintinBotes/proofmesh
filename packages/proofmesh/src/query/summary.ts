@@ -57,6 +57,8 @@ export function computeSummary(db: Database.Database): SnapshotSummary {
 }
 
 const memo = new Map<string, SnapshotSummary>()
+/** A cached summary is shared by every answer of the snapshot: freezing it makes a mutation throw instead of changing later answers (FR367). */
+const deepFreeze = <T>(o: T): T => { if (o !== null && typeof o === 'object' && !Object.isFrozen(o)) { Object.freeze(o); Object.values(o).forEach(deepFreeze) } return o }
 
 /** The summary stored in the snapshot at index time; snapshots published before it existed compute it once per process. */
 /** The `partial:` limitation of a snapshot published with files missing, none for a complete one (FR343, FR348). */
@@ -73,6 +75,6 @@ export function snapshotSummary(db: Database.Database, snapshotId: string): Snap
   const stored = db.prepare("select value from meta where key = 'summary'").get() as { value: string } | undefined
   const parsed = stored ? (JSON.parse(stored.value) as SnapshotSummary) : undefined
   const summary = parsed?.unresolved_calls && parsed.missing_inputs && parsed.call_sites !== undefined ? parsed : computeSummary(db)
-  memo.set(snapshotId, summary)
+  memo.set(snapshotId, deepFreeze(summary))
   return summary
 }
