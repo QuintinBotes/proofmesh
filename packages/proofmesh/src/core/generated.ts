@@ -94,6 +94,10 @@ assertion_id: string
 reason: ("dynamic_element_access" | "untyped_receiver" | "unknown_name" | "chained_callee" | "import_unresolved" | "dynamic_specifier" | "not_indexed" | "dependency_missing" | "configuration_error" | "outside_capability")
 file: string
 line: number
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
 }[]
 /**
  * Unresolved sites by reason; no_match and ambiguous are the reasons of cross-repository links (A7).
@@ -134,7 +138,7 @@ envelope?: ("full" | "compact" | "lean")
 
 export interface Error {
 error: {
-code: ("INVALID_ARGUMENT" | "UNAUTHORIZED" | "SCOPE_DENIED" | "NOT_FOUND" | "SNAPSHOT_UNAVAILABLE" | "STALE_INPUT" | "UNSTABLE_WORKTREE" | "EVIDENCE_UNAVAILABLE" | "INTEGRITY_FAILURE" | "BUDGET_EXCEEDED" | "ADAPTER_UNSUPPORTED" | "TRUST_REQUIRED" | "DEPENDENCY_UNAVAILABLE" | "APPROVAL_REQUIRED" | "APPROVAL_INVALID" | "CANCELLED" | "INTERNAL_ERROR")
+code: ("INVALID_ARGUMENT" | "UNAUTHORIZED" | "SCOPE_DENIED" | "NOT_FOUND" | "SNAPSHOT_UNAVAILABLE" | "STALE_INPUT" | "UNSTABLE_WORKTREE" | "EVIDENCE_UNAVAILABLE" | "INTEGRITY_FAILURE" | "BUDGET_EXCEEDED" | "ADAPTER_UNSUPPORTED" | "TRUST_REQUIRED" | "DEPENDENCY_UNAVAILABLE" | "APPROVAL_REQUIRED" | "APPROVAL_INVALID" | "CANCELLED" | "INDEX_IN_PROGRESS" | "INTERNAL_ERROR")
 message: string
 details?: {
 
@@ -170,7 +174,15 @@ project: (string | null)
 site?: {
 path: string
 start_line: number
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
 }
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
 /**
  * The stable_key of the dependent (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file.
  */
@@ -346,6 +358,10 @@ disposition_changes: {
 path: string
 from: string
 to: string
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
 }[]
 }
 }
@@ -440,6 +456,10 @@ target: string
 }[]
 }
 /**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
+/**
  * The stable_key of the candidate (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file.
  */
 key?: string
@@ -502,6 +522,10 @@ signature: (string | null)
  * The roles the adapter gave the symbol, when it gave any: test (a test entry point) or test_support (test code that is no entry point).
  */
 roles?: ("test" | "test_support")[]
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
 /**
  * The stable_key of the symbol (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file.
  */
@@ -591,10 +615,18 @@ name: string
 path: string
 line: number
 /**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
+/**
  * The stable_key of the symbol at this hop (FR280).
  */
 key?: string
 }[]
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
 /**
  * The stable_key of the test (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file.
  */
@@ -889,6 +921,10 @@ external_ids: number
 sample_sites: {
 path: string
 line: number
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
 }[]
 }[]
 /**
@@ -1139,6 +1175,10 @@ by_type: {
 }
 }[]
 omitted: number
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
 }
 
 /**
@@ -1334,6 +1374,10 @@ module?: string
 symbol_kind?: string
 start_line?: number
 /**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
+/**
  * The stable_key of the symbol on the far side (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file.
  */
 key?: string
@@ -1342,6 +1386,10 @@ site: {
 path: string
 start_line: number
 end_line: number
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
 }
 reason: (string | null)
 evidence_ids: string[]
@@ -1371,6 +1419,10 @@ type: string
  * True when the unresolved site calls the subject's name.
  */
 calls_name?: boolean
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
 /**
  * The stable_key of the symbol the unresolved site is in (from_id) (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file.
  */
@@ -1493,6 +1545,10 @@ body_hash: (string | null)
  * The roles the adapter gave the symbol, when it gave any: test (a test entry point) or test_support (test code that is no entry point).
  */
 roles?: ("test" | "test_support")[]
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
 }
 }
 
@@ -1561,6 +1617,10 @@ end_line: number
  * The tier of the adapter that declared the symbol: precise (a compiler-grade or language-specific adapter), syntax (Tree-sitter) or scip (an index a person named).
  */
 tier: ("precise" | "syntax" | "scip")
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
 } | null)
 /**
  * The file's disposition when the snapshot does not index it.
@@ -1627,6 +1687,10 @@ id: string
 qualified_name: string
 path: string
 /**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
+/**
  * The stable_key of the symbol (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file.
  */
 key?: string
@@ -1657,6 +1721,10 @@ depth: number
  * inferred when a hop of the chain that reaches the endpoint or job is inferred, or the link from the table to that chain is.
  */
 basis: ("observed" | "inferred")
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
 /**
  * The stable_key of the endpoint or job (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file.
  */
@@ -1719,6 +1787,10 @@ readers: number
  */
 key?: string
 }[]
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
 /**
  * The stable_key of the table (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file.
  */
@@ -1884,6 +1956,10 @@ changed: boolean
  * The stable_key of the test (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file.
  */
 key?: string
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
 } | null)
 /**
  * By relation (calls, implements, overrides, inherits, references, imports), then path and line; from the base snapshot for a deleted symbol.
@@ -1927,16 +2003,28 @@ changed: boolean
  * The stable_key of the test (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file.
  */
 key?: string
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
 } | null)
 /**
  * The stable_key of the dependent; absent for an importing file (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file.
  */
 key?: string
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
 }[]
 /**
  * The stable_key of the changed symbol (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file.
  */
 key?: string
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
 }[]
 /**
  * Over every changed symbol, on this page or not; changed, tested and neither count the dependents.
@@ -2266,6 +2354,10 @@ status: ("verified" | "failed" | "unavailable")
 actual_hash?: string
 }
 text: (string | null)
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
 }[]
 }
 
@@ -2441,6 +2533,10 @@ qualified_name: string
  */
 key?: string
 })
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
 }[]
 files_scanned: number
 files_total: number
@@ -2543,6 +2639,10 @@ type: string
  * The stable_key of the symbol the unresolved site is in (from_id) (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file.
  */
 from_key?: string
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
 }[]
 nodes: {
 [k: string]: {
@@ -2555,6 +2655,10 @@ start_line: number
  * The stable_key of the node (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file.
  */
 key?: string
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
 }
 }
 /**
@@ -2844,8 +2948,16 @@ capabilities: {
  * The tier that produced the file's facts: precise:<adapter>, scip:<index> or syntax. Absent on files no adapter analysed.
  */
 tier?: string
-[k: string]: "complete" | "partial" | "unsupported" | "failed" | "not_run" | string | undefined
+/**
+ * Present on a generated file: indexed like any other and flagged (FR292).
+ */
+generated?: "true"
+[k: string]: "complete" | "partial" | "unsupported" | "failed" | "not_run" | string | "true" | undefined
 }
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
 }[]
 /**
  * The most-referenced symbols by resolved inbound relationships, as starting points for exploration.
@@ -2863,6 +2975,10 @@ inbound: number
  * The stable_key of the hub (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file.
  */
 key?: string
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
 }[]
 /**
  * Cycles among build modules that syntax-tier name matches form, in an ecosystem whose builds forbid them (Maven, Gradle, Go modules, Cargo, .NET); empty when there is none. Each names its modules and the edges that form it, with one site of each.
@@ -2878,6 +2994,10 @@ sites: number
 path: string
 line: number
 assertion_id: string
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
 }[]
 }[]
 /**
@@ -3040,6 +3160,14 @@ reason: (string | null)
  * Advice only: what a person can do to deepen the row. The census runs nothing and installs nothing.
  */
 remedy: (string | null)
+/**
+ * Files of this language flagged generated, already counted in files (FR297). Absent on a snapshot sealed before the policy.
+ */
+generated?: number
+/**
+ * Files of this language left out as vendored, already counted in files (FR297). Absent on a snapshot sealed before the policy.
+ */
+vendored?: number
 }[]
 /**
  * How the snapshot was analysed (FR004): discovery's rules, what happens to generated source, and each adapter's external inputs.
@@ -3066,6 +3194,12 @@ inputs_missing: number
  */
 missing: string[]
 }[]
+/**
+ * The generated and vendored code policy (FR296): the markers, attributes and paths used, and what is done with each kind of file. The policy the snapshot was built with; null for a snapshot sealed before it was recorded.
+ */
+generated_policy: ({
+[k: string]: unknown
+} | null)
 }
 }
 
@@ -3109,6 +3243,10 @@ path_prefix?: string
  * The next_cursor of the previous page. It continues the same query on the same snapshot; it expires after an hour.
  */
 cursor?: string
+/**
+ * List generated files among the hubs too (FR298). By default hubs leave them out, and the answer says how many generated files there are.
+ */
+include_generated?: boolean
 }
 
 export interface AnalyzeRequest {

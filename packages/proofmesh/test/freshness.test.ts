@@ -69,6 +69,8 @@ describe('A21 build output and ignored files are not snapshot identity', () => {
     d = tmpDir(); repo = copyFixture()
     expect(spawnSync('git', ['init', '-q'], { cwd: repo }).status).toBe(0)
     fs.writeFileSync(path.join(repo, '.gitignore'), 'scratch/\n')
+    // FR295: build/ is output only beside a manifest that names it, here a Gradle build file.
+    fs.writeFileSync(path.join(repo, 'packages/format/build.gradle'), "plugins { id 'java' }\n")
     for (const args of [['init'], ['repo', 'add', repo], ['index', repo]]) expect(cli(['--data-dir', d, ...args]).status).toBe(0)
   }, 240000)
 
@@ -89,7 +91,10 @@ describe('A21 build output and ignored files are not snapshot identity', () => {
     fs.appendFileSync(path.join(repo, 'packages/format/src/currency.ts'), '\nexport const LEASED = 1\n')
     const owner = `pid:${process.ppid}@${os.hostname()}`
     const catalog = new Database(path.join(d, 'catalog.db'))
-    catalog.prepare('insert into index_lease (singleton, owner, expires_at) values (1, ?, ?)').run(owner, new Date(Date.now() + 600000).toISOString())
+    const repoId = (catalog.prepare('select id from repository').get() as { id: string }).id
+    const lock = path.join(d, 'locks', `index-${repoId}.lock`)
+    fs.mkdirSync(path.dirname(lock), { recursive: true })
+    fs.writeFileSync(lock, JSON.stringify({ pid: process.ppid, host: os.hostname(), started_at: new Date().toISOString() }))
     const jobs = () => catalog.prepare('select count(*) as n from index_job').get()
     const before = jobs()
     try {
@@ -100,7 +105,7 @@ describe('A21 build output and ignored files are not snapshot identity', () => {
       expect(e.details).not.toHaveProperty('job_id')
       expect(jobs()).toEqual(before)
     } finally {
-      catalog.prepare('delete from index_lease').run()
+      fs.rmSync(lock, { force: true })
       catalog.close()
     }
   })

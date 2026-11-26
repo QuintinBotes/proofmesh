@@ -31,7 +31,7 @@
       "type": "object", "additionalProperties": false, "required": ["added", "removed", "changed", "disposition_changes"],
       "properties": {
         "added": { "type": "array", "items": { "type": "string" } }, "removed": { "type": "array", "items": { "type": "string" } }, "changed": { "type": "array", "items": { "type": "string" } },
-        "disposition_changes": { "type": "array", "items": { "type": "object", "additionalProperties": false, "required": ["path", "from", "to"], "properties": { "path": { "type": "string" }, "from": { "type": "string" }, "to": { "type": "string" } } } }
+        "disposition_changes": { "type": "array", "items": { "type": "object", "additionalProperties": false, "required": ["path", "from", "to"], "properties": { "path": { "type": "string" }, "from": { "type": "string" }, "to": { "type": "string" }, "generated": { "type": "boolean", "description": "Present and true when the file is generated (FR292); absent otherwise." } } } }
       }
     }
   },

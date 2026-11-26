@@ -14,7 +14,7 @@ import { staticPropertyReads } from './static-reads.js'
 import { externalUsage, type UsageGroup } from './external-usage.js'
 import { findQuerySource, WEIGHED } from './query-source.js'
 import { EvidenceStore } from '../evidence/store.js'
-import { snapshotSummary, UNRESOLVED_REASONS } from './summary.js'
+import { hubsOf, snapshotSummary, UNRESOLVED_REASONS } from './summary.js'
 import type { ModuleCycle } from '../indexer/module-cycles.js'
 import { overview } from './overview.js'
 import { getEcosystem } from './ecosystem.js'
@@ -33,6 +33,7 @@ import { verify, type Proposition } from './claims.js'
 import { openCursor, queryHash, sealCursor } from './cursor.js'
 import { addKeys } from './keys.js'
 import { leanName, leanRow, leanText, quote } from './lean.js'
+import { generatedLeftOut, generatedPaths, markGenerated, withGeneratedPaths } from './generated-policy.js'
 import { innermost } from './symbol-at.js'
 import { compare, hasBodyHash, unreadableFiles } from './compare.js'
 import { loadSchema } from '../core/schemas.js'
@@ -238,8 +239,17 @@ function runRepositoryTool(dataDir: string, tool: string, input: Record<string, 
       const lean = input.envelope === 'lean'
       const ctx: Ctx = { dataDir, db, catalog, snapshot, limits: applied, started: Date.now(), store: new EvidenceStore(dataDir), repo: { id: repo.id, name: repo.name, root: repo.root }, page: { offset: cursor?.offset ?? 0, query }, compact: lean || input.envelope === 'compact' || (input.envelope === undefined && !!session?.fullSent.has(snapshot.id)), lean }
       const freshness = strict ? strictFreshness(ctx, repo.root) : SNAPSHOT_FRESHNESS
-      const result = IMPL[tool as ToolName](ctx, withNamedIds(db, tool, input))
-      const out = envelope(ctx, tool as ToolName, input.limits as Limits | undefined, result, limitations, freshness)
+      // Every row that names a file the policy flags generated says so, in the data and in a lean row (FR292).
+      const generated = generatedPaths(db)
+      const out = withGeneratedPaths(generated, () => {
+        const result = IMPL[tool as ToolName](ctx, withNamedIds(db, tool, input))
+        // A comparison tags each side from its own snapshot, inside the tool.
+        if (tool !== 'compare_snapshots') markGenerated(result.data, generated)
+        const env = envelope(ctx, tool as ToolName, input.limits as Limits | undefined, result, limitations, freshness)
+        // An unresolved sample names a file too (FR292).
+        for (const s of env.unresolved.sample) if (generated.has(s.file)) s.generated = true
+        return env
+      })
       // Only what list_queries reports: never the input or the result (NFR008).
       catalog.recordQuery({ query_id: out.query_id, tool, repository_id: repo.id, snapshot_id: snapshot.id, duration_ms: Date.now() - ctx.started, truncated: out.completion.truncated, input_hash: query })
       return out
@@ -275,7 +285,7 @@ function strictFreshness(ctx: Ctx, root: string): Envelope['freshness'] {
   const stale = `the working tree differs from snapshot ${ctx.snapshot.id} (${changed.length || 'its file inventory'} changed)`
   const found = { detail: 'working_tree_changed', snapshot_id: ctx.snapshot.id, changed_count: changed.length, changed: changed.slice(0, 20) }
   // Another process, such as a watcher, is indexing: a job started now could only fail on its lease, so the refusal names that index.
-  const holder = ctx.catalog.leaseHolder()
+  const holder = ctx.catalog.leaseHolder(ctx.repo.id)
   if (holder && holder.owner !== LEASE_OWNER) {
     throw new ProofmeshError('STALE_INPUT', `${stale}; the index already running in ${holder.owner} will publish a current snapshot`, { ...found, indexing_by: holder.owner })
   }
@@ -625,6 +635,8 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
         adapters: (JSON.parse(meta.adapters ?? '[]') as Array<Record<string, unknown>>).map((a) => ({ id: a.id, version: a.version, protocol_version: a.protocol_version, languages: a.languages })),
         analysis: {
           mode: ctx.snapshot.analysis_mode,
+          // The policy the snapshot was built with; null for one sealed before the policy was recorded.
+          generated_policy: meta.generated_policy ? (JSON.parse(meta.generated_policy) as Record<string, unknown>) : null,
           config: meta.analysis_config ? (JSON.parse(meta.analysis_config) as Record<string, unknown>) : null,
           generated_sources: ctx.snapshot.analysis_mode === 'trusted_build'
             ? 'Build logic ran, so source generators and build-time code generation took part; generated files on disk are indexed like any other unless an exclusion rule or git ignore leaves them out.'
@@ -637,7 +649,7 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
         files,
         file_summary: fileSummary,
         languages,
-        hubs: snapshotSummary(ctx.db, ctx.snapshot.id).hubs,
+        hubs: input.include_generated === true ? hubsOf(ctx.db, true) : snapshotSummary(ctx.db, ctx.snapshot.id).hubs,
         module_cycles: cycles,
         jobs: ctx.catalog.openJobs(ctx.repo.id),
         calls: { sites: snapshotSummary(ctx.db, ctx.snapshot.id).call_sites, unresolved: snapshotSummary(ctx.db, ctx.snapshot.id).unresolved_calls.count, by_reason: snapshotSummary(ctx.db, ctx.snapshot.id).unresolved_calls.by_reason, dependency_missing_by_package: snapshotSummary(ctx.db, ctx.snapshot.id).unresolved_calls.dependency_missing_by_package },
@@ -647,6 +659,7 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
       more: all.length > ctx.limits.max_rows,
       limitations: [
         ...cycles.map((c) => `Warning: build modules ${c.modules.join(', ')} form a cycle through syntax-tier name matches, and ${c.ecosystem} forbids module cycles; the edges are ${c.edges.map((e) => `${e.from} to ${e.to} (${e.type}, ${e.sites} site${e.sites === 1 ? '' : 's'}, first ${e.path}:${e.line})`).join(', ')}.`),
+        ...[generatedLeftOut('hubs', (ctx.db.prepare("select count(*) as n from file where json_extract(capabilities, '$.generated') = 'true'").get() as { n: number }).n, input.include_generated === true)].filter((n): n is string => !!n),
         ...(ask ? [] : ['No file rows were asked for: file_summary groups the files by disposition, reason and extension; pass files to list rows.']),
         ...(!meta.census ? ['This snapshot was sealed before the language census existed, so languages is empty; index again to build it.'] : []),
         ...(meta.census && !censusRows.some((r) => r.kind === 'code' || r.kind === 'template') ? ['No code was recognised in this repository: the rows are data and prose files.'] : []),
@@ -828,6 +841,14 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     const db = openSnapshot(ctx.catalog, base)
     try {
       const r = compare(db, ctx.db, { base: { id: base.id, published_at: base.published_at! }, head: { id: ctx.snapshot.id, published_at: ctx.snapshot.published_at! } }, ctx.limits.max_rows)
+      // Each side's rows are tagged from the snapshot they came from: removed ones from the base, added and changed ones from the head.
+      const [was, now] = [generatedPaths(db), generatedPaths(ctx.db)]
+      const { symbols, files } = r.data as { symbols: { added: unknown; removed: unknown; changed: unknown; paired: Array<{ base: unknown; head: unknown }>; ambiguous: Array<{ removed: unknown; added: unknown }> }; files: { disposition_changes: Array<{ path: string; generated?: boolean }> } }
+      markGenerated(symbols.removed, was); markGenerated(symbols.added, now); markGenerated(symbols.changed, now)
+      for (const p of symbols.paired) { markGenerated(p.base, was); markGenerated(p.head, now) }
+      for (const a of symbols.ambiguous) { markGenerated(a.removed, was); markGenerated(a.added, now) }
+      const inHead = (p: string) => !!ctx.db.prepare('select 1 from file where path = ?').get(p)
+      for (const c of files.disposition_changes) if ((inHead(c.path) ? now : was).has(c.path)) c.generated = true
       return { data: r.data, stop_reasons: r.truncated ? ['max_rows'] : [], limitations: ['Symbols are matched by kind and qualified name; a removed and an added symbol that match by body hash are paired instead.', ...r.limitations] }
     } finally {
       db.close()
