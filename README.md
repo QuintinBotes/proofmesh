@@ -14,8 +14,7 @@ Requirements: Node.js 22.13 or later and pnpm 10; the .NET 10 SDK to build the C
 
 ```
 corepack enable            # gives you pnpm if it is not on your PATH
-pnpm install --frozen-lockfile && pnpm build
-dotnet build adapters/csharp -c Release    # only for C# repositories
+pnpm install --frozen-lockfile && pnpm build    # also builds the C# adapter when dotnet is on PATH
 alias proofmesh="node $PWD/packages/proofmesh/bin/proofmesh.mjs"
 proofmesh init
 proofmesh repo add ~/code/some-repo
@@ -24,6 +23,8 @@ proofmesh view
 ```
 
 Without pnpm or Corepack on your PATH, run the pinned pnpm through npx instead: `npx --yes pnpm@10.14.0 install --frozen-lockfile && npx --yes pnpm@10.14.0 build`.
+
+`pnpm build` ends with `dotnet build adapters/csharp -c Release -m:1` when `dotnet` is on your PATH. Without it the build prints `skipped: build the C# adapter` and C# files are read by the syntax tier; install the .NET 10 SDK and run `pnpm build` again, or run that `dotnet build` yourself. `proofmesh status` lists the adapters this install can run, and for each it cannot, why: for C#, `not built: looked in` and the paths.
 
 `proofmesh repo list` prints every registered repository with the id that tool calls need once more than one is registered. Build-evaluation trust belongs to a registration: a checkout registered again at another path must be trusted again. `proofmesh repo move <repository> <new-path>` re-roots a registration at another working tree of the same git repository and keeps its id, snapshots and trust; `proofmesh index <repository> --rev <commit-ish>` indexes a commit without touching the working tree. Both are described in `docs/proofmesh/operations.md`.
 

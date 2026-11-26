@@ -531,6 +531,9 @@ export async function main(argv: string[]): Promise<number> {
         if (json) console.log(JSON.stringify(env, null, 2))
         else {
           for (const j of (env.data.jobs as IndexJob[] | undefined) ?? []) console.log(`index job ${j.id} ${j.state}${j.started_at ? ` since ${j.started_at}` : `, requested ${j.requested_at}`} by ${j.requested_by}${j.phase ? `: ${j.phase}${countLabel(j.done, j.total)}` : ''}`)
+          // Which adapters this install can run now, and why the others cannot (FR387).
+          const specs = registryFor(dataDir, named).specs, down = specs.filter((s) => !s.entry())
+          console.log(`adapters available: ${specs.filter((s) => !down.includes(s)).map((s) => s.id).join(', ')}${down.length ? `; unavailable: ${down.map((s) => `${s.id} (${s.missing?.() ?? s.unavailable()})`).join(', ')}` : ''}`)
           const d = env.coverage!.dispositions
           console.log(`snapshot ${env.snapshot!.id} (${env.snapshot!.analysis_mode})${env.snapshot!.commit ? ` of commit ${env.snapshot!.commit} (${env.snapshot!.ref})` : ''}, published ${env.snapshot!.published_at}`)
           console.log(`files ${env.coverage!.files_discovered}: indexed ${d.indexed}, excluded ${d.excluded_by_rule}, unsupported ${d.unsupported}, failed ${d.failed}, pending ${d.pending}`)

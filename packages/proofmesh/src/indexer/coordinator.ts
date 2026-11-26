@@ -137,6 +137,12 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
     const handedUp = new Set<string>()
     // Per adapter: the files the syntax tier read for it, and why. `unavailable` ones are known now and are part of identity; `failed` ones happen during analysis.
     const handoffs = new Map<string, { files: number; reason: string; kind: 'unavailable' | 'failed' }>()
+    // A fallback as the job result and the CLI line give it: an unavailable adapter also says what is missing and where it was looked for (FR385).
+    // The snapshot meta and the file rows keep the bare reason, which is the same on every machine.
+    const said = ({ adapter, files, reason, kind }: { adapter: string; files: number; reason: string; kind: string }) => {
+      const missing = kind === 'unavailable' ? registry!.specs.find((s) => s.id === adapter)?.missing?.() : undefined
+      return { adapter, files, reason: missing ? `${reason} (${missing})` : reason }
+    }
     for (const d of discovered) {
       const spec = d.status === 'capture' && d.role === 'source' && !d.adapter && d.language ? owner(d.language) : undefined
       if (spec && canFallBack(spec) && !spec.entry()) { d.adapter = 'syntax'; d.detail = spec.unavailable(); handedUp.add(spec.id); handoffs.set(spec.id, { files: (handoffs.get(spec.id)?.files ?? 0) + 1, reason: spec.unavailable(), kind: 'unavailable' }) }
@@ -245,7 +251,7 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
     const existing = catalog.snapshot(snapshotId)
     if (existing?.state === 'published') {
       if (catalog.currentSnapshot(repo.id)?.id !== snapshotId) catalog.publish(snapshotId, repo.id, existing.store_digest!, keepCurrent)
-      return { snapshotId, status: 'unchanged', analysisMode, counts: countDispositions(discovered.map((d) => (d.status === 'capture' ? 'indexed' : DISPOSITION[d.status]))), commit: checkout?.git.commit, adapterPeakRssKb: await peaks(), adapterBudgets, ...(recorded(snapshotId).length ? { fallbacks: recorded(snapshotId).map(({ adapter, files, reason }) => ({ adapter, files, reason })) } : {}), ...(recorded(snapshotId).length ? { fallbacks: recorded(snapshotId).map(({ adapter, files, reason }) => ({ adapter, files, reason })) } : {}) }
+      return { snapshotId, status: 'unchanged', analysisMode, counts: countDispositions(discovered.map((d) => (d.status === 'capture' ? 'indexed' : DISPOSITION[d.status]))), commit: checkout?.git.commit, adapterPeakRssKb: await peaks(), adapterBudgets, ...(recorded(snapshotId).length ? { fallbacks: recorded(snapshotId).map(said) } : {}) }
     }
     for (const run of runs) {
       run.keys = fileKeys({
@@ -522,7 +528,7 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
       db.prepare("insert into meta (key, value) values ('census', ?)").run(JSON.stringify(buildCensus(censusFiles, { overrides: process.env.PROOFMESH_CS_ADAPTER ? { csharp: process.env.PROOFMESH_CS_ADAPTER } : {} })))
       const counts = countDispositions((db.prepare('select disposition from file').all() as Array<{ disposition: string }>).map((r) => r.disposition))
       // A file the syntax tier read for a fallback adapter that could not: what the adapter's job reports, kept with the snapshot (FR313).
-      const fallbacks = [...handoffs].map(([adapter, h]) => ({ adapter, files: h.files, reason: h.reason }))
+      const fallbacks = [...handoffs].map(([adapter, h]) => said({ adapter, ...h }))
       if (handoffs.size) db.prepare("insert into meta (key, value) values ('fallbacks', ?)").run(canonicalJson({ handoffs: [...handoffs].map(([adapter, h]) => ({ adapter, ...h })), ...(late ? { syntax: late.manifest } : {}) }))
       const missing = [...partial.values()].reduce((n, p) => n + p.paths.length, 0)
       const partialResult: IndexResult['partial'] = partial.size ? { adapters: [...partial.keys()].sort(), missing, files: runs.filter((r) => partial.has(r.spec.id)).reduce((n, r) => n + r.sources.length, 0) } : undefined

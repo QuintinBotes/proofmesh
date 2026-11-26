@@ -443,6 +443,9 @@ Acceptance: CI runs my pull request without secrets or release credentials; lice
 - FR382: MUST leave an index of a commit (`--rev`) unchanged: its tree holds tracked files only, which no ignore rule removes, so it has no directory entry.
 - FR383: MUST still find a file that a negation (`!obj/keep.txt`) re-includes inside an otherwise ignored directory, skipping only the subdirectories git ignores as a whole.
 - FR384: MUST give the same entries from the synchronous `discover` and the index's `discoverAsync` on the same tree.
+- FR385: MUST, when an adapter a person builds (the C# adapter) is unavailable, give its fallback in the job's result and the line `proofmesh index` prints as `adapter_unavailable:<adapter> (not built: looked in <paths>)`, naming every path it looked in (only the override when `PROOFMESH_CS_ADAPTER` is set), also when the snapshot is unchanged; the file rows, the census and the snapshot's meta `fallbacks` keep the bare `adapter_unavailable:<adapter>`.
+- FR386: MUST end `pnpm build` with `dotnet build adapters/csharp -c Release -nologo -v:q -m:1` when `dotnet` is on PATH, failing the build when it fails; without `dotnet` MUST print that it skipped the C# adapter and succeed, unless an earlier build of the adapter exists, which would stay in use, and then fail saying so.
+- FR387: MUST print in `proofmesh status` one line listing the adapters this install can run and, for each it cannot, why (for the C# adapter, `not built: looked in <paths>`).
 
 ### Impact completeness
 

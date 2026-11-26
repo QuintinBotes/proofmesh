@@ -1426,6 +1426,15 @@
     ],
     "FR384": [
       "packages/proofmesh/test/ignored-dirs.test.ts"
+    ],
+    "FR385": [
+      "packages/proofmesh/test/syntax-floor.test.ts"
+    ],
+    "FR386": [
+      "packages/proofmesh/test/update-script.test.ts"
+    ],
+    "FR387": [
+      "packages/proofmesh/test/syntax-floor.test.ts"
     ]
   },
   "manual": {

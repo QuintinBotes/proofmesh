@@ -4,6 +4,13 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 ## Unreleased
 
+The C# adapter is built by `pnpm build`, and an unbuilt one says so (closes #100; FR385 to FR387):
+
+- `pnpm build` ends with `node scripts/build-csharp.mjs`, which runs `dotnet build adapters/csharp -c Release -nologo -v:q -m:1` when `dotnet` is on PATH and fails the build if that fails. Without `dotnet` it prints `skipped: build the C# adapter (...)` and succeeds, unless an earlier adapter build exists, which would stay in use, and then fails, as `scripts/update.mjs` already did. `update:all` already built the adapter and still does.
+- An unavailable C# adapter's fallback now reads `adapter_unavailable:csharp (not built: looked in <paths>)` in the job result and the `proofmesh index` line, also for an unchanged snapshot. The file rows, the census and the snapshot's meta keep the bare `adapter_unavailable:csharp`, so snapshots stay the same on every machine. The census remedy already named `dotnet build adapters/csharp -c Release`.
+- `proofmesh status` prints `adapters available: ...; unavailable: <id> (<why>)` for this install.
+- Not done: `repo trust --build-evaluation` still says nothing when the C# adapter is absent.
+
 Discover skips directories git ignores as a whole (closes #102; FR380 to FR384):
 
 - A directory that git ignores as a whole, such as build output in `bin/`, `obj/` or `node_modules/` when `.gitignore` names it, is now one `excluded_by_rule` entry with detail `gitignore` and a path ending in `/`. Discovery no longer reads anything inside it, which on a built C# working tree was most of the stage's file calls.
