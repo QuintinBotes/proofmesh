@@ -43,7 +43,7 @@ describe('FR235 a page of relationships is read in site order from an index, wit
     // The rows examined are counted, not timed: a read that sorted the hub would examine every one of its callers.
     expect(examined, 'rows examined by the page queries').toBeLessThanOrEqual(MAX_ROWS * 3)
 
-    const plans = withSnapshot(dataDir, (db) => (fn as (...a: unknown[]) => unknown).call(db, 'pm_is_test', { varargs: true }, () => 0) && sql.filter((s) => /assertion_by_(target|source)_site|candidate_by_site/.test(s)).map((s) => (db.prepare(`explain query plan ${s}`).all(...Array.from({ length: (s.match(/\?/g) ?? []).length }, () => 1)) as Array<{ detail: string }>).map((r) => r.detail)))
+    const plans = (withSnapshot(dataDir, (db) => (fn as (...a: unknown[]) => unknown).call(db, 'pm_is_test', { varargs: true }, () => 0) && sql.filter((s) => /assertion_by_(target|source)_site|candidate_by_site/.test(s)).map((s) => (db.prepare(`explain query plan ${s}`).all(...Array.from({ length: (s.match(/\?/g) ?? []).length }, () => 1)) as Array<{ detail: string }>).map((r) => r.detail)))) as unknown as string[][]
     expect(plans.length, 'the page queries that name a site index').toBeGreaterThan(0)
     for (const plan of plans) {
       expect(plan.join('\n')).not.toMatch(/TEMP B-TREE/)
