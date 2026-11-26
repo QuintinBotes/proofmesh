@@ -1,3 +1,4 @@
+import fs from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { Catalog } from '../src/meshstore/catalog.js'
@@ -6,11 +7,14 @@ import { AdapterProcess, PROTOCOL_VERSION, typescriptAdapterPath } from '../src/
 import type { InitializeRequest } from '../src/core/generated.js'
 import { cli, FIXTURE, tmpDir } from './helpers.js'
 
+/** The adapter is installed for `.fake` files: a built-in TypeScript or C# adapter that fails falls back to the syntax tier (FR314), an installed one fails the index. */
 function indexWith(adapter: string) {
-  const d = tmpDir()
+  const d = tmpDir(), src = tmpDir('pm-repo-')
+  fs.writeFileSync(path.join(src, 'a.fake'), 'a\n')
   cli(['--data-dir', d, 'init'])
-  cli(['--data-dir', d, 'repo', 'add', FIXTURE])
-  const r = cli(['--data-dir', d, 'index', FIXTURE], { PROOFMESH_TS_ADAPTER: path.join(import.meta.dirname, 'fake-adapters', adapter) })
+  cli(['--data-dir', d, 'repo', 'add', src])
+  expect(cli(['--data-dir', d, 'adapter', 'add', path.join(import.meta.dirname, 'fake-adapters', adapter), '--id', 'fake', '--extension', '.fake=fake']).status).toBe(0)
+  const r = cli(['--data-dir', d, 'index', src])
   const c = Catalog.open(d)
   const repo = c.repositories()[0]!
   const current = c.currentSnapshot(repo.id)
@@ -59,7 +63,7 @@ describe('AC26 adapter protocol', () => {
   it('an adapter that keeps crashing is restarted once, then the snapshot fails', () => {
     const { r, current } = indexWith('crashing.mjs')
     expect(r.status).toBe(1)
-    expect(r.stderr).toMatch(/adapter (typescript )?(exited|failed)/)
+    expect(r.stderr).toMatch(/adapter fake (exited|failed)/)
     expect(current).toBeUndefined()
   })
 

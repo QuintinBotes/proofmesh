@@ -1131,6 +1131,40 @@
     ],
     "FR269": [
       "packages/proofmesh/test/adapter-failure.test.ts"
+    ],
+    "FR310": [
+      "packages/proofmesh/test/syntax-floor.test.ts",
+      "packages/proofmesh/test/syntax-tier.test.ts"
+    ],
+    "FR311": [
+      "packages/proofmesh/test/syntax-floor.test.ts"
+    ],
+    "FR312": [
+      "packages/proofmesh/test/syntax-floor.test.ts",
+      "packages/proofmesh/test/census.test.ts"
+    ],
+    "FR313": [
+      "packages/proofmesh/test/syntax-floor.test.ts"
+    ],
+    "FR314": [
+      "packages/proofmesh/test/syntax-floor.test.ts",
+      "packages/proofmesh/test/adapter-failure.test.ts"
+    ],
+    "FR315": [
+      "packages/proofmesh/test/syntax-floor.test.ts"
+    ],
+    "FR316": [
+      "packages/proofmesh/test/syntax-floor.test.ts",
+      "packages/proofmesh/test/csharp.syntax-floor.test.ts"
+    ],
+    "FR317": [
+      "packages/proofmesh/test/syntax-floor.test.ts"
+    ],
+    "FR318": [
+      "packages/proofmesh/test/syntax-floor.test.ts"
+    ],
+    "FR319": [
+      "packages/proofmesh/test/syntax-floor.test.ts"
     ]
   },
   "manual": {

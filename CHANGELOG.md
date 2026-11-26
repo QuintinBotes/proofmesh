@@ -4,6 +4,14 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 ## Unreleased
 
+Index files at the syntax tier when their precise adapter cannot run (closes #18; FR310 to FR319):
+
+- The syntax tier now reads TypeScript, JavaScript (JSX, TSX) and C# through pinned Tree-sitter WebAssembly grammars (TypeScript, TSX, C#; MIT, shipped with their licence texts, no network at run time). It records declarations, call sites without targets, imports, and TypeScript `extends` and `implements`. It reads these languages only as a fallback, so an index whose adapters run is unchanged.
+- A file whose TypeScript or C# adapter is unavailable, answers `failed` for it, dies, exhausts its restarts or cannot start is read by the syntax tier in the same index, with tier `syntax` and the reason in its disposition detail (`adapter_unavailable:csharp`, `adapter_failed:typescript:<detail>`). A large C# repository whose adapter dies late now publishes: the files it analysed keep their precise facts and the rest are indexed at the syntax tier. The census names the tier and the reason with its remedy; the job's result, a CLI line and the snapshot's meta `fallbacks` name the adapter and the failure (never its stderr).
+- C# names are Roslyn's (namespace form, nested and generic types), so a declaration has the same key under both tiers; moving a file between tiers keeps its keys, marks notes on it `tier_changed`, and an incremental index equals a clean one.
+- An adapter with no fallback (Python, Terraform, build, installed ones) still fails the index (FR264 now says so). The existing tests of an index that fails when a TypeScript or C# adapter dies now use an installed adapter, and the census tests expect tier `syntax` for C# without the SDK.
+- Not done: a degraded snapshot is the answer for its inputs, so indexing again after a transient crash reports `unchanged` until an input (a file, the adapter, its configuration) changes; framework rules (routes, dependency injection, EF) and heritage in C# need the precise tier; SC-2 on the Orbit corpus was not run.
+
 A dying adapter fails the index with its name and exit status, instead of crashing it (closes #78; FR260 to FR269):
 
 - Every stream of an adapter child has an error handler. A write to an adapter that has exited, been killed or closed its input (`EPIPE`, `ECONNRESET`) fails that adapter's call instead of raising an unhandled `error` event that ended the process. The failure names the adapter, its exit code or signal, the last 10 stderr lines (cut at 300 characters) and the file it was on, and says so when the exit looks like memory pressure (a signal, exit 137 or an out-of-memory message); such an adapter is not restarted.

@@ -84,6 +84,8 @@ function fileReason(f: CensusFile, tier: string): string | null {
   if (f.label.kind === 'binary') return 'binary'
   if (f.label.kind === 'unknown') return 'unknown_language'
   if (f.disposition === 'failed') return f.detail ?? 'adapter_failure'
+  // A file the syntax tier read because its precise adapter could not: the adapter and that it was unavailable or failed, not the file's own words (FR312).
+  if (f.disposition === 'indexed' && /^adapter_(unavailable|failed):/.test(f.detail ?? '')) return f.detail!.split(':').slice(0, 2).join(':')
   // A data file an adapter read, such as a manifest, has a tier; one nothing reads is simply not code.
   if (f.disposition === 'indexed' && depth(tier) >= 2) return null
   if (f.label.kind === 'data' || f.label.kind === 'prose') return 'not_code'
@@ -108,6 +110,7 @@ function remedy(language: string, kind: Kind, reason: string | null, ctx: Census
     if (override && build) return `${OVERRIDE_ENV[id]} names ${override}, which does not exist; correct the path or unset it. Without it, ${build}`
     return build ? build[0]!.toUpperCase() + build.slice(1) : `The ${id} adapter is not present in this install; reinstall Proofmesh or, for an adapter you added, restore its file.`
   }
+  if (reason.startsWith('adapter_failed:')) return `The ${reason.slice('adapter_failed:'.length)} adapter failed on these files, so the syntax tier read them; the job's result and the snapshot's \`fallbacks\` say why.`
   if (reason.startsWith('adapter_changed:')) {
     const id = reason.slice('adapter_changed:'.length)
     return `The ${id} adapter changed after it was added; check it with \`proofmesh adapter check ${id} --fixture <dir>\` and add it again.`

@@ -432,8 +432,9 @@ export async function main(argv: string[]): Promise<number> {
         }
         const phases = report.stop()
         // A finished job keeps counts that mean something: the files indexed, not the last phase's zero.
-        jobs.updateJob(jobId, { state: 'succeeded', finished_at: new Date().toISOString(), phase: 'done', done: r.counts.indexed, total: r.counts.indexed, progress_at: new Date().toISOString(), result: JSON.stringify({ snapshot_id: r.snapshotId, status: r.status, counts: r.counts, reuse: r.reuse ?? null, commit: r.commit ?? null }) })
+        jobs.updateJob(jobId, { state: 'succeeded', finished_at: new Date().toISOString(), phase: 'done', done: r.counts.indexed, total: r.counts.indexed, progress_at: new Date().toISOString(), result: JSON.stringify({ snapshot_id: r.snapshotId, status: r.status, counts: r.counts, reuse: r.reuse ?? null, commit: r.commit ?? null, ...(r.fallbacks ? { fallbacks: r.fallbacks } : {}) }) })
         jobs.close()
+        for (const f of r.fallbacks ?? []) console.log(`adapter ${f.adapter} could not analyse ${f.files} file${f.files === 1 ? '' : 's'}, so the syntax tier read them: ${f.reason}`)
         if (r.resumed) console.log(`resumed from checkpoint: ${r.resumed.done} of ${r.resumed.total} batches were already done`)
         if (r.reuse?.reused) console.log(`reused the facts of ${r.reuse.reused} of ${r.reuse.reused + r.reuse.analysed} files whose inputs did not change`)
         console.log(`snapshot ${r.snapshotId} ${r.status}${r.commit ? ` from commit ${r.commit} (${rev}); the working tree was not read` : ''}${r.analysisMode === 'trusted_build' ? ' (analysed with build execution)' : ''}`)

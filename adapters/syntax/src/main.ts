@@ -15,12 +15,12 @@ const VERSION = '0.1.0'
 const SYNTAX_LANGUAGES = Object.keys(manifest).filter((l) => l !== 'hcl')
 // Tags kinds this tier keeps; variables, fields and properties are mostly locals and parameters, so they are left out. Proofmesh's
 // own queries name a property declared in a type's body `member`, and a database table or view `table`.
-const KINDS: Record<string, string> = { function: 'function', method: 'method', class: 'class', object: 'class', interface: 'interface', module: 'namespace', type: 'type_alias', enum: 'enum', constant: 'variable', macro: 'function', struct: 'struct', member: 'property', table: 'table' }
+const KINDS: Record<string, string> = { function: 'function', method: 'method', class: 'class', object: 'class', interface: 'interface', module: 'namespace', type: 'type_alias', enum: 'enum', constant: 'variable', macro: 'function', struct: 'struct', member: 'property', table: 'table', constructor: 'constructor', field: 'field' }
 // A database object is named by its schema-qualified identity, unquoted; a name the grammar could not parse names nothing.
 const dbName = (n: Node) => (n.hasError ? null : n.text.split('.').map((p) => p.replace(/^["`[](.*)["`\]]$/, '$1')))
 
 // The languages whose qualified name starts with the package or namespace the source declares; every other language's starts with the file path (FR146).
-const PACKAGE_NODES: Record<string, string> = { java: 'package_declaration', kotlin: 'package_header', scala: 'package_clause', php: 'namespace_definition' }
+const PACKAGE_NODES: Record<string, string[]> = { java: ['package_declaration'], kotlin: ['package_header'], scala: ['package_clause'], php: ['namespace_definition'], csharp: ['namespace_declaration', 'file_scoped_namespace_declaration'] }
 type Package = { node: Node; name: string; braced: boolean }
 const packagesOf = (lang: string, root: Node): Package[] => root.descendantsOfType(PACKAGE_NODES[lang]!).map((node) => ({ node, name: (/^(?:package|namespace)\s*([\w.\\]*)/.exec(node.text)?.[1] ?? '').replace(/\\/g, '.'), braced: !!node.childForFieldName('body') }))
 // The packages a declaration sits in: braced ones around it, and the unbraced ones before it (Scala chains them, PHP's last one replaces the rest).
@@ -79,6 +79,17 @@ let workspace = ''
 const languageOf = new Map<string, string>()
 const queries = new Map<string, Promise<Query>>()
 
+// TypeScript, TSX and JavaScript are read by two grammars: `.ts` by TypeScript's, whose angle-bracket casts a JSX grammar cannot parse, and the rest by TSX's (FR310).
+const grammarOf = (lang: string, file: string) => (lang !== 'typescript' && lang !== 'javascript' ? lang : /\.[mc]?ts$/.test(file) ? 'typescript' : 'tsx')
+// Roslyn names a generic type with its parameters, `Box<T, U>`, and a member after it.
+const GENERIC_TYPES = new Set(['class_declaration', 'struct_declaration', 'interface_declaration', 'record_declaration'])
+const typeName = (lang: string, def: Node, name: Node) => {
+  const list = lang === 'csharp' && GENERIC_TYPES.has(def.type) ? def.namedChildren.find((c) => c.type === 'type_parameter_list') : undefined
+  return list ? `${name.text}<${list.namedChildren.map((p) => p.childForFieldName('name')?.text ?? '').join(', ')}>` : name.text
+}
+// Their precise tiers name overloads alike, so a key must not tell them apart by parameter types.
+const OVERLOADS_ALIKE = new Set(['csharp', 'typescript', 'javascript'])
+
 function tags(name: string): Promise<Query> {
   let q = queries.get(name)
   if (!q) {
@@ -94,7 +105,8 @@ async function analyse(file: string, callees = false) {
   const text = fs.readFileSync(path.join(workspace, file), 'utf8')
   const at = byteOffsets(text)
   const lang = languageOf.get(file)!
-  const tree = (await parser(lang)).parse(text)!
+  const grammar = grammarOf(lang, file)
+  const tree = (await parser(grammar)).parse(text)!
   const range = (start: Node, end: Node = start): Range => ({ start_byte: at[start.startIndex]!, end_byte: Math.max(at[end.endIndex]!, at[start.startIndex]! + 1), start_line: start.startPosition.row + 1, end_line: end.endPosition.row + 1 })
   const module = file.replace(/\.[^./]+$/, '')
   const moduleId = `${file}#module`
@@ -106,7 +118,7 @@ async function analyse(file: string, callees = false) {
     symbols.push(...r.symbols)
     return { symbols, relationships: r.relationships, result: { path: file, status: 'ok', capabilities: { text: 'complete', syntax, symbols: 'partial', imports: 'unsupported', references: r.unresolved ? 'partial' : 'complete', resolved_calls: 'unsupported', framework: 'complete' } } }
   }
-  const query = await tags(lang)
+  const query = await tags(grammar)
   const defs: Array<{ id: string; node: Node; qualified: string }> = []
   // An extension's members are named after the type it extends, which it does not declare.
   const scopes: Array<{ node: Node; qualified: string }> = []
@@ -148,10 +160,10 @@ async function analyse(file: string, callees = false) {
       // A node two patterns match is one definition; a method beats a plain function (Rust matches both inside an impl).
       const seen = symbols.find((s) => s.local_id === id)
       // A Go type_spec is also matched as the struct or interface it declares, which is the more exact kind.
-      if (seen) { if (kind === 'method' || (seen.kind === 'type_alias' && (kind === 'struct' || kind === 'interface'))) seen.kind = kind; continue }
+      if (seen) { if (kind === 'method' || (seen.kind === 'type_alias' && (kind === 'struct' || kind === 'interface')) || (seen.kind === 'class' && kind === 'struct') || (seen.kind === 'variable' && kind === 'function')) seen.kind = kind; continue }
       const parts = kind === 'table' ? dbName(name) : null
       if (kind === 'table' && (!parts || symbols.some((s) => s.kind === 'table' && s.qualified_name === parts.join('.')))) continue
-      defs.push({ id, node: def.node, qualified: name.text })
+      defs.push({ id, node: def.node, qualified: typeName(lang, def.node, name) })
       symbols.push({ local_id: id, path: file, kind, name: parts?.at(-1) ?? name.text, qualified_name: parts?.join('.') ?? '', range: range(def.node), signature: null })
     } else if (ref) {
       const callee = lastName(name)
@@ -190,14 +202,14 @@ async function analyse(file: string, callees = false) {
   const members = symbols.slice(1).filter((s) => s.kind !== 'table').map((s) => {
     const d = defs.find((x) => x.id === s.local_id)!
     // A package declaration is a definition in some grammars: it is the package, not a member of the ones around it.
-    const chain = [...defs, ...scopes].filter((o) => within(d.node, o.node) && o.node.type !== PACKAGE_NODES[lang]).sort((a, b) => a.node.startIndex - b.node.startIndex).map((o) => o.qualified)
+    const chain = [...defs, ...scopes].filter((o) => within(d.node, o.node) && !PACKAGE_NODES[lang]?.includes(o.node.type)).sort((a, b) => a.node.startIndex - b.node.startIndex).map((o) => o.qualified)
     const parts = [...chain, d.qualified]
-    const own = packages?.find((p) => p.node.startIndex <= d.node.startIndex && d.node.endIndex <= p.node.endIndex && d.node.type === PACKAGE_NODES[lang])
+    const own = packages?.find((p) => p.node.startIndex <= d.node.startIndex && d.node.endIndex <= p.node.endIndex && !!PACKAGE_NODES[lang]?.includes(d.node.type))
     s.qualified_name = !packages ? `${module}:${parts.join('.')}` : own ? [...packageParts(lang, packages.filter((p) => p !== own), own.node), own.name].join('.') : [...packageParts(lang, packages, d.node), ...parts].join('.')
     return { s, d, types: parameterTypes(d.node) }
   })
   const byName = new Map<string, typeof members>()
-  for (const n of members) if (n.s.kind === 'function' || n.s.kind === 'method') byName.set(String(n.s.qualified_name), [...(byName.get(String(n.s.qualified_name)) ?? []), n])
+  for (const n of members) if ((n.s.kind === 'function' || n.s.kind === 'method') && !OVERLOADS_ALIKE.has(lang)) byName.set(String(n.s.qualified_name), [...(byName.get(String(n.s.qualified_name)) ?? []), n])
   for (const group of byName.values()) {
     // A C or C++ prototype and the definition with the same parameters are one symbol, declared at the definition.
     const dropped = lang === 'c' || lang === 'cpp' ? group.filter((n) => !isDefinition(n.d.node) && group.some((o) => isDefinition(o.d.node) && o.types === n.types)) : []

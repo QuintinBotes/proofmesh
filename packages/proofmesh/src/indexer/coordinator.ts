@@ -16,7 +16,7 @@ import { EvidenceStore } from '../evidence/store.js'
 import { manifestHash, unstable } from './freshness.js'
 import { fillBodyHashes } from './body-hash.js'
 import { AdapterProcess, AdapterProtocolError, PROTOCOL_VERSION } from './adapter-host.js'
-import { assemble, FactCache, fileKeys, splitByFile } from './fact-cache.js'
+import { assemble, FactCache, fileKeys, splitByFile, type FileFacts } from './fact-cache.js'
 import { analysisConfig, checkoutCommit, discover, gitInfo, type Discovered } from './discovery.js'
 import { registryFor, type AdapterSpec, type Registry } from './languages.js'
 import { buildCensus } from './census.js'
@@ -37,11 +37,13 @@ export type IndexResult = {
   commit?: string
   /** The largest resident set size each adapter process reached, in KiB, where it could be sampled. */
   adapterPeakRssKb: Record<string, number>
+  /** Per adapter whose files the syntax tier read because it could not analyse them: how many files, and why (stored words, no adapter output). */
+  fallbacks?: Array<{ adapter: string; files: number; reason: string }>
 }
 type Mode = 'no_execution' | 'trusted_build'
 type Captured = Discovered & { hash: string }
 type Rel = AnalyzeResponse['relationships'][number]
-type AdapterRun = { spec: AdapterSpec; sources: Discovered[]; configs: Discovered[]; process?: AdapterProcess; manifest?: InitializeResponse['adapter']; inputs?: string[]; mode: Mode; units?: InitializeResponse['units']; keys?: Map<string, string>; entrySha256?: string }
+type AdapterRun = { spec: AdapterSpec; sources: Discovered[]; configs: Discovered[]; process?: AdapterProcess; manifest?: InitializeResponse['adapter']; inputs?: string[]; mode: Mode; units?: InitializeResponse['units']; keys?: Map<string, string>; entrySha256?: string; /** Why a fallback adapter could not start: its calls fail with it, and its files go to the syntax tier. */ initFailure?: AdapterProtocolError }
 type Producer = { id: string; version: string; mode: Mode }
 /** Import kinds, strongest first: a file that imports another both for its values and for its types depends on it at run time. */
 const IMPORT_KINDS = ['static', 're_export', 'type_only']
@@ -73,6 +75,9 @@ const adapterFailure = (id: string, finished: string[], what: string, e: Adapter
   const say = (text: string) => (text.startsWith(`adapter ${id} `) ? text : `adapter ${id} ${what}: ${text}`)
   return new ProofmeshError('ADAPTER_UNSUPPORTED', say(e.message), { failed_adapter: id, completed_adapters: finished, stored_message: say(e.stored), ...extra })
 }
+/** What an adapter's batch becomes when the adapter died on it: every file `failed`, so the syntax tier takes it (FR313). */
+const DIED = 'adapter_died'
+const died = (path: string): FileFacts => ({ symbols: [], relationships: [], file_result: { path, status: 'failed', detail: DIED, capabilities: {} } })
 const DISPOSITION: Record<Discovered['status'], string> = { capture: 'pending', excluded: 'excluded_by_rule', unsupported: 'unsupported', failed: 'failed' }
 /** Every file row reports each capability separately (FR003): what its adapter reported, and `fill` for each it left out. */
 const capabilities = (reported: Record<string, string>, fill: string) => canonicalJson({ ...Object.fromEntries(CAPS.map((k) => [k, fill])), ...reported })
@@ -109,6 +114,14 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
 
     // One adapter per file: the first in registry order that claims its language, unless a SCIP index takes it (A27).
     const owner = (language: string) => registry!.specs.find((s) => s.languages.has(language))
+    // A fallback adapter that is not there leaves its files to the syntax tier, each saying why (FR311).
+    const syntaxSpec = registry.specs.find((s) => s.id === 'syntax')
+    const canFallBack = (spec: AdapterSpec) => !!spec.fallback && !!syntaxSpec?.entry()
+    const handedUp = new Set<string>()
+    for (const d of discovered) {
+      const spec = d.status === 'capture' && d.role === 'source' && !d.adapter && d.language ? owner(d.language) : undefined
+      if (spec && canFallBack(spec) && !spec.entry()) { d.adapter = 'syntax'; d.detail = spec.unavailable(); handedUp.add(spec.id) }
+    }
     runs = registry.specs.map((spec) => ({
       spec, mode: 'no_execution' as Mode,
       sources: discovered.filter((d) => d.status === 'capture' && d.role === 'source' && (d.adapter ? d.adapter === spec.id : owner(d.language!) === spec)),
@@ -116,7 +129,7 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
       configs: discovered.filter((d) => d.status === 'capture' && (d.role === 'config' ? d.language === `${spec.id}-config` : d.role === 'source' && spec.isConfig(path.posix.basename(d.path)))),
     }))
     for (const run of runs) {
-      const unavailable = run.sources.length > 0 && !run.spec.entry(), own = run.configs.filter((c) => c.role === 'config')
+      const unavailable = (run.sources.length > 0 || handedUp.has(run.spec.id)) && !run.spec.entry(), own = run.configs.filter((c) => c.role === 'config')
       for (const d of unavailable ? [...run.sources, ...own] : run.sources.length ? [] : own) {
         d.status = 'unsupported'
         d.detail = unavailable ? run.spec.unavailable() : `no_adapter_run:${run.spec.id}`
@@ -154,7 +167,12 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
         protocol_version: PROTOCOL_VERSION, workspace, repository_root: repo.root, analysis_mode: requestedMode,
         files: [...run.sources, ...run.configs].map((c) => ({ path: c.path, content_hash: hashOf.get(c.path)!, language: c.language! })),
         config: { ...catalog.adapterConfig(repo.id, run.spec.id), ...run.spec.config?.() },
-      }).catch((e) => { throw e instanceof AdapterProtocolError ? adapterFailure(run.spec.id, finished, 'failed to initialize', e) : e })
+      }).catch((e) => {
+        // A fallback adapter that cannot start gives its files to the syntax tier; every later call of it fails with the same reason.
+        if (e instanceof AdapterProtocolError && canFallBack(run.spec)) { run.initFailure = e; return undefined }
+        throw e instanceof AdapterProtocolError ? adapterFailure(run.spec.id, finished, 'failed to initialize', e) : e
+      })
+      if (!init) { run.manifest = { id: run.spec.id, version: 'failed_to_initialize', protocol_version: PROTOCOL_VERSION, languages: [...run.spec.languages], toolchain: {} }; run.inputs = []; continue }
       run.manifest = init.adapter
       run.inputs = [...(init.external_inputs ?? [])].sort()
       run.mode = init.analysis_mode ?? 'no_execution'
@@ -219,7 +237,40 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
       const markDone = db.prepare('insert into resume_batch (adapter, batch) values (?, ?)')
       const batches = { done: 0, total: 0 }
       const reuse = { reused: 0, analysed: 0 }
+      // Files a fallback adapter could not analyse are read by the syntax tier in a run of its own, after every other adapter, so one process sees them all (FR311, FR313).
+      const byPath = new Map(captured.map((c, i) => [c.path, { c, i }]))
+      const handoffs = new Map<string, { files: number; reason: string }>()
+      let late: AdapterRun | undefined
+      const handOff = (run: AdapterRun, file: string, detail: string | undefined, reason: string) => {
+        const entry = byPath.get(file)!
+        entry.c.adapter = 'syntax'
+        entry.c.detail = `adapter_failed:${run.spec.id}${detail ? `:${detail}` : ''}`
+        if (!late) runs.push(late = { spec: { ...syntaxSpec!, id: 'syntax-fallback' }, sources: [], configs: [], mode: 'no_execution' })
+        late.sources.push(entry.c)
+        const seen = handoffs.get(run.spec.id)
+        handoffs.set(run.spec.id, { files: (seen?.files ?? 0) + 1, reason: seen?.reason ?? reason })
+      }
+      /** A failed file of a fallback adapter has no facts of its own: the syntax tier reads it instead. */
+      const demote = (run: AdapterRun, r: AnalyzeResponse): AnalyzeResponse => {
+        const failed = new Set(canFallBack(run.spec) ? r.file_results.filter((f) => f.status === 'failed').map((f) => f.path) : [])
+        if (!failed.size) return r
+        for (const f of r.file_results) if (failed.has(f.path)) handOff(run, f.path, f.detail === DIED ? undefined : f.detail, r.diagnostics[0]?.message ?? f.detail ?? 'failed')
+        return { symbols: r.symbols.filter((x) => !failed.has(x.path)), relationships: r.relationships.filter((x) => !failed.has(x.site.path)), file_results: r.file_results.filter((f) => !failed.has(f.path)), diagnostics: r.diagnostics }
+      }
       for (const run of runs) {
+        if (run === late) {
+          late.sources.sort((a, b) => byPath.get(a.path)!.i - byPath.get(b.path)!.i)
+          const proc = late.process = new AdapterProcess(syntaxSpec!.entry()!, undefined, undefined, late.spec.id)
+          progress({ phase: 'initialize', adapter: late.spec.id, done: 0, total: late.sources.length })
+          const init = await proc.initialize({
+            protocol_version: PROTOCOL_VERSION, workspace, repository_root: repo.root, analysis_mode: requestedMode,
+            files: late.sources.map((c) => ({ path: c.path, content_hash: hashOf.get(c.path)!, language: c.language! })),
+            config: { ...catalog.adapterConfig(repo.id, 'syntax') },
+          }).catch((e) => { throw e instanceof AdapterProtocolError ? adapterFailure(late!.spec.id, finished, 'failed to initialize', e) : e })
+          late.manifest = init.adapter; late.inputs = []; late.units = init.units
+          late.entrySha256 = sha256File(syntaxSpec!.entry()!)
+          late.keys = fileKeys({ repository: repo.id, adapter: { ...late.manifest, entry_sha256: late.entrySha256 }, analysisMode: late.mode, config: catalog.adapterConfig(repo.id, 'syntax'), externalInputs: [], configs: [], sources: late.sources.map((c) => c.path), units: late.units, hashOf: (p) => hashOf.get(p) })
+        }
         for (const c of run.configs) if (c.role === 'config') fileResults.set(c.path, { status: 'ok', capabilities: { text: 'complete' } })
         const producer: Producer = { id: run.manifest!.id, version: run.manifest!.version, mode: run.mode }
         // Workspace facts span files, so they are asked for on every index and never cached; checkpointed as batch -1.
@@ -233,10 +284,12 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
           writer.remember(ws.symbols, producer)
         } else {
           try {
-            ws = await run.process!.workspace()
+            ws = run.initFailure ? { symbols: [], relationships: [], file_results: [], diagnostics: [] } : await run.process!.workspace()
           } catch (e) {
             if (!(e instanceof AdapterProtocolError)) throw e
-            throw adapterFailure(run.spec.id, finished, 'failed to answer workspace', e)
+            // Facts that span files are lost with a fallback adapter that died; its files follow it to the syntax tier batch by batch.
+            if (!canFallBack(run.spec)) throw adapterFailure(run.spec.id, finished, 'failed to answer workspace', e)
+            ws = { symbols: [], relationships: [], file_results: [], diagnostics: [] }
           }
           fs.writeFileSync(wsJournal, JSON.stringify(ws))
           db.transaction(() => { writer.symbols(ws.symbols, producer); markDone.run(run.spec.id, -1) })()
@@ -249,7 +302,7 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
           const keys = run.keys!
           const cached = new Map(batch.flatMap((p) => { const hit = cache!.get(keys.get(p)!); return hit ? [[p, hit] as const] : [] }))
           const missing = batch.filter((p) => !cached.has(p))
-          const fresh = missing.length ? splitByFile(await run.process!.analyze(missing), missing) : new Map()
+          const fresh = missing.length ? splitByFile(await (run.initFailure ? Promise.reject(run.initFailure) : run.process!.analyze(missing)), missing) : new Map()
           cache!.put(repo.id, run.spec.id, missing.map((p) => [keys.get(p)!, fresh.get(p)!]))
           reuse.reused += cached.size
           reuse.analysed += missing.length
@@ -262,17 +315,21 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
           progress({ phase: 'analyze', adapter: run.spec.id, done: i, total: run.sources.length })
           let response: AnalyzeResponse
           if (done.has(`${run.spec.id}#${number}`)) {
-            response = JSON.parse(fs.readFileSync(journal, 'utf8')) as AnalyzeResponse
+            response = demote(run, JSON.parse(fs.readFileSync(journal, 'utf8')) as AnalyzeResponse)
             writer.remember(response.symbols, producer)
             batches.done++
           } else {
+            let raw: AnalyzeResponse
             try {
-              response = await analyse(batch)
+              raw = await analyse(batch)
             } catch (e) {
               if (!(e instanceof AdapterProtocolError)) throw e
-              throw adapterFailure(run.spec.id, finished, 'failed on a batch', e, { paths: batch.length })
+              if (!canFallBack(run.spec)) throw adapterFailure(run.spec.id, finished, 'failed on a batch', e, { paths: batch.length })
+              // The adapter is gone: the files it had cached facts for keep them, and the rest are failed, which hands them to the syntax tier. The journal records the handoff, so a resumed run makes it again.
+              raw = { ...assemble(batch.map((p) => cache!.get(run.keys!.get(p)!) ?? died(p))), diagnostics: [{ level: 'error', message: adapterFailure(run.spec.id, finished, 'failed on a batch', e).details.stored_message as string }] }
             }
-            fs.writeFileSync(journal, JSON.stringify(response))
+            fs.writeFileSync(journal, JSON.stringify(raw))
+            response = demote(run, raw)
             db.transaction(() => { writer.symbols(response.symbols, producer); markDone.run(run.spec.id, number) })()
             faultPoint('after_batch')
           }
@@ -307,6 +364,7 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
       const tierOf = (c: Captured): { tier: string } | {} => {
         if (c.role !== 'source') return {}
         if (c.adapter === 'scip') return { tier: `scip:${c.scip}` }
+        if (c.adapter === 'syntax') return { tier: 'syntax' }
         const id = owner(c.language!)?.id
         return id ? { tier: id === 'syntax' ? 'syntax' : `precise:${id}` } : {}
       }
@@ -341,11 +399,15 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
         .map((f) => ({ label: labels.get(f.path)!, disposition: f.disposition, detail: f.detail, capabilities: JSON.parse(f.capabilities) as Record<string, string> }))
       db.prepare("insert into meta (key, value) values ('census', ?)").run(JSON.stringify(buildCensus(censusFiles, { overrides: process.env.PROOFMESH_CS_ADAPTER ? { csharp: process.env.PROOFMESH_CS_ADAPTER } : {} })))
       const counts = countDispositions((db.prepare('select disposition from file').all() as Array<{ disposition: string }>).map((r) => r.disposition))
+      // A file the syntax tier read for a fallback adapter that could not: what the adapter's job reports, kept with the snapshot (FR313).
+      const fallbacks = [...handoffs].map(([adapter, h]) => ({ adapter, ...h }))
+      if (fallbacks.length) db.prepare("insert into meta (key, value) values ('fallbacks', ?)").run(canonicalJson({ handoffs: fallbacks, syntax: late!.manifest }))
       progress({ phase: 'seal', done: 0, total: 0 })
       sealAndPublish(catalog, db, stagingFile, snapshotId, repo.id, keepCurrent)
       fs.rmSync(stagingDir(dataDir, snapshotId), { recursive: true, force: true })
       for (const run of runs) cache.prune(repo.id, run.spec.id, run.keys!.values())
-      return { snapshotId, status: 'published', analysisMode, counts, reuse, commit: checkout?.git.commit, adapterPeakRssKb: await peaks(), ...(batches.done ? { resumed: batches } : {}) }
+      if (!late) cache.prune(repo.id, 'syntax-fallback', [])
+      return { snapshotId, status: 'published', analysisMode, counts, reuse, commit: checkout?.git.commit, adapterPeakRssKb: await peaks(), ...(fallbacks.length ? { fallbacks } : {}), ...(batches.done ? { resumed: batches } : {}) }
     } catch (e) {
       if (db.open) db.close()
       catalog.markFailed(snapshotId, storedMessage(e))
