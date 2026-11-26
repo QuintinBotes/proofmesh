@@ -254,7 +254,7 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
       const demote = (run: AdapterRun, r: AnalyzeResponse): AnalyzeResponse => {
         const failed = new Set(canFallBack(run.spec) ? r.file_results.filter((f) => f.status === 'failed').map((f) => f.path) : [])
         if (!failed.size) return r
-        for (const f of r.file_results) if (failed.has(f.path)) handOff(run, f.path, f.detail === DIED ? undefined : f.detail, r.diagnostics[0]?.message ?? f.detail ?? 'failed')
+        for (const f of r.file_results) if (failed.has(f.path)) handOff(run, f.path, f.detail === DIED ? undefined : f.detail, f.detail === DIED ? r.diagnostics[0]?.message ?? 'died' : f.detail ?? 'failed')
         return { symbols: r.symbols.filter((x) => !failed.has(x.path)), relationships: r.relationships.filter((x) => !failed.has(x.site.path)), file_results: r.file_results.filter((f) => !failed.has(f.path)), diagnostics: r.diagnostics }
       }
       for (const run of runs) {
