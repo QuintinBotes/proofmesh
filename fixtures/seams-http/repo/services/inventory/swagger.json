@@ -1,0 +1,13 @@
+{
+  "swagger": "2.0",
+  "info": { "title": "Inventory", "version": "1" },
+  "basePath": "/api",
+  "paths": {
+    "/inventory": {
+      "get": {
+        "operationId": "listInventory",
+        "responses": { "200": { "description": "Every item" } }
+      }
+    }
+  }
+}

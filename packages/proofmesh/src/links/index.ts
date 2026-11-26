@@ -223,7 +223,7 @@ function cloudResources(m: Member, store: EvidenceStore): CloudResource[] {
 }
 
 /** A route as `VERB path`, lower-cased, trimmed of slashes, with each `{param}` a wildcard segment. */
-function route(qualified: string): { verb: string; segments: string[] } {
+export function route(qualified: string): { verb: string; segments: string[] } {
   const [verb = '', ...rest] = qualified.split(' ')
   return { verb: verb.toUpperCase(), segments: rest.join(' ').toLowerCase().replace(/^\/+|\/+$/g, '').split('/').filter(Boolean).map((s) => (s.startsWith('{*') ? '{*}' : s.startsWith('{') ? '{}' : s)) }
 }

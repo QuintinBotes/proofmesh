@@ -1013,6 +1013,36 @@
     ],
     "FR230": [
       "packages/proofmesh/test/scip-run.test.ts"
+    ],
+    "FR250": [
+      "packages/proofmesh/test/seams-http.test.ts"
+    ],
+    "FR251": [
+      "packages/proofmesh/test/seams-http.test.ts"
+    ],
+    "FR252": [
+      "packages/proofmesh/test/seams-http.test.ts"
+    ],
+    "FR253": [
+      "packages/proofmesh/test/seams-http.test.ts"
+    ],
+    "FR254": [
+      "packages/proofmesh/test/seams-http.test.ts"
+    ],
+    "FR255": [
+      "packages/proofmesh/test/seams-http.test.ts"
+    ],
+    "FR256": [
+      "packages/proofmesh/test/seams-http.test.ts"
+    ],
+    "FR257": [
+      "packages/proofmesh/test/seams-http.test.ts"
+    ],
+    "FR258": [
+      "packages/proofmesh/test/seams-http.test.ts"
+    ],
+    "FR259": [
+      "packages/proofmesh/test/seams-http.test.ts"
     ]
   },
   "manual": {

@@ -21,6 +21,7 @@ import { analysisConfig, checkoutCommit, discover, gitInfo, type Discovered } fr
 import { registryFor, type AdapterSpec, type Registry } from './languages.js'
 import { buildCensus } from './census.js'
 import { constrain, RESOLUTION_VERSION, type Sym } from './constrained/index.js'
+import { type EndpointSym, linkHttp, SEAMS_VERSION } from './seams-http.js'
 import { moduleCycles } from './module-cycles.js'
 
 export type IndexResult = {
@@ -157,7 +158,7 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
     const adapters = runs.map((r) => ({ ...r.manifest!, analysis_mode: r.mode, external_inputs: r.inputs ?? [], entry_sha256: r.entrySha256! })).sort((a, b) => (a.id < b.id ? -1 : 1))
     const analysisMode: Mode = adapters.some((a) => a.analysis_mode === 'trusted_build') ? 'trusted_build' : 'no_execution'
     const configs = Object.fromEntries(runs.map((r) => [r.spec.id, catalog.adapterConfig(repo.id, r.spec.id)]))
-    const identity = { repository_id: repo.id, manifest_hash: manifest, config_hash: sha256(canonicalJson({ ...analysisConfig(), adapters: configs })), analysis_mode: analysisMode, adapters, format_version: FORMAT_VERSION, format_ddl: sha256(readSql(`snapshot-format/${FORMAT_VERSION}.sql`)), ownership: OWNERSHIP_VERSION, resolution: RESOLUTION_VERSION }
+    const identity = { repository_id: repo.id, manifest_hash: manifest, config_hash: sha256(canonicalJson({ ...analysisConfig(), adapters: configs })), analysis_mode: analysisMode, adapters, format_version: FORMAT_VERSION, format_ddl: sha256(readSql(`snapshot-format/${FORMAT_VERSION}.sql`)), ownership: OWNERSHIP_VERSION, resolution: RESOLUTION_VERSION, seams: SEAMS_VERSION }
     const identityJson = canonicalJson(identity)
     const snapshotId = `snap_${sha256(identityJson).slice(0, 24)}`
     const peaks = async () => {
@@ -202,7 +203,9 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
       const pending: Array<{ rel: Rel; producer: Producer }> = []
       // Every symbol the adapters declared, for the pass that binds names (FR171).
       const declared: Sym[] = []
-      const note = (symbols: AnalyzeResponse['symbols'], p: Producer) => { for (const s of symbols) declared.push({ producer: p.id, local_id: s.local_id, path: s.path, kind: s.kind, name: s.name, qualified_name: s.qualified_name, start: s.range.start_byte, end: s.range.end_byte }) }
+      // The endpoints, with their ranges, for the pass that links HTTP clients to handlers (FR255).
+      const endpoints: EndpointSym[] = []
+      const note = (symbols: AnalyzeResponse['symbols'], p: Producer) => { for (const s of symbols) { declared.push({ producer: p.id, local_id: s.local_id, path: s.path, kind: s.kind, name: s.name, qualified_name: s.qualified_name, start: s.range.start_byte, end: s.range.end_byte }); if (s.kind === 'endpoint') endpoints.push({ producer: p.id, local_id: s.local_id, path: s.path, name: s.name, qualified_name: s.qualified_name, range: s.range, signature: s.signature }) } }
       const done = new Set((db.prepare('select adapter, batch from resume_batch').all() as Array<{ adapter: string; batch: number }>).map((r) => `${r.adapter}#${r.batch}`))
       const markDone = db.prepare('insert into resume_batch (adapter, batch) values (?, ?)')
       const batches = { done: 0, total: 0 }
@@ -277,7 +280,9 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
       // The names the language's rules can bind are bound before anything is written, from the whole workspace's facts (FR171).
       const bound = constrain(declared, pending, (p) => { const h = hashOf.get(p); return h ? store.read(h) : undefined })
       // Millions of relationships take minutes to write: progress inside the transaction keeps the job and the index lease alive.
-      db.transaction(() => writer.relationships(bound, (done) => progress({ phase: 'write', done, total: bound.length })))()
+      // Each HTTP client is then linked to the handler of the endpoint it names, whatever language either is in (FR255).
+      const linked = [...bound, ...linkHttp(declared, endpoints, bound, { id: 'seams-http', version: SEAMS_VERSION, mode: analysisMode })]
+      db.transaction(() => writer.relationships(linked, (done) => progress({ phase: 'write', done, total: linked.length })))()
       const ownershipFiles = captured.filter((c) => c.role === 'ownership')
       const ownersFile = effectiveCodeowners(ownershipFiles.map((c) => c.path))
       if (ownersFile) {
@@ -462,7 +467,8 @@ class FactWriter {
   }
 
   private symbol(p: Producer, local: string): string {
-    const id = this.localToSymbol.get(`${p.id}:${local}`)
+    // A pass that spans adapters names a symbol by `@<adapter>:<local id>`, as that adapter declared it.
+    const id = this.localToSymbol.get(local.startsWith('@') ? local.slice(1) : `${p.id}:${local}`)
     if (!id) throw new AdapterProtocolError(`relationship references unknown symbol ${local}`)
     return id
   }

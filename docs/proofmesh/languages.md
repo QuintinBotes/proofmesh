@@ -143,6 +143,16 @@ The build adapter reads `pom.xml`, `settings.gradle(.kts)`, `build.gradle(.kts)`
 - A `pom.xml` that is not well-formed fails with `invalid_xml:line N`, and a Gradle script with a comment that is never closed with `invalid_gradle:line N`; every other build file is still read.
 - Not read yet: Bazel and Buck (`BUILD`, `BUILD.bazel`, `BUCK`), still open on #13.
 
+## HTTP seams in one repository (FR250 to FR259)
+
+A client and the handler it calls meet inside one repository by the rules the workspace links use across repositories, whatever language each is in.
+
+- Clients: a TypeScript `fetch(...)` or `axios` call (`axios.get(...)` and the other verbs, `axios(...)`, `axios.request(...)`, a client from `axios.create`) whose path is a string, a template, a concatenation or a module constant is an outbound `dispatches_to` of `VERB path` (rules `fetch_client`, `axios_client`; Python's is `http_client`). Scheme, host, query and fragment are dropped, each interpolation is a `{param}`, and the verb is the `method` option's literal, else `GET`. A path on a base held in a variable keeps its suffix with `detail.prefix_unknown`.
+- Declarations: an OpenAPI 3.x or Swagger 2.0 document named `openapi`, `swagger`, `*.openapi` or `*.swagger`, as YAML or JSON, declares an `endpoint` per path and verb at the verb's line, the `operationId` in its signature, the base path joined (one endpoint per distinct server path). A `$ref` path item is not followed and makes the file partial; a document that does not parse is `failed` with `invalid_openapi:line N: ...`.
+- Links: each client's function is linked by `dispatches_to`, origin `contract_match`, to the handler of the endpoint it names, with `detail.rule` `http_route`, `detail.endpoint` and `detail.confidence`: 1 exact, 0.9 a literal where the server has a parameter or the parameter has another name (they are matched by position), 0.8 another verb, 0.6 a suffix, 0.5 a suffix whose base is unknown and only one endpoint ends so. The same `VERB path` in code and in a document is one endpoint. Several equally good handlers make the row `ambiguous`.
+- Boundaries, never guesses: a declared endpoint no code serves is an unresolved `exposes` from the declaration (`declared_without_handler`); a client that matches nothing is an unresolved `dispatches_to` with `unknown_name` and its path, or `not_indexed` when only a declaration with no handler matches. The one exception to code routes is a function named exactly once by the declaration's `operationId`, taken as the handler at 0.7, which is how a Go handler is found until Go has route rules.
+- Every row reads as inferred (`basis`), and `analyze_impact`, `find_tests` and `trace_paths` follow it. The fixture is `fixtures/seams-http`.
+
 ## SCIP indexes a person produces
 
 A person who runs a SCIP indexer can name its output: `proofmesh scip add <repository> <index.scip>`. Proofmesh reads the file and, for a repository that is not trusted for build evaluation, never runs an indexer (A24).
