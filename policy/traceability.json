@@ -1399,6 +1399,15 @@
     ],
     "FR349": [
       "packages/proofmesh/test/resumable-index.test.ts"
+    ],
+    "FR370": [
+      "packages/proofmesh/test/discover-stall.test.ts"
+    ],
+    "FR371": [
+      "packages/proofmesh/test/discover-stall.test.ts"
+    ],
+    "FR372": [
+      "packages/proofmesh/test/discover-stall.test.ts"
     ]
   },
   "manual": {

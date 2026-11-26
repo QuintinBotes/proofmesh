@@ -429,6 +429,12 @@ Acceptance: CI runs my pull request without secrets or release credentials; lice
 - FR363: MUST report a busy or locked error from any connection, including ones with no retry of their own, as `BUSY`.
 - FR364: MUST name `BEGIN IMMEDIATE` in the `BUSY` error of a transaction that cannot begin, MUST retry reads (`get`, `all`) like writes, and MUST seal a link file from a staging directory of the run's own, harden its connection like the others, and let the first run to seal an id keep its file, so two runs writing workspace links together neither delete each other's staging nor leave a record that does not match the file.
 
+### A long discover stage
+
+- FR370: MUST report, during `discover`, the files found so far every 1000 files, in the progress line (`discover 1000 files found`), the job row, `status` and the no-snapshot refusal.
+- FR371: MUST let the event loop run while `discover` walks the tree and while it waits on git, so SIGTERM during it ends the index with 143 and releases its lock, the progress heartbeat keeps printing, and an aborted signal (as `watch` passes) ends the walk as `CANCELLED`; a git still running when the index exits is killed.
+- FR372: MUST run discovery's `git ls-files` without a shell, with an allowlisted environment, its output capped, and a timeout of ten minutes after which git is killed with SIGKILL and the index fails as `DEPENDENCY_UNAVAILABLE` naming git and the root, never reading the timeout as "nothing ignored"; a missing git still ignores nothing.
+
 ### Impact completeness
 
 - FR108: MUST provide `impact_completeness` with `base`, a commit-ish, optional `head` (omitted, the working tree), `depth` (default 1, at most 5), `include_tests` and the usual limits, and the CLI `proofmesh completeness <repository> <base>[..<head>] [--depth N] [--json]`.

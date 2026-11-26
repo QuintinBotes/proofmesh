@@ -4,6 +4,13 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 ## Unreleased
 
+A long `discover` stage reports progress and stops on SIGTERM (closes #96; FR370 to FR372):
+
+- Cause: the whole discover walk was one synchronous call, so for its length no timer, progress line or signal handler could run. On a slow or loaded filesystem the stage read as hung (no CPU, no output, no counter in `status`) and SIGTERM waited until the walk ended.
+- The walk now gives the event loop a turn every 100 files and reports the files found every 1000 (`discover 2000 files found`, also in the job row, `status` and the no-snapshot refusal). SIGTERM during discover ends the index with 143 and releases the lock; a cancelled `watch` ends the walk as `CANCELLED`.
+- `git ls-files` in discovery runs asynchronously, with an allowlisted environment, capped output and a ten-minute SIGKILL timeout that fails the index naming git, instead of a wait with no end. A git still running when the index exits is killed.
+- Not done: one filesystem call that never returns (a hung mount) still blocks the loop; the walk still descends into excluded directories (`bin`, `obj`, `node_modules`) to record each file's disposition.
+
 A cut answer fits max_bytes exactly, note and flags included (closes #88 and #92; FR330 to FR334, FR365 to FR367):
 
 - `max_bytes` is measured on the answer as it is sent, with its truncation note, `truncated`, `stop_reasons` and cursor, and a list is cut until that answer fits, so a cut answer no longer passes the budget by the size of what the cut adds. A lean answer is measured on its text.

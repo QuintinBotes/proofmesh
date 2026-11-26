@@ -1,6 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { spawnSync } from 'node:child_process'
+import { execFile, spawnSync } from 'node:child_process'
 import { ProofmeshError } from '../core/errors.js'
 import { BUILT_IN_REGISTRY, type Registry } from './languages.js'
 import { ADAPTER_LANGUAGE_NAMES, adapterLanguageId, detectLanguage, type Kind } from './language-detect.js'
@@ -42,12 +42,19 @@ export const analysisConfig = () => ({
   ignore: 'git',
 })
 
-/**
- * What git ignores under the root, asked of git itself so every source of ignore rules applies as git applies it (.gitignore files,
- * .git/info/exclude, the global excludes file) and tracked files are never ignored (A19). Outside a git work tree nothing is ignored.
- */
-function gitIgnored(root: string): (rel: string) => boolean {
-  const r = spawnSync('git', ['-C', root, 'ls-files', '--others', '--ignored', '--exclude-standard', '--directory', '-z'], { encoding: 'utf8', maxBuffer: 512 * 1024 * 1024 })
+/** git ls-files gets this long, then it is killed (SIGKILL, since a hung child may ignore SIGTERM) and discovery fails naming it. */
+const gitTimeoutMs = () => Math.max(50, Number(process.env.PROOFMESH_TEST_GIT_TIMEOUT_MS) || 600_000)
+const GIT_MAX_BYTES = 512 * 1024 * 1024
+/** What git reads: its own variables and the places its config and excludes live, never the rest of the environment. */
+const gitEnv = (): NodeJS.ProcessEnv => Object.fromEntries(Object.entries(process.env).filter(([k]) => /^(PATH|HOME|USER|TMPDIR|LANG|LC_.*|GIT_.*|XDG_.*)$/.test(k)))
+const gitOptions = () => ({ encoding: 'utf8' as const, env: gitEnv(), timeout: gitTimeoutMs(), killSignal: 'SIGKILL' as const, maxBuffer: GIT_MAX_BYTES })
+const ignoredArgs = (root: string) => ['-C', root, 'ls-files', '--others', '--ignored', '--exclude-standard', '--directory', '-z']
+
+/** git's answer as a predicate. Outside a git work tree, or without git, nothing is ignored; a git that hangs or floods is an error, not "nothing ignored". */
+function ignoredFrom(root: string, r: { status: number | null; stdout: string; failure?: 'timeout' | 'output' }): (rel: string) => boolean {
+  const cannot = 'discovery cannot tell which files git ignores'
+  if (r.failure === 'timeout') throw new ProofmeshError('DEPENDENCY_UNAVAILABLE', `git ls-files did not answer within ${gitTimeoutMs() / 1000} s in ${root}; ${cannot}`, { detail: 'git_timeout' })
+  if (r.failure === 'output') throw new ProofmeshError('DEPENDENCY_UNAVAILABLE', `git ls-files printed more than ${GIT_MAX_BYTES} bytes in ${root}; ${cannot}`, { detail: 'git_output_too_large' })
   if (r.status !== 0) return () => false
   const entries = r.stdout.split('\0').filter(Boolean)
   const files = new Set(entries.filter((e) => !e.endsWith('/')))
@@ -55,17 +62,73 @@ function gitIgnored(root: string): (rel: string) => boolean {
   return (rel) => files.has(rel) || dirs.some((d) => rel.startsWith(d))
 }
 
+/**
+ * What git ignores under the root, asked of git itself so every source of ignore rules applies as git applies it (.gitignore files,
+ * .git/info/exclude, the global excludes file) and tracked files are never ignored (A19). Outside a git work tree nothing is ignored.
+ */
+function gitIgnored(root: string): (rel: string) => boolean {
+  const r = spawnSync('git', ignoredArgs(root), gitOptions())
+  const code = (r.error as NodeJS.ErrnoException | undefined)?.code
+  return ignoredFrom(root, { status: r.status, stdout: r.stdout ?? '', failure: code === 'ETIMEDOUT' ? 'timeout' : code === 'ENOBUFS' ? 'output' : undefined })
+}
+
+/** gitIgnored without blocking the event loop; git is killed if this process exits first, so a signal leaves no git behind. */
+function gitIgnoredAsync(root: string): Promise<(rel: string) => boolean> {
+  return new Promise((resolve, reject) => {
+    const kill = () => child.kill('SIGKILL')
+    // execFile answers on 'close', so every byte git printed is read.
+    const child = execFile('git', ignoredArgs(root), gitOptions(), (error, stdout) => {
+      process.off('exit', kill)
+      const e = error as (NodeJS.ErrnoException & { killed?: boolean }) | null
+      const failure = e?.code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER' ? 'output' : e?.killed ? 'timeout' : undefined
+      try { resolve(ignoredFrom(root, { status: e ? (typeof e.code === 'number' ? e.code : null) : 0, stdout, failure })) } catch (x) { reject(x) }
+    })
+    process.once('exit', kill)
+  })
+}
+
 /** Every file under the root, each with exactly one discovery status. `.git` is metadata, not content. */
 export function discover(root: string, registry: Registry = BUILT_IN_REGISTRY, ignored = gitIgnored(root)): Discovered[] {
+  const steps = walk(root, registry, ignored)
+  for (;;) { const r = steps.next(); if (r.done) return r.value }
+}
+
+/** The event loop gets a turn every this many steps of the walk, so a signal, a timer or a cancel is seen while a large tree is read. */
+const YIELD_EVERY = 100
+/** How often discoverAsync reports the files it has found. */
+const PROGRESS_EVERY = 1000
+
+/**
+ * discover for an index: the same walk, giving the event loop a turn every YIELD_EVERY steps so SIGTERM and the progress heartbeat are not
+ * held back until the whole tree is read, reporting the files found every PROGRESS_EVERY, and ending as CANCELLED when the signal aborts.
+ * shortcut: one filesystem call that never returns (a hung mount) still blocks the loop; move the walk to async fs if that is ever seen.
+ */
+export async function discoverAsync(root: string, registry: Registry, ignored: ((rel: string) => boolean) | undefined, o: { onFound?: (files: number) => void; signal?: AbortSignal } = {}): Promise<Discovered[]> {
+  const cancelled = () => { if (o.signal?.aborted) throw new ProofmeshError('CANCELLED', `discovery of ${root} was cancelled`) }
+  cancelled()
+  const steps = walk(root, registry, ignored ?? await gitIgnoredAsync(root))
+  for (let n = 1; ; n++) {
+    const r = steps.next()
+    if (r.done) return r.value
+    if (n % YIELD_EVERY) continue
+    if (r.value && r.value % PROGRESS_EVERY === 0) o.onFound?.(r.value)
+    await new Promise((resolve) => setImmediate(resolve))
+    cancelled()
+  }
+}
+
+/** The walk: one step per file found (yielding how many so far), then one per census row (yielding 0). It returns every file. */
+function* walk(root: string, registry: Registry, ignored: (rel: string) => boolean): Generator<number, Discovered[]> {
   const out: Discovered[] = []
   const attributes = attributeLookup(root)
-  const walk = (dirRel: string, inherited: Place) => {
+  function* dir(dirRel: string, inherited: Place): Generator<number, void> {
     const abs = path.join(root, dirRel)
     let entries: fs.Dirent[]
     try {
       entries = fs.readdirSync(abs, { withFileTypes: true })
     } catch (e) {
       out.push({ path: dirRel || '.', size: 0, status: 'failed', detail: (e as NodeJS.ErrnoException).code ?? 'EREAD', language: null, role: null })
+      yield out.length
       return
     }
     entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
@@ -76,18 +139,21 @@ export function discover(root: string, registry: Registry = BUILT_IN_REGISTRY, i
       if (entry.isSymbolicLink()) {
         out.push({ path: rel, size: 0, status: 'unsupported', detail: 'symlink_not_followed', language: null, role: null })
       } else if (entry.isDirectory()) {
-        walk(rel, childPlace(here, entry.name, entries, root, dirRel))
+        yield* dir(rel, childPlace(here, entry.name, entries, root, dirRel))
+        continue
       } else if (entry.isFile()) {
         const attrs = attributes(rel), before = classify(root, rel, ignored, registry, here, attrs), routed = registry.route(before, root)
         // A file that routing makes a source (a SCIP index covers it) was not one when classified: it is judged for generated now.
         const promoted = routed.status === 'capture' && routed.role === 'source' && !routed.generated && (before.status !== 'capture' || before.role !== 'source')
         out.push(promoted && (attrs.generated ?? isGeneratedFile(path.posix.basename(rel), readHead(path.join(root, rel), BINARY_PROBE_BYTES) ?? '')) ? { ...routed, generated: true } : routed)
-      }
+      } else continue
+      yield out.length
     }
   }
-  walk('', {})
+  yield* dir('', {})
   // Every file, links and unreadable directories included, is in one row of the language census.
-  return out.map((d) => ({ ...d, census: censusLabel(d, root) }))
+  for (let i = 0; i < out.length; i++) { out[i] = { ...out[i]!, census: censusLabel(out[i]!, root) }; yield 0 }
+  return out
 }
 
 /** What the directories above a file make of it: the first rule that applies from the top (FR293, FR295). */
