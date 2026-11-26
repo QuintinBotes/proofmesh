@@ -35,6 +35,16 @@ export function typescriptAdapterPath(): string {
 /** A .dll runs on .NET, a JavaScript file on this Node, and anything else as an executable, so an adapter can be written in any language. */
 const launcher = (entry: string): [string, string[]] => (entry.endsWith('.dll') ? ['dotnet', [entry]] : /\.[cm]?js$/.test(entry) ? [process.execPath, [entry]] : [entry, []])
 
+/**
+ * Every running adapter, and the signal handlers that exist only while one runs. Adapters are detached, so the terminal's
+ * SIGINT does not reach them, and a killed index runs no `finally`; the handler stops each group and exits with the shell's code.
+ */
+const live = new Set<AdapterProcess>()
+const EXIT_CODES: Record<string, number> = { SIGINT: 130, SIGTERM: 143, SIGHUP: 129 }
+const onSignal = (signal: NodeJS.Signals) => { for (const a of live) a.killNow(); process.exit(EXIT_CODES[signal]) }
+const track = (a: AdapterProcess) => { if (!live.size) for (const s of Object.keys(EXIT_CODES)) process.on(s as NodeJS.Signals, onSignal); live.add(a) }
+const untrack = (a: AdapterProcess) => { if (live.delete(a) && !live.size) for (const s of Object.keys(EXIT_CODES)) process.off(s as NodeJS.Signals, onSignal) }
+
 /** A promise that resolves after ms, and can be cancelled so a finished wait leaves no timer holding the process open. */
 const after = (ms: number): Promise<void> & { cancel: () => void } => {
   let timer: NodeJS.Timeout
@@ -97,10 +107,12 @@ export class AdapterProcess {
     /** Stops the adapter for a reason of the host's own; SIGKILL, because a child that ignores SIGTERM would hang the index. */
     const stop = (why: string) => { hostKilled ??= why; this.killGroup(child) }
     this.stopChild = stop
+    track(this)
     // The result is read on 'close', when every stream has ended, so the last stderr lines are in the message. 'exit' alone can come first.
     const settle = (what: string, restartable: boolean) => {
       if (settled) return
       settled = true
+      untrack(this)
       clearInterval(this.rssTimer); clearTimeout(inputTimer); clearTimeout(drainTimer)
       this.killGroup(child)
       child.stdout!.destroy(); child.stderr!.destroy(); child.stdin!.destroy()
@@ -173,6 +185,9 @@ export class AdapterProcess {
       else child.kill('SIGKILL')
     } catch { /* already gone */ }
   }
+
+  /** Stops the adapter's process group at once; used when the index process itself is being stopped. */
+  killNow(): void { this.killGroup(this.child) }
 
   private stopChild: (why: string) => void = () => {}
 

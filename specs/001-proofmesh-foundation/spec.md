@@ -316,6 +316,8 @@ Acceptance: CI runs my pull request without secrets or release credentials; lice
 - FR264: MUST fail the index with a non-zero exit when an adapter fails, leaving the previous snapshot current, and MUST record in the failed job's result which adapter failed and which adapters had finished.
 - FR266: MUST keep an adapter's stderr out of every stored record (the failed job's error, the snapshot's failure): the live error carries the tail, the stored text carries the adapter, its exit status, the file and the count of lines withheld.
 - FR267: MUST run each adapter in its own process group and stop the whole group, so a process the adapter started does not outlive a timeout or a failure.
+- FR268: MUST, while any adapter runs, stop every adapter's process group on SIGINT, SIGTERM or SIGHUP and exit with the conventional code (130, 143, 129), so an interrupted index leaves no adapter holding memory.
+- FR269: MUST have each built-in adapter (typescript, syntax, python, terraform, build, scip, csharp) exit when its input ends.
 - FR265: MUST print a stage line when capture ends (`prepare`) and when each later stage starts, so a crash shows where the index stopped.
 
 ### Impact completeness

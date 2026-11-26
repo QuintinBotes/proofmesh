@@ -1,10 +1,12 @@
 import path from 'node:path'
 import fs from 'node:fs'
+import { spawn, spawnSync } from 'node:child_process'
+import { createRequire } from 'node:module'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Catalog } from '../src/meshstore/catalog.js'
 import { AdapterProcess, PROTOCOL_VERSION } from '../src/indexer/adapter-host.js'
 import type { InitializeRequest } from '../src/core/generated.js'
-import { cli, copyFixture, FIXTURE, tmpDir } from './helpers.js'
+import { CLI, cli, copyFixture, FIXTURE, ROOT, tmpDir } from './helpers.js'
 
 const fake = (name: string) => path.join(import.meta.dirname, 'fake-adapters', name)
 const init = (): InitializeRequest => ({ protocol_version: PROTOCOL_VERSION, workspace: tmpDir('pm-ws-'), analysis_mode: 'no_execution', files: [] })
@@ -179,5 +181,57 @@ describe('FR260 to FR269 a dying adapter fails the index with its name and exit 
       expect(made.length).toBeGreaterThan(0)
       expect(made.filter((t) => !cleared.has(t))).toEqual([])
     } finally { set.mockRestore(); clear.mockRestore() }
+  })
+
+  it('FR268 scenario 1: SIGINT to the index kills the adapter\'s process group, even one that ignores SIGTERM, and the CLI exits 130', async () => {
+    const d = tmpDir(), cwd = tmpDir('pm-cwd-')
+    cli(['--data-dir', d, 'init'])
+    cli(['--data-dir', d, 'repo', 'add', FIXTURE])
+    const child = spawn(process.execPath, [CLI, '--data-dir', d, 'index', FIXTURE], { cwd, env: { ...process.env, PROOFMESH_TS_ADAPTER: fake('ignores-sigterm-pidfile.mjs') }, stdio: 'ignore' })
+    const closed = new Promise<number | null>((resolve) => child.on('close', (code) => resolve(code)))
+    let pid = NaN
+    try {
+      // The ready gate: the adapter has been asked to analyze and wrote its pid.
+      while (Number.isNaN(pid)) {
+        await new Promise((r) => setTimeout(r, 50))
+        try { pid = Number(fs.readFileSync(path.join(cwd, 'adapter.pid'), 'utf8')) } catch { /* not yet */ }
+      }
+      expect(alive(pid)).toBe(true)
+      child.kill('SIGINT')
+      expect(await closed).toBe(130)
+      for (let i = 0; i < 100 && alive(pid); i++) await new Promise((r) => setTimeout(r, 50))
+      expect(alive(pid)).toBe(false)
+    } finally {
+      if (child.exitCode === null) child.kill('SIGKILL')
+      if (alive(pid)) process.kill(pid, 'SIGKILL')
+    }
+  })
+})
+
+describe('FR269 every adapter exits when its input ends, so none outlives an index that was killed', () => {
+  const require = createRequire(import.meta.url)
+  const exits = (command: string, args: string[]) => new Promise<number | null>((resolve) => {
+    const child = spawn(command, args, { stdio: ['pipe', 'ignore', 'ignore'] })
+    child.on('close', (code) => resolve(code))
+    child.stdin.end()
+  })
+  const entries: Record<string, string> = {
+    typescript: require.resolve('@proofmesh/adapter-typescript'),
+    syntax: require.resolve('@proofmesh/adapter-syntax'),
+    python: require.resolve('@proofmesh/adapter-syntax/python'),
+    terraform: require.resolve('@proofmesh/adapter-syntax/terraform'),
+    build: require.resolve('@proofmesh/adapter-syntax/build'),
+    scip: path.join(ROOT, 'packages', 'proofmesh', 'dist', 'scip-adapter.mjs'),
+  }
+  for (const [name, entry] of Object.entries(entries)) {
+    it(`FR269 scenario 1: the ${name} adapter exits when stdin closes`, async () => {
+      expect(await exits(process.execPath, [entry])).toBe(0)
+    })
+  }
+
+  // Docker verify builds the C# adapter, as for the other C# tests; where dotnet is missing the dll is absent and this is skipped.
+  const dll = path.join(ROOT, 'adapters', 'csharp', 'bin', 'Release', 'net10.0', 'Proofmesh.Adapter.CSharp.dll')
+  it.runIf(fs.existsSync(dll) && spawnSync('dotnet', ['--version']).status === 0)('FR269 scenario 2: the csharp adapter exits when stdin closes (Docker only)', async () => {
+    expect(await exits('dotnet', [dll])).toBe(0)
   })
 })
