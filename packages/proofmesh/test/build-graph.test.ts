@@ -636,3 +636,63 @@ describe('FR245 manifests that cannot be read, sit under testdata or vendor, or 
     })
   }, 240000)
 })
+
+describe('FR240 FR242 FR244 FR245 what a manifest says, read as written', () => {
+  it('FR245 a composer.json is plain JSON: a comment or a trailing comma fails that file as invalid_json, with the line', async () => {
+    const { dataDir } = await indexedRepo({
+      'comma/composer.json': '{\n  "name": "acme/comma",\n  "require": {\n    "x/y": "1",\n  }\n}\n',
+      'comment/composer.json': '{\n  // note\n  "name": "acme/comment"\n}\n',
+      'ok/composer.json': '{\n  "name": "acme/ok",\n  "require": { "x/y": "1" }\n}\n',
+    })
+    withSnapshot(dataDir, (db) => {
+      expect(db.prepare("select path, disposition, disposition_detail from file where path like '%/composer.json' order by path").all()).toEqual([
+        { path: 'comma/composer.json', disposition: 'failed', disposition_detail: expect.stringMatching(/^invalid_json:line 5\b/) },
+        { path: 'comment/composer.json', disposition: 'failed', disposition_detail: expect.stringMatching(/^invalid_json:line 2\b/) },
+        { path: 'ok/composer.json', disposition: 'indexed', disposition_detail: null },
+      ])
+      expect(names(db)).toEqual(['acme/ok'])
+    })
+  }, 240000)
+
+  it('FR240 an absolute Cargo path inside the repository names that directory; outside it is dependency_missing, never joined to the manifest directory', async () => {
+    const repo = tmpDir('pm-bg-')
+    const put = (p: string, text: string) => { fs.mkdirSync(path.dirname(path.join(repo, p)), { recursive: true }); fs.writeFileSync(path.join(repo, p), text) }
+    put('app/Cargo.toml', `[package]\nname = "app"\n\n[dependencies]\nin = { path = "${repo}/lib" }\nout = { path = "/sib" }\n`)
+    put('app/sib/Cargo.toml', '[package]\nname = "sib"\n')
+    put('lib/Cargo.toml', '[package]\nname = "lib"\n')
+    const { dataDir } = await indexedDataDir(repo)
+    withSnapshot(dataDir, (db) => {
+      expect(rows(db, 'depends_on').map((r) => [r.from, r.to, r.resolution, r.reason, r.detail, r.line])).toEqual([
+        ['app', 'lib', 'resolved', null, null, 5],
+        ['app', null, 'unresolved', 'dependency_missing', { name: 'out', path: '/sib' }, 6],
+      ])
+    })
+  }, 240000)
+
+  it('FR244 a gemspec block comment between =begin and =end declares no name and no dependency', async () => {
+    const { dataDir } = await indexedRepo({
+      'a/a.gemspec': 'Gem::Specification.new do |s|\n  s.name = "a"\n=begin\n  s.add_dependency "b"\n  s.add_dependency "ghost"\n=end\n  s.add_dependency "real"\nend\n',
+      'b/b.gemspec': 'Gem::Specification.new do |s|\n  s.name = "b"\nend\n',
+    })
+    withSnapshot(dataDir, (db) => {
+      expect(rows(db, 'depends_on')).toEqual([])
+      expect(rows(db, 'depends_on_package').map((r) => [r.to, r.line])).toEqual([['gem:real', 7]])
+    })
+  }, 240000)
+
+  it('FR245 a bare TOML value must be a number, a boolean or a date: name = unquoted fails that file as invalid_toml', async () => {
+    const { dataDir } = await indexedRepo({
+      'bad/Cargo.toml': '[package]\nname = unquoted\n',
+      'bad2/Cargo.toml': '[package]\nname = "bad2"\nversion = 1.0.0\n',
+      'good/Cargo.toml': '[package]\nname = "good"\nrust-version = 1.75\nflag = true\nwhen = 1979-05-27T07:32:00Z\nhex = 0xDEAD_beef\nneg = -1_000\nf = 6.626e-34\nt = 07:32:00\nlist = [1, 2.5, false, 1979-05-27]\n',
+    })
+    withSnapshot(dataDir, (db) => {
+      expect(db.prepare("select path, disposition, disposition_detail from file where path like '%/Cargo.toml' order by path").all()).toEqual([
+        { path: 'bad/Cargo.toml', disposition: 'failed', disposition_detail: expect.stringMatching(/^invalid_toml:line 2\b/) },
+        { path: 'bad2/Cargo.toml', disposition: 'failed', disposition_detail: expect.stringMatching(/^invalid_toml:line 3\b/) },
+        { path: 'good/Cargo.toml', disposition: 'indexed', disposition_detail: null },
+      ])
+      expect(names(db)).toEqual(['good'])
+    })
+  }, 240000)
+})

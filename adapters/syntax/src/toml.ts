@@ -9,6 +9,8 @@ export type JNode = { kind: 'object' | 'array' | 'string' | 'other'; start: numb
 const MAX_DEPTH = 100
 const ESCAPES: Record<string, string> = { b: '\b', t: '\t', n: '\n', f: '\f', r: '\r', '"': '"', '\\': '\\' }
 
+/** What TOML allows unquoted: a boolean, an integer, a float, or a date and time. */
+const BARE = /^(true|false|[+-]?(inf|nan)|[+-]?(\d+(_\d+)*)(\.\d+(_\d+)*)?([eE][+-]?\d+(_\d+)*)?|0x[0-9A-Fa-f]+(_[0-9A-Fa-f]+)*|0o[0-7]+(_[0-7]+)*|0b[01]+(_[01]+)*|\d{4}-\d\d-\d\d([Tt ]\d\d:\d\d(:\d\d(\.\d+)?)?([Zz]|[+-]\d\d:\d\d)?)?|\d\d:\d\d(:\d\d(\.\d+)?)?)$/
 export function parseToml(text: string): JNode {
   let i = 0
   const root: JNode = { kind: 'object', start: 0, end: text.length, members: [] }
@@ -90,6 +92,9 @@ export function parseToml(text: string): JNode {
     const start = i
     while (i < text.length && !/[\s,\]}#]/.test(text[i]!)) i++
     if (i === start) throw new ParseError(`expected a value, found ${text[i] === undefined ? 'the end' : JSON.stringify(text[i])}`, i)
+    // A date and a time may be separated by one space.
+    if (/^\d{4}-\d\d-\d\d$/.test(text.slice(start, i)) && /^ \d\d:\d\d/.test(text.slice(i, i + 6))) { i++; while (i < text.length && !/[\s,\]}#]/.test(text[i]!)) i++ }
+    if (!BARE.test(text.slice(start, i))) throw new ParseError(`invalid value ${JSON.stringify(text.slice(start, i))}`, start)
     return { kind: 'other', start, end: i }
   }
 

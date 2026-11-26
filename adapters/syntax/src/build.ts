@@ -18,11 +18,13 @@ type Manifest = { path: string; dir: string; text: string; at: Uint32Array; line
 type Eco = 'npm' | 'go' | 'maven' | 'gradle' | 'cargo' | 'python' | 'composer' | 'gem' | 'bazel' | 'buck'
 type Project = { id: string; eco: Eco; manifest: Manifest; dir: string; name: string; range: Range }
 
-function parseJson(text: string): JNode {
+/** `strict` is plain JSON (composer.json): no comments and no trailing comma; otherwise JSONC, as a tsconfig is. */
+function parseJson(text: string, strict = false): JNode {
   let i = 0
   const skip = () => {
     for (;;) {
       while (i < text.length && /\s/.test(text[i]!)) i++
+      if (strict) return
       if (text.startsWith('//', i)) { while (i < text.length && text[i] !== '\n') i++ }
       else if (text.startsWith('/*', i)) { const e = text.indexOf('*/', i + 2); if (e < 0) throw new ParseError('unterminated comment', i); i = e + 2 }
       else return
@@ -56,7 +58,7 @@ function parseJson(text: string): JNode {
           node.members!.push({ key: key.value!, start: key.start, value: value() })
         } else node.items!.push(value())
         skip()
-        if (text[i] === ',') { i++; continue }
+        if (text[i] === ',') { i++; if (strict) { skip(); if (text[i] === close) throw new ParseError('trailing comma', i - 1) } continue }
         if (text[i] === close) { i++; break }
         throw new ParseError(`expected "," or "${close}", found ${text[i] ?? 'the end'}`, i)
       }
@@ -124,10 +126,13 @@ const RUBY_STRING = /^(['"])((?:(?!\1)[^\\])*)\1$/
 /** A gemspec is Ruby, so only its declarative lines are read, as patterns: `s.name = "x"` and `s.add_dependency "y", "~> 1"`. Any other form is named, not guessed. */
 function readGemspec(text: string): { name?: { value: string; start: number; end: number }; deps: GemDep[] } {
   const out: { name?: { value: string; start: number; end: number }; deps: GemDep[] } = { deps: [] }
-  let offset = 0
+  let offset = 0, block = false
   for (const raw of text.split('\n')) {
     const lineStart = offset
     offset += raw.length + 1
+    // `=begin` and `=end` at the start of a line fence a block comment.
+    if (block) { if (/^=end(\s|$)/.test(raw)) block = false; continue }
+    if (/^=begin(\s|$)/.test(raw)) { block = true; continue }
     // A comment runs to the end of the line unless the `#` is inside a string; `quoted` marks the characters inside one.
     let quote = '', cut = raw.length
     const quoted: boolean[] = []
@@ -164,7 +169,7 @@ function readGemspec(text: string): { name?: { value: string; start: number; end
   return out
 }
 
-let workspace = ''
+let workspace = '', repositoryRoot = ''
 let manifests: string[] = []
 const results = new Map<string, { status: 'ok' | 'failed'; detail?: string; partial?: boolean }>()
 let computed: { symbols: Fact[]; relationships: Fact[] } | undefined
@@ -177,6 +182,16 @@ const lineOf = (m: Manifest, offset: number) => { let lo = 0, hi = m.lines.lengt
 const rangeOf = (m: Manifest, start: number, end: number): Range => ({ start_byte: m.at[start]!, end_byte: Math.max(m.at[end]!, m.at[start]! + 1), start_line: lineOf(m, start), end_line: lineOf(m, Math.max(end - 1, start)) })
 /** A path as a manifest in `dir` writes it, as a path from the repository root; one that leaves the repository starts with `..`. */
 const resolveFrom = (dir: string, p: string) => path.posix.normalize(path.posix.join(dir || '.', p.replace(/\\/g, '/'))).replace(/^\.$/, '').replace(/\/$/, '')
+/** An absolute path is not relative to a manifest: inside the repository it names that directory, outside it names nothing here. */
+const absoluteTarget = (written: string) => {
+  const w = written.replace(/\\/g, '/')
+  if (!path.posix.isAbsolute(w)) return undefined
+  const real = (p: string) => { try { return fs.realpathSync(p).replace(/\\/g, '/') } catch { return p.replace(/\\/g, '/') } }
+  const roots = [...new Set([repositoryRoot, workspace].filter(Boolean).flatMap((r) => [r.replace(/\\/g, '/'), real(r)]))].map((r) => r.replace(/\/$/, ''))
+  const n = path.posix.normalize(w)
+  for (const t of [n, real(n)]) for (const r of roots) if (t === r || t.startsWith(`${r}/`)) return t.slice(r.length + 1)
+  return n
+}
 const outside = (p: string) => p === '..' || p.startsWith('../') || path.posix.isAbsolute(p)
 
 /** `{a,b}` alternatives of a glob, expanded innermost first. */
@@ -302,7 +317,7 @@ function compute(): { symbols: Fact[]; relationships: Fact[] } {
         }
         if (!ignored) builds.push(entry)
       } else {
-        const root = parseJson(m.text)
+        const root = parseJson(m.text, base === 'composer.json')
         if (base === 'composer.json') {
           const name = member(root, 'name')
           if (!ignored && name?.value.kind === 'string' && name.value.value) composers.push({ m, root, project: declare({ eco: 'composer', manifest: m, dir: m.dir, name: name.value.value, range: rangeOf(m, name.start, name.value.end) }) })
@@ -355,7 +370,7 @@ function compute(): { symbols: Fact[]; relationships: Fact[] } {
     return rel('depends_on_package', source, site, manifest, { resolution: 'unresolved', reason: 'dynamic_specifier', detail })
   }
   const pathDependency = (source: Project, site: Range, manifest: Manifest, name: string, written: string, from: string, eco: Eco, extra: Record<string, string> = {}) => {
-    const target = resolveFrom(from, written)
+    const target = absoluteTarget(written) ?? resolveFrom(from, written)
     const hit = outside(target) ? undefined : exactAt(target, eco)
     return dependsOn(source, site, manifest, hit && hit !== source ? [hit] : [], { name, path: written }, extra)
   }
@@ -731,6 +746,7 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
   try {
     if (req.method === 'initialize') {
       workspace = req.params.workspace
+      repositoryRoot = req.params.repository_root ?? ''
       manifests = req.params.files.filter((f: { language: string }) => f.language === 'build').map((f: { path: string }) => f.path)
       reply({ adapter: { id: 'build', version: VERSION, protocol_version: '1.0', languages: ['build'], toolchain: {} }, capabilities: { syntax: true, symbols: true, resolved_calls: false }, external_inputs: [] })
     } else if (req.method === 'workspace') {
