@@ -13,7 +13,7 @@ import { sameRepository } from '../indexer/discovery.js'
 import { runWorkspaceLink } from './workspace-link.js'
 import { sha256File } from '../core/hash.js'
 import { normalizedDump, openSnapshot } from '../meshstore/snapshot.js'
-import { indexRepository } from '../indexer/coordinator.js'
+import { indexRepository, testMs } from '../indexer/coordinator.js'
 import { watch } from '../indexer/watch.js'
 import { BUILT_IN, Registry, registryFor } from '../indexer/languages.js'
 import { runKit } from '../conformance/kit.js'
@@ -33,7 +33,7 @@ import { runGc } from './gc.js'
 import { runMcpConfig } from './mcp-config.js'
 import { runConventions } from './conventions.js'
 import { weakestCapability, type CensusRow } from '../indexer/census.js'
-import { type AdapterLine, duration, phaseLabel, progressReporter } from './progress.js'
+import { duration, phaseLabel, progressReporter } from './progress.js'
 
 export const VERSION = '0.1.0'
 const USAGE = `proofmesh ${VERSION}: a code graph that shows its work
@@ -42,6 +42,7 @@ Usage: proofmesh [--data-dir DIR] <command>
   init                              create the data directory
   repo add <path> [--name N]        register a repository
   repo list                         registered repositories: id, name, root, trust
+  repo config <repo> --adapter <id> --memory-mb <n>   set the memory budget of an adapter for this repository (default 8192)
   repo move <repo> <new-path>       re-root a registered repository at another working tree of the same git repository
   repo trust <repo> --build-evaluation   allow build logic to run for this repository: C# build evaluation while indexing, and scip run indexers
   repo untrust <repo>               revoke that trust
@@ -362,6 +363,20 @@ export async function main(argv: string[]): Promise<number> {
             catalog.close()
           }
         }
+        if (rest[0] === 'config' && rest[1]) {
+          const opts = rest.slice(2), adapter = take(opts, '--adapter'), memory = take(opts, '--memory-mb')
+          if (!adapter || !memory || !/^[1-9]\d*$/.test(memory)) throw new ProofmeshError('INVALID_ARGUMENT', 'usage: proofmesh repo config <repository> --adapter <id> --memory-mb <whole number of MB>')
+          const catalog = Catalog.open(dataDir)
+          try {
+            const repo = catalog.resolveRepository(rest[1])
+            const { extensions: _installed, ...stored } = catalog.adapterConfig(repo.id, adapter)
+            catalog.setAdapterConfig(repo.id, adapter, { ...stored, adapter_memory_mb: Number(memory) })
+            console.log(`adapter ${adapter} may use ${memory} MB of resident memory when indexing ${repo.name}; the next index applies it`)
+            return 0
+          } finally {
+            catalog.close()
+          }
+        }
         if (rest[0] === 'move' && rest[1] && rest[2]) {
           const catalog = Catalog.open(dataDir)
           try {
@@ -381,7 +396,7 @@ export async function main(argv: string[]): Promise<number> {
             catalog.close()
           }
         }
-        if (rest[0] !== 'add' || !rest[1]) throw new ProofmeshError('INVALID_ARGUMENT', 'usage: proofmesh repo add <path> [--name N] | repo list | repo move <repository> <new-path> | repo trust <repository> --build-evaluation | repo untrust <repository>')
+        if (rest[0] !== 'add' || !rest[1]) throw new ProofmeshError('INVALID_ARGUMENT', 'usage: proofmesh repo add <path> [--name N] | repo list | repo config <repository> --adapter <id> --memory-mb <n> | repo move <repository> <new-path> | repo trust <repository> --build-evaluation | repo untrust <repository>')
         const opts = rest.slice(2)
         const name = take(opts, '--name')
         const catalog = Catalog.open(dataDir)
@@ -404,14 +419,13 @@ export async function main(argv: string[]): Promise<number> {
         try { jobId = jobFlag ?? jobs.createJob(jobs.repository(opts[0]).id, os.userInfo().username) } catch (e) { jobs.close(); throw e }
         // Progress goes to stderr, so stdout stays the parseable summary.
         // The same figures go to the job row, at the same cadence, so get_job shows what stderr shows (FR274).
-        const adapters: Record<string, AdapterLine> = {}
         const recordAdapters = () => {
-          const line = report.current()
-          if (!line) return
-          adapters[line.adapter] = line
-          jobs.updateJob(jobId, { progress_at: new Date().toISOString(), adapter_progress: JSON.stringify(adapters) })
+          if (!started) return
+          // Adapters run one after another, so the live ones are the one analysing now; progress_at moves on every tick, in any phase.
+          const live = report.current()
+          jobs.updateJob(jobId, { progress_at: new Date().toISOString(), adapter_progress: JSON.stringify(live ? { [live.adapter]: live } : {}) })
         }
-        const report = progressReporter((line) => process.stderr.write(`${line}\n`), Number(process.env.PROOFMESH_PROGRESS_INTERVAL_MS) || undefined, recordAdapters)
+        const report = progressReporter((line) => process.stderr.write(`${line}\n`), testMs('PROOFMESH_TEST_PROGRESS_INTERVAL_MS', 50, 60000), recordAdapters)
         let started = false, phase = ''
         const plan: Record<string, { mode: string; analyse: number; reuse: number }> = {}
         let r: Awaited<ReturnType<typeof indexRepository>>

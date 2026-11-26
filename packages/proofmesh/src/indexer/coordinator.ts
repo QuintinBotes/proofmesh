@@ -43,12 +43,16 @@ export type IndexResult = {
 type Mode = 'no_execution' | 'trusted_build'
 type Captured = Discovered & { hash: string }
 type Rel = AnalyzeResponse['relationships'][number]
-type AdapterRun = { spec: AdapterSpec; sources: Discovered[]; configs: Discovered[]; process?: AdapterProcess; manifest?: InitializeResponse['adapter']; inputs?: string[]; mode: Mode; units?: InitializeResponse['units']; keys?: Map<string, string>; entrySha256?: string; budgetMb?: number; config?: Record<string, unknown>; unstartable?: AdapterBudgetError; cap?: number }
+type AdapterRun = { spec: AdapterSpec; sources: Discovered[]; configs: Discovered[]; process?: AdapterProcess; manifest?: InitializeResponse['adapter']; inputs?: string[]; mode: Mode; units?: InitializeResponse['units']; keys?: Map<string, string>; entrySha256?: string; budgetMb?: number; config?: Record<string, unknown>; unstartable?: AdapterBudgetError; cap?: number; streak?: number }
 type Producer = { id: string; version: string; mode: Mode }
 /** Import kinds, strongest first: a file that imports another both for its values and for its types depends on it at run time. */
 const IMPORT_KINDS = ['static', 're_export', 'type_only']
 
 const BATCH = () => Number(process.env.PROOFMESH_INDEX_BATCH) || 200
+/** A test-only interval (the PROOFMESH_TEST_ prefix marks the seam), clamped so a stray value cannot stall or flood the host. */
+export const testMs = (name: string, min: number, max: number): number | undefined => (Number(process.env[name]) ? Math.min(max, Math.max(min, Number(process.env[name]))) : undefined)
+/** Files in a row that each pass the budget alone, after which the adapter's remaining files fail without another restart. */
+const MAX_FILE_OVERRUNS = 20
 const languagesOf = (run: AdapterRun) => [...run.spec.languages].join('+')
 
 /**
@@ -154,9 +158,10 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
       fs.mkdirSync(path.dirname(target), { recursive: true })
       fs.writeFileSync(target, store.read(c.hash)!)
     }
+    const memoryRestarts: NonNullable<IndexResult['memoryRestarts']> = []
     for (const run of runs) {
       catalog.verifyExtensions(run.spec.id)
-      run.process = new AdapterProcess(run.spec.entry()!, undefined, Number(process.env.PROOFMESH_ADAPTER_RSS_SAMPLE_MS) || undefined, run.spec.id, undefined, run.budgetMb)
+      run.process = new AdapterProcess(run.spec.entry()!, undefined, testMs('PROOFMESH_TEST_ADAPTER_RSS_SAMPLE_MS', 50, 2000), run.spec.id, undefined, run.budgetMb)
       progress({ phase: 'initialize', adapter: run.spec.id, language: languagesOf(run), done: 0, total: run.sources.length + run.configs.length })
       const init = await run.process.initialize({
         // External inputs such as installed packages are read from the registered working tree, also for a commit.
@@ -165,7 +170,7 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
         config: { ...run.config, ...run.spec.config?.() },
       }).catch((e) => {
         // An adapter that cannot even start within its budget fails its own files, rather than the index; asking it again would pass the same budget.
-        if (e instanceof AdapterBudgetError) { run.unstartable = e; return undefined }
+        if (e instanceof AdapterBudgetError) { run.unstartable = e; memoryRestarts.push({ adapter: run.spec.id, budget_mb: e.budgetMb, peak_rss_mb: e.peakRssKb ? Math.round(e.peakRssKb / 1024) : null, files: run.sources.length, action: 'adapter_failed' }); return undefined }
         throw e instanceof AdapterProtocolError ? adapterFailure(run.spec.id, finished, 'failed to initialize', e) : e
       })
       if (!init) { run.manifest = { id: run.spec.id, version: 'not_started', protocol_version: PROTOCOL_VERSION, languages: [...run.spec.languages], toolchain: {} }; run.inputs = []; continue }
@@ -236,7 +241,6 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
       const batches = { done: 0, total: 0 }
       const reuse = { reused: 0, analysed: 0 }
       const batchSize = BATCH()
-      const memoryRestarts: NonNullable<IndexResult['memoryRestarts']> = []
       for (const run of runs) {
         for (const c of run.configs) if (c.role === 'config') fileResults.set(c.path, { status: 'ok', capabilities: { text: 'complete' } })
         const producer: Producer = { id: run.manifest!.id, version: run.manifest!.version, mode: run.mode }
@@ -257,6 +261,7 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
             if (!(e instanceof AdapterBudgetError)) throw adapterFailure(run.spec.id, finished, 'failed to answer workspace', e)
             // Facts that span files are not retried in pieces; the adapter's files fail with the budget as the reason.
             run.unstartable = e
+            memoryRestarts.push({ adapter: run.spec.id, budget_mb: e.budgetMb, peak_rss_mb: e.peakRssKb ? Math.round(e.peakRssKb / 1024) : null, files: run.sources.length, action: 'adapter_failed' })
             ws = { symbols: [], relationships: [], file_results: [], diagnostics: [] }
           }
           fs.writeFileSync(wsJournal, JSON.stringify(ws))
@@ -284,7 +289,9 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
             return new Map(parts.flatMap((m) => [...m]))
           }
           try {
-            return splitByFile(await run.process!.analyze(paths), paths)
+            const answered = splitByFile(await run.process!.analyze(paths), paths)
+            run.streak = 0
+            return answered
           } catch (e) {
             if (!(e instanceof AdapterBudgetError)) throw e
             overran(e, paths.length, paths.length === 1 ? 'file_failed' : 'smaller_batches')
@@ -296,12 +303,16 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
               overran(again, paths.length, 'adapter_failed')
               return failedByBudget(paths)
             }
+            // A budget below what the adapter needs for any file would restart it once per file: after a run of such files it is given up on.
+            if (paths.length === 1 && (run.streak = (run.streak ?? 0) + 1) >= MAX_FILE_OVERRUNS) { run.unstartable = e; overran(e, 1, 'adapter_failed') }
             if (paths.length === 1) return failedByBudget(paths)
             run.cap = Math.max(1, Math.floor(paths.length / 2))
             return withinBudget(paths)
           }
         }
         const analyse = async (batch: string[]): Promise<AnalyzeResponse> => {
+          // Once an adapter cannot run within its budget, none of its files are answered from the cache: the snapshot says what this budget could do.
+          if (run.unstartable) return assemble(batch.map((p) => failedByBudget([p]).get(p)!))
           const keys = run.keys!
           const cached = new Map(batch.flatMap((p) => { const hit = cache!.get(keys.get(p)!); return hit ? [[p, hit] as const] : [] }))
           const missing = batch.filter((p) => !cached.has(p))

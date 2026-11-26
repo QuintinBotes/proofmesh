@@ -93,16 +93,24 @@ export class AdapterProcess {
   peakRssKb?: number
 
   /** `budgetMb`: the most resident memory the adapter may use; the host stops it past that, and passes the limit to the engine where it can (Node, .NET). */
-  constructor(private readonly entry: string, private readonly timeoutMs = 60000, private readonly rssSampleMs = 3000, private readonly name = path.basename(entry), private readonly maxReplyBytes = MAX_REPLY_LINE_BYTES, private readonly budgetMb?: number) {
+  constructor(private readonly entry: string, private readonly timeoutMs = 60000, private readonly rssSampleMs = 3000, private readonly name = path.basename(entry), private readonly maxReplyBytes = MAX_REPLY_LINE_BYTES, private readonly budgetMb: number | undefined = adapterBudgetMb({})) {
     this.start()
   }
 
-  /** shortcut: the adapter process alone, not processes it starts (such as MSBuild nodes); sum the process tree if those grow large. */
+  /**
+   * The resident memory of the adapter's whole process group (the adapter and what it started, such as Pyright or MSBuild nodes), from
+   * one bounded `ps` call. Enforcement is sampled: by this timer, and once at the end of every batch before its results are accepted;
+   * a spike that ends between samples is seen only by the engine's own limit (Node, .NET).
+   */
   sampleRss(): Promise<void> {
     const child = this.child, pid = child.pid
     if (this.exited || !pid) return Promise.resolve()
-    return new Promise((resolve) => execFile('ps', ['-o', 'rss=', '-p', String(pid)], { env: { PATH: process.env.PATH ?? '' }, timeout: 5000, killSignal: 'SIGKILL' }, (e, out) => {
-      const kb = Number(out?.trim())
+    return new Promise((resolve) => execFile('ps', ['-A', '-o', 'pid=,pgid=,rss='], { env: { PATH: process.env.PATH ?? '' }, timeout: 5000, killSignal: 'SIGKILL', maxBuffer: 8 * 1024 * 1024 }, (e, out) => {
+      let kb = 0
+      for (const line of (out ?? '').split('\n')) {
+        const [, g, r] = line.trim().split(/\s+/).map(Number)
+        if (g === pid && r! > 0) kb += r!
+      }
       if (!e && kb > 0 && child === this.child) {
         this.peakRssKb = Math.max(this.peakRssKb ?? 0, kb)
         this.processPeakKb = Math.max(this.processPeakKb ?? 0, kb)
@@ -152,7 +160,7 @@ export class AdapterProcess {
       const cause = this.stderrTail.length ? `; the adapter's last output: ${this.stderrTail.join(' | ')}` : ''
       // Under a budget, the engine's own out-of-memory exit is the budget at work, not the machine's.
       const stored = `${head}${this.stderrTail.length ? `; ${this.stderrTail.length} lines of its stderr are not stored` : ''}`
-      this.failure = this.overBudgetKb !== undefined || (this.budgetMb && this.stderrOom && !hostKilled) ? new AdapterBudgetError(`${head}${cause}`, this.budgetMb!, this.processPeakKb, stored) : new AdapterProtocolError(`${head}${cause}`, stored)
+      this.failure = this.overBudgetKb !== undefined || (this.budgetMb && !hostKilled && killedOther()) ? new AdapterBudgetError(`${head}${cause}`, this.budgetMb!, this.processPeakKb, stored) : new AdapterProtocolError(`${head}${cause}`, stored)
       this.failAll(this.failure)
     }
     // A stream error (EPIPE, ECONNRESET) is a fact about the adapter, never an unhandled event: the exit status follows on 'close'.
@@ -200,11 +208,13 @@ export class AdapterProcess {
     this.rssTimer = setInterval(() => void this.sampleRss(), this.rssSampleMs).unref()
     child.on('error', (e) => settle(`could not be started (${e.message}; command ${command})`, false))
     child.on('exit', (code, signal) => { exit = { code, signal }; drainTimer = setTimeout(() => settle(describe(), restartable()), DRAIN_GRACE_MS) })
+    // Under a budget, an out-of-memory message, exit 137 or a SIGKILL nobody here sent is the kernel's kill for memory: the budget at work.
+    const killedOther = () => this.stderrOom || exit?.signal === 'SIGKILL' || exit?.code === 137
     const restartable = () => !hostKilled && !(exit?.signal) && exit?.code !== 137 && !this.stderrOom
     const describe = () => {
       if (hostKilled) return hostKilled
       const how = exit?.signal ? `was terminated by signal ${exit.signal}` : `exited with code ${exit?.code}`
-      if (this.budgetMb && this.stderrOom) return `${how} after running out of memory under its budget of ${this.budgetMb} MB (peak resident memory ${this.processPeakKb ? `${Math.round(this.processPeakKb / 1024)} MB` : 'unknown'}; raise it with adapter_memory_mb)`
+      if (this.budgetMb && killedOther()) return `${how} (it was killed, most likely for running out of memory under its budget of ${this.budgetMb} MB; peak resident memory ${this.processPeakKb ? `${Math.round(this.processPeakKb / 1024)} MB` : 'unknown'}; raise it with adapter_memory_mb)`
       return restartable() ? how : `${how} (it was killed, most likely because the machine ran out of memory)`
     }
     child.on('close', () => settle(describe(), restartable()))
@@ -315,6 +325,12 @@ export class AdapterProcess {
     const result = await this.request('analyze', { paths }, undefined, `analysing ${paths[0] ?? 'no file'}${paths.length > 1 ? ` and ${paths.length - 1} more of its batch` : ''}`)
     const problem = check('adapter-protocol/analyze.response.schema.json', result)
     if (problem) { this.stopChild(`sent an invalid analyze response (stopped with SIGKILL)`); throw new AdapterProtocolError(`invalid analyze response: ${problem}`) }
+    // A batch's results are accepted only if the adapter, and what it started, is within budget when it ends: polling can miss a spike.
+    await this.sampleRss()
+    if (this.overBudgetKb !== undefined && this.budgetMb) {
+      const head = `adapter ${this.name} exceeded its memory budget of ${this.budgetMb} MB (peak resident memory ${Math.round(this.overBudgetKb / 1024)} MB; raise it with adapter_memory_mb) at the end of a batch`
+      throw new AdapterBudgetError(head, this.budgetMb, this.overBudgetKb)
+    }
     return result as AnalyzeResponse
   }
 

@@ -44,7 +44,7 @@ describe('FR274 get_job returns the figures the index prints, while the adapter 
     const entry = path.join(adapters, 'gated-after-first.mjs'), gate = path.join(adapters, 'open')
     fs.copyFileSync(path.join(import.meta.dirname, 'fake-adapters', 'gated-after-first.mjs'), entry)
     for (const args of [['init'], ['repo', 'add', repo]]) expect(cli(['--data-dir', d, ...args]).status).toBe(0)
-    const child = spawn(process.execPath, [CLI, '--data-dir', d, 'index', repo], { env: { ...process.env, PROOFMESH_TS_ADAPTER: entry, PROOFMESH_INDEX_BATCH: '2', PROOFMESH_PROGRESS_INTERVAL_MS: '100' } })
+    const child = spawn(process.execPath, [CLI, '--data-dir', d, 'index', repo], { env: { ...process.env, PROOFMESH_TS_ADAPTER: entry, PROOFMESH_INDEX_BATCH: '2', PROOFMESH_TEST_PROGRESS_INTERVAL_MS: '100' } })
     let stderr = ''
     child.stderr.on('data', (b) => (stderr += b))
     const exited = new Promise<number | null>((resolve) => child.on('exit', resolve))
@@ -57,6 +57,7 @@ describe('FR274 get_job returns the figures the index prints, while the adapter 
         job = open[0] ? (tool(d, 'get_job', { job_id: open[0].id }).data.job as IndexJob) : undefined
       }
       expect(job?.state).toBe('running')
+      expect(tool(d, 'get_job', { job_id: job!.id }).limitations.join(' ')).toContain('refreshes progress_at every 5 seconds')
       expect(job!.adapters!.typescript).toMatchObject({ adapter: 'typescript', language: 'typescript+javascript', done: 2, total: 6 })
       expect(job!.adapters!.typescript!.files_per_second).toBeGreaterThan(0)
       expect(job!.adapters!.typescript!.eta_seconds).toBeGreaterThanOrEqual(0)
@@ -66,6 +67,36 @@ describe('FR274 get_job returns the figures the index prints, while the adapter 
       fs.writeFileSync(gate, '')
       await exited
     }
+  }, 120000)
+})
+
+describe('FR274 a job heartbeat moves in every phase, and lists only the adapters that are running', () => {
+  it('FR274 scenario 2: progress_at keeps moving while an adapter initializes, and a finished job lists no adapter', async () => {
+    const d = tmpDir(), repo = copyFixture(), adapters = tmpDir('pm-gated-')
+    const entry = path.join(adapters, 'gated-after-first.mjs'), gate = path.join(adapters, 'open')
+    fs.copyFileSync(path.join(import.meta.dirname, 'fake-adapters', 'gated-after-first.mjs'), entry)
+    fs.writeFileSync(path.join(adapters, 'hold-init'), '')
+    for (const args of [['init'], ['repo', 'add', repo]]) expect(cli(['--data-dir', d, ...args]).status).toBe(0)
+    const child = spawn(process.execPath, [CLI, '--data-dir', d, 'index', repo], { env: { ...process.env, PROOFMESH_TS_ADAPTER: entry, PROOFMESH_TEST_PROGRESS_INTERVAL_MS: '100' } })
+    const exited = new Promise<number | null>((resolve) => child.on('exit', resolve))
+    const read = (): IndexJob | undefined => {
+      const catalog = Catalog.open(d)
+      try { const open = catalog.openJobs(catalog.repositories()[0]!.id); return open[0] } finally { catalog.close() }
+    }
+    const seen = new Set<string | null>()
+    let jobId = ''
+    try {
+      for (let i = 0; i < 300 && seen.size < 3; i++) {
+        await sleep(100)
+        const job = read()
+        if (job?.phase?.startsWith('initialize')) { seen.add(job.progress_at); jobId = job.id }
+      }
+      expect(seen.size).toBeGreaterThanOrEqual(3)
+    } finally {
+      fs.writeFileSync(gate, '')
+      expect(await exited).toBe(0)
+    }
+    expect((tool(d, 'get_job', { job_id: jobId }).data.job as IndexJob).adapters).toEqual({})
   }, 120000)
 })
 

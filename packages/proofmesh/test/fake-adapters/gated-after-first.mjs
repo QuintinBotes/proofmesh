@@ -9,7 +9,8 @@ let analyses = 0
 readline.createInterface({ input: process.stdin }).on('line', (line) => {
   const req = JSON.parse(line)
   const reply = (result) => send({ jsonrpc: '2.0', id: req.id, result })
-  if (req.method === 'initialize') reply({ adapter: { id: 'gated', version: '0', protocol_version: '1.0', languages: ['typescript'], toolchain: {} }, capabilities: {}, external_inputs: [] })
+  if (req.method === 'initialize' && fs.existsSync(path.join(path.dirname(process.argv[1]), 'hold-init'))) { const wait = setInterval(() => { if (fs.existsSync(gate)) { clearInterval(wait); reply({ adapter: { id: 'gated', version: '0', protocol_version: '1.0', languages: ['typescript'], toolchain: {} }, capabilities: {}, external_inputs: [] }) } }, 50) }
+  else if (req.method === 'initialize') reply({ adapter: { id: 'gated', version: '0', protocol_version: '1.0', languages: ['typescript'], toolchain: {} }, capabilities: {}, external_inputs: [] })
   else if (req.method === 'workspace') reply(empty)
   else if (req.method === 'analyze') {
     if (analyses++ === 0) return reply(empty)

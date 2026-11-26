@@ -63,7 +63,7 @@ describe('#28 adapter memory: the host samples each adapter process and keeps th
   it.skipIf(process.platform === 'win32')('records a peak resident set size while the adapter runs', async () => {
     const a = new AdapterProcess(path.join(import.meta.dirname, 'fake-adapters', 'slow.mjs'), 60000, 20)
     try {
-      for (let i = 0; i < 250 && a.peakRssKb === undefined; i++) await sleep(20)
+      for (let i = 0; i < 250 && !(a.peakRssKb! > 1024); i++) await sleep(20)
       expect(a.peakRssKb).toBeGreaterThan(1024)
     } finally {
       await a.shutdown()
@@ -79,7 +79,7 @@ describe('#28 a CLI index is an index job that status and MCP report while it ru
     for (const args of [['init'], ['repo', 'add', repo]]) expect(cli(['--data-dir', d, ...args]).status).toBe(0)
     const user = os.userInfo().username
     const start = () => {
-      const child = spawn(process.execPath, [CLI, '--data-dir', d, 'index', repo], { env: { ...process.env, PROOFMESH_TS_ADAPTER: gated, PROOFMESH_PROGRESS_INTERVAL_MS: '600000' } })
+      const child = spawn(process.execPath, [CLI, '--data-dir', d, 'index', repo], { env: { ...process.env, PROOFMESH_TS_ADAPTER: gated, PROOFMESH_TEST_PROGRESS_INTERVAL_MS: '60000' } })
       const out = { stdout: '', stderr: '' }
       child.stdout.on('data', (b) => (out.stdout += b))
       child.stderr.on('data', (b) => (out.stderr += b))
