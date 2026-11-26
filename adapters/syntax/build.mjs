@@ -23,6 +23,10 @@ const GRAMMARS = {
   kotlin: ['@tree-sitter-grammars/tree-sitter-kotlin', 'tree-sitter-kotlin.wasm', 'queries/kotlin.scm'],
   // The Terraform adapter walks the HCL tree itself, so its grammar needs no tags query.
   hcl: ['@tree-sitter-grammars/tree-sitter-hcl', 'tree-sitter-hcl.wasm', null],
+  // The fallback floor under the TypeScript and C# adapters (FR310): one query each, and the TSX grammar reads JavaScript and JSX as well.
+  typescript: ['tree-sitter-typescript', 'tree-sitter-typescript.wasm', 'queries/typescript.scm'],
+  tsx: ['tree-sitter-typescript', 'tree-sitter-tsx.wasm', 'queries/typescript.scm'],
+  csharp: ['tree-sitter-c-sharp', 'tree-sitter-c_sharp.wasm', 'queries/csharp.scm'],
   // These packages ship no WebAssembly: grammars/rebuild.mjs builds it from their source, and it is checked here against built.json.
   swift: ['tree-sitter-swift', null, 'queries/swift.scm'],
   sql: ['@derekstride/tree-sitter-sql', null, 'queries/sql.scm'],

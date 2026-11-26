@@ -11,6 +11,14 @@ The adapter budget and the host heap follow the machine, and a project load over
 - `proofmesh index` runs its host under `--max-old-space-size` from the same rule (`PROOFMESH_HOST_MEMORY_MB` wins) and shows the heap in the summary. A host that runs out of heap fails with `BUDGET_EXCEEDED` (detail `host_out_of_memory`) naming `PROOFMESH_HOST_MEMORY_MB`, and its job is marked failed.
 - `bench/graph-bench/synthetic-large.mjs` generates N C# projects and M files and records the host's and the adapter's peak memory.
 
+Index files at the syntax tier when their precise adapter cannot run (closes #18; FR310 to FR319):
+
+- The syntax tier now reads TypeScript, JavaScript (JSX, TSX) and C# through pinned Tree-sitter WebAssembly grammars (TypeScript, TSX, C#; MIT, shipped with their licence texts, no network at run time). It records declarations, call sites without targets, imports, and TypeScript `extends` and `implements`. It reads these languages only as a fallback, so an index whose adapters run is unchanged.
+- A file whose TypeScript or C# adapter is unavailable, answers `failed` for it, dies, exhausts its restarts or cannot start is read by the syntax tier in the same index, with tier `syntax` and the reason in its disposition detail (`adapter_unavailable:csharp`, `adapter_failed:typescript:<detail>`). A large C# repository whose adapter dies late now publishes: the files it analysed keep their precise facts and the rest are indexed at the syntax tier. The census names the tier and the reason with its remedy; the job's result, a CLI line and the snapshot's meta `fallbacks` name the adapter and the failure (never its stderr).
+- C# names are Roslyn's (namespace form, nested and generic types), so a declaration has the same key under both tiers; moving a file between tiers keeps its keys, marks notes on it `tier_changed`, and an incremental index equals a clean one.
+- An adapter with no fallback (Python, Terraform, build, installed ones) still fails the index (FR264 now says so). The existing tests of an index that fails when a TypeScript or C# adapter dies now use an installed adapter, and the census tests expect tier `syntax` for C# without the SDK.
+- Not done: a snapshot degraded by a crash gets a `retry` number in the identity of the next index, which asks the adapter again (a persistently failing adapter therefore makes one snapshot per index); framework rules (routes, dependency injection, EF) and heritage in C# need the precise tier; SC-2 on the Orbit corpus was not run.
+
 Indexes of different repositories run in parallel safely, and one index per repository at a time (closes #83; FR320 to FR329):
 
 - The catalog and the fact cache use WAL and a two-minute busy timeout (`PROOFMESH_BUSY_TIMEOUT_MS`), and a write still busy after that is retried up to ten times, so two indexes meeting at a seal wait instead of failing with `SQLITE_BUSY`.

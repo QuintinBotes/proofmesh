@@ -187,7 +187,7 @@ describe('NFR013 compiled grammars carry their notices', () => {
     const dir = path.join(root, 'adapters', 'syntax', 'dist', 'grammars')
     const manifest = JSON.parse(fs.readFileSync(path.join(dir, 'grammars.json'), 'utf8')) as Record<string, { package: string; version: string; license: string }>
     const notices = fs.readFileSync(path.join(root, 'THIRD_PARTY_NOTICES.md'), 'utf8')
-    expect(Object.keys(manifest).length).toBe(15)
+    expect(Object.keys(manifest).length).toBe(18)
     for (const [language, g] of Object.entries(manifest)) {
       expect(fs.readFileSync(path.join(dir, `${language}.LICENSE`), 'utf8'), language).toMatch(g.license === 'MIT' ? /Permission is hereby granted, free of charge/ : /Apache License/)
       expect(notices, g.package).toContain(`| ${g.package} | ${g.version} | ${g.license} |`)
