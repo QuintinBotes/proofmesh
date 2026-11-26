@@ -9,15 +9,17 @@ export type SourceHit = { path: string; line: number; text: string; symbol: { id
  * A page holds whole files: a file whose hits do not fit is left for the next page, unless it alone overflows the page,
  * in which case its first hits are returned and `overflow` names it. `next_offset` is the file the next page starts at.
  */
-export function searchSources(db: Database.Database, store: EvidenceStore, input: { text: string; caseSensitive: boolean; pathPrefix?: string; maxRows: number; maxBytes: number; deadline: number; fileOffset: number }): { hits: SourceHit[]; files_scanned: number; files_total: number; stopped: 'max_rows' | 'max_bytes' | 'timeout' | null; next_offset: number | null; overflow: string | null } {
+export function searchSources(db: Database.Database, store: EvidenceStore, input: { text: string; caseSensitive: boolean; pathPrefix?: string; maxRows: number; maxBytes: number; deadline: number; fileOffset: number }): { hits: SourceHit[]; files_scanned: number; files_total: number; stopped: 'max_rows' | 'max_bytes' | 'timeout' | null; next_offset: number | null; overflow: string | null; hit_files: number[] } {
   const files = db.prepare("select id, path, content_hash from file where disposition = 'indexed' and content_hash is not null and (? is null or path like ? escape '\\') order by path")
     .all(input.pathPrefix ?? null, input.pathPrefix ? `${input.pathPrefix.replace(/[\\%_]/g, (c) => `\\${c}`)}%` : null) as Array<{ id: string; path: string; content_hash: string }>
   const needle = input.caseSensitive ? input.text : input.text.toLowerCase()
   const symbolsIn = db.prepare("select id, stable_key, kind, qualified_name, start_line, end_line from symbol where file_id = ? and kind <> 'module' order by (end_line - start_line), start_line")
   const hits: SourceHit[] = []
+  /** The index of the file each hit came from, so a caller that drops hits can drop whole files and continue at the first dropped one. */
+  const hitFiles: number[] = []
   const budget = input.maxBytes - 128
   let scanned = 0, bytes = 0
-  const done = (stopped: 'max_rows' | 'max_bytes' | 'timeout' | null, next: number, overflow: string | null = null) => ({ hits, files_scanned: scanned, files_total: files.length, stopped, next_offset: next < files.length ? next : null, overflow })
+  const done = (stopped: 'max_rows' | 'max_bytes' | 'timeout' | null, next: number, overflow: string | null = null) => ({ hits, files_scanned: scanned, files_total: files.length, stopped, next_offset: next < files.length ? next : null, overflow, hit_files: hitFiles })
   for (let i = input.fileOffset; i < files.length; i++) {
     const f = files[i]!
     if (Date.now() > input.deadline) return done('timeout', i)
@@ -39,14 +41,14 @@ export function searchSources(db: Database.Database, store: EvidenceStore, input
       const stopped = hits.length + fileHits.length >= input.maxRows ? 'max_rows' : bytes + fileBytes + size > budget ? 'max_bytes' : null
       if (stopped) {
         if (hits.length) return done(stopped, i)
-        hits.push(...fileHits)
+        hits.push(...fileHits); hitFiles.push(...fileHits.map(() => i))
         scanned++
         return done(stopped, i + 1, f.path)
       }
       fileHits.push(hit)
       fileBytes += size
     }
-    hits.push(...fileHits)
+    hits.push(...fileHits); hitFiles.push(...fileHits.map(() => i))
     bytes += fileBytes
     scanned++
   }

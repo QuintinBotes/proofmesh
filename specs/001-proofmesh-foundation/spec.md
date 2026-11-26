@@ -347,6 +347,11 @@ Acceptance: CI runs my pull request without secrets or release credentials; lice
 - FR297: MUST count in each census row the files of the language flagged generated and the files left out as vendored.
 - FR298: MUST leave generated files out of the hubs of `workspace_status` unless `include_generated` is true, and MUST say how many generated files there are when it does.
 - FR299: MUST give every listing of dead code or entry points a tool adds the same behaviour as the hubs (`include_generated`, the SQL condition and the note of `query/generated-policy.ts`), which a test pins until those tools exist.
+- FR330: MUST measure `max_bytes` on the answer as it is sent, the truncation note, `truncated`, `stop_reasons`, the cursor and every field a cut adds included, and MUST cut a list until that answer is at most `max_bytes`, with `truncated: true` and `max_bytes` in `stop_reasons`.
+- FR331: MUST refuse a call whose `max_bytes` cannot hold the envelope with its note, as `INVALID_ARGUMENT` with `detail: max_bytes_too_small`, never answer over the budget.
+- FR332: MUST apply FR330 and FR331 to a lean answer, measured on its text.
+- FR333: MUST hold `search_sources` to FR330 by dropping whole files, so its cursor continues at the first file dropped and no hit is skipped or repeated.
+- FR334: MUST hold `get_ecosystem` to FR330 and FR331, measured on its whole envelope.
 
 ### Adapter memory and progress
 

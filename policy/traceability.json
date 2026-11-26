@@ -1192,6 +1192,21 @@
     "FR299": [
       "packages/proofmesh/test/generated-vendored.test.ts"
     ],
+    "FR330": [
+      "packages/proofmesh/test/max-bytes-exact.test.ts"
+    ],
+    "FR331": [
+      "packages/proofmesh/test/max-bytes-exact.test.ts"
+    ],
+    "FR332": [
+      "packages/proofmesh/test/max-bytes-exact.test.ts"
+    ],
+    "FR333": [
+      "packages/proofmesh/test/max-bytes-exact.test.ts"
+    ],
+    "FR334": [
+      "packages/proofmesh/test/max-bytes-exact.test.ts"
+    ],
     "FR270": [
       "packages/proofmesh/test/adapter-budget.test.ts"
     ],

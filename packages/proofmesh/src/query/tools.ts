@@ -80,8 +80,6 @@ const TRUNCATED = 'Results were truncated and this tool does not page; narrow th
 /** A paged tool cut short by something other than its rows (a depth or a timeout) has no next page to offer. */
 const NARROW = 'Results were truncated; narrow the query or raise the limits.'
 const CONTINUED = 'Results were truncated; pass completion.next_cursor as cursor to get the next page.'
-/** Room a lean answer keeps for its `# more: cursor` line or a truncation note. */
-const LEAN_RESERVE = 400
 
 type Ctx = { dataDir: string; db: Database.Database; catalog: Catalog; snapshot: SnapshotRow; limits: AppliedLimits; started: number; store: EvidenceStore; repo: { id: string; name: string; root: string }; page: { offset: number; query: string }; compact: boolean; lean: boolean }
 /** Lean leaves out the standing notes, so a lean answer that asks for references says what the snapshot records of them. */
@@ -349,44 +347,51 @@ function envelope(ctx: Ctx, tool: ToolName, requested: Limits | undefined, r: Pa
   const current = ctx.lean ? ctx.catalog.currentSnapshot(ctx.repo.id)?.id : undefined
   if (ctx.lean && current !== ctx.snapshot.id) limitations.push(`Snapshot ${ctx.snapshot.id} is older than the repository's current snapshot ${current ?? '(none)'}.`)
   if (ctx.lean && !r.lean) throw new ProofmeshError('INTERNAL_ERROR', `${tool} has no lean rows`)
-  const text = (cursor: string | null) => leanText(tool, ctx.snapshot.id, current === ctx.snapshot.id, r.lean!(r.data), limitations, cursor)
-  // The byte budget is the whole answer's, measured with the lines it may still gain: a truncation note, or a lean answer's cursor.
-  const over = () => (ctx.lean ? Buffer.byteLength(text(null)) + LEAN_RESERVE : Buffer.byteLength(JSON.stringify(env)) + CONTINUED.length + 4) > ctx.limits.max_bytes
+  // The byte budget is the whole answer's, measured on the answer as it will be sent: with its truncation note or cursor line,
+  // `truncated`, `stop_reasons` and every other field the cut adds. `finish` builds that answer from the current state.
+  const finish = (): Answer => {
+    // A page continues only from a whole, ordered prefix: never after a timeout, and never from an empty page, unless the
+    // tool computed the continuation itself from whole units.
+    const shown = keys.length ? (listAt(keys[0]!)?.length ?? 0) : 0
+    const next_cursor = PAGED.has(tool) && (r.next_offset != null || (r.next_offset === undefined && cut && shown > 0 && !stop.has('timeout')))
+      ? sealCursor(ctx.dataDir, { tool, repo: ctx.snapshot.repository_id, snap: ctx.snapshot.id, query: ctx.page.query, offset: r.next_offset ?? ctx.page.offset + shown })
+      : null
+    // A lean answer's last line carries the cursor, in place of the note pointing at completion.next_cursor.
+    const notes = stop.size && !(ctx.lean && next_cursor) ? [...limitations, next_cursor ? CONTINUED : PAGED.has(tool) ? NARROW : TRUNCATED] : limitations
+    const done: Envelope = { ...env, limitations: notes, completion: { truncated: stop.size > 0, stop_reasons: order.filter((o) => stop.has(o)), timed_out: stop.has('timeout'), next_cursor } }
+    return ctx.lean ? { ...done, envelope: 'lean', text: leanText(tool, ctx.snapshot.id, current === ctx.snapshot.id, r.lean!(r.data), notes, next_cursor) } : done
+  }
+  const size = (a: Answer) => Buffer.byteLength(ctx.lean ? a.text! : JSON.stringify(a))
   // A key `a[].b` is the list b of every item of a, shortened from the last item's: a nested list the answer holds per table or per row.
   const listsAt = (key: string): unknown[][] => {
     const [head, tail] = key.split('[].')
     if (tail === undefined) return [listAt(key) ?? []]
     return (listAt(head!) ?? []).flatMap((item) => { const l = tail.split('.').reduce<unknown>((o, k) => (o as Record<string, unknown> | undefined)?.[k], item); return Array.isArray(l) ? [l] : [] })
   }
+  let out = finish()
   for (const [i, key] of keys.entries()) {
     const floor = i === keys.length - 1 ? (r.keep ?? 0) : 0
     for (;;) {
       const lists = listsAt(key), total = lists.reduce((n, l) => n + l.length, 0)
-      if (total <= floor || !over()) break
+      if (total <= floor || size(out) <= ctx.limits.max_bytes) break
       lists.filter((l) => l.length).at(-1)!.pop()
       r.prune?.(r.data); stop.add('max_bytes'); cut = true
+      out = finish()
     }
   }
   // An envelope that alone overflows the byte budget is compacted rather than sent over it.
-  if (!ctx.compact && over()) {
+  if (!ctx.compact && size(out) > ctx.limits.max_bytes) {
     for (const note of standing) limitations.splice(limitations.indexOf(note), 1)
     limitations.push(`Envelope compacted to fit max_bytes ${ctx.limits.max_bytes}.`)
     env.unresolved.by_reason = env.unresolved.scope === 'snapshot' ? {} : env.unresolved.by_reason
     env.limits.requested = {}
     env.coverage = null
     env.envelope = 'compact'
-    if (over()) stop.add('max_bytes')
+    out = finish()
   }
-  // A page continues only from a whole, ordered prefix: never after a timeout, and never from an empty page, unless the
-  // tool computed the continuation itself from whole units.
-  const shown = keys.length ? (listAt(keys[0]!)?.length ?? 0) : 0
-  const next_cursor = PAGED.has(tool) && (r.next_offset != null || (r.next_offset === undefined && cut && shown > 0 && !stop.has('timeout')))
-    ? sealCursor(ctx.dataDir, { tool, repo: ctx.snapshot.repository_id, snap: ctx.snapshot.id, query: ctx.page.query, offset: r.next_offset ?? ctx.page.offset + shown })
-    : null
-  // A lean answer's last line carries the cursor, in place of the note pointing at completion.next_cursor.
-  if (stop.size && !(ctx.lean && next_cursor)) limitations.push(next_cursor ? CONTINUED : PAGED.has(tool) ? NARROW : TRUNCATED)
-  env.completion = { truncated: stop.size > 0, stop_reasons: order.filter((o) => stop.has(o)), timed_out: stop.has('timeout'), next_cursor }
-  return ctx.lean ? { ...env, envelope: 'lean', text: text(next_cursor) } : env
+  // No answer leaves over the budget: one that cannot hold even its envelope and note is refused.
+  if (size(out) > ctx.limits.max_bytes) throw new ProofmeshError('INVALID_ARGUMENT', `max_bytes ${ctx.limits.max_bytes} is too small for a ${tool} answer; its envelope alone takes ${size(out)} bytes`, { detail: 'max_bytes_too_small', max_bytes: ctx.limits.max_bytes, needed: size(out) })
+  return out
 }
 
 const PROPERTY_READS_NOTE = 'observed property reads come from an instrumented run a person imported; a property absent from them was not seen read in that window, which is not evidence that nothing reads it.'
@@ -948,7 +953,17 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     const notes = notesMatching(ctx.catalog.notes(), String(input.text))
     for (const n of notes) limitations.push(`Note ${n.id} says ${n.target ?? 'the code it names'} writes text like this (pattern ${n.pattern}): look for its callers, since the text itself may appear nowhere in source.`)
     // The scan budgets rows and bytes itself, file by file, so the page is whole files and the cursor continues at the next.
-    return { data: { hits: r.hits, files_scanned: scanned, files_total: r.files_total, ...(notes.length ? { notes } : {}) }, stop_reasons: r.stopped ? [r.stopped] : [], limitations, next_offset: r.next_offset }
+    const data = { hits: r.hits, files_scanned: scanned, files_total: r.files_total, ...(notes.length ? { notes } : {}) }
+    const result: Partial = { data, stop_reasons: r.stopped ? [r.stopped] : [], limitations, next_offset: r.next_offset, shrink: 'hits', keep: 1 }
+    // A hit the byte budget drops takes its whole file with it, and the cursor continues at that file: no hit is skipped or repeated.
+    // The first file alone is cut hit by hit, as the scan cuts a file with more matches than a page holds.
+    result.prune = () => {
+      const dropped = r.hit_files[data.hits.length]!
+      if (r.hit_files[0] === dropped) return
+      while (data.hits.length && r.hit_files[data.hits.length - 1] === dropped) data.hits.pop()
+      data.files_scanned = result.next_offset = dropped
+    }
+    return result
   },
 
   find_tests(ctx, input) {
