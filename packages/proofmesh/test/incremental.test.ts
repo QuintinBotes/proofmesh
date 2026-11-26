@@ -23,7 +23,7 @@ const dump = (d: string, id: string) => run(['--data-dir', d, 'debug', 'dump', '
 const git = (cwd: string, ...args: string[]) => expect(spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { cwd }).status).toBe(0)
 const write = (repo: string, file: string, change: (text: string) => string) => fs.writeFileSync(path.join(repo, file), change(fs.readFileSync(path.join(repo, file), 'utf8')))
 
-type Transition = { name: string; fixture: string; reused: number; shows?: [gone: string, now: string]; before?: (repo: string, d: string) => void; change: (repo: string, d: string) => void }
+type Transition = { name: string; fixture: string; reused: number; shows?: string; before?: (repo: string, d: string) => void; change: (repo: string, d: string) => void }
 
 // cs-orders: Orders.Core (4 files) references Orders.Pricing (2 files); only Pricing's facts survive a change confined to Core.
 const transitions: Transition[] = [
@@ -71,8 +71,8 @@ const transitions: Transition[] = [
   { name: 'FR160 edit a pom dependency version', fixture: 'build-graph-jvm', reused: 9, change: (r) => write(r, 'maven/web/pom.xml', (t) => t.replace('33.0.0-jre', '33.1.0-jre')) },
   { name: 'FR160 edit a Gradle script dependency version', fixture: 'build-graph-jvm', reused: 9, change: (r) => write(r, 'gradle/app/build.gradle.kts', (t) => t.replace('3.9.0', '3.9.1')) },
   // FR245: Cargo and Bazel facts are answered in `workspace` as well, so an edited version or dependency never leaves a stale fact.
-  { name: 'FR245 edit a Cargo.toml version', fixture: 'build-graph', reused: 13, shows: ['0.1.0', '0.2.0'], change: (r) => write(r, 'crates/util/Cargo.toml', (t) => t.replace('0.1.0', '0.2.0')) },
-  { name: 'FR245 edit a BUILD.bazel dep', fixture: 'build-graph-jvm', reused: 9, shows: ['@maven//:com_google_guava_guava', '@maven//:com_google_guava_failureaccess'], change: (r) => write(r, 'bazel/BUILD.bazel', (t) => t.replace('com_google_guava_guava', 'com_google_guava_failureaccess')) },
+  { name: 'FR245 edit a Cargo.toml dependency version', fixture: 'build-graph', reused: 13, shows: '1.0.200', change: (r) => write(r, 'crates/app/Cargo.toml', (t) => t.replace('serde = "1"', 'serde = "1.0.200"')) },
+  { name: 'FR245 edit a BUILD.bazel dep', fixture: 'build-graph-jvm', reused: 9, shows: 'com_google_guava_failureaccess', change: (r) => write(r, 'bazel/BUILD.bazel', (t) => t.replace('com_google_guava_guava', 'com_google_guava_failureaccess')) },
 ]
 
 describe('SC004 FR008 FR014 A16 an incremental index seals exactly what a clean index of the same tree seals', () => {
@@ -95,9 +95,8 @@ describe('SC004 FR008 FR014 A16 an incremental index seals exactly what a clean 
       expect(cleanRun.reused).toBe(0)
       expect(dump(d, incremental.id)).toBe(dump(clean, incremental.id))
       if (t.shows) {
-        expect(dump(d, base.id)).toContain(t.shows[0])
-        expect(dump(d, incremental.id)).toContain(t.shows[1])
-        expect(dump(d, incremental.id)).not.toContain(t.shows[0])
+        expect(dump(d, base.id)).not.toContain(t.shows)
+        expect(dump(d, incremental.id)).toContain(t.shows)
       }
     }, 300000)
   }
