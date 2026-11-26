@@ -14,3 +14,9 @@ export class ProofmeshError extends Error {
 
 export const asProofmeshError = (e: unknown): ProofmeshError =>
   e instanceof ProofmeshError ? e : new ProofmeshError('INTERNAL_ERROR', e instanceof Error ? e.message : String(e))
+
+/** The message a record may keep: the error's own `stored_message` where it has one, because its message can carry a child's stderr. */
+export const storedMessage = (e: unknown): string => {
+  const error = asProofmeshError(e)
+  return typeof error.details.stored_message === 'string' ? error.details.stored_message : error.message
+}

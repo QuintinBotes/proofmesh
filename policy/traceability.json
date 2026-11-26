@@ -1103,6 +1103,12 @@
     ],
     "FR265": [
       "packages/proofmesh/test/adapter-failure.test.ts"
+    ],
+    "FR266": [
+      "packages/proofmesh/test/adapter-failure.test.ts"
+    ],
+    "FR267": [
+      "packages/proofmesh/test/adapter-failure.test.ts"
     ]
   },
   "manual": {

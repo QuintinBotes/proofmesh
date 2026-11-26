@@ -310,10 +310,12 @@ Acceptance: CI runs my pull request without secrets or release credentials; lice
 ### Adapter failure
 
 - FR260: MUST handle an error on any stream of an adapter child (stdin, stdout, stderr), such as `EPIPE` or `ECONNRESET`, as a failure of that adapter's call and never as an unhandled event; a write to an adapter that has exited or closed its input fails the call and MUST NOT end the process. An adapter that closes its input and keeps running is stopped with SIGKILL after a short grace.
-- FR261: MUST name in that failure the adapter, its exit code or signal, the last lines of its stderr (at most 10, each cut at 300 characters) and the file it was on (the first file of the batch and how many more); MUST say so when the adapter was killed by a signal or exited 137 or wrote an out-of-memory message, and MUST NOT restart an adapter in that case.
-- FR262: MUST read an adapter's result on `close`, not `exit`, so its last output is in the failure; MUST keep only a capped tail of stderr however much the adapter writes, and MUST stop an adapter that writes a reply line longer than 256 MiB.
-- FR263: MUST stop an adapter that stays silent past its timeout with SIGKILL, so one that ignores SIGTERM cannot hang the index, and MUST NOT call an adapter again for the rest of the run once it has failed: every later call fails at once with the same reason.
+- FR261: MUST name in that failure the adapter, its exit code or signal, the last lines of its stderr (at most 10, each cut at 300 characters) and the file it was on (the first file of the batch and how many more); MUST say so when the adapter was killed by a signal or exited 137 or wrote an out-of-memory message anywhere in its stderr, and MUST NOT restart an adapter in that case.
+- FR262: MUST read an adapter's result on `close`, not `exit`, so its last output is in the failure; MUST keep only a capped tail of stderr however much the adapter writes, and MUST stop an adapter that writes a reply line longer than 256 MiB, counted in bytes.
+- FR263: MUST stop an adapter that stays silent past its timeout with SIGKILL, so one that ignores SIGTERM cannot hang the index, and MUST NOT call an adapter again for the rest of the run once it has failed: every later call fails at once with the same reason; output that is not a valid protocol message ends an adapter the same way.
 - FR264: MUST fail the index with a non-zero exit when an adapter fails, leaving the previous snapshot current, and MUST record in the failed job's result which adapter failed and which adapters had finished.
+- FR266: MUST keep an adapter's stderr out of every stored record (the failed job's error, the snapshot's failure): the live error carries the tail, the stored text carries the adapter, its exit status, the file and the count of lines withheld.
+- FR267: MUST run each adapter in its own process group and stop the whole group, so a process the adapter started does not outlive a timeout or a failure.
 - FR265: MUST print a stage line when capture ends (`prepare`) and when each later stage starts, so a crash shows where the index stopped.
 
 ### Impact completeness

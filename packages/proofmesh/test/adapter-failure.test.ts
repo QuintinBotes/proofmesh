@@ -1,9 +1,10 @@
 import path from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import fs from 'node:fs'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Catalog } from '../src/meshstore/catalog.js'
 import { AdapterProcess, PROTOCOL_VERSION } from '../src/indexer/adapter-host.js'
 import type { InitializeRequest } from '../src/core/generated.js'
-import { cli, FIXTURE, tmpDir } from './helpers.js'
+import { cli, copyFixture, FIXTURE, tmpDir } from './helpers.js'
 
 const fake = (name: string) => path.join(import.meta.dirname, 'fake-adapters', name)
 const init = (): InitializeRequest => ({ protocol_version: PROTOCOL_VERSION, workspace: tmpDir('pm-ws-'), analysis_mode: 'no_execution', files: [] })
@@ -12,8 +13,8 @@ const alive = (pid: number) => { try { process.kill(pid, 0); return true } catch
 const messageOf = async (p: Promise<unknown>) => { try { await p; return '' } catch (e) { return (e as Error).message } }
 
 const started: AdapterProcess[] = []
-const spawned = async (entry: string, timeoutMs?: number) => {
-  const a = new AdapterProcess(entry, timeoutMs, 3000, 'csharp')
+const spawned = async (entry: string, timeoutMs?: number, maxReplyBytes?: number) => {
+  const a = new AdapterProcess(entry, timeoutMs, 3000, 'csharp', maxReplyBytes)
   started.push(a)
   await a.initialize(init())
   return a
@@ -84,25 +85,39 @@ describe('FR260 to FR269 a dying adapter fails the index with its name and exit 
     expect(await messageOf(a.workspace())).toBe(first)
   })
 
-  it('FR264 scenario 1: the index fails cleanly with a non-zero exit, the previous snapshot stays current, and the failed job names the adapter', () => {
+  it('FR264 scenario 1: the index fails with exit 1, the previous snapshot stays current, and the failed job names the failed adapter and the one that had finished', () => {
+    const d = tmpDir(), repo = copyFixture()
+    fs.writeFileSync(`${repo}/Orders.cs`, 'class Orders { }\n')
+    cli(['--data-dir', d, 'init'])
+    cli(['--data-dir', d, 'repo', 'add', repo])
+    expect(cli(['--data-dir', d, 'index', repo]).status).toBe(0)
+    const before = (() => { const c = Catalog.open(d); try { return c.currentSnapshot(c.repositories()[0]!.id) } finally { c.close() } })()
+    fs.writeFileSync(`${repo}/Billing.cs`, 'class Billing { }\n')
+    const r = cli(['--data-dir', d, 'index', repo], { PROOFMESH_CS_ADAPTER: fake('sigkill.mjs') })
+    const c = Catalog.open(d)
+    try {
+      expect(r.status).toBe(1)
+      expect(c.currentSnapshot(c.repositories()[0]!.id)).toEqual(before)
+      expect(r.stderr).toContain('adapter csharp')
+      expect(r.stderr).toContain('signal SIGKILL')
+      const jobs = c.db.prepare("select result from index_job where state = 'failed'").all() as Array<{ result: string }>
+      expect(jobs).toHaveLength(1)
+      expect(JSON.parse(jobs[0]!.result)).toEqual({ failed_adapter: 'csharp', completed_adapters: ['typescript'] })
+    } finally { c.close() }
+  })
+
+  it('FR266 scenario 1: stderr text reaches the live error but never the stored job or snapshot failure', () => {
     const d = tmpDir()
     cli(['--data-dir', d, 'init'])
     cli(['--data-dir', d, 'repo', 'add', FIXTURE])
-    expect(cli(['--data-dir', d, 'index', FIXTURE]).status).toBe(0)
-    const before = (() => { const c = Catalog.open(d); try { return c.currentSnapshot(c.repositories()[0]!.id) } finally { c.close() } })()
-    const r = cli(['--data-dir', d, 'index', FIXTURE], { PROOFMESH_TS_ADAPTER: fake('sigkill.mjs') })
+    const r = cli(['--data-dir', d, 'index', FIXTURE], { PROOFMESH_TS_ADAPTER: fake('secret-stderr.mjs') })
+    expect(r.status).toBe(1)
+    expect(r.stderr).toContain('unhandled failure in the analyzer')
     const c = Catalog.open(d)
     try {
-      const repo = c.repositories()[0]!
-      expect(c.currentSnapshot(repo.id)).toEqual(before)
-      const job = c.db.prepare("select state, error, result from index_job where state = 'failed'").all() as Array<{ state: string; error: string; result: string }>
-      expect(r.status === 1 || r.status === 0).toBe(true)
-      if (r.status === 1) {
-        expect(r.stderr).toContain('adapter typescript')
-        expect(r.stderr).toContain('signal SIGKILL')
-        expect(job).toHaveLength(1)
-        expect(JSON.parse(job[0]!.result)).toMatchObject({ failed_adapter: 'typescript' })
-      }
+      const stored = JSON.stringify([c.db.prepare('select * from index_job').all(), c.db.prepare('select * from snapshot').all()])
+      expect(stored).toContain('exited with code 3')
+      for (const text of [['tok', 'live', '5f2a9c1e7b3d4a68'].join('_'), 'LEDGER_API_TOKEN', 'invoiceTotal', 'unhandled failure']) expect(stored).not.toContain(text)
     } finally { c.close() }
   })
 
@@ -114,5 +129,55 @@ describe('FR260 to FR269 a dying adapter fails the index with its name and exit 
     const stages = r.stderr.split('\n').map((l) => /^\[\S+\] (\w+)/.exec(l)?.[1]).filter(Boolean)
     expect(stages).toEqual(expect.arrayContaining(['discover', 'capture', 'prepare', 'initialize', 'analyze', 'write', 'check', 'seal']))
     expect(stages.indexOf('prepare')).toBe(stages.indexOf('capture') + 1)
+  })
+
+  it('FR267 scenario 1: a timeout kills the adapter\'s whole process group, so a grandchild does not outlive the call', async () => {
+    const a = await spawned(fake('grandchild.mjs'), 300)
+    const message = await messageOf(a.analyze(['a.cs']))
+    const pid = Number(/grandchild=(\d+)/.exec(message)?.[1])
+    try {
+      expect(Number.isInteger(pid)).toBe(true)
+      for (let i = 0; i < 100 && alive(pid); i++) await new Promise((r) => setTimeout(r, 50))
+      expect(alive(pid)).toBe(false)
+    } finally { if (alive(pid)) process.kill(pid, 'SIGKILL') }
+  })
+
+  it('FR262 scenario 2: the reply cap counts bytes, so multi-byte characters and a newline in the crossing chunk cannot pass an oversize line', async () => {
+    for (const mode of ['multibyte', 'crossing']) {
+      const a = await spawned(fake('oversize-reply.mjs'), undefined, 1000)
+      expect(await messageOf(a.analyze([mode]))).toContain('wrote a reply line longer than 1000 bytes')
+    }
+  })
+
+  it('FR263 scenario 3: output that is not JSON from a live adapter is terminal: it is stopped and every later call fails with the same error', async () => {
+    const a = await spawned(fake('not-json.mjs'))
+    const first = await messageOf(a.analyze(['a.cs']))
+    expect(first).toContain('adapter csharp')
+    expect(first).toContain('not JSON')
+    expect(await messageOf(a.analyze(['b.cs']))).toBe(first)
+    expect(await messageOf(a.workspace())).toBe(first)
+    expect(a.restarts).toBe(0)
+  })
+
+  it('FR261 scenario 3: an out-of-memory marker past the head of a long stderr line is still found', async () => {
+    const a = await spawned(fake('oom-late.mjs'))
+    const message = await messageOf(a.analyze(['a.cs']))
+    expect(message).toContain('exited with code 1')
+    expect(message).toContain('out of memory')
+    expect(a.restarts).toBe(0)
+  })
+
+  it('FR263 scenario 4: a clean shutdown leaves none of its own timers running', async () => {
+    const made: unknown[] = []
+    const cleared = new Set<unknown>()
+    const real = { set: globalThis.setTimeout, clear: globalThis.clearTimeout }
+    const set = vi.spyOn(globalThis, 'setTimeout').mockImplementation(((fn: () => void, ms?: number, ...args: unknown[]) => { const t = real.set(fn, ms, ...args) as unknown; if (ms === 1000 || ms === 2000) made.push(t); return t as never }) as unknown as typeof setTimeout)
+    const clear = vi.spyOn(globalThis, 'clearTimeout').mockImplementation(((t: never) => { cleared.add(t); real.clear(t) }) as typeof clearTimeout)
+    try {
+      const a = await spawned(fake('versioned-1.7.mjs'))
+      await a.shutdown()
+      expect(made.length).toBeGreaterThan(0)
+      expect(made.filter((t) => !cleared.has(t))).toEqual([])
+    } finally { set.mockRestore(); clear.mockRestore() }
   })
 })

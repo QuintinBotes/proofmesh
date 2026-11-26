@@ -3,7 +3,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type Database from 'better-sqlite3'
 import { canonicalJson, derivedId, sha256, sha256File } from '../core/hash.js'
-import { ProofmeshError } from '../core/errors.js'
+import { ProofmeshError, storedMessage } from '../core/errors.js'
 import { log } from '../core/log.js'
 import type { AnalyzeResponse, InitializeResponse } from '../core/generated.js'
 import { Catalog, LEASE_OWNER } from '../meshstore/catalog.js'
@@ -69,8 +69,10 @@ function resumable(file: string): boolean {
   }
 }
 /** A failed adapter call as the index reports it: the adapter named once, and which adapters had finished, for the run report. */
-const adapterFailure = (id: string, finished: string[], what: string, e: Error, extra: Record<string, unknown> = {}) =>
-  new ProofmeshError('ADAPTER_UNSUPPORTED', e.message.startsWith(`adapter ${id} `) ? e.message : `adapter ${id} ${what}: ${e.message}`, { failed_adapter: id, completed_adapters: finished, ...extra })
+const adapterFailure = (id: string, finished: string[], what: string, e: AdapterProtocolError, extra: Record<string, unknown> = {}) => {
+  const say = (text: string) => (text.startsWith(`adapter ${id} `) ? text : `adapter ${id} ${what}: ${text}`)
+  return new ProofmeshError('ADAPTER_UNSUPPORTED', say(e.message), { failed_adapter: id, completed_adapters: finished, stored_message: say(e.stored), ...extra })
+}
 const DISPOSITION: Record<Discovered['status'], string> = { capture: 'pending', excluded: 'excluded_by_rule', unsupported: 'unsupported', failed: 'failed' }
 /** Every file row reports each capability separately (FR003): what its adapter reported, and `fill` for each it left out. */
 const capabilities = (reported: Record<string, string>, fill: string) => canonicalJson({ ...Object.fromEntries(CAPS.map((k) => [k, fill])), ...reported })
@@ -345,7 +347,7 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
       return { snapshotId, status: 'published', analysisMode, counts, reuse, commit: checkout?.git.commit, adapterPeakRssKb: await peaks(), ...(batches.done ? { resumed: batches } : {}) }
     } catch (e) {
       if (db.open) db.close()
-      catalog.markFailed(snapshotId, e instanceof Error ? e.message : String(e))
+      catalog.markFailed(snapshotId, storedMessage(e))
       // Only an interruption during analysis is resumable; a run that failed after it starts clean next time.
       if (analysed) fs.rmSync(stagingDir(dataDir, snapshotId), { recursive: true, force: true })
       throw e
