@@ -1000,6 +1000,19 @@
     "FR226": [
       "packages/proofmesh/test/python.overrides.test.ts",
       "packages/proofmesh/test/rosetta.test.ts"
+    ],
+    "FR227": [
+      "packages/proofmesh/test/scip-run.test.ts",
+      "packages/proofmesh/test/contract.test.ts"
+    ],
+    "FR228": [
+      "packages/proofmesh/test/scip-run.test.ts"
+    ],
+    "FR229": [
+      "packages/proofmesh/test/scip-run.test.ts"
+    ],
+    "FR230": [
+      "packages/proofmesh/test/scip-run.test.ts"
     ]
   },
   "manual": {

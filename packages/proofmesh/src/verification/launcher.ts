@@ -1,7 +1,7 @@
 // The host-side launcher (D07, FR046): the only code that runs an approved recipe. The MCP and query layers never import it; a
 // test enforces that boundary. It consumes the approval before running, exports the snapshot's captured files into a disposable
 // directory, never the repository, and signs what happened.
-import { spawn, spawnSync } from 'node:child_process'
+import { execFile, spawn, spawnSync } from 'node:child_process'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -49,7 +49,7 @@ export async function runVerification(dataDir: string, id: string, opts: RunOpti
 }
 
 /** The snapshot's captured files, as the evidence store holds them: a fresh copy that the run may change and that is discarded. */
-function exportSnapshot(catalog: Catalog, snapshotId: string, into: string): void {
+export function exportSnapshot(catalog: Catalog, snapshotId: string, into: string): void {
   const snapshot = catalog.snapshot(snapshotId)
   if (!snapshot) throw new ProofmeshError('SNAPSHOT_UNAVAILABLE', `snapshot ${snapshotId} is gone; prepare the verification again`)
   const db = openSnapshot(catalog, snapshot), store = new EvidenceStore(catalog.dataDir)
@@ -66,11 +66,23 @@ function exportSnapshot(catalog: Catalog, snapshotId: string, into: string): voi
   }
 }
 
-function execute(argv: string[], cwd: string, env: Record<string, string>, timeoutMs: number, maxBytes: number, log: string): Promise<{ code: number | null; signal: string | null; timedOut: boolean; truncated: boolean; error?: string }> {
+export type Outcome = { code: number | null; signal: string | null; timedOut: boolean; truncated: boolean; memoryExceeded?: boolean; error?: string }
+/** group: run in its own process group, killed whole, so a build tool's children die with it; maxRssKb: kill the group past that resident size. */
+export type ExecuteOptions = { group?: boolean; maxRssKb?: number; rssSampleMs?: number }
+
+/** The resident size of a process group, as `ps` reports it (a group leader's pgid is its pid). */
+function groupRssKb(pgid: number): Promise<number> {
+  return new Promise((resolve) => execFile('ps', ['-A', '-o', 'pgid=,rss='], (e, out) => {
+    resolve(e ? 0 : out.split('\n').reduce((sum, line) => { const [g, r] = line.trim().split(/\s+/).map(Number); return g === pgid ? sum + (r ?? 0) : sum }, 0))
+  }))
+}
+
+export function execute(argv: string[], cwd: string, env: Record<string, string>, timeoutMs: number, maxBytes: number, log: string, opts: ExecuteOptions = {}): Promise<Outcome> {
   return new Promise((resolve) => {
     const out = fs.openSync(log, 'w')
-    let written = 0, truncated = false, timedOut = false
-    const child = spawn(argv[0]!, argv.slice(1), { cwd, env, stdio: ['ignore', 'pipe', 'pipe'] })
+    let written = 0, truncated = false, timedOut = false, memoryExceeded = false
+    const child = spawn(argv[0]!, argv.slice(1), { cwd, env, stdio: ['ignore', 'pipe', 'pipe'], detached: !!opts.group })
+    const kill = () => { try { if (opts.group && child.pid) process.kill(-child.pid, 'SIGKILL'); else child.kill('SIGKILL') } catch { /* already gone */ } }
     const sink = (chunk: Buffer) => {
       if (written >= maxBytes) { truncated = true; return }
       const slice = chunk.subarray(0, maxBytes - written)
@@ -78,8 +90,10 @@ function execute(argv: string[], cwd: string, env: Record<string, string>, timeo
       if (slice.length < chunk.length) truncated = true
     }
     child.stdout.on('data', sink); child.stderr.on('data', sink)
-    const timer = setTimeout(() => { timedOut = true; child.kill('SIGKILL') }, timeoutMs)
-    child.on('error', (e) => { clearTimeout(timer); fs.closeSync(out); resolve({ code: null, signal: null, timedOut, truncated, error: e.message }) })
-    child.on('close', (code, signal) => { clearTimeout(timer); fs.closeSync(out); resolve({ code, signal, timedOut, truncated }) })
+    const timer = setTimeout(() => { timedOut = true; kill() }, timeoutMs)
+    const watch = opts.maxRssKb && child.pid ? setInterval(() => void groupRssKb(child.pid!).then((kb) => { if (kb > opts.maxRssKb! && !memoryExceeded) { memoryExceeded = true; kill() } }), opts.rssSampleMs ?? 100) : undefined
+    const done = () => { clearTimeout(timer); clearInterval(watch); fs.closeSync(out) }
+    child.on('error', (e) => { done(); resolve({ code: null, signal: null, timedOut, truncated, memoryExceeded, error: e.message }) })
+    child.on('close', (code, signal) => { done(); kill(); resolve({ code, signal, timedOut, truncated, memoryExceeded }) })
   })
 }

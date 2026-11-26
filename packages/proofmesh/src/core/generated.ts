@@ -2874,7 +2874,7 @@ not_run: number
 }
 }
 /**
- * Why the weakest files stop where they do: no_precise_tier, no_grammar, not_code, adapter_unavailable:<id>, adapter_changed:<id>, scip_stale:<index>, unknown_language, binary, excluded, or a failure detail; null when nothing holds the row back.
+ * Why the weakest files stop where they do: no_precise_tier, no_grammar, not_code, adapter_unavailable:<id>, adapter_changed:<id>, scip_stale:<index>, scip_revoked:<index>:<grant>, unknown_language, binary, excluded, or a failure detail; null when nothing holds the row back.
  */
 reason: (string | null)
 /**
