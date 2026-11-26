@@ -96,7 +96,7 @@ describe('discovery and coverage of a repository with every disposition', () => 
     ])
     const status = cli(['--data-dir', d, 'status'])
     expect(status.status, status.stderr).toBe(0)
-    expect(status.stdout).toContain('analysis binary_probe_bytes 8192; build_output gradle:build maven:target cmake:CMakeCache.txt; excluded_dirs **/node_modules/** **/dist/** **/bin/** **/obj/**; ignore git; max_file_bytes 1048576; metadata_dirs .git; symlinks not_followed\n')
+    expect(status.stdout).toContain('analysis binary_probe_bytes 8192; build_output gradle:build maven:target cmake:CMakeCache.txt; excluded_dirs **/node_modules/** **/dist/** **/bin/** **/obj/**; ignore git; ignored_dirs one_entry; max_file_bytes 1048576; metadata_dirs .git; symlinks not_followed\n')
     expect(status.stdout).toContain('adapter linelang 0.1.0 no_execution: 0 external inputs read, 0 missing\n')
     // The same over MCP, with the generated-source policy of the mode.
     const analysis = (tool(d, 'workspace_status').data as { analysis: { mode: string; config: Record<string, unknown>; generated_sources: string; dependencies: unknown[] } }).analysis

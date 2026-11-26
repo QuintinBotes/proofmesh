@@ -40,6 +40,7 @@ export const analysisConfig = () => ({
   symlinks: 'not_followed',
   metadata_dirs: ['.git'],
   ignore: 'git',
+  ignored_dirs: 'one_entry',
 })
 
 /** git ls-files gets this long, then it is killed (SIGKILL, since a hung child may ignore SIGTERM) and discovery fails naming it. */
@@ -141,6 +142,9 @@ function* walk(root: string, registry: Registry, ignored: (rel: string) => boole
       const rel = (dirRel ? `${dirRel}/${entry.name}` : entry.name).normalize('NFC')
       if (entry.isSymbolicLink()) {
         out.push({ path: rel, size: 0, status: 'unsupported', detail: 'symlink_not_followed', language: null, role: null })
+      } else if (entry.isDirectory() && ignored(`${rel}/`)) {
+        // git ignores it as a whole (it lists it with --directory only when nothing inside is tracked or re-included), so it is one entry and never read (FR380).
+        out.push({ path: `${rel}/`, size: 0, status: 'excluded', detail: 'gitignore', language: null, role: null })
       } else if (entry.isDirectory()) {
         yield* dir(rel, childPlace(here, entry.name, entries, root, dirRel))
         continue
@@ -248,6 +252,7 @@ function sourceLanguageOf(registry: Registry, root: string, name: string, rel: s
 /** The row of the language census a file belongs to. Source files take the name of the language their adapter was given. */
 function censusLabel(d: Discovered, root: string): NonNullable<Discovered['census']> {
   if (d.detail === 'binary') return { language: 'binary', kind: 'binary' }
+  if (d.path.endsWith('/')) return { language: 'unknown', kind: 'unknown', extension: '(ignored directory)' }
   const adapterName = d.role === 'source' && d.language ? ADAPTER_LANGUAGE_NAMES[d.language] : undefined
   if (adapterName) return { language: adapterName, kind: 'code' }
   // A link is never followed and an unreadable file has no text: they are named by their file name alone.

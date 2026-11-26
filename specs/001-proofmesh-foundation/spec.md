@@ -436,6 +436,14 @@ Acceptance: CI runs my pull request without secrets or release credentials; lice
 - FR372: MUST run discovery's `git ls-files` without a shell, with an allowlisted environment, its output capped, and a timeout of ten minutes after which git is killed with SIGKILL and the index fails as `DEPENDENCY_UNAVAILABLE` naming git and the root, never reading the timeout as "nothing ignored"; a missing git still ignores nothing.
 - FR373: MUST, when the index's signal aborts while discovery waits on `git ls-files` (a `watch` being stopped), kill git with SIGKILL and end the index as `CANCELLED` with its lock released, without waiting for git's timeout.
 
+### Directories git ignores as a whole
+
+- FR380: MUST record a directory that git ignores as a whole (`git ls-files --others --ignored --exclude-standard --directory` lists it with a trailing `/`) as one entry, its path ending in `/`, `excluded_by_rule` with detail `gitignore`, and MUST make no filesystem call inside it; the census counts it in an unknown row `(ignored directory)`, and the analysis configuration records `ignored_dirs: one_entry`, so snapshot identity changes once.
+- FR381: MUST still walk a directory that git ignores only in part, recording its tracked, untracked and ignored files as before.
+- FR382: MUST leave an index of a commit (`--rev`) unchanged: its tree holds tracked files only, which no ignore rule removes, so it has no directory entry.
+- FR383: MUST still find a file that a negation (`!obj/keep.txt`) re-includes inside an otherwise ignored directory, skipping only the subdirectories git ignores as a whole.
+- FR384: MUST give the same entries from the synchronous `discover` and the index's `discoverAsync` on the same tree.
+
 ### Impact completeness
 
 - FR108: MUST provide `impact_completeness` with `base`, a commit-ish, optional `head` (omitted, the working tree), `depth` (default 1, at most 5), `include_tests` and the usual limits, and the CLI `proofmesh completeness <repository> <base>[..<head>] [--depth N] [--json]`.

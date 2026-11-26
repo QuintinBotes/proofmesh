@@ -188,7 +188,8 @@ describe('FR293 vendored files are excluded by rule, and git ignore stays the st
   it('a vendored directory that git also ignores stays gitignore', () => {
     const root = tree({ '.gitignore': 'third_party/\nvendor/\n', 'third_party/a.c': 'int a;\n', 'vendor/modules.txt': '# a v1\n', 'vendor/a/a.go': GO(''), 'other/third_party/b.c': 'int b;\n' })
     git(root, 'init', '-q')
-    expect(found(root)).toMatchObject({ 'third_party/a.c': 'excluded:gitignore', 'vendor/a/a.go': 'excluded:gitignore', 'vendor/modules.txt': 'excluded:gitignore', 'other/third_party/b.c': 'excluded:gitignore' })
+    // Each directory git ignores as a whole is one gitignore entry (FR380); other/ holds only an ignored third_party/.
+    expect(found(root)).toEqual({ 'third_party/': 'excluded:gitignore', 'vendor/': 'excluded:gitignore', 'other/': 'excluded:gitignore' })
   })
 })
 
