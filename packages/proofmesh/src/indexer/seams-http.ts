@@ -85,13 +85,17 @@ export function linkHttp<P extends { id: string }>(code: CodeSym[], endpoints: E
   }
 
   // Clients: an outbound call of an endpoint, to the handler of the operation it names.
+  const byLast = new Map<string, Op[]>()
+  for (const [key, o] of ops) { const l = key.slice(key.indexOf(' ') + 1).split('/').at(-1)!; byLast.set(l, [...(byLast.get(l) ?? []), o]) }
   for (const { rel, producer } of items) {
     if (rel.type !== 'dispatches_to' || rel.resolution !== 'resolved' || rel.detail?.direction !== 'outbound' || !rel.source.symbol || !rel.target?.symbol) continue
     const client = endpoint.get(`${producer.id}:${rel.target.symbol}`)
     if (!client) continue
     const base = { type: 'dispatches_to' as const, origin: 'contract_match' as const, source: { symbol: refOf(producer.id, rel.source.symbol) }, site: rel.site }
     const me = refOf(producer.id, rel.source.symbol), prefixUnknown = rel.detail.prefix_unknown === 'true'
-    const scored = [...ops.values()].map((o) => { const best = o.names.map((n) => ({ n, s: score(client.qualified_name, n) })).sort((a, b) => b.s - a.s || (a.n < b.n ? -1 : 1))[0]; return { o, endpoint: best?.n ?? '', score: best?.s ?? 0 } }).filter((m) => m.score > 0)
+    // A client path ends in a literal that a server path must end in too, or in a parameter; only those operations can score above 0.
+    const last = route(client.qualified_name).segments.at(-1) ?? ''
+    const scored = [...(byLast.get(last) ?? []), ...(last === '{}' ? [] : byLast.get('{}') ?? [])].map((o) => { const best = o.names.map((n) => ({ n, s: score(client.qualified_name, n) })).sort((a, b) => b.s - a.s || (a.n < b.n ? -1 : 1))[0]; return { o, endpoint: best?.n ?? '', score: best?.s ?? 0 } }).filter((m) => m.score > 0)
     const top = Math.max(0, ...scored.map((m) => m.score))
     // A client whose base is unknown matches by the end of its path alone, so it is linked only when one endpoint ends so.
     const pool = prefixUnknown ? scored : scored.filter((m) => m.score === top)

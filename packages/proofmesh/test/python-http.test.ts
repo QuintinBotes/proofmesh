@@ -17,13 +17,19 @@ describe('A7 the Python adapter names the endpoints a client calls, as framework
       { qualified_name: 'POST api/orders/settle', start_line: 32 },
     ])
     expect(withSnapshot(d, (db) => db.prepare(`select s.qualified_name as src, t.qualified_name as dst, a.detail from assertion a join symbol s on s.id = a.source_id join symbol t on t.id = a.target_id
-      where a.type = 'dispatches_to' order by src`).all())).toEqual([
+      where a.type = 'dispatches_to' and a.origin = 'framework_adapter' order by src`).all())).toEqual([
       { src: 'app/client:Shop.order', dst: 'GET api/orders/{param}', detail: '{"direction":"outbound","rule":"http_client"}' },
       { src: 'app/client:Shop.orders', dst: 'GET api/orders/getAll', detail: '{"direction":"outbound","rule":"http_client"}' },
       { src: 'app/client:Shop.ping', dst: 'GET health', detail: '{"direction":"outbound","rule":"http_client"}' },
       { src: 'app/client:Shop.place', dst: 'POST api/orders/add', detail: '{"direction":"outbound","rule":"http_client"}' },
       { src: 'app/client:Shop.raw', dst: 'POST api/orders/getAll', detail: '{"direction":"outbound","rule":"http_client"}' },
       { src: 'app/client:Shop.settle', dst: 'POST api/orders/settle', detail: '{"direction":"outbound","rule":"http_client"}' },
+    ])
+    // The route in the same file is the handler of two of those calls, the exact one and the one that differs only in its verb (FR254).
+    expect(withSnapshot(d, (db) => db.prepare(`select s.qualified_name as src, t.qualified_name as dst, a.detail from assertion a join symbol s on s.id = a.source_id join symbol t on t.id = a.target_id
+      where a.type = 'dispatches_to' and a.origin = 'contract_match' order by src`).all())).toEqual([
+      { src: 'app/client:Shop.orders', dst: 'app/client:list_orders', detail: '{"confidence":"1","endpoint":"GET api/orders/getAll","path":"api/orders/getAll","rule":"http_route"}' },
+      { src: 'app/client:Shop.raw', dst: 'app/client:list_orders', detail: '{"confidence":"0.8","endpoint":"GET api/orders/getAll","path":"api/orders/getAll","rule":"http_route"}' },
     ])
     // The router is included nowhere, so its route is taken as mounted at the root, and says so.
     expect(withSnapshot(d, (db) => db.prepare(`select s.qualified_name as src, t.qualified_name as dst, a.detail from assertion a join symbol s on s.id = a.source_id join symbol t on t.id = a.target_id where a.type = 'exposes'`).all())).toEqual([
