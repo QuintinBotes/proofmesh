@@ -4,6 +4,13 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 ## Unreleased
 
+The adapter budget and the host heap follow the machine, and a project load over budget is reported at once (closes #89; FR350 to FR356):
+
+- An adapter's memory budget defaults to half of physical memory, at least 8192 MB and at most 32768 MB (24576 MB on a 48 GB machine, 8192 MB on 16 GB). `adapter_memory_mb` and `PROOFMESH_ADAPTER_MEMORY_MB` still win. The index summary, `get_job`'s `plan` and its `result` say each adapter's budget and whether a setting or the machine chose it.
+- An adapter that passes its budget while loading the project, before its first batch, fails its files with `memory_budget` at once, without a restart: halving the batch cannot shrink a load. The summary names the load peak and the command that raises the budget.
+- `proofmesh index` runs its host under `--max-old-space-size` from the same rule (`PROOFMESH_HOST_MEMORY_MB` wins) and shows the heap in the summary. A host that runs out of heap fails with `BUDGET_EXCEEDED` (detail `host_out_of_memory`) naming `PROOFMESH_HOST_MEMORY_MB`, and its job is marked failed.
+- `bench/graph-bench/synthetic-large.mjs` generates N C# projects and M files and records the host's and the adapter's peak memory.
+
 Indexes of different repositories run in parallel safely, and one index per repository at a time (closes #83; FR320 to FR329):
 
 - The catalog and the fact cache use WAL and a two-minute busy timeout (`PROOFMESH_BUSY_TIMEOUT_MS`), and a write still busy after that is retried up to ten times, so two indexes meeting at a seal wait instead of failing with `SQLITE_BUSY`.

@@ -1,0 +1,54 @@
+import { spawn } from 'node:child_process'
+import v8 from 'node:v8'
+import { ProofmeshError } from '../core/errors.js'
+import { HOST_MEMORY_ENV, hostHeapMb } from '../indexer/memory.js'
+
+const FLAG = '--max-old-space-size='
+const OUT_OF_HEAP = /heap out of memory|Allocation failed - JavaScript heap/i
+/** What a child's environment keeps: the variables the index and its git and .NET children read, never the rest. */
+const KEEP = /^(PATH|HOME|USER|LOGNAME|TMPDIR|LANG|LC_.*|PROOFMESH_.*|DOTNET_.*|NUGET_.*|GIT_.*|XDG_.*|NODE_EXTRA_CA_CERTS|SSL_CERT_.*)$/
+const SIGNALS = ['SIGINT', 'SIGTERM', 'SIGHUP'] as const
+
+/** The old-space limit this process runs under, in MB: the flag it was started with, else what V8 reports. */
+export const heapLimitMb = (): number => {
+  const flag = process.execArgv.find((a) => a.startsWith(FLAG))
+  return flag ? Number(flag.slice(FLAG.length)) : Math.round(v8.getHeapStatistics().heap_size_limit / 1048576)
+}
+
+/** The index host is the process that holds every relationship until the write; it starts under the rule's heap, not Node's default. */
+export const needsHeap = (): boolean => !process.execArgv.some((a) => a.startsWith(FLAG))
+
+export function hostOutOfMemory(mb: number): ProofmeshError {
+  return new ProofmeshError('BUDGET_EXCEEDED', `the index host ran out of memory at its heap limit of ${mb} MB; raise it with ${HOST_MEMORY_ENV} (a whole number of MB), or index fewer files at a time`, { detail: 'host_out_of_memory', setting: HOST_MEMORY_ENV, heap_mb: mb })
+}
+
+/** The outer process holds an IPC channel to its host; when that closes the outer process is gone (even by SIGKILL), and the host stops with it. */
+export function stopWithOuterProcess(): void {
+  if (!process.channel) return
+  process.channel.unref()
+  process.on('disconnect', () => process.kill(process.pid, 'SIGTERM'))
+}
+
+/**
+ * Runs this CLI again under `--max-old-space-size` from the machine rule and resolves with its exit code, or with a named error when the
+ * child died of heap exhaustion. No shell, an allowlisted environment, signals passed on; no timeout, because an index has no fixed length.
+ */
+export function runUnderHeap(argv: string[]): Promise<number> {
+  const { mb } = hostHeapMb()
+  return new Promise((resolve, reject) => {
+    const env: NodeJS.ProcessEnv = {}
+    for (const [k, v] of Object.entries(process.env)) if (KEEP.test(k)) env[k] = v
+    const child = spawn(process.execPath, [`${FLAG}${mb}`, ...process.execArgv, process.argv[1]!, ...argv], { stdio: ['inherit', 'inherit', 'pipe', 'ipc'], env })
+    // stderr is passed through and scanned, since V8 names the exhaustion there, once, as it aborts, ahead of a long stack trace.
+    let tail = '', exhausted = false
+    child.stderr!.on('data', (c: Buffer) => { process.stderr.write(c); const seen = tail + c.toString('utf8'); exhausted ||= OUT_OF_HEAP.test(seen); tail = seen.slice(-64) })
+    const pass = (s: NodeJS.Signals) => child.kill(s)
+    for (const s of SIGNALS) process.on(s, pass)
+    child.on('error', reject)
+    child.on('close', (code, signal) => {
+      for (const s of SIGNALS) process.off(s, pass)
+      if ((code ?? 1) !== 0 && exhausted) reject(hostOutOfMemory(mb))
+      else resolve(code ?? (signal ? 128 + (({ SIGINT: 2, SIGTERM: 15, SIGHUP: 1, SIGKILL: 9 } as Record<string, number>)[signal] ?? 0) : 1))
+    })
+  })
+}

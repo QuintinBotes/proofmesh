@@ -26,6 +26,7 @@ import { observe } from './observe.js'
 import { runDiscover } from './discover.js'
 import { runTests } from './tests.js'
 import { runCompleteness } from './completeness.js'
+import { heapLimitMb, needsHeap, runUnderHeap, stopWithOuterProcess } from './host-heap.js'
 import { runClone } from './clone.js'
 import { runBundle } from './bundle.js'
 import { backup, restore } from './backup.js'
@@ -42,7 +43,7 @@ Usage: proofmesh [--data-dir DIR] <command>
   init                              create the data directory
   repo add <path> [--name N]        register a repository
   repo list                         registered repositories: id, name, root, trust
-  repo config <repo> --adapter <id> --memory-mb <n>   set the memory budget of an adapter for this repository (default 8192)
+  repo config <repo> --adapter <id> --memory-mb <n>   set the memory budget of an adapter for this repository (default half of this machine's memory, 8 to 32 GB)
   repo move <repo> <new-path>       re-root a registered repository at another working tree of the same git repository
   repo trust <repo> --build-evaluation   allow build logic to run for this repository: C# build evaluation while indexing, and scip run indexers
   repo untrust <repo>               revoke that trust
@@ -417,6 +418,16 @@ export async function main(argv: string[]): Promise<number> {
         let jobId: string
         // Every index is a job row, so status and get_job see it; one the MCP server spawned names its row with --job.
         try { jobId = jobFlag ?? jobs.createJob(jobs.repository(opts[0]).id, os.userInfo().username) } catch (e) { jobs.close(); throw e }
+        // The host holds every relationship until the write, so it runs under the machine rule's heap; a host that dies of heap exhaustion fails its job by name.
+        if (needsHeap()) {
+          jobs.close()
+          try { return await runUnderHeap([...argv, ...(jobFlag ? [] : ['--job', jobId])]) } catch (e) {
+            const again = Catalog.open(dataDir)
+            try { again.updateJob(jobId, { state: 'failed', finished_at: new Date().toISOString(), error: storedMessage(e) }) } finally { again.close() }
+            throw e
+          }
+        }
+        stopWithOuterProcess()
         // Progress goes to stderr, so stdout stays the parseable summary.
         // The same figures go to the job row, at the same cadence, so get_job shows what stderr shows (FR274).
         const recordAdapters = () => {
@@ -459,7 +470,7 @@ export async function main(argv: string[]): Promise<number> {
         }
         const phases = report.stop()
         // A finished job keeps counts that mean something: the files indexed, not the last phase's zero.
-        jobs.updateJob(jobId, { state: 'succeeded', finished_at: new Date().toISOString(), phase: 'done', done: r.counts.indexed, total: r.counts.indexed, progress_at: new Date().toISOString(), result: JSON.stringify({ snapshot_id: r.snapshotId, status: r.status, counts: r.counts, reuse: r.reuse ?? null, commit: r.commit ?? null, ...(r.memoryRestarts ? { memory_restarts: r.memoryRestarts } : {}) }) })
+        jobs.updateJob(jobId, { state: 'succeeded', finished_at: new Date().toISOString(), phase: 'done', done: r.counts.indexed, total: r.counts.indexed, progress_at: new Date().toISOString(), result: JSON.stringify({ snapshot_id: r.snapshotId, status: r.status, counts: r.counts, reuse: r.reuse ?? null, commit: r.commit ?? null, ...(r.memoryRestarts ? { memory_restarts: r.memoryRestarts } : {}), memory: { host_heap_mb: heapLimitMb(), adapter_budgets: r.adapterBudgets } }) })
         jobs.close()
         if (r.resumed) console.log(`resumed from checkpoint: ${r.resumed.done} of ${r.resumed.total} batches were already done`)
         if (r.reuse?.reused) console.log(`reused the facts of ${r.reuse.reused} of ${r.reuse.reused + r.reuse.analysed} files whose inputs did not change`)
@@ -467,8 +478,12 @@ export async function main(argv: string[]): Promise<number> {
         // Observatory's Galaxy reads this; building it now keeps opening the view instant. It is a cache, so failure only costs time later.
         try { galaxyFor(dataDir) } catch { /* rebuilt on first view */ }
         console.log(`discovered ${r.counts.discovered}, indexed ${r.counts.indexed}, excluded ${r.counts.excluded_by_rule}, unsupported ${r.counts.unsupported}, failed ${r.counts.failed}`)
+        const budgets = Object.entries(r.adapterBudgets)
+        if (budgets.length) console.log(`adapter memory budget ${budgets.map(([id, b]) => `${id} ${b.mb} MB (${b.source === 'setting' ? 'set' : 'half of this machine\'s memory, 8 to 32 GB'})`).join(', ')}; host heap ${heapLimitMb()} MB`)
         console.log(`phases ${phases.map((p) => `${p.phase} ${duration(p.ms)}`).join(', ')} (job ${jobId})`)
-        for (const m of r.memoryRestarts ?? []) console.log(`adapter ${m.adapter} passed its memory budget of ${m.budget_mb} MB (peak ${m.peak_rss_mb ?? 'unknown'} MB) on ${m.files} file${m.files === 1 ? '' : 's'}: ${m.action === 'smaller_batches' ? 'restarted with smaller batches' : m.action === 'file_failed' ? 'file failed with memory_budget' : 'its files failed with memory_budget'}`)
+        for (const m of r.memoryRestarts ?? []) console.log(m.at_load
+          ? `adapter ${m.adapter} needed ${m.peak_rss_mb ?? 'unknown'} MB to load the project, over its memory budget of ${m.budget_mb} MB: its ${m.files} file${m.files === 1 ? '' : 's'} failed with memory_budget, with no restart, since a smaller batch cannot shrink the load. Raise the budget: proofmesh repo config <repository> --adapter ${m.adapter} --memory-mb <MB above ${m.peak_rss_mb ?? m.budget_mb}>`
+          : `adapter ${m.adapter} passed its memory budget of ${m.budget_mb} MB (peak ${m.peak_rss_mb ?? 'unknown'} MB) on ${m.files} file${m.files === 1 ? '' : 's'}: ${m.action === 'smaller_batches' ? 'restarted with smaller batches' : m.action === 'file_failed' ? 'file failed with memory_budget' : 'its files failed with memory_budget'}`)
         // Seconds per analysed file, per adapter: the figure that says how long a repository of a given size will take (FR276).
         const perFile = Object.entries(plan).flatMap(([id, p]) => { const ms = phases.find((x) => x.phase === `analyze ${id}`)?.ms; return ms !== undefined && p.analyse > 0 ? [`${id} ${(ms / 1000 / p.analyse).toFixed(2)}`] : [] })
         if (perFile.length) console.log(`adapter seconds per file ${perFile.join(', ')}`)

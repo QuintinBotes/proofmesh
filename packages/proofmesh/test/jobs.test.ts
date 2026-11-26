@@ -28,7 +28,7 @@ describe('request_index and get_job: background indexing with progress', () => {
     // #36: the plan said it was incremental and how much it re-analysed; the finished job keeps real counts and its timing.
     // The TypeScript adapter analyses the program as one unit, so an edit re-analyses all six files: a full run, and the plan says so.
     // The build adapter (FR129) also reads the unchanged package.json, whose cached file result is replayed.
-    expect(done.plan).toEqual({ build: { mode: 'incremental', analyse: 0, reuse: 1 }, typescript: { mode: 'full', analyse: 6, reuse: 0 } })
+    expect(done.plan).toEqual({ build: { mode: 'incremental', analyse: 0, reuse: 1, budget_mb: expect.any(Number), budget_source: 'machine' }, typescript: { mode: 'full', analyse: 6, reuse: 0, budget_mb: expect.any(Number), budget_source: 'machine' } })
     expect(done.result.reuse).toEqual({ reused: 1, analysed: 6 })
     expect({ done: done.done, total: done.total }).toEqual({ done: done.result.counts.indexed, total: done.result.counts.indexed })
     expect(done.progress_at).toEqual(expect.any(String))
@@ -43,7 +43,7 @@ describe('request_index and get_job: background indexing with progress', () => {
     for (const args of [['init'], ['repo', 'add', repo], ['index', repo]]) expect(cli(['--data-dir', d, ...args]).status).toBe(0)
     fs.appendFileSync(path.join(repo, 'src', 'Tools', 'Cli.cs'), '\n// edited\n')
     const job = await poll(d, (tool(d, 'request_index', {}).data as any).job.id)
-    expect(job.plan).toEqual({ csharp: { mode: 'incremental', analyse: 1, reuse: 1 } })
+    expect(job.plan).toEqual({ csharp: { mode: 'incremental', analyse: 1, reuse: 1, budget_mb: expect.any(Number), budget_source: 'machine' } })
     expect(job.result.reuse).toEqual({ reused: 1, analysed: 1 })
   }, 240000)
 

@@ -95,7 +95,8 @@ describe('FR323 FR324 one index of a repository at a time', () => {
     await until('the first index analysing', analysing(d, ids[0]!), first)
     const second = startIndex(d, roots[0]!, g.entry)
     await until('the second index waiting', () => second.out.stderr.includes('waiting for the index'), first, second)
-    expect(second.out.stderr).toContain(`pid ${first.child.pid}`)
+    // The lock is held by the index host the CLI starts under its own heap, not by the process that was spawned.
+    expect(second.out.stderr).toContain(`pid ${holderPid(d, ids[0]!)}`)
     g.open()
     for (const r of [first, second]) expect(await r.exited, r.out.stderr).toBe(0)
     expect(published(d, ids[0]!)).toBe(1)
@@ -112,7 +113,7 @@ describe('FR323 FR324 one index of a repository at a time', () => {
     const second = cli(['--data-dir', d, 'index', roots[0]!, '--no-wait'])
     expect(second.status).toBe(1)
     expect(second.stderr).toContain('INDEX_IN_PROGRESS')
-    expect(second.stderr).toContain(`pid ${first.child.pid}`)
+    expect(second.stderr).toContain(`pid ${lock.pid}`)
     expect(second.stderr).toContain(lock.started_at)
     g.open()
     expect(await first.exited, first.out.stderr).toBe(0)
@@ -196,6 +197,7 @@ describe('FR327 a reader keeps working while an index writes', () => {
 })
 
 const lockPath = (d: string, id: string) => lockFile(d, id)
+const holderPid = (d: string, id: string) => (JSON.parse(fs.readFileSync(path.join(d, 'locks', `index-${id}.lock`), 'utf8')) as { pid: number }).pid
 
 describe('FR328 gc and an index exclude each other, and a wait can be cancelled', () => {
   it('an index admitted while gc runs waits for it (or with --no-wait is refused), and gc refuses while an index holds a lock', async () => {

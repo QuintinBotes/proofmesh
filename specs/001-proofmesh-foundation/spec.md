@@ -371,6 +371,13 @@ Acceptance: CI runs my pull request without secrets or release credentials; lice
 - FR327: MUST keep queries and `status` answering from the published snapshot while an index writes.
 - FR328: MUST make `gc` and an index exclude each other: `gc` holds a data-directory lock for its whole run and refuses while any index holds a lock, and an index that finds `gc` running (checked after taking its own lock) steps aside and waits, or with `--no-wait` refuses; and MUST end a wait for a lock with `CANCELLED` when `watch` is aborted.
 - FR329: MUST record the holder's process start time in a lock and treat a pid whose start time differs as gone; MUST release every lock this process holds when it exits or is ended by SIGINT, SIGTERM or SIGHUP; MUST keep a job that waits behind a live lock `queued` by refreshing its heartbeat, so a poller does not start a second index; MUST name a lock's temporary files with the host and a random nonce; MUST retry the fact cache's first `create table`; and MUST read `PROOFMESH_BUSY_TIMEOUT_MS` only with `PROOFMESH_TEST_HARNESS` set, as a finite positive number of at most ten minutes.
+- FR350: MUST default an adapter's memory budget to half of physical memory, at least 8192 MB and at most 32768 MB, with `adapter_memory_mb` and `PROOFMESH_ADAPTER_MEMORY_MB` still winning (a 48 GB machine gets 24576 MB, a 16 GB machine 8192 MB).
+- FR351: MUST show each adapter's budget and whether a setting or the machine chose it in the index summary, in the job's `plan` while it runs and in its `result` once it ends.
+- FR352: MUST, when an adapter passes its budget while loading the project, before its first batch, report `memory_budget` for its files at once, with no restart and no halving, since a smaller batch cannot shrink the load.
+- FR353: MUST name the load peak, the budget and the setting to raise (`adapter_memory_mb`, `proofmesh repo config --memory-mb`) when a load is over budget.
+- FR354: MUST run the index host under `--max-old-space-size` from the same rule (`PROOFMESH_HOST_MEMORY_MB` wins) and show the heap in the index summary.
+- FR355: MUST report an index host that ran out of heap as `BUDGET_EXCEEDED` with detail `host_out_of_memory` naming `PROOFMESH_HOST_MEMORY_MB`, and mark its job failed, instead of leaving a crash.
+- FR356: SHOULD provide a script that generates N projects and M files and records the host's and the adapter's peak memory beside the budget and heap in force, so the defaults are checked against numbers.
 
 ### Impact completeness
 

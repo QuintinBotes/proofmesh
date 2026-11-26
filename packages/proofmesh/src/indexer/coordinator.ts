@@ -16,7 +16,7 @@ import { effectiveCodeowners, ownerRule, OWNERSHIP_VERSION, parseCodeowners, typ
 import { EvidenceStore } from '../evidence/store.js'
 import { manifestHash, unstable } from './freshness.js'
 import { fillBodyHashes } from './body-hash.js'
-import { adapterBudgetMb, AdapterBudgetError, AdapterProcess, AdapterProtocolError, PROTOCOL_VERSION } from './adapter-host.js'
+import { adapterBudget, AdapterBudgetError, AdapterProcess, AdapterProtocolError, PROTOCOL_VERSION } from './adapter-host.js'
 import { assemble, FactCache, fileKeys, splitByFile, type FileFacts } from './fact-cache.js'
 import { analysisConfig, checkoutCommit, discover, gitInfo, type Discovered } from './discovery.js'
 import { registryFor, type AdapterSpec, type Registry } from './languages.js'
@@ -40,13 +40,15 @@ export type IndexResult = {
   commit?: string
   /** The largest resident set size each adapter process reached, in KiB, where it could be sampled. */
   adapterPeakRssKb: Record<string, number>
+  /** The memory budget each adapter ran under, in MB, and whether a setting or the machine's size chose it. */
+  adapterBudgets: Record<string, { mb: number; source: 'setting' | 'machine' }>
   /** Each time an adapter passed its memory budget and was started again, and what the host did about it. */
-  memoryRestarts?: Array<{ adapter: string; budget_mb: number; peak_rss_mb: number | null; files: number; action: 'smaller_batches' | 'file_failed' | 'adapter_failed' }>
+  memoryRestarts?: Array<{ adapter: string; budget_mb: number; peak_rss_mb: number | null; /** The budget was passed while loading the project; the peak is the load peak. */ at_load?: true; files: number; action: 'smaller_batches' | 'file_failed' | 'adapter_failed' }>
 }
 type Mode = 'no_execution' | 'trusted_build'
 type Captured = Discovered & { hash: string }
 type Rel = AnalyzeResponse['relationships'][number]
-type AdapterRun = { spec: AdapterSpec; sources: Discovered[]; configs: Discovered[]; process?: AdapterProcess; manifest?: InitializeResponse['adapter']; inputs?: string[]; mode: Mode; units?: InitializeResponse['units']; keys?: Map<string, string>; entrySha256?: string; budgetMb?: number; config?: Record<string, unknown>; unstartable?: AdapterBudgetError; cap?: number; streak?: number }
+type AdapterRun = { spec: AdapterSpec; sources: Discovered[]; configs: Discovered[]; process?: AdapterProcess; manifest?: InitializeResponse['adapter']; inputs?: string[]; mode: Mode; units?: InitializeResponse['units']; keys?: Map<string, string>; entrySha256?: string; budgetMb?: number; budgetSource?: 'setting' | 'machine'; config?: Record<string, unknown>; unstartable?: AdapterBudgetError; cap?: number; streak?: number }
 type Producer = { id: string; version: string; mode: Mode }
 /** Import kinds, strongest first: a file that imports another both for its values and for its types depends on it at run time. */
 const IMPORT_KINDS = ['static', 're_export', 'type_only']
@@ -56,6 +58,7 @@ const BATCH = () => Number(process.env.PROOFMESH_INDEX_BATCH) || 200
 export const testMs = (name: string, min: number, max: number): number | undefined => (Number(process.env[name]) ? Math.min(max, Math.max(min, Number(process.env[name]))) : undefined)
 /** Files in a row that each pass the budget alone, after which the adapter's remaining files fail without another restart. */
 const MAX_FILE_OVERRUNS = 20
+const peakOf = (e: AdapterBudgetError) => ({ budget_mb: e.budgetMb, peak_rss_mb: e.peakRssKb ? Math.round(e.peakRssKb / 1024) : null, ...(e.atLoad ? { at_load: true as const } : {}) })
 const languagesOf = (run: AdapterRun) => [...run.spec.languages].join('+')
 
 /**
@@ -89,7 +92,7 @@ const capabilities = (reported: Record<string, string>, fill: string) => canonic
 const NOT_RUN = capabilities({}, 'not_run')
 
 /** write is relationship resolution; initialize and analyze name the adapter. */
-export type Progress = { phase: 'discover' | 'capture' | 'prepare' | 'initialize' | 'analyze' | 'write' | 'check' | 'seal'; adapter?: string; /** The languages the adapter analyses, during its own phases. */ language?: string; done: number; total: number; plan?: { mode: 'incremental' | 'full'; analyse: number; reuse: number } }
+export type Progress = { phase: 'discover' | 'capture' | 'prepare' | 'initialize' | 'analyze' | 'write' | 'check' | 'seal'; adapter?: string; /** The languages the adapter analyses, during its own phases. */ language?: string; done: number; total: number; plan?: { mode: 'incremental' | 'full'; analyse: number; reuse: number; budget_mb: number; budget_source: 'setting' | 'machine' } }
 
 /**
  * registry: the conformance kit indexes with the adapter it checks first; everything else uses the data directory's own.
@@ -138,7 +141,9 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
     for (const run of runs) {
       const { adapter_memory_mb: setting, ...config } = catalog.adapterConfig(repo.id, run.spec.id)
       run.config = config
-      run.budgetMb = adapterBudgetMb({ adapter_memory_mb: setting })
+      const budget = adapterBudget({ adapter_memory_mb: setting })
+      run.budgetMb = budget.mb
+      run.budgetSource = budget.source
     }
 
     progress({ phase: 'capture', done: 0, total: discovered.length })
@@ -174,7 +179,7 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
         config: { ...run.config, ...run.spec.config?.() },
       }).catch((e) => {
         // An adapter that cannot even start within its budget fails its own files, rather than the index; asking it again would pass the same budget.
-        if (e instanceof AdapterBudgetError) { run.unstartable = e; memoryRestarts.push({ adapter: run.spec.id, budget_mb: e.budgetMb, peak_rss_mb: e.peakRssKb ? Math.round(e.peakRssKb / 1024) : null, files: run.sources.length, action: 'adapter_failed' }); return undefined }
+        if (e instanceof AdapterBudgetError) { run.unstartable = e; memoryRestarts.push({ adapter: run.spec.id, ...peakOf(e), files: run.sources.length, action: 'adapter_failed' }); return undefined }
         throw e instanceof AdapterProtocolError ? adapterFailure(run.spec.id, finished, 'failed to initialize', e) : e
       })
       if (!init) { run.manifest = { id: run.spec.id, version: 'not_started', protocol_version: PROTOCOL_VERSION, languages: [...run.spec.languages], toolchain: {} }; run.inputs = []; continue }
@@ -195,6 +200,7 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
     const identity = { repository_id: repo.id, manifest_hash: manifest, config_hash: sha256(canonicalJson({ ...analysisConfig(), generated_policy: GENERATED_POLICY, adapters: configs, adapter_memory_mb: budgets })), analysis_mode: analysisMode, adapters, format_version: FORMAT_VERSION, format_ddl: sha256(readSql(`snapshot-format/${FORMAT_VERSION}.sql`)), ownership: OWNERSHIP_VERSION, resolution: RESOLUTION_VERSION, seams: SEAMS_VERSION }
     const identityJson = canonicalJson(identity)
     const snapshotId = `snap_${sha256(identityJson).slice(0, 24)}`
+    const adapterBudgets = Object.fromEntries(runs.map((r) => [r.spec.id, { mb: r.budgetMb!, source: r.budgetSource! }]))
     const peaks = async () => {
       await Promise.all(runs.map((r) => r.process?.sampleRss()))
       return Object.fromEntries(runs.flatMap((r) => (r.process?.peakRssKb ? [[r.spec.id, r.process.peakRssKb]] : [])))
@@ -203,7 +209,7 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
     const existing = catalog.snapshot(snapshotId)
     if (existing?.state === 'published') {
       if (catalog.currentSnapshot(repo.id)?.id !== snapshotId) catalog.publish(snapshotId, repo.id, existing.store_digest!, keepCurrent)
-      return { snapshotId, status: 'unchanged', analysisMode, counts: countDispositions(discovered.map((d) => (d.status === 'capture' ? 'indexed' : DISPOSITION[d.status]))), commit: checkout?.git.commit, adapterPeakRssKb: await peaks() }
+      return { snapshotId, status: 'unchanged', analysisMode, counts: countDispositions(discovered.map((d) => (d.status === 'capture' ? 'indexed' : DISPOSITION[d.status]))), commit: checkout?.git.commit, adapterPeakRssKb: await peaks(), adapterBudgets }
     }
     for (const run of runs) {
       run.keys = fileKeys({
@@ -251,7 +257,7 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
         // Workspace facts span files, so they are asked for on every index and never cached; checkpointed as batch -1.
         // The plan says up front how many files this adapter re-analyses and how many replay cached facts.
         const reusable = run.sources.filter((s) => cache!.has(run.keys!.get(s.path)!)).length
-        progress({ phase: 'analyze', adapter: run.spec.id, language: languagesOf(run), done: 0, total: run.sources.length, plan: { mode: reusable ? 'incremental' : 'full', analyse: run.sources.length - reusable, reuse: reusable } })
+        progress({ phase: 'analyze', adapter: run.spec.id, language: languagesOf(run), done: 0, total: run.sources.length, plan: { mode: reusable ? 'incremental' : 'full', analyse: run.sources.length - reusable, reuse: reusable, budget_mb: run.budgetMb!, budget_source: run.budgetSource! } })
         const wsJournal = path.join(stagingDir(dataDir, snapshotId), `batch-${run.spec.id}-workspace.json`)
         let ws: AnalyzeResponse
         if (done.has(`${run.spec.id}#-1`)) {
@@ -265,7 +271,7 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
             if (!(e instanceof AdapterBudgetError)) throw adapterFailure(run.spec.id, finished, 'failed to answer workspace', e)
             // Facts that span files are not retried in pieces; the adapter's files fail with the budget as the reason.
             run.unstartable = e
-            memoryRestarts.push({ adapter: run.spec.id, budget_mb: e.budgetMb, peak_rss_mb: e.peakRssKb ? Math.round(e.peakRssKb / 1024) : null, files: run.sources.length, action: 'adapter_failed' })
+            memoryRestarts.push({ adapter: run.spec.id, ...peakOf(e), files: run.sources.length, action: 'adapter_failed' })
             ws = { symbols: [], relationships: [], file_results: [], diagnostics: [] }
           }
           fs.writeFileSync(wsJournal, JSON.stringify(ws))
@@ -277,7 +283,7 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
         /** Replays the cached facts of files whose key is unchanged and analyses only the rest, assembled in file order. */
         const failedByBudget = (paths: string[]): Map<string, FileFacts> => new Map(paths.map((p) => [p, { symbols: [], relationships: [], file_result: { path: p, status: 'failed', detail: 'memory_budget', capabilities: {} } } as FileFacts]))
         const overran = (e: AdapterBudgetError, files: number, action: 'smaller_batches' | 'file_failed' | 'adapter_failed') => {
-          memoryRestarts.push({ adapter: run.spec.id, budget_mb: e.budgetMb, peak_rss_mb: e.peakRssKb ? Math.round(e.peakRssKb / 1024) : null, files, action })
+          memoryRestarts.push({ adapter: run.spec.id, ...peakOf(e), files, action })
           log('warning', 'adapter passed its memory budget', { adapter: run.spec.id, budget_mb: e.budgetMb, files, action })
         }
         /**
@@ -419,7 +425,7 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
       sealAndPublish(catalog, db, stagingFile, snapshotId, repo.id, keepCurrent)
       fs.rmSync(stagingDir(dataDir, snapshotId), { recursive: true, force: true })
       for (const run of runs) cache.prune(repo.id, run.spec.id, run.keys!.values())
-      return { snapshotId, status: 'published', analysisMode, counts, reuse, commit: checkout?.git.commit, adapterPeakRssKb: await peaks(), ...(memoryRestarts.length ? { memoryRestarts } : {}), ...(batches.done ? { resumed: batches } : {}) }
+      return { snapshotId, status: 'published', analysisMode, counts, reuse, commit: checkout?.git.commit, adapterPeakRssKb: await peaks(), adapterBudgets, ...(memoryRestarts.length ? { memoryRestarts } : {}), ...(batches.done ? { resumed: batches } : {}) }
     } catch (e) {
       if (db.open) db.close()
       catalog.markFailed(snapshotId, storedMessage(e))

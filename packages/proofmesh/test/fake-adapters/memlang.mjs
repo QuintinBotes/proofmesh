@@ -3,7 +3,8 @@
 // batch needs, and a batch that needs more than `hold_over_mb` allocates that much and then never answers, as an adapter does when it is
 // about to run out of memory; the host is expected to stop it. `init_mb` and `workspace_mb` do the same while initializing and answering
 // `workspace`. `child_hold_mb` makes a child process of the adapter hold that much, the adapter itself staying small. `reply_mb` holds
-// that much and answers at once. A batch of more than `die_over_files` files kills the adapter with SIGKILL, as the kernel does.
+// that much and answers at once. `load_mb` holds that much while initializing and then answers, as a project load that finishes but is
+// large does; `init_log` is a file each initialize appends a line to, so a test can count how often the adapter was started. A batch of more than `die_over_files` files kills the adapter with SIGKILL, as the kernel does.
 import { spawn } from 'node:child_process'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
@@ -19,7 +20,9 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
   if (req.method === 'initialize') {
     workspace = req.params.workspace
     cfg = req.params.config ?? {}
+    if (cfg.init_log) fs.appendFileSync(cfg.init_log, 'initialize\n')
     if (cfg.init_mb) return hold(cfg.init_mb)
+    if (cfg.load_mb) hold(cfg.load_mb)
     reply({ adapter: { id: 'memlang', version: '0.1.0', protocol_version: '1.0', languages: ['memlang'], toolchain: {} }, capabilities: { symbols: true }, external_inputs: [] })
   } else if (req.method === 'workspace') {
     if (cfg.workspace_mb) return hold(cfg.workspace_mb)
