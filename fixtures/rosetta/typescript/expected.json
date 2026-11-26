@@ -51,8 +51,8 @@
         },
         "calls_circle_area": {
           "rows": [
-            { "role": "circleArea", "row": "circleArea shapes.ts:26" },
-            { "role": "total", "row": "total shapes.ts:21 dispatch" }
+            { "role": "total", "row": "total shapes.ts:21 dispatch" },
+            { "role": "circleArea", "row": "circleArea shapes.ts:26" }
           ]
         },
         "imports": {

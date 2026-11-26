@@ -1,4 +1,5 @@
 import type Database from 'better-sqlite3'
+import { assertionKey, byKey, cmp, nodeKey } from '../meshstore/order.js'
 import { type Basis, basisOf, inferredSql } from './basis.js'
 import { structure, TYPE_KINDS } from './impact.js'
 import { candidatesTo, sitesNaming } from './inferred.js'
@@ -102,12 +103,13 @@ export function testReach(db: Database.Database, snapshotId: string, subjects: s
       const at = new Map<string, State[]>()
       // A reference ends its chain: calling code that reads the subject is not reading it.
       for (const s of frontier) if (s.mode < 2) at.set(s.node, [...(at.get(s.node) ?? []), s])
-      const nodes = [...at.keys()], next: State[] = []
+      const nodes = [...at.keys()].sort(byKey((n) => nodeKey(db, n))), next: State[] = []
       for (let i = 0; i < nodes.length; i += 500) {
         const chunk = nodes.slice(i, i + 500)
         const rows = db.prepare(`select e.src, e.dst, e.type, e.assertion_id, ${inferredSql()} as inferred from edge e join assertion a on a.id = e.assertion_id where e.dst in (${chunk.map(() => '?').join(',')}) and e.type in (${types.map(() => '?').join(',')}) and e.resolution in ('resolved', 'resolved_external')`).all(...chunk, ...types) as Array<{ src: string; dst: string; type: string; assertion_id: string; inferred: number }>
         // A candidate call names its caller through assertion_candidate; it is a call only while following (FR205).
         if (follow) rows.push(...candidatesTo(db, chunk, types).map((c) => ({ ...c, inferred: 1 })))
+        rows.sort((x, y) => cmp(assertionKey(db, x.assertion_id), assertionKey(db, y.assertion_id)) || cmp(nodeKey(db, x.src), nodeKey(db, y.src)) || cmp(x.assertion_id, y.assertion_id))
         for (const r of rows) {
           if (r.inferred) sawInferred = true
           if (observedOnly && r.inferred) continue
@@ -169,10 +171,10 @@ export function testReach(db: Database.Database, snapshotId: string, subjects: s
     listed.add(r.file)
     rows.push({ id: r.file, kind: 'file', name: r.path.slice(r.path.lastIndexOf('/') + 1), qualified_name: r.path, path: r.path, project: projectOfFile.get(r.file) ?? null, line: r.line, depth: 1, evidence: 'import_only', basis: basisOf(r)! })
   }
-  rows.sort((a, b) => EVIDENCE.indexOf(a.evidence) - EVIDENCE.indexOf(b.evidence) || a.depth - b.depth || (a.path < b.path ? -1 : a.path > b.path ? 1 : 0) || a.line - b.line || (a.id < b.id ? -1 : 1))
+  rows.sort((a, b) => EVIDENCE.indexOf(a.evidence) - EVIDENCE.indexOf(b.evidence) || a.depth - b.depth || cmp(a.path, b.path) || a.line - b.line || cmp(nodeKey(db, a.id), nodeKey(db, b.id)) || cmp(a.id, b.id))
 
   // Each hop names a symbol and the line of its call toward the subject; the last names the subject at its declaration (FR103).
-  const site = db.prepare('select f.path, e.start_line as line from assertion_evidence ae join evidence e on e.id = ae.evidence_id join file f on f.id = e.file_id where ae.assertion_id = ? order by e.start_byte limit 1')
+  const site = db.prepare('select f.path, e.start_line as line from assertion_evidence ae join evidence e on e.id = ae.evidence_id join file f on f.id = e.file_id where ae.assertion_id = ? order by f.path, e.start_byte limit 1')
   const chain = (row: TestRow): Hop[] => {
     const hops: Hop[] = []
     for (let s = chainStart.get(row.id); s; s = s.next) {

@@ -51,8 +51,8 @@
         },
         "calls_circle_area": {
           "rows": [
-            { "role": "circleArea", "row": "Rosetta.Shapes.Totals.CircleArea Shapes.cs:31" },
-            { "role": "total", "row": "Rosetta.Shapes.Totals.Total Shapes.cs:27 dispatch" }
+            { "role": "total", "row": "Rosetta.Shapes.Totals.Total Shapes.cs:27 dispatch" },
+            { "role": "circleArea", "row": "Rosetta.Shapes.Totals.CircleArea Shapes.cs:31" }
           ]
         },
         "imports": {

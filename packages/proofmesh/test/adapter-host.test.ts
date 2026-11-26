@@ -59,7 +59,7 @@ describe('AC26 adapter protocol', () => {
   it('an adapter that keeps crashing is restarted once, then the snapshot fails', () => {
     const { r, current } = indexWith('crashing.mjs')
     expect(r.status).toBe(1)
-    expect(r.stderr).toMatch(/adapter (exited|failed)/)
+    expect(r.stderr).toMatch(/adapter (typescript )?(exited|failed)/)
     expect(current).toBeUndefined()
   })
 

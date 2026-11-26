@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import { pathToFileURL } from 'node:url'
 import path from 'node:path'
-import { asProofmeshError, ProofmeshError } from '../core/errors.js'
+import { asProofmeshError, ProofmeshError, storedMessage } from '../core/errors.js'
 import { resolveDataDir } from '../core/paths.js'
 import { Catalog, initDataDir, LEASE_OWNER, type IndexJob } from '../meshstore/catalog.js'
 import { runVerificationCommand } from './verification.js'
@@ -423,7 +423,10 @@ export async function main(argv: string[]): Promise<number> {
           }, undefined, rev, keepCurrent && !!rev)
         } catch (e) {
           report.stop()
-          jobs.updateJob(jobId, { state: 'failed', finished_at: new Date().toISOString(), error: asProofmeshError(e).message })
+          const failure = asProofmeshError(e)
+          // The run report names the adapter that failed and those that had finished, so a failed index says where it broke.
+          const { failed_adapter: failedAdapter, completed_adapters: completedAdapters } = failure.details
+          jobs.updateJob(jobId, { state: 'failed', finished_at: new Date().toISOString(), error: storedMessage(failure), ...(failedAdapter ? { result: JSON.stringify({ failed_adapter: failedAdapter, completed_adapters: completedAdapters ?? [] }) } : {}) })
           jobs.close()
           throw e
         }

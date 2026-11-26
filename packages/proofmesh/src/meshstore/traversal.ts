@@ -1,4 +1,5 @@
 import type Database from 'better-sqlite3'
+import { assertionKey, cmp, nodeKey } from './order.js'
 
 export type TraceOptions = {
   source: string
@@ -8,6 +9,8 @@ export type TraceOptions = {
   maxDepth: number
   maxRows: number
   deadline: number
+  /** Where a node or assertion sits, so ties between paths break on location rather than id; the id itself when omitted. */
+  rank?: (id: string) => string
 }
 
 export type Level = { depth: number; frontier: number; expanded_edges: number }
@@ -42,7 +45,8 @@ export class SqliteEdges implements EdgeSource {
       if (dispatch.length) out.push(...(this.db.prepare(`select dst as src, src as dst, assertion_id from edge where dst in (${cp}) and type in (${dispatch.map(() => '?').join(',')}) and resolution in (${rp})`).all(...chunk, ...dispatch, ...resolutions) as typeof out))
     }
     if (this.extra) out.push(...this.extra(nodes))
-    return out.sort((a, b) => (a.src < b.src ? -1 : a.src > b.src ? 1 : a.dst < b.dst ? -1 : a.dst > b.dst ? 1 : a.assertion_id < b.assertion_id ? -1 : 1))
+    const n = (id: string) => nodeKey(this.db, id), a = (id: string) => assertionKey(this.db, id)
+    return out.sort((x, y) => cmp(n(x.src), n(y.src)) || cmp(n(x.dst), n(y.dst)) || cmp(a(x.assertion_id), a(y.assertion_id)) || cmp(x.src, y.src) || cmp(x.dst, y.dst) || cmp(x.assertion_id, y.assertion_id))
   }
 }
 
@@ -87,11 +91,13 @@ export function trace(edges: EdgeSource, o: TraceOptions): TraceResult {
       for (const p of parents.get(node) ?? []) build(p.from, [node, ...nodes], [p.assertion, ...assertions])
     }
     build(o.target, [], [])
-    paths.sort((a, b) => (a.nodes.join('>') < b.nodes.join('>') ? -1 : 1))
+    const rank = o.rank ?? ((id: string) => id)
+    const route = (p: TraceResult['paths'][number]) => `${p.nodes.map(rank).join('>')}|${p.assertions.map(rank).join('>')}`
+    paths.sort((a, b) => cmp(route(a), route(b)) || cmp(a.nodes.join('>'), b.nodes.join('>')) || cmp(a.assertions.join('>'), b.assertions.join('>')))
     if (paths.length > o.maxRows) { paths.length = o.maxRows; stopped = 'max_rows' }
   }
   const horizon = stopped === 'max_depth' || stopped === 'timeout'
-    ? [...frontier].sort().map((id) => ({ id, unexplored_edges: edges.outEdges([id], o.types, o.resolutions).length }))
+    ? [...frontier].sort((a, b) => cmp((o.rank ?? ((id: string) => id))(a), (o.rank ?? ((id: string) => id))(b)) || cmp(a, b)).map((id) => ({ id, unexplored_edges: edges.outEdges([id], o.types, o.resolutions).length }))
     : []
   return { paths, levels, stopped_by: stopped, horizon, expanded, explored, explored_truncated: exploredTruncated }
 }

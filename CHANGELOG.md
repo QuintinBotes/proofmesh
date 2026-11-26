@@ -11,6 +11,21 @@ Every row that names a symbol carries its stable key (part of #15; FR280 to FR28
 - `get_symbol`, `get_symbols_at` and `compare_snapshots` already carried `stable_key`; the lean text rows are unchanged. The tool data schemas and `generated.ts` gain the optional fields.
 - Not done: `detail.scip` on the SCIP symbol, which needs a symbol field in the adapter protocol and a snapshot format bump with its reader checks (the #63 change that added `roles` touched about thirty files); `get_overview` links and `trace_paths` explored edges still name their ends by id, which the rows beside them resolve; SC-2 of #15 stays with the benchmark of #9.
 
+A dying adapter fails the index with its name and exit status, instead of crashing it (closes #78; FR260 to FR269):
+
+- Every stream of an adapter child has an error handler. A write to an adapter that has exited, been killed or closed its input (`EPIPE`, `ECONNRESET`) fails that adapter's call instead of raising an unhandled `error` event that ended the process. The failure names the adapter, its exit code or signal, the last 10 stderr lines (cut at 300 characters) and the file it was on, and says so when the exit looks like memory pressure (a signal, exit 137 or an out-of-memory message); such an adapter is not restarted.
+- The result is read on `close`, not `exit`; a silent adapter is stopped with SIGKILL at its timeout, so one that ignores SIGTERM no longer hangs the index; an adapter that closes its input and keeps running is stopped; a reply line over 256 MiB stops the adapter; after a failure every later call fails at once with the same reason.
+- The index still fails with a non-zero exit and the previous snapshot stays current. The failed job's result now records `failed_adapter` and `completed_adapters`.
+- Progress prints a `prepare` stage line when capture ends, before the adapters start. The syntax-span and verification child processes also handle stream errors.
+- Adapters run in their own process group and a stop kills the group, so what an adapter started does not outlive it. The reply cap counts bytes; the out-of-memory marker is looked for in all of stderr; output that is not valid protocol from a live adapter ends it. Stored records (the failed job's error, the snapshot's failure) never carry stderr text, which can hold source or environment values; the live error still does.
+- While an adapter runs, SIGINT, SIGTERM and SIGHUP stop every adapter's process group and exit 130, 143 or 129, because detached adapters no longer get the terminal's SIGINT and a killed index runs no cleanup. Every built-in adapter exits when its input ends (tested for each; the C# one in Docker).
+- Not done: partial or resumable snapshots after an adapter failure (a follow-up issue).
+
+Reproducible order (closes #70):
+
+- Rows that tie on rank are now ordered by repository-relative path, then position, then name, then kind, instead of by ids that depend on where the repository is checked out, so the same repository in two directories gives the same rows in the same order from every tool. Rosetta now asserts row order for every call (FR234).
+- A page of `get_relationships` is read from an index on the site order, which snapshot format 0.10 records for each assertion and candidate (the next index rebuilds; an older snapshot still answers, in the same order, more slowly on a hub) (FR235). A member reached through its class and by its `overrides` edge is labelled `overrides` in impact (FR236); partial declarations on one line in `compare_snapshots` and tests on one line in `find_tests` are ordered by byte position (FR237, FR238).
+
 HTTP seams in one repository (closes #12; FR250 to FR259):
 
 - The TypeScript adapter records `fetch` and `axios` calls (`axios.<verb>`, `axios(...)`, `axios.request`, `axios.create` clients) with a literal, template, concatenated or constant path as outbound `dispatches_to` endpoints, rules `fetch_client` and `axios_client`, named `VERB path` as the Python client rule names them. A path on a base the code does not state keeps its literal suffix with `detail.prefix_unknown`.

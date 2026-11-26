@@ -100,8 +100,8 @@ describe('#28 a CLI index is an index job that status and MCP report while it ru
     expect(cli(['--data-dir', d, 'status']).stderr).toContain(`index job ${firstId} is running (analyze typescript 0/6)`)
     fs.writeFileSync(gate, '')
     expect(await first.exited, first.out.stderr).toBe(0)
-    expect(first.out.stderr.replace(/^\[\d+s\] /gm, '')).toBe('discover\ncapture 0/10\ninitialize typescript 0/7\ninitialize build 0/1\nanalyze typescript 0/6\nanalyze build 0/1\nwrite\ncheck\nseal\n')
-    expect(first.out.stdout).toMatch(new RegExp(`^phases discover \\d+s, capture \\d+s, initialize typescript \\d+s, initialize build \\d+s, analyze typescript \\d+s, analyze build \\d+s, write \\d+s, check \\d+s, seal \\d+s \\(job ${firstId}\\)\\nadapter peak memory typescript \\d+ MiB, build \\d+ MiB\\n$`, 'm'))
+    expect(first.out.stderr.replace(/^\[\d+s\] /gm, '')).toBe('discover\ncapture 0/10\nprepare\ninitialize typescript 0/7\ninitialize build 0/1\nanalyze typescript 0/6\nanalyze build 0/1\nwrite\ncheck\nseal\n')
+    expect(first.out.stdout).toMatch(new RegExp(`^phases discover \\d+s, capture \\d+s, prepare \\d+s, initialize typescript \\d+s, initialize build \\d+s, analyze typescript \\d+s, analyze build \\d+s, write \\d+s, check \\d+s, seal \\d+s \\(job ${firstId}\\)\\nadapter peak memory typescript \\d+ MiB, build \\d+ MiB\\n$`, 'm'))
     expect(tool(d, 'get_job', { job_id: firstId }).data.job).toMatchObject({ state: 'succeeded', phase: 'done', requested_by: user, finished_at: expect.any(String), error: null })
     expect(jobs()).toEqual([])
 
