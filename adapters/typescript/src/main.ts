@@ -613,7 +613,13 @@ function pathText(e: TS.Expression, depth = 0): { text: string; known: boolean }
   }
   return undefined
 }
-const stringProp = (o: TS.Expression | undefined, name: string): { value: TS.Expression } | undefined => {
+/** An expression without the wrappers that only change its type: parentheses, `as`, `satisfies`, `!` and `<T>`. */
+function unwrap(e: TS.Expression | undefined): TS.Expression | undefined {
+  while (e && (ts.isParenthesizedExpression(e) || ts.isAsExpression(e) || ts.isSatisfiesExpression(e) || ts.isNonNullExpression(e) || ts.isTypeAssertionExpression(e))) e = e.expression
+  return e
+}
+const stringProp = (given: TS.Expression | undefined, name: string): { value: TS.Expression } | undefined => {
+  const o = unwrap(given)
   if (!o || !ts.isObjectLiteralExpression(o)) return undefined
   const prop = o.properties.find((x): x is TS.PropertyAssignment => ts.isPropertyAssignment(x) && (ts.isIdentifier(x.name) || ts.isStringLiteralLike(x.name)) && x.name.text === name)
   return prop && { value: prop.initializer }
@@ -643,7 +649,7 @@ function httpClient(call: TS.CallExpression): { endpoint: string; rule: 'fetch_c
     const client = axiosClient(ts.isPropertyAccessExpression(callee) ? callee.expression : callee)
     if (!client) return undefined
     rule = 'axios_client'; base = client.base
-    const object = args[0] && ts.isObjectLiteralExpression(args[0]) ? args[0] : undefined
+    const object = unwrap(args[0]) && ts.isObjectLiteralExpression(unwrap(args[0])!) ? unwrap(args[0]) : undefined
     if (method && CLIENT_VERBS.has(method)) { verb = method.toUpperCase(); target = args[0] }
     else if (method === 'request' || !method) { target = object ? stringProp(object, 'url')?.value : args[0]; config = object ?? args[1] }
     else return undefined
@@ -655,7 +661,7 @@ function httpClient(call: TS.CallExpression): { endpoint: string; rule: 'fetch_c
   // A leading interpolation, or a base the client does not state, is a prefix the code does not say.
   let text = written.text
   const prefixUnknown = !written.known || base === null
-  if (!written.known) text = text.replace(/^\{param\}/, '')
+  if (!written.known) text = text.replace(/^(?:\{param\})+/, '')
   else if (base) text = `${base.replace(/\/+$/, '')}/${text.replace(/^\/+/, '')}`
   // A path starts with `/` or a scheme, or is relative to a base URL and shaped like a route (`rates/add`); a prefix we do not know needs the `/` that ends it.
   if (!(/^(\/|https?:\/\/)/.test(text) || (!prefixUnknown && /^[\w.{}-]+(\/[\w.{}-]+)+(\?|$)/.test(text)))) return undefined

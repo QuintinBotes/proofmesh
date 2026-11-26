@@ -7,7 +7,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import readline from 'node:readline'
 import { byteOffsets, send, type Range } from './common.js'
-import { openApiEndpoints, parseYaml } from './openapi.js'
+import { MAX_DEPTH, openApiEndpoints, parseYaml } from './openapi.js'
 import { ParseError, catalogLookup, parseXml, readBuildScript, readCatalog, readPom, readSettings, type Catalog, type GradleDep, type Pom, type XNode } from './jvm.js'
 
 const VERSION = '0.1.0'
@@ -19,8 +19,8 @@ type Project = { id: string; eco: 'npm' | 'go' | 'maven' | 'gradle'; manifest: M
 /** A node of a JSON document with where it sits; comments and trailing commas are allowed, as tsconfig.json allows them. */
 type JNode = { kind: 'object' | 'array' | 'string' | 'other'; start: number; end: number; value?: string; members?: Array<{ key: string; start: number; value: JNode }>; items?: JNode[] }
 
-function parseJson(text: string): JNode {
-  let i = 0
+function parseJson(text: string, strictKeys = false): JNode {
+  let i = 0, depth = 0
   const skip = () => {
     for (;;) {
       while (i < text.length && /\s/.test(text[i]!)) i++
@@ -41,10 +41,13 @@ function parseJson(text: string): JNode {
   const value = (): JNode => {
     skip()
     const c = text[i]
+    // The reader recurses: a document nested deeper than any real one is refused, not left to overflow the stack.
+    if ((c === '{' || c === '[') && ++depth > MAX_DEPTH) throw new ParseError(`nesting is deeper than ${MAX_DEPTH} levels`, i)
     if (c === '"') return string()
     if (c === '{' || c === '[') {
       const start = i++, close = c === '{' ? '}' : ']'
       const node: JNode = c === '{' ? { kind: 'object', start, end: 0, members: [] } : { kind: 'array', start, end: 0, items: [] }
+      const seen = new Set<string>()
       for (;;) {
         skip()
         if (text[i] === close) { i++; break }
@@ -54,6 +57,8 @@ function parseJson(text: string): JNode {
           skip()
           if (text[i] !== ':') throw new ParseError(`expected ":" after "${key.value}"`, i)
           i++
+          if (strictKeys && seen.has(key.value!)) throw new ParseError(`duplicate key ${JSON.stringify(key.value)}`, key.start)
+          seen.add(key.value!)
           node.members!.push({ key: key.value!, start: key.start, value: value() })
         } else node.items!.push(value())
         skip()
@@ -62,6 +67,7 @@ function parseJson(text: string): JNode {
         throw new ParseError(`expected "," or "${close}", found ${text[i] ?? 'the end'}`, i)
       }
       node.end = i
+      depth--
       return node
     }
     const start = i
@@ -218,7 +224,7 @@ function compute(): { symbols: Fact[]; relationships: Fact[] } {
         if (!ignored && path.posix.basename(m.dir) === 'gradle') catalogs.set(dirOf(m.dir), readCatalog(m.text))
       } else if (OPENAPI_NAME.test(base)) {
         // An API description (FR253): its endpoints are declared where it states them; a file that is no OpenAPI or Swagger document declares none.
-        const found = openApiEndpoints(/\.json$/i.test(base) ? parseJson(m.text) : parseYaml(m.text))
+        const found = openApiEndpoints(/\.json$/i.test(base) ? parseJson(m.text, true) : parseYaml(m.text))
         const seen = new Set<string>()
         for (const e of found?.endpoints ?? []) {
           const id = `${file}#endpoint#${e.name}`

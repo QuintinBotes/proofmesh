@@ -36,20 +36,25 @@ function scalar(text: string, start: number, end: number): DocNode {
 const safeJson = (t: string, at: number): string => { try { return JSON.parse(t) as string } catch { throw new ParseError('invalid escape in a quoted string', at) } }
 
 /** The key of a `key: value` line, as its end index in the text and its unquoted name; undefined when the line has no key. */
-function keyOf(text: string): { key: string; rest: number } | undefined {
+function keyOf(text: string, at: number): { key: string; rest: number } | undefined {
   if (text[0] === '"' || text[0] === "'") {
     const q = text[0]
     let i = 1
     while (i < text.length && (text[i] !== q || (q === "'" && text[i + 1] === "'" && ++i))) i += text[i] === '\\' && q === '"' ? 2 : 1
     const m = /^\s*:(\s|$)/.exec(text.slice(i + 1))
-    return i < text.length && m ? { key: q === '"' ? safeJson(text.slice(0, i + 1), 0) : text.slice(1, i).replace(/''/g, "'"), rest: i + 1 + m[0].length } : undefined
+    return i < text.length && m ? { key: q === '"' ? safeJson(text.slice(0, i + 1), at) : text.slice(1, i).replace(/''/g, "'"), rest: i + 1 + m[0].length } : undefined
   }
   const m = /^(.*?):(\s+|$)/.exec(text)
   return m && m[1] ? { key: m[1].trim(), rest: m[0].length } : undefined
 }
 
+/** How deep a document may nest before it is refused: real descriptions stay far under it, and the readers recurse. */
+export const MAX_DEPTH = 200
+
 export function parseYaml(text: string): DocNode {
   const lines: Line[] = []
+  const anchors = new Set([...text.matchAll(/(?:^|[\s[{,:-])&([^\s,[\]{}]+)/g)].map((m) => m[1]!))
+  let depth = 0
   let at = 0
   for (const raw of text.split('\n')) {
     const lineAt = at
@@ -62,9 +67,17 @@ export function parseYaml(text: string): DocNode {
     lines.push({ indent, text: body, at: lineAt + indent, end: lineAt + line.length })
   }
   let i = 0
+  const checked = (n: DocNode, text: string): DocNode => {
+    if (text[0] === '*' && !anchors.has(text.slice(1).split(/[\s,]/)[0]!)) throw new ParseError(`undefined alias ${text.split(/\s/)[0]}`, n.start)
+    return n
+  }
   /** The end offset of whatever the value starting at `lines[from]` consumed: the last line of it. */
   const endOf = (from: number) => lines[Math.max(from, i - 1)]!.end
   const block = (indent: number): DocNode => {
+    if (++depth > MAX_DEPTH) throw new ParseError(`nesting is deeper than ${MAX_DEPTH} levels`, lines[i]!.at)
+    try { return blockBody(indent) } finally { depth-- }
+  }
+  const blockBody = (indent: number): DocNode => {
     const first = lines[i]!
     if (first.text === '-' || first.text.startsWith('- ')) return sequence(indent)
     return mapping(indent)
@@ -75,20 +88,21 @@ export function parseYaml(text: string): DocNode {
       const l = lines[i]!, rest = l.text.slice(1).trimStart()
       if (!rest) { i++; items.push(i < lines.length && lines[i]!.indent > indent ? block(lines[i]!.indent) : { kind: 'other', start: l.at, end: l.end }); continue }
       const shift = l.text.length - rest.length
-      if (keyOf(rest) && !/^[[{]/.test(rest)) {
+      if (keyOf(rest, l.at + shift) && !/^[[{]/.test(rest)) {
         // `- key: v`: the item is a mapping whose first line sits after the dash.
         lines[i] = { indent: indent + shift, text: rest, at: l.at + shift, end: l.end }
         items.push(mapping(indent + shift))
-      } else { i++; items.push(scalar(rest, l.at + shift, l.end)) }
+      } else { i++; items.push(checked(scalar(rest, l.at + shift, l.end), rest)) }
     }
     return { kind: 'array', start, end: endOf(0), items }
   }
   const mapping = (indent: number): DocNode => {
-    const members: NonNullable<DocNode['members']> = [], start = lines[i]!.at
+    const members: NonNullable<DocNode['members']> = [], seen = new Set<string>(), start = lines[i]!.at
     while (i < lines.length && lines[i]!.indent === indent && !(lines[i]!.text === '-' || lines[i]!.text.startsWith('- '))) {
-      const l = lines[i]!, k = keyOf(l.text)
+      const l = lines[i]!, k = keyOf(l.text, l.at)
       if (!k) throw new ParseError(`expected "key: value", found ${JSON.stringify(l.text.slice(0, 40))}`, l.at)
-      if (members.some((m) => m.key === k.key)) throw new ParseError(`duplicate key ${JSON.stringify(k.key)}`, l.at)
+      if (seen.has(k.key)) throw new ParseError(`duplicate key ${JSON.stringify(k.key)}`, l.at)
+      seen.add(k.key)
       const rest = l.text.slice(k.rest).trim(), valueAt = l.at + k.rest
       i++
       let value: DocNode
@@ -108,7 +122,7 @@ export function parseYaml(text: string): DocNode {
         if (open !== 0) throw new ParseError('unclosed flow collection', valueAt)
         value = rest === '{}' ? { kind: 'object', start: valueAt, end: l.end, members: [] } : rest === '[]' ? { kind: 'array', start: valueAt, end: l.end, items: [] } : { kind: 'other', start: valueAt, end: endOf(i - 1) }
       } else {
-        value = scalar(rest, valueAt, l.end)
+        value = checked(scalar(rest, valueAt, l.end), rest)
         // A plain scalar continues on the lines indented under it.
         while (i < lines.length && lines[i]!.indent > indent) i++
         value.end = endOf(i - 1)
@@ -138,7 +152,7 @@ export function openApiEndpoints(root: DocNode): { endpoints: OpenApiEndpoint[];
   const version = member(root, 'openapi') ?? member(root, 'swagger')
   if (!version || version.value.kind !== 'string' || !/^[23]\./.test(version.value.value ?? '')) return undefined
   const servers = member(root, 'servers')?.value, bp = member(root, 'basePath')?.value
-  const bases = [...new Set([...(bp?.kind === 'string' ? [basePathOf(bp.value!)] : []), ...(servers?.kind === 'array' ? servers.items!.flatMap((s) => { const u = member(s, 'url')?.value; return u?.kind === 'string' ? [basePathOf(u.value!)] : [] }) : [])])].slice(0, 5)
+  const bases = [...new Set([...(bp?.kind === 'string' ? [basePathOf(bp.value!)] : []), ...(servers?.kind === 'array' ? servers.items!.flatMap((s) => { const u = member(s, 'url')?.value; return u?.kind === 'string' ? [basePathOf(u.value!)] : [] }) : [])])]
   const paths = member(root, 'paths')?.value
   const endpoints: OpenApiEndpoint[] = []
   let skipped = 0

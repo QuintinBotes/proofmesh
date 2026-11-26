@@ -17,6 +17,7 @@ import { route, routeScore } from '../links/index.js'
 type Rel = AnalyzeResponse['relationships'][number]
 type Range = Rel['site']['range']
 export type EndpointSym = { producer: string; local_id: string; path: string; name: string; qualified_name: string; range: Range; signature: string | null }
+export type Qualified<P> = Item<P> & { qualified: true }
 export type CodeSym = { producer: string; local_id: string; kind: string; name: string }
 type Item<P> = { rel: Rel; producer: P }
 
@@ -27,7 +28,8 @@ const PREFIX_UNKNOWN = 0.5
 /** The confidence of a handler found only by the operationId of the document that declares the endpoint. */
 const OPERATION_ID = 0.7
 
-const refOf = (producer: string, local: string) => `@${producer}:${local}`
+/** A symbol named across adapters: the adapter and its own local id. The rows built from these say so with `qualified`, so no adapter's id is ever decoded. */
+const refOf = (producer: string, local: string) => `${producer}:${local}`
 const pathOf = (qualified: string) => qualified.slice(qualified.indexOf(' ') + 1)
 /** Names of the `{param}` segments of a route, by position from the end, as written. */
 const params = (qualified: string) => pathOf(qualified).replace(/^\/+|\/+$/g, '').split('/').filter(Boolean).map((s) => (s.startsWith('{') ? s.replace(/[{}*]/g, '').split(':')[0]!.toLowerCase() : null))
@@ -45,12 +47,12 @@ const normalName = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '')
 
 type Op = { names: string[]; handlers: Array<{ ref: string; cap: number }>; declared: EndpointSym[] }
 
-export function linkHttp<P extends { id: string }>(code: CodeSym[], endpoints: EndpointSym[], items: Array<Item<P>>, seams: P): Array<Item<P>> {
+export function linkHttp<P extends { id: string }>(code: CodeSym[], endpoints: EndpointSym[], items: Array<Item<P>>, seams: P): Array<Qualified<P>> {
   const endpoint = new Map(endpoints.map((e) => [`${e.producer}:${e.local_id}`, e]))
   const ops = new Map<string, Op>()
   const op = (qualified: string) => ops.get(operationKey(qualified)) ?? ops.set(operationKey(qualified), { names: [], handlers: [], declared: [] }).get(operationKey(qualified))!
-  const out: Array<Item<P>> = []
-  const emit = (rel: Rel) => out.push({ rel: { ...rel, origin: 'contract_match' }, producer: seams })
+  const out: Array<Qualified<P>> = []
+  const emit = (rel: Rel) => out.push({ rel: { ...rel, origin: 'contract_match' }, producer: seams, qualified: true })
 
   // Code routes: an endpoint's `exposes` of the code that handles it.
   for (const { rel, producer } of items) {
@@ -104,7 +106,8 @@ export function linkHttp<P extends { id: string }>(code: CodeSym[], endpoints: E
     const handlers = [...new Map(pool.flatMap((m) => m.o.handlers.map((h) => [h.ref, { ...h, via: m }] as const)).filter(([r]) => r !== me)).values()]
     if (!handlers.length) { emit({ ...base, resolution: 'unresolved', reason: 'not_indexed', detail: { ...detail, endpoint: pool[0]!.endpoint, why: 'declared_without_handler' } }); continue }
     const confidence = (m: { score: number }, h: { cap: number }) => Math.min(m.score, h.cap, prefixUnknown ? PREFIX_UNKNOWN : 1)
-    if (handlers.length === 1) {
+    // A base-unknown client is matched by its suffix alone, so two endpoints that end so are ambiguous whatever serves them.
+    if (handlers.length === 1 && !(prefixUnknown && pool.length > 1)) {
       const h = handlers[0]!
       emit({ ...base, resolution: 'resolved', target: { symbol: h.ref }, detail: { ...detail, endpoint: h.via.endpoint, confidence: String(confidence(h.via, h)) } })
       continue

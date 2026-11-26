@@ -466,9 +466,12 @@ class FactWriter {
     }
   }
 
+  /** Set while the relationships of a cross-adapter pass are written. */
+  private qualified = false
+
   private symbol(p: Producer, local: string): string {
-    // A pass that spans adapters names a symbol by `@<adapter>:<local id>`, as that adapter declared it.
-    const id = this.localToSymbol.get(local.startsWith('@') ? local.slice(1) : `${p.id}:${local}`)
+    // `qualified` rows come from a pass that spans adapters: their ids are already `<adapter>:<local id>`. An adapter's own ids never are decoded.
+    const id = this.localToSymbol.get(this.qualified ? local : `${p.id}:${local}`)
     if (!id) throw new AdapterProtocolError(`relationship references unknown symbol ${local}`)
     return id
   }
@@ -514,10 +517,11 @@ class FactWriter {
     }
   }
 
-  relationships(items: Array<{ rel: Rel; producer: Producer }>, onProgress?: (done: number) => void): void {
+  relationships(items: Array<{ rel: Rel; producer: Producer; qualified?: boolean }>, onProgress?: (done: number) => void): void {
     const imports = new Map<string, { source: string; target: string | null; targetKind: string | null; resolution: string; reason: string | null; group: string; kind: string; detail?: Record<string, unknown>; evidence: string[]; origin: string; p: Producer }>()
     let written = 0
-    for (const { rel: r, producer: p } of items) {
+    for (const { rel: r, producer: p, qualified } of items) {
+      this.qualified = qualified === true
       if (++written % 25000 === 0) onProgress?.(written)
       // A `contains` that targets a file means that file's module symbol, which another adapter declared; a file with none is not contained (FR125).
       const module = r.type === 'contains' && r.target?.file ? (this.stmt.moduleOf!.get(this.fileId(r.target.file)) as { id: string } | undefined)?.id : undefined
@@ -553,6 +557,7 @@ class FactWriter {
       }
       this.stmt.assertionEvidence!.run(id, ev)
     }
+    this.qualified = false
     for (const imp of imports.values()) {
       const id = derivedId('as', 24, this.snapshotId, 'imports', imp.source, imp.group, imp.target ?? `unresolved:${imp.evidence[0]}`)
       const reason = imp.target ? null : (imp.reason ?? 'import_unresolved')

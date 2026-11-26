@@ -254,3 +254,99 @@ describe('FR259 the links are the same whether the repository was indexed clean 
     expect(assertions(dataDir, 'seams-http').map((r) => `${r.src}:${r.resolution}`)).toEqual(['client:a:resolved', 'client:b:unresolved'])
   })
 })
+
+describe('FR250 to FR254 corrections: hostile inputs, base paths, option wrappers and unknown-base ambiguity', () => {
+  const failed = async (files: Record<string, string>, file: string) => {
+    const { dataDir } = await indexedRepo(files)
+    return withSnapshot(dataDir, (db) => db.prepare('select disposition, disposition_detail from file where path = ?').get(file)) as { disposition: string; disposition_detail: string }
+  }
+
+  it('FR254 a relationship to a symbol whose local id starts with @ keeps its adapter, and the HTTP links still resolve beside it', async () => {
+    const { dataDir } = await indexedRepo({
+      'tsconfig.json': JSON.stringify({ compilerOptions: { target: 'ES2022', module: 'ESNext', strict: true }, include: ['*.ts'] }),
+      '@lib.ts': 'export function helper(): number { return 1 }\n',
+      'user.ts': "import { helper } from './@lib'\nexport const run = () => helper()\nexport const get = () => fetch('/api/x')\n",
+      'server.py': py('/api/x', 'serve'),
+    })
+    expect(linkOf(dataDir, 'user:get')).toMatchObject([{ resolution: 'resolved', dst: 'server:serve' }])
+    expect(withSnapshot(dataDir, (db) => db.prepare("select count(*) as n from assertion a join symbol t on t.id = a.target_id where a.type = 'calls' and t.name = 'helper'").get())).toEqual({ n: 1 })
+  })
+
+  it('FR253 an array nested too deep to read in an x- field makes the document invalid_openapi and does not abort the index', async () => {
+    const deep = '['.repeat(50000) + ']'.repeat(50000)
+    const row = await failed({ 'openapi.json': `{ "openapi": "3.0.0", "x-deep": ${deep}, "paths": {} }` }, 'openapi.json')
+    expect(row.disposition).toBe('failed')
+    expect(row.disposition_detail).toMatch(/^invalid_openapi:line 1: nesting is deeper than/)
+  })
+
+  it('FR253 a YAML mapping nested too deep is invalid_openapi too', async () => {
+    const lines = Array.from({ length: 400 }, (_, i) => `${' '.repeat(i)}k${i}:`)
+    const row = await failed({ 'openapi.yaml': ['openapi: 3.0.0', 'x-deep:', ...lines.map((l) => ' ' + l)].join('\n') + '\n' }, 'openapi.yaml')
+    expect(row.disposition).toBe('failed')
+    expect(row.disposition_detail).toMatch(/^invalid_openapi:line \d+: nesting is deeper than/)
+  })
+
+  it('FR253 duplicate-key checking does work in the number of keys, not its square', async () => {
+    const { parseYaml } = await import('../../../adapters/syntax/src/openapi.js')
+    const n = 4000, doc = Array.from({ length: n }, (_, i) => `key${i}: v`).join('\n') + '\n'
+    // A scan of the members so far per key calls Array.prototype.some about n*n/2 times; a set calls it never.
+    const original = Array.prototype.some
+    let calls = 0
+    Array.prototype.some = function (this: unknown[], ...args: Parameters<typeof original>) { calls += this.length; return original.apply(this, args) }
+    try { parseYaml(doc) } finally { Array.prototype.some = original }
+    expect(calls).toBeLessThan(n * 10)
+  })
+
+  it('FR251 a base-unknown suffix that one served and one declared-only endpoint end with is ambiguous, not a 0.5 link', async () => {
+    const { dataDir } = await indexedRepo({
+      'tsconfig.json': TS,
+      'client.ts': "declare const base: string\nexport const loose = () => fetch(base + '/orders')\n",
+      'server.py': py('/api/orders', 'list_orders'),
+      'openapi.yaml': 'openapi: 3.0.0\npaths:\n  /legacy/orders:\n    get: {}\n',
+    })
+    expect(linkOf(dataDir, 'client:loose')).toMatchObject([{ resolution: 'ambiguous', prefix_unknown: 'true' }])
+  })
+
+  it('FR253 a sixth distinct server path is kept, not dropped', async () => {
+    const servers = Array.from({ length: 7 }, (_, i) => `  - url: /v${i}`).join('\n')
+    const { dataDir } = await indexedRepo({ 'openapi.yaml': `openapi: 3.0.0\nservers:\n${servers}\npaths:\n  /a:\n    get: {}\n` })
+    expect(withSnapshot(dataDir, (db) => db.prepare("select qualified_name from symbol where kind = 'endpoint' order by qualified_name").all()).length).toBe(7)
+  })
+
+  it('FR253 an undefined YAML alias is invalid_openapi', async () => {
+    const row = await failed({ 'openapi.yaml': 'openapi: 3.0.0\npaths: *missing\n' }, 'openapi.yaml')
+    expect(row.disposition).toBe('failed')
+    expect(row.disposition_detail).toMatch(/^invalid_openapi:line 2: undefined alias/)
+  })
+
+  it('FR253 a duplicate key in a JSON document is invalid_openapi', async () => {
+    const row = await failed({ 'openapi.json': '{\n  "openapi": "3.0.0",\n  "paths": {},\n  "paths": { "/a": { "get": {} } }\n}\n' }, 'openapi.json')
+    expect(row.disposition).toBe('failed')
+    expect(row.disposition_detail).toMatch(/^invalid_openapi:line 4: duplicate key "paths"/)
+  })
+
+  it('FR253 a bad escape in a nested YAML key is reported at its own line', async () => {
+    const row = await failed({ 'openapi.yaml': 'openapi: 3.0.0\npaths:\n  /a:\n    "bad\\qkey": 1\n' }, 'openapi.yaml')
+    expect(row.disposition_detail).toMatch(/^invalid_openapi:line 4: /)
+  })
+
+  it('FR250 options wrapped in as, satisfies, parentheses or non-null are read; so is a config object under them', async () => {
+    const { dataDir } = await indexedRepo({
+      'tsconfig.json': TS,
+      'calls.ts': [
+        "import axios from 'axios'",
+        "export const a = () => fetch('/o', { method: 'POST' } as RequestInit)",
+        "export const b = () => fetch('/o', ({ method: 'PUT' }) satisfies RequestInit)",
+        "export const c = () => fetch('/o', { method: 'DELETE' }!)",
+        "export const d = () => axios({ url: '/o', method: 'patch' } as object as { url: string })",
+      ].join('\n') + '\n',
+    })
+    const got = (s: string) => clientsOf(dataDir, `calls:${s}`).map((r) => r.endpoint)
+    expect([got('a'), got('b'), got('c'), got('d')]).toEqual([['POST o'], ['PUT o'], ['DELETE o'], ['PATCH o']])
+  })
+
+  it('FR251 every leading interpolation is the unknown base, not just the first', async () => {
+    const { dataDir } = await indexedRepo({ 'tsconfig.json': TS, 'calls.ts': 'declare const a: string\ndeclare const b: string\nexport const x = () => fetch(`${a}${b}/orders`)\n' })
+    expect(clientsOf(dataDir, 'calls:x')).toEqual([{ endpoint: 'GET orders', direction: 'outbound', rule: 'fetch_client', prefix_unknown: 'true' }])
+  })
+})
