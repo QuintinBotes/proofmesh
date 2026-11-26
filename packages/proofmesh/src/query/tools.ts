@@ -293,6 +293,8 @@ function strictFreshness(ctx: Ctx, root: string): Envelope['freshness'] {
 
 function envelope(ctx: Ctx, tool: ToolName, requested: Limits | undefined, r: Partial, clampNotes: string[], freshness: Envelope['freshness']): Answer {
   const { db } = ctx
+  // The cut shortens lists of the answer, which a tool may have taken from a cached object: work on a copy (FR365).
+  r.data = structuredClone(r.data)
   addKeys(db, tool, r.data)
   const stop = new Set(r.stop_reasons ?? [])
   if (Date.now() - ctx.started > ctx.limits.timeout_ms) stop.add('timeout')
@@ -957,11 +959,12 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     const result: Partial = { data, stop_reasons: r.stopped ? [r.stopped] : [], limitations, next_offset: r.next_offset, shrink: 'hits', keep: 1 }
     // A hit the byte budget drops takes its whole file with it, and the cursor continues at that file: no hit is skipped or repeated.
     // The first file alone is cut hit by hit, as the scan cuts a file with more matches than a page holds.
-    result.prune = () => {
-      const dropped = r.hit_files[data.hits.length]!
+    result.prune = (d) => {
+      const hits = d.hits as unknown[]
+      const dropped = r.hit_files[hits.length]!
       if (r.hit_files[0] === dropped) return
-      while (data.hits.length && r.hit_files[data.hits.length - 1] === dropped) data.hits.pop()
-      data.files_scanned = result.next_offset = dropped
+      while (hits.length && r.hit_files[hits.length - 1] === dropped) hits.pop()
+      d.files_scanned = result.next_offset = dropped
     }
     return result
   },

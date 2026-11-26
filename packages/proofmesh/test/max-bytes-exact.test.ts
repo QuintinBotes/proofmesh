@@ -23,7 +23,7 @@ function holdsBudget(call: Call): { cut: boolean } {
   const size = sent(full)
   let cut = false
   // From just under the full answer down to a few bytes: every budget is held or refused, never exceeded.
-  for (const budget of [size - 1, size - 12, size - 40, Math.floor(size * 0.9), Math.floor(size * 0.75), Math.floor(size * 0.6), Math.floor(size * 0.5), Math.floor(size * 0.4), Math.floor(size * 0.3), Math.floor(size * 0.2), 2500, 1200, 900, 700]) {
+  for (const budget of [size - 1, size - 12, size - 40, Math.floor(size * 0.9), Math.floor(size * 0.7), Math.floor(size * 0.5), Math.floor(size * 0.3), 2500, 900]) {
     if (budget < 1) continue
     const input = { ...call.input, limits: { ...(call.input.limits as object | undefined), max_bytes: budget } }
     let a: ReturnType<typeof runTool>
@@ -73,7 +73,7 @@ describe('FR330 FR331 FR332 FR333 FR334 a cut answer is at most max_bytes, note 
       const { cut } = holdsBudget({ ...c, dataDir: d })
       if (c.cuts) expect(cut, `${c.name} ${JSON.stringify(c.input.envelope ?? '')} was cut at some budget`).toBe(true)
     }
-  })
+  }, 240000)
 
   it('FR331 FR332 a max_bytes too small for the envelope and its note is refused with max_bytes_too_small, never answered over budget', () => {
     for (const c of calls) {

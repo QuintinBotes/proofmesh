@@ -365,6 +365,9 @@ Acceptance: CI runs my pull request without secrets or release credentials; lice
 - FR332: MUST apply FR330 and FR331 to a lean answer, measured on its text.
 - FR333: MUST hold `search_sources` to FR330 by dropping whole files, so its cursor continues at the first file dropped and no hit is skipped or repeated.
 - FR334: MUST hold `get_ecosystem` to FR330 and FR331, measured on its whole envelope.
+- FR365: MUST cut an answer to `max_bytes` on a copy of its data, so a later answer in the same process, with or without `max_bytes`, equals one taken before the cut.
+- FR366: MUST hold FR365 for every tool that shortens a list to fit `max_bytes`.
+- FR367: MUST keep the cached snapshot summary frozen, so a mutation of it throws instead of changing later answers.
 
 ### Adapter memory and progress
 

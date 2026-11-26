@@ -4,11 +4,12 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 ## Unreleased
 
-A cut answer fits max_bytes exactly, note and flags included (closes #88; FR330 to FR334):
+A cut answer fits max_bytes exactly, note and flags included (closes #88 and #92; FR330 to FR334, FR365 to FR367):
 
 - `max_bytes` is measured on the answer as it is sent, with its truncation note, `truncated`, `stop_reasons` and cursor, and a list is cut until that answer fits, so a cut answer no longer passes the budget by the size of what the cut adds. A lean answer is measured on its text.
-- A `max_bytes` too small for the envelope with its note is refused as `INVALID_ARGUMENT` (`detail: max_bytes_too_small`) instead of answered over budget. Behaviour change: a budget below about the size of the bare envelope used to return an oversized answer.
+- A `max_bytes` too small for the envelope with its note is refused as `INVALID_ARGUMENT` (`detail: max_bytes_too_small`) instead of answered over budget. **Behaviour change:** a budget below about the size of the bare envelope used to return an oversized answer.
 - `search_sources` drops whole files to fit and its cursor continues at the first one dropped; `get_ecosystem` is measured on its whole envelope. Catalog tools (`list_repositories`, `list_snapshots`, `list_workspaces`, `get_job`) have nothing to cut and are unchanged.
+- Cutting an answer to `max_bytes` works on a copy of its data, and the cached snapshot summary is frozen, so a cut no longer shortens cached lists for later answers in the same process.
 
 Index files at the syntax tier when their precise adapter cannot run (closes #18; FR310 to FR319):
 
