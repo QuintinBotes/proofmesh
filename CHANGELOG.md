@@ -4,6 +4,13 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 ## Unreleased
 
+Bounded adapter memory, and progress while indexing a large repository (closes #6; FR270 to FR277):
+
+- Each adapter process runs under a memory budget (8192 MB by default; `adapter_memory_mb` per repository and adapter, or `PROOFMESH_ADAPTER_MEMORY_MB`). The host samples the process, stops one past the budget with SIGKILL, and passes the limit to Node (`--max-old-space-size`) and .NET (`DOTNET_GCHeapHardLimit`). An overrun names the adapter, the budget and the peak resident memory.
+- An adapter that passes its budget is started again with half the files of that batch, and batches of that size after it; the sealed facts are those of an index without a budget. A file that alone passes it fails with `memory_budget` and the census counts it; an adapter that cannot start within the budget fails its files and is not started again. Each restart is printed and recorded in the job's result as `memory_restarts`. The budget is part of a snapshot's identity, so raising it indexes again.
+- Progress repeats every 5 seconds (it was a minute), and a running adapter's line adds its languages, files a second and an estimate. `get_job` returns the same figures in `adapters`, refreshed at the same cadence. The index summary prints seconds per analysed file for each adapter.
+- New benchmark tier `bench/graph-bench/run-large.sh` on a pinned public repository of more than 20,000 files; not run for this change. Not done: reducing a TypeScript program's units on restart, and a budget line in `workspace_status`.
+
 A dying adapter fails the index with its name and exit status, instead of crashing it (closes #78; FR260 to FR265):
 
 - Every stream of an adapter child has an error handler. A write to an adapter that has exited, been killed or closed its input (`EPIPE`, `ECONNRESET`) fails that adapter's call instead of raising an unhandled `error` event that ended the process. The failure names the adapter, its exit code or signal, the last 10 stderr lines (cut at 300 characters) and the file it was on, and says so when the exit looks like memory pressure (a signal, exit 137 or an out-of-memory message); such an adapter is not restarted.

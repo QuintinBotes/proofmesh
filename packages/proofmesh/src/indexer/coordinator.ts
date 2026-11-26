@@ -15,8 +15,8 @@ import { effectiveCodeowners, ownerRule, OWNERSHIP_VERSION, parseCodeowners, typ
 import { EvidenceStore } from '../evidence/store.js'
 import { manifestHash, unstable } from './freshness.js'
 import { fillBodyHashes } from './body-hash.js'
-import { AdapterProcess, AdapterProtocolError, PROTOCOL_VERSION } from './adapter-host.js'
-import { assemble, FactCache, fileKeys, splitByFile } from './fact-cache.js'
+import { adapterBudgetMb, AdapterBudgetError, AdapterProcess, AdapterProtocolError, PROTOCOL_VERSION } from './adapter-host.js'
+import { assemble, FactCache, fileKeys, splitByFile, type FileFacts } from './fact-cache.js'
 import { analysisConfig, checkoutCommit, discover, gitInfo, type Discovered } from './discovery.js'
 import { registryFor, type AdapterSpec, type Registry } from './languages.js'
 import { buildCensus } from './census.js'
@@ -37,16 +37,19 @@ export type IndexResult = {
   commit?: string
   /** The largest resident set size each adapter process reached, in KiB, where it could be sampled. */
   adapterPeakRssKb: Record<string, number>
+  /** Each time an adapter passed its memory budget and was started again, and what the host did about it. */
+  memoryRestarts?: Array<{ adapter: string; budget_mb: number; peak_rss_mb: number | null; files: number; action: 'smaller_batches' | 'file_failed' | 'adapter_failed' }>
 }
 type Mode = 'no_execution' | 'trusted_build'
 type Captured = Discovered & { hash: string }
 type Rel = AnalyzeResponse['relationships'][number]
-type AdapterRun = { spec: AdapterSpec; sources: Discovered[]; configs: Discovered[]; process?: AdapterProcess; manifest?: InitializeResponse['adapter']; inputs?: string[]; mode: Mode; units?: InitializeResponse['units']; keys?: Map<string, string>; entrySha256?: string }
+type AdapterRun = { spec: AdapterSpec; sources: Discovered[]; configs: Discovered[]; process?: AdapterProcess; manifest?: InitializeResponse['adapter']; inputs?: string[]; mode: Mode; units?: InitializeResponse['units']; keys?: Map<string, string>; entrySha256?: string; budgetMb?: number; config?: Record<string, unknown>; unstartable?: AdapterBudgetError; cap?: number }
 type Producer = { id: string; version: string; mode: Mode }
 /** Import kinds, strongest first: a file that imports another both for its values and for its types depends on it at run time. */
 const IMPORT_KINDS = ['static', 're_export', 'type_only']
 
-const BATCH = Number(process.env.PROOFMESH_INDEX_BATCH) || 200
+const BATCH = () => Number(process.env.PROOFMESH_INDEX_BATCH) || 200
+const languagesOf = (run: AdapterRun) => [...run.spec.languages].join('+')
 
 /**
  * Checkpoint bookkeeping inside the staging file, dropped before sealing. A batch is done when its row commits, in the same
@@ -77,7 +80,7 @@ const capabilities = (reported: Record<string, string>, fill: string) => canonic
 const NOT_RUN = capabilities({}, 'not_run')
 
 /** write is relationship resolution; initialize and analyze name the adapter. */
-export type Progress = { phase: 'discover' | 'capture' | 'prepare' | 'initialize' | 'analyze' | 'write' | 'check' | 'seal'; adapter?: string; done: number; total: number; plan?: { mode: 'incremental' | 'full'; analyse: number; reuse: number } }
+export type Progress = { phase: 'discover' | 'capture' | 'prepare' | 'initialize' | 'analyze' | 'write' | 'check' | 'seal'; adapter?: string; /** The languages the adapter analyses, during its own phases. */ language?: string; done: number; total: number; plan?: { mode: 'incremental' | 'full'; analyse: number; reuse: number } }
 
 /**
  * registry: the conformance kit indexes with the adapter it checks first; everything else uses the data directory's own.
@@ -121,6 +124,12 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
       }
     }
     runs = runs.filter((r) => r.sources.length && r.spec.entry())
+    // The budget is a setting of the host, not an input of the adapter's facts, so it stays out of the configuration the adapter and the cache keys see.
+    for (const run of runs) {
+      const { adapter_memory_mb: setting, ...config } = catalog.adapterConfig(repo.id, run.spec.id)
+      run.config = config
+      run.budgetMb = adapterBudgetMb({ adapter_memory_mb: setting })
+    }
 
     progress({ phase: 'capture', done: 0, total: discovered.length })
     const captured: Captured[] = []
@@ -145,14 +154,19 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
     }
     for (const run of runs) {
       catalog.verifyExtensions(run.spec.id)
-      run.process = new AdapterProcess(run.spec.entry()!, undefined, undefined, run.spec.id)
-      progress({ phase: 'initialize', adapter: run.spec.id, done: 0, total: run.sources.length + run.configs.length })
+      run.process = new AdapterProcess(run.spec.entry()!, undefined, Number(process.env.PROOFMESH_ADAPTER_RSS_SAMPLE_MS) || undefined, run.spec.id, run.budgetMb)
+      progress({ phase: 'initialize', adapter: run.spec.id, language: languagesOf(run), done: 0, total: run.sources.length + run.configs.length })
       const init = await run.process.initialize({
         // External inputs such as installed packages are read from the registered working tree, also for a commit.
         protocol_version: PROTOCOL_VERSION, workspace, repository_root: repo.root, analysis_mode: requestedMode,
         files: [...run.sources, ...run.configs].map((c) => ({ path: c.path, content_hash: hashOf.get(c.path)!, language: c.language! })),
-        config: { ...catalog.adapterConfig(repo.id, run.spec.id), ...run.spec.config?.() },
-      }).catch((e) => { throw e instanceof AdapterProtocolError ? adapterFailure(run.spec.id, finished, 'failed to initialize', e) : e })
+        config: { ...run.config, ...run.spec.config?.() },
+      }).catch((e) => {
+        // An adapter that cannot even start within its budget fails its own files, rather than the index; asking it again would pass the same budget.
+        if (e instanceof AdapterBudgetError) { run.unstartable = e; return undefined }
+        throw e instanceof AdapterProtocolError ? adapterFailure(run.spec.id, finished, 'failed to initialize', e) : e
+      })
+      if (!init) { run.manifest = { id: run.spec.id, version: 'not_started', protocol_version: PROTOCOL_VERSION, languages: [...run.spec.languages], toolchain: {} }; run.inputs = []; continue }
       run.manifest = init.adapter
       run.inputs = [...(init.external_inputs ?? [])].sort()
       run.mode = init.analysis_mode ?? 'no_execution'
@@ -164,8 +178,10 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
     for (const r of runs) r.entrySha256 = r.spec.sha256 ?? sha256File(r.spec.entry()!)
     const adapters = runs.map((r) => ({ ...r.manifest!, analysis_mode: r.mode, external_inputs: r.inputs ?? [], entry_sha256: r.entrySha256! })).sort((a, b) => (a.id < b.id ? -1 : 1))
     const analysisMode: Mode = adapters.some((a) => a.analysis_mode === 'trusted_build') ? 'trusted_build' : 'no_execution'
-    const configs = Object.fromEntries(runs.map((r) => [r.spec.id, catalog.adapterConfig(repo.id, r.spec.id)]))
-    const identity = { repository_id: repo.id, manifest_hash: manifest, config_hash: sha256(canonicalJson({ ...analysisConfig(), adapters: configs })), analysis_mode: analysisMode, adapters, format_version: FORMAT_VERSION, format_ddl: sha256(readSql(`snapshot-format/${FORMAT_VERSION}.sql`)), ownership: OWNERSHIP_VERSION, resolution: RESOLUTION_VERSION, seams: SEAMS_VERSION }
+    const configs = Object.fromEntries(runs.map((r) => [r.spec.id, r.config!]))
+    // Raising a budget must index again: a file the old budget failed is not the answer under the new one. Facts do not change with it.
+    const budgets = Object.fromEntries(runs.map((r) => [r.spec.id, r.budgetMb!]))
+    const identity = { repository_id: repo.id, manifest_hash: manifest, config_hash: sha256(canonicalJson({ ...analysisConfig(), adapters: configs, adapter_memory_mb: budgets })), analysis_mode: analysisMode, adapters, format_version: FORMAT_VERSION, format_ddl: sha256(readSql(`snapshot-format/${FORMAT_VERSION}.sql`)), ownership: OWNERSHIP_VERSION, resolution: RESOLUTION_VERSION, seams: SEAMS_VERSION }
     const identityJson = canonicalJson(identity)
     const snapshotId = `snap_${sha256(identityJson).slice(0, 24)}`
     const peaks = async () => {
@@ -217,13 +233,15 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
       const markDone = db.prepare('insert into resume_batch (adapter, batch) values (?, ?)')
       const batches = { done: 0, total: 0 }
       const reuse = { reused: 0, analysed: 0 }
+      const batchSize = BATCH()
+      const memoryRestarts: NonNullable<IndexResult['memoryRestarts']> = []
       for (const run of runs) {
         for (const c of run.configs) if (c.role === 'config') fileResults.set(c.path, { status: 'ok', capabilities: { text: 'complete' } })
         const producer: Producer = { id: run.manifest!.id, version: run.manifest!.version, mode: run.mode }
         // Workspace facts span files, so they are asked for on every index and never cached; checkpointed as batch -1.
         // The plan says up front how many files this adapter re-analyses and how many replay cached facts.
         const reusable = run.sources.filter((s) => cache!.has(run.keys!.get(s.path)!)).length
-        progress({ phase: 'analyze', adapter: run.spec.id, done: 0, total: run.sources.length, plan: { mode: reusable ? 'incremental' : 'full', analyse: run.sources.length - reusable, reuse: reusable } })
+        progress({ phase: 'analyze', adapter: run.spec.id, language: languagesOf(run), done: 0, total: run.sources.length, plan: { mode: reusable ? 'incremental' : 'full', analyse: run.sources.length - reusable, reuse: reusable } })
         const wsJournal = path.join(stagingDir(dataDir, snapshotId), `batch-${run.spec.id}-workspace.json`)
         let ws: AnalyzeResponse
         if (done.has(`${run.spec.id}#-1`)) {
@@ -231,10 +249,13 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
           writer.remember(ws.symbols, producer)
         } else {
           try {
-            ws = await run.process!.workspace()
+            ws = run.unstartable ? { symbols: [], relationships: [], file_results: [], diagnostics: [] } : await run.process!.workspace()
           } catch (e) {
             if (!(e instanceof AdapterProtocolError)) throw e
-            throw adapterFailure(run.spec.id, finished, 'failed to answer workspace', e)
+            if (!(e instanceof AdapterBudgetError)) throw adapterFailure(run.spec.id, finished, 'failed to answer workspace', e)
+            // Facts that span files are not retried in pieces; the adapter's files fail with the budget as the reason.
+            run.unstartable = e
+            ws = { symbols: [], relationships: [], file_results: [], diagnostics: [] }
           }
           fs.writeFileSync(wsJournal, JSON.stringify(ws))
           db.transaction(() => { writer.symbols(ws.symbols, producer); markDone.run(run.spec.id, -1) })()
@@ -243,21 +264,57 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
         for (const r of ws.relationships) pending.push({ rel: r, producer })
         for (const fr of ws.file_results) fileResults.set(fr.path, { status: fr.status, ...(fr.detail ? { detail: fr.detail } : {}), capabilities: fr.capabilities as Record<string, string> })
         /** Replays the cached facts of files whose key is unchanged and analyses only the rest, assembled in file order. */
+        const failedByBudget = (paths: string[]): Map<string, FileFacts> => new Map(paths.map((p) => [p, { symbols: [], relationships: [], file_result: { path: p, status: 'failed', detail: 'memory_budget', capabilities: {} } } as FileFacts]))
+        const overran = (e: AdapterBudgetError, files: number, action: 'smaller_batches' | 'file_failed' | 'adapter_failed') => {
+          memoryRestarts.push({ adapter: run.spec.id, budget_mb: e.budgetMb, peak_rss_mb: e.peakRssKb ? Math.round(e.peakRssKb / 1024) : null, files, action })
+          log('warning', 'adapter passed its memory budget', { adapter: run.spec.id, budget_mb: e.budgetMb, files, action })
+        }
+        /**
+         * Analyses files within the adapter's budget. An adapter that passes it is started again with half the files, and with batches
+         * of that size from then on; a file that alone passes it fails with `memory_budget` and the others go on.
+         */
+        const withinBudget = async (paths: string[]): Promise<Map<string, FileFacts>> => {
+          if (run.unstartable) return failedByBudget(paths)
+          const cap = run.cap ?? paths.length
+          if (paths.length > cap) {
+            const parts: Array<Map<string, FileFacts>> = []
+            for (let at = 0; at < paths.length; at += cap) parts.push(await withinBudget(paths.slice(at, at + cap)))
+            return new Map(parts.flatMap((m) => [...m]))
+          }
+          try {
+            return splitByFile(await run.process!.analyze(paths), paths)
+          } catch (e) {
+            if (!(e instanceof AdapterBudgetError)) throw e
+            overran(e, paths.length, paths.length === 1 ? 'file_failed' : 'smaller_batches')
+            try {
+              await run.process!.restart()
+            } catch (again) {
+              if (!(again instanceof AdapterBudgetError)) throw again
+              run.unstartable = again
+              overran(again, paths.length, 'adapter_failed')
+              return failedByBudget(paths)
+            }
+            if (paths.length === 1) return failedByBudget(paths)
+            run.cap = Math.max(1, Math.floor(paths.length / 2))
+            return withinBudget(paths)
+          }
+        }
         const analyse = async (batch: string[]): Promise<AnalyzeResponse> => {
           const keys = run.keys!
           const cached = new Map(batch.flatMap((p) => { const hit = cache!.get(keys.get(p)!); return hit ? [[p, hit] as const] : [] }))
           const missing = batch.filter((p) => !cached.has(p))
-          const fresh = missing.length ? splitByFile(await run.process!.analyze(missing), missing) : new Map()
-          cache!.put(repo.id, run.spec.id, missing.map((p) => [keys.get(p)!, fresh.get(p)!]))
+          const fresh = missing.length ? await withinBudget(missing) : new Map<string, FileFacts>()
+          // A file the budget failed is not cached: under a larger budget it would be analysed.
+          cache!.put(repo.id, run.spec.id, missing.filter((p) => fresh.get(p)!.file_result?.detail !== 'memory_budget').map((p) => [keys.get(p)!, fresh.get(p)!]))
           reuse.reused += cached.size
           reuse.analysed += missing.length
           return assemble(batch.map((p) => cached.get(p) ?? fresh.get(p)!))
         }
-        for (let i = 0; i < run.sources.length; i += BATCH) {
-          const batch = run.sources.slice(i, i + BATCH).map((s) => s.path)
-          const number = i / BATCH, journal = path.join(stagingDir(dataDir, snapshotId), `batch-${run.spec.id}-${number}.json`)
+        for (let i = 0; i < run.sources.length; i += batchSize) {
+          const batch = run.sources.slice(i, i + batchSize).map((s) => s.path)
+          const number = i / batchSize, journal = path.join(stagingDir(dataDir, snapshotId), `batch-${run.spec.id}-${number}.json`)
           batches.total++
-          progress({ phase: 'analyze', adapter: run.spec.id, done: i, total: run.sources.length })
+          progress({ phase: 'analyze', adapter: run.spec.id, language: languagesOf(run), done: i, total: run.sources.length })
           let response: AnalyzeResponse
           if (done.has(`${run.spec.id}#${number}`)) {
             response = JSON.parse(fs.readFileSync(journal, 'utf8')) as AnalyzeResponse
@@ -342,7 +399,7 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
       sealAndPublish(catalog, db, stagingFile, snapshotId, repo.id, keepCurrent)
       fs.rmSync(stagingDir(dataDir, snapshotId), { recursive: true, force: true })
       for (const run of runs) cache.prune(repo.id, run.spec.id, run.keys!.values())
-      return { snapshotId, status: 'published', analysisMode, counts, reuse, commit: checkout?.git.commit, adapterPeakRssKb: await peaks(), ...(batches.done ? { resumed: batches } : {}) }
+      return { snapshotId, status: 'published', analysisMode, counts, reuse, commit: checkout?.git.commit, adapterPeakRssKb: await peaks(), ...(memoryRestarts.length ? { memoryRestarts } : {}), ...(batches.done ? { resumed: batches } : {}) }
     } catch (e) {
       if (db.open) db.close()
       catalog.markFailed(snapshotId, e instanceof Error ? e.message : String(e))

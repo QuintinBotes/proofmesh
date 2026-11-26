@@ -7,6 +7,22 @@ import type { AnalyzeResponse, InitializeRequest, InitializeResponse } from '../
 
 export class AdapterProtocolError extends Error {}
 
+/** An adapter stopped because it passed its memory budget: the host's own measure, or the engine's out-of-memory under the budget. */
+export class AdapterBudgetError extends AdapterProtocolError {
+  constructor(message: string, readonly budgetMb: number, readonly peakRssKb: number | undefined) { super(message) }
+}
+
+/**
+ * The resident memory one adapter process may use, in MB. A default that lets a large C# repository finish on a 48 GB machine with
+ * several adapters running; raise it per repository and adapter with `adapter_memory_mb` in the adapter's configuration, or for every
+ * adapter with PROOFMESH_ADAPTER_MEMORY_MB.
+ */
+export const DEFAULT_ADAPTER_MEMORY_MB = 8192
+export function adapterBudgetMb(config: Record<string, unknown>): number {
+  for (const v of [config.adapter_memory_mb, process.env.PROOFMESH_ADAPTER_MEMORY_MB]) if (v !== undefined && v !== '' && Number.isInteger(Number(v)) && Number(v) > 0) return Number(v)
+  return DEFAULT_ADAPTER_MEMORY_MB
+}
+
 /** What an error keeps of an adapter's stderr: the last lines, each cut short, so a flood cannot grow a message. */
 const STDERR_TAIL_LINES = 10
 const STDERR_LINE_CHARS = 300
@@ -28,7 +44,7 @@ export function typescriptAdapterPath(): string {
 
 /** .NET adapters run under `dotnet`; JavaScript adapters run under this Node. */
 /** A .dll runs on .NET, a JavaScript file on this Node, and anything else as an executable, so an adapter can be written in any language. */
-const launcher = (entry: string): [string, string[]] => (entry.endsWith('.dll') ? ['dotnet', [entry]] : /\.[cm]?js$/.test(entry) ? [process.execPath, [entry]] : [entry, []])
+const launcher = (entry: string, budgetMb?: number): [string, string[]] => (entry.endsWith('.dll') ? ['dotnet', [entry]] : /\.[cm]?js$/.test(entry) ? [process.execPath, [...(budgetMb ? [`--max-old-space-size=${budgetMb}`] : []), entry]] : [entry, []])
 
 /** One adapter subprocess speaking JSON-RPC 2.0, one JSON object per line. */
 /** The adapter protocol version this core speaks; it accepts any adapter that speaks 1.x (A22). */
@@ -46,21 +62,32 @@ export class AdapterProcess {
   private noRestart = false
   private initParams?: InitializeRequest
   private rssTimer?: NodeJS.Timeout
+  /** Set when the host stopped the adapter for passing its budget: the peak it had then. */
+  private overBudgetKb?: number
+  private processPeakKb?: number
   restarts = 0
   /** The largest resident set size seen, in KiB; undefined where `ps` is unavailable. */
   peakRssKb?: number
 
-  constructor(private readonly entry: string, private readonly timeoutMs = 60000, private readonly rssSampleMs = 3000, private readonly name = path.basename(entry)) {
+  /** `budgetMb`: the most resident memory the adapter may use; the host stops it past that, and passes the limit to the engine where it can (Node, .NET). */
+  constructor(private readonly entry: string, private readonly timeoutMs = 60000, private readonly rssSampleMs = 3000, private readonly name = path.basename(entry), private readonly budgetMb?: number) {
     this.start()
   }
 
   /** shortcut: the adapter process alone, not processes it starts (such as MSBuild nodes); sum the process tree if those grow large. */
   sampleRss(): Promise<void> {
-    const pid = this.child.pid
+    const child = this.child, pid = child.pid
     if (this.exited || !pid) return Promise.resolve()
     return new Promise((resolve) => execFile('ps', ['-o', 'rss=', '-p', String(pid)], { env: { PATH: process.env.PATH ?? '' }, timeout: 5000, killSignal: 'SIGKILL' }, (e, out) => {
       const kb = Number(out?.trim())
-      if (!e && kb > 0) this.peakRssKb = Math.max(this.peakRssKb ?? 0, kb)
+      if (!e && kb > 0 && child === this.child) {
+        this.peakRssKb = Math.max(this.peakRssKb ?? 0, kb)
+        this.processPeakKb = Math.max(this.processPeakKb ?? 0, kb)
+        if (this.budgetMb && kb > this.budgetMb * 1024 && !this.exited && this.overBudgetKb === undefined) {
+          this.overBudgetKb = this.processPeakKb
+          this.stopChild(`exceeded its memory budget of ${this.budgetMb} MB (peak resident memory ${Math.round(kb / 1024)} MB; raise it with adapter_memory_mb) and was stopped with SIGKILL`)
+        }
+      }
       resolve()
     }))
   }
@@ -71,11 +98,13 @@ export class AdapterProcess {
     this.noRestart = false
     this.stderrTail = []
     this.stderrOom = false
+    this.overBudgetKb = undefined
+    this.processPeakKb = undefined
     clearInterval(this.rssTimer)
-    const [command, args] = launcher(this.entry)
+    const [command, args] = launcher(this.entry, this.budgetMb)
     const child = this.child = spawn(command, args, {
       stdio: ['pipe', 'pipe', 'pipe'],
-      env: { PATH: process.env.PATH ?? '', HOME: process.env.HOME ?? '', PROOFMESH_LOG_LEVEL: process.env.PROOFMESH_LOG_LEVEL ?? 'info', DOTNET_CLI_TELEMETRY_OPTOUT: '1', DOTNET_NOLOGO: '1', ...(process.env.DOTNET_ROOT ? { DOTNET_ROOT: process.env.DOTNET_ROOT } : {}) },
+      env: { PATH: process.env.PATH ?? '', HOME: process.env.HOME ?? '', PROOFMESH_LOG_LEVEL: process.env.PROOFMESH_LOG_LEVEL ?? 'info', DOTNET_CLI_TELEMETRY_OPTOUT: '1', DOTNET_NOLOGO: '1', ...(this.budgetMb ? { DOTNET_GCHeapHardLimit: `0x${(this.budgetMb * 1048576).toString(16)}` } : {}), ...(process.env.DOTNET_ROOT ? { DOTNET_ROOT: process.env.DOTNET_ROOT } : {}) },
     })
     let hostKilled: string | undefined, exit: { code: number | null; signal: NodeJS.Signals | null } | undefined, settled = false
     let inputTimer: NodeJS.Timeout | undefined, drainTimer: NodeJS.Timeout | undefined
@@ -92,7 +121,9 @@ export class AdapterProcess {
       this.noRestart = !restartable
       const first = [...this.pending.values()][0]
       const cause = this.stderrTail.length ? `; the adapter's last output: ${this.stderrTail.join(' | ')}` : ''
-      this.failure = new AdapterProtocolError(`adapter ${this.name} ${what}${first?.context ? ` while ${first.context}` : ''}${cause}`)
+      const message = `adapter ${this.name} ${what}${first?.context ? ` while ${first.context}` : ''}${cause}`
+      // Under a budget, the engine's own out-of-memory exit is the budget at work, not the machine's.
+      this.failure = this.overBudgetKb !== undefined || (this.budgetMb && this.stderrOom && !hostKilled) ? new AdapterBudgetError(message, this.budgetMb!, this.processPeakKb) : new AdapterProtocolError(message)
       this.failAll(this.failure)
     }
     // A stream error (EPIPE, ECONNRESET) is a fact about the adapter, never an unhandled event: the exit status follows on 'close'.
@@ -136,6 +167,7 @@ export class AdapterProcess {
     const describe = () => {
       if (hostKilled) return hostKilled
       const how = exit?.signal ? `was terminated by signal ${exit.signal}` : `exited with code ${exit?.code}`
+      if (this.budgetMb && this.stderrOom) return `${how} after running out of memory under its budget of ${this.budgetMb} MB (peak resident memory ${this.processPeakKb ? `${Math.round(this.processPeakKb / 1024)} MB` : 'unknown'}; raise it with adapter_memory_mb)`
       return restartable() ? how : `${how} (it was killed, most likely because the machine ran out of memory)`
     }
     child.on('close', () => settle(describe(), restartable()))
@@ -213,6 +245,8 @@ export class AdapterProcess {
     try {
       return await this.analyzeOnce(paths)
     } catch (e) {
+      // A budget overrun is the caller's to answer, with a smaller batch: the same batch would only pass the budget again.
+      if (e instanceof AdapterBudgetError) throw e
       if (!this.exited || this.noRestart || this.restarts >= 1 || !this.initParams) throw e
       this.restarts++
       log('warning', 'adapter crashed; restarting once', { error: (e as Error).message })
@@ -220,6 +254,13 @@ export class AdapterProcess {
       await this.initialize(this.initParams)
       return this.analyzeOnce(paths)
     }
+  }
+
+  /** Starts the adapter again and initializes it as before; for a caller that retries with less work after a budget overrun. */
+  async restart(): Promise<void> {
+    this.child.kill('SIGKILL')
+    this.start()
+    await this.initialize(this.initParams!)
   }
 
   private async analyzeOnce(paths: string[]): Promise<AnalyzeResponse> {

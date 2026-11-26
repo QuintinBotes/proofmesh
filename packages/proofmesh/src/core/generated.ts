@@ -957,6 +957,19 @@ reuse: number
 }
 })
 /**
+ * Per running adapter, refreshed at least every 5 seconds while it analyses: its languages, files done and total, files a second, and the seconds left (null until a file is done). Never holds source text.
+ */
+adapters?: (null | {
+[k: string]: {
+adapter: string
+language: string
+done: number
+total: number
+files_per_second: number
+eta_seconds: (number | null)
+}
+})
+/**
  * Since the job started, or its whole run once finished.
  */
 elapsed_ms?: (number | null)
@@ -2224,6 +2237,19 @@ reuse: number
 }
 })
 /**
+ * Per running adapter, refreshed at least every 5 seconds while it analyses: its languages, files done and total, files a second, and the seconds left (null until a file is done). Never holds source text.
+ */
+adapters?: (null | {
+[k: string]: {
+adapter: string
+language: string
+done: number
+total: number
+files_per_second: number
+eta_seconds: (number | null)
+}
+})
+/**
  * Since the job started, or its whole run once finished.
  */
 elapsed_ms?: (number | null)
@@ -2768,6 +2794,19 @@ plan?: (null | {
 mode: ("incremental" | "full")
 analyse: number
 reuse: number
+}
+})
+/**
+ * Per running adapter, refreshed at least every 5 seconds while it analyses: its languages, files done and total, files a second, and the seconds left (null until a file is done). Never holds source text.
+ */
+adapters?: (null | {
+[k: string]: {
+adapter: string
+language: string
+done: number
+total: number
+files_per_second: number
+eta_seconds: (number | null)
 }
 })
 /**

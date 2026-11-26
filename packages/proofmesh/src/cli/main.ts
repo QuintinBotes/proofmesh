@@ -33,7 +33,7 @@ import { runGc } from './gc.js'
 import { runMcpConfig } from './mcp-config.js'
 import { runConventions } from './conventions.js'
 import { weakestCapability, type CensusRow } from '../indexer/census.js'
-import { duration, phaseLabel, progressReporter } from './progress.js'
+import { type AdapterLine, duration, phaseLabel, progressReporter } from './progress.js'
 
 export const VERSION = '0.1.0'
 const USAGE = `proofmesh ${VERSION}: a code graph that shows its work
@@ -403,7 +403,15 @@ export async function main(argv: string[]): Promise<number> {
         // Every index is a job row, so status and get_job see it; one the MCP server spawned names its row with --job.
         try { jobId = jobFlag ?? jobs.createJob(jobs.repository(opts[0]).id, os.userInfo().username) } catch (e) { jobs.close(); throw e }
         // Progress goes to stderr, so stdout stays the parseable summary.
-        const report = progressReporter((line) => process.stderr.write(`${line}\n`))
+        // The same figures go to the job row, at the same cadence, so get_job shows what stderr shows (FR274).
+        const adapters: Record<string, AdapterLine> = {}
+        const recordAdapters = () => {
+          const line = report.current()
+          if (!line) return
+          adapters[line.adapter] = line
+          jobs.updateJob(jobId, { progress_at: new Date().toISOString(), adapter_progress: JSON.stringify(adapters) })
+        }
+        const report = progressReporter((line) => process.stderr.write(`${line}\n`), Number(process.env.PROOFMESH_PROGRESS_INTERVAL_MS) || undefined, recordAdapters)
         let started = false, phase = ''
         const plan: Record<string, { mode: string; analyse: number; reuse: number }> = {}
         let r: Awaited<ReturnType<typeof indexRepository>>
@@ -420,6 +428,7 @@ export async function main(argv: string[]): Promise<number> {
             started = true
             phase = label
             report.update(p)
+            recordAdapters()
           }, undefined, rev, keepCurrent && !!rev)
         } catch (e) {
           report.stop()
@@ -432,7 +441,7 @@ export async function main(argv: string[]): Promise<number> {
         }
         const phases = report.stop()
         // A finished job keeps counts that mean something: the files indexed, not the last phase's zero.
-        jobs.updateJob(jobId, { state: 'succeeded', finished_at: new Date().toISOString(), phase: 'done', done: r.counts.indexed, total: r.counts.indexed, progress_at: new Date().toISOString(), result: JSON.stringify({ snapshot_id: r.snapshotId, status: r.status, counts: r.counts, reuse: r.reuse ?? null, commit: r.commit ?? null }) })
+        jobs.updateJob(jobId, { state: 'succeeded', finished_at: new Date().toISOString(), phase: 'done', done: r.counts.indexed, total: r.counts.indexed, progress_at: new Date().toISOString(), result: JSON.stringify({ snapshot_id: r.snapshotId, status: r.status, counts: r.counts, reuse: r.reuse ?? null, commit: r.commit ?? null, ...(r.memoryRestarts ? { memory_restarts: r.memoryRestarts } : {}) }) })
         jobs.close()
         if (r.resumed) console.log(`resumed from checkpoint: ${r.resumed.done} of ${r.resumed.total} batches were already done`)
         if (r.reuse?.reused) console.log(`reused the facts of ${r.reuse.reused} of ${r.reuse.reused + r.reuse.analysed} files whose inputs did not change`)
@@ -441,6 +450,10 @@ export async function main(argv: string[]): Promise<number> {
         try { galaxyFor(dataDir) } catch { /* rebuilt on first view */ }
         console.log(`discovered ${r.counts.discovered}, indexed ${r.counts.indexed}, excluded ${r.counts.excluded_by_rule}, unsupported ${r.counts.unsupported}, failed ${r.counts.failed}`)
         console.log(`phases ${phases.map((p) => `${p.phase} ${duration(p.ms)}`).join(', ')} (job ${jobId})`)
+        for (const m of r.memoryRestarts ?? []) console.log(`adapter ${m.adapter} passed its memory budget of ${m.budget_mb} MB (peak ${m.peak_rss_mb ?? 'unknown'} MB) on ${m.files} file${m.files === 1 ? '' : 's'}: ${m.action === 'smaller_batches' ? 'restarted with smaller batches' : m.action === 'file_failed' ? 'file failed with memory_budget' : 'its files failed with memory_budget'}`)
+        // Seconds per analysed file, per adapter: the figure that says how long a repository of a given size will take (FR276).
+        const perFile = Object.entries(plan).flatMap(([id, p]) => { const ms = phases.find((x) => x.phase === `analyze ${id}`)?.ms; return ms !== undefined && p.analyse > 0 ? [`${id} ${(ms / 1000 / p.analyse).toFixed(2)}`] : [] })
+        if (perFile.length) console.log(`adapter seconds per file ${perFile.join(', ')}`)
         const peaks = Object.entries(r.adapterPeakRssKb)
         if (peaks.length) console.log(`adapter peak memory ${peaks.map(([id, kb]) => `${id} ${kb >= 1048576 ? `${(kb / 1048576).toFixed(1)} GiB` : `${Math.round(kb / 1024)} MiB`}`).join(', ')}`)
         return 0
