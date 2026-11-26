@@ -94,6 +94,10 @@ assertion_id: string
 reason: ("dynamic_element_access" | "untyped_receiver" | "unknown_name" | "chained_callee" | "import_unresolved" | "dynamic_specifier" | "not_indexed" | "dependency_missing" | "configuration_error" | "outside_capability")
 file: string
 line: number
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
 }[]
 /**
  * Unresolved sites by reason; no_match and ambiguous are the reasons of cross-repository links (A7).
@@ -3152,11 +3156,11 @@ inputs_missing: number
 missing: string[]
 }[]
 /**
- * The generated and vendored code policy (FR296): the markers, attributes and paths used, and what is done with each kind of file.
+ * The generated and vendored code policy (FR296): the markers, attributes and paths used, and what is done with each kind of file. The policy the snapshot was built with; null for a snapshot sealed before it was recorded.
  */
-generated_policy: {
+generated_policy: ({
 [k: string]: unknown
-}
+} | null)
 }
 }
 

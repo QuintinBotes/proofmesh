@@ -78,7 +78,10 @@ export function discover(root: string, registry: Registry = BUILT_IN_REGISTRY, i
       } else if (entry.isDirectory()) {
         walk(rel, childPlace(here, entry.name, entries, root, dirRel))
       } else if (entry.isFile()) {
-        out.push(registry.route(classify(root, rel, ignored, registry, here, attributes(rel)), root))
+        const attrs = attributes(rel), before = classify(root, rel, ignored, registry, here, attrs), routed = registry.route(before, root)
+        // A file that routing makes a source (a SCIP index covers it) was not one when classified: it is judged for generated now.
+        const promoted = routed.status === 'capture' && routed.role === 'source' && !routed.generated && (before.status !== 'capture' || before.role !== 'source')
+        out.push(promoted && (attrs.generated ?? isGeneratedFile(path.posix.basename(rel), readHead(path.join(root, rel), BINARY_PROBE_BYTES) ?? '')) ? { ...routed, generated: true } : routed)
       }
     }
   }

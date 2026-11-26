@@ -29,7 +29,9 @@ export function vendoredGoImports<T extends { rel: Rel }>(items: T[], discovered
     if (rel.type !== 'imports' || rel.resolution !== 'unresolved' || !rel.site.path.endsWith('.go') || !importPath) return i
     const root = serving(rel.site.path)
     if (root === undefined || !packages.get(root)!.has(importPath)) return i
-    const owner = modules.get(root)!.find((m) => importPath === m || importPath.startsWith(`${m}/`)) ?? importPath
+    // A package no listed module owns is not guessed at.
+    const owner = modules.get(root)!.find((m) => importPath === m || importPath.startsWith(`${m}/`))
+    if (!owner) return i
     const { reason: _reason, ...rest } = rel
     return { ...i, rel: { ...rest, resolution: 'resolved_external', target: { external: { module: `go:${owner}`, name: importPath } }, detail: { ...rel.detail, rule: 'go_vendor', vendored: 'true' } } }
   })

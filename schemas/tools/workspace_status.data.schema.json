@@ -850,8 +850,11 @@
           }
         },
         "generated_policy": {
-          "type": "object",
-          "description": "The generated and vendored code policy (FR296): the markers, attributes and paths used, and what is done with each kind of file.",
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "The generated and vendored code policy (FR296): the markers, attributes and paths used, and what is done with each kind of file. The policy the snapshot was built with; null for a snapshot sealed before it was recorded.",
           "additionalProperties": true
         }
       }

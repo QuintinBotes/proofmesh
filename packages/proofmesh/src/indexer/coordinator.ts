@@ -202,7 +202,7 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
         db.exec(RESUME_DDL)
         db.prepare("insert into resume_meta (key, value) values ('writer', ?)").run(writerBuild())
         const insertMeta = db.prepare('insert into meta (key, value) values (?, ?)')
-        for (const [k, v] of Object.entries({ format_version: FORMAT_VERSION, snapshot_id: snapshotId, repository_id: repo.id, identity: identityJson, analysis_mode: analysisMode, adapters: canonicalJson(adapters), git: canonicalJson(checkout?.git ?? gitInfo(repo.root)), analysis_config: canonicalJson(analysisConfig()) })) insertMeta.run(k, v)
+        for (const [k, v] of Object.entries({ format_version: FORMAT_VERSION, snapshot_id: snapshotId, repository_id: repo.id, identity: identityJson, analysis_mode: analysisMode, adapters: canonicalJson(adapters), git: canonicalJson(checkout?.git ?? gitInfo(repo.root)), analysis_config: canonicalJson(analysisConfig()), generated_policy: canonicalJson(GENERATED_POLICY) })) insertMeta.run(k, v)
         const insertFile = db.prepare('insert into file (id, path, content_hash, size, language, disposition, disposition_detail, capabilities) values (?, ?, ?, ?, ?, ?, ?, ?)')
         db.transaction(() => {
           for (const d of discovered) insertFile.run(fileId(d.path), d.path, null, d.size, d.language, DISPOSITION[d.status], d.detail, NOT_RUN)

@@ -61,13 +61,28 @@ function patternToRegExp(pattern: string): RegExp {
   return new RegExp(`^${anchored ? '' : '(?:.*/)?'}${re}$`)
 }
 
+const ESCAPES: Record<string, number> = { a: 7, b: 8, f: 12, n: 10, r: 13, t: 9, v: 11, '\\': 92, '"': 34 }
+/** A line whose pattern is C-quoted, as git writes a path with a space or a byte it escapes: the unquoted pattern, then the attributes. */
+function splitQuoted(line: string): string[] {
+  const bytes: number[] = []
+  let i = 1
+  for (; i < line.length && line[i] !== '"'; i++) {
+    if (line[i] !== '\\') { bytes.splice(bytes.length, 0, ...Buffer.from(line[i]!)); continue }
+    const octal = /^[0-3][0-7]{2}/.exec(line.slice(i + 1, i + 4))
+    if (octal) { bytes.splice(bytes.length, 0, parseInt(octal[0], 8)); i += 3 } else if (ESCAPES[line[i + 1]!] !== undefined) bytes.splice(bytes.length, 0, ESCAPES[line[++i]!]!)
+    else return []
+  }
+  return i >= line.length ? [] : [Buffer.from(bytes).toString('utf8'), ...line.slice(i + 1).trim().split(/\s+/)]
+}
+
 function parseAttributes(text: string): Rule[] {
   const rules: Rule[] = []
   for (const raw of text.split('\n')) {
     const line = raw.trim()
-    if (!line || line.startsWith('#') || line.startsWith('[attr]') || line.startsWith('"')) continue
-    const [pattern, ...attrs] = line.split(/\s+/)
-    const rule: Rule = { re: patternToRegExp(pattern!) }
+    if (!line || line.startsWith('#') || line.startsWith('[attr]')) continue
+    const [pattern, ...attrs] = line.startsWith('"') ? splitQuoted(line) : line.split(/\s+/)
+    if (!pattern) continue
+    const rule: Rule = { re: patternToRegExp(pattern) }
     for (const a of attrs) {
       const m = /^(-|!)?linguist-(generated|vendored)(?:=(.*))?$/.exec(a)
       if (!m) continue
@@ -87,7 +102,11 @@ export function attributeLookup(root: string): (rel: string) => Attributes {
   const rulesOf = (dir: string): Rule[] => {
     let rules = files.get(dir)
     if (!rules) {
-      try { rules = parseAttributes(fs.readFileSync(path.join(root, dir, '.gitattributes'), 'utf8')) } catch { rules = [] }
+      // O_NOFOLLOW: a .gitattributes that is a link is never read, so it cannot point outside the repository (discovery records it as a symlink).
+      try {
+        const fd = fs.openSync(path.join(root, dir, '.gitattributes'), fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW)
+        try { rules = parseAttributes(fs.readFileSync(fd, 'utf8')) } finally { fs.closeSync(fd) }
+      } catch { rules = [] }
       files.set(dir, rules)
     }
     return rules

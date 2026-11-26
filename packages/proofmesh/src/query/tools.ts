@@ -34,7 +34,6 @@ import { openCursor, queryHash, sealCursor } from './cursor.js'
 import { addKeys } from './keys.js'
 import { leanName, leanRow, leanText, quote } from './lean.js'
 import { generatedLeftOut, generatedPaths, markGenerated, withGeneratedPaths } from './generated-policy.js'
-import { GENERATED_POLICY } from '../indexer/generated-vendored.js'
 import { innermost } from './symbol-at.js'
 import { compare, hasBodyHash, unreadableFiles } from './compare.js'
 import { loadSchema } from '../core/schemas.js'
@@ -244,8 +243,12 @@ function runRepositoryTool(dataDir: string, tool: string, input: Record<string, 
       const generated = generatedPaths(db)
       const out = withGeneratedPaths(generated, () => {
         const result = IMPL[tool as ToolName](ctx, withNamedIds(db, tool, input))
-        markGenerated(result.data, generated)
-        return envelope(ctx, tool as ToolName, input.limits as Limits | undefined, result, limitations, freshness)
+        // A comparison tags each side from its own snapshot, inside the tool.
+        if (tool !== 'compare_snapshots') markGenerated(result.data, generated)
+        const env = envelope(ctx, tool as ToolName, input.limits as Limits | undefined, result, limitations, freshness)
+        // An unresolved sample names a file too (FR292).
+        for (const s of env.unresolved.sample) if (generated.has(s.file)) s.generated = true
+        return env
       })
       // Only what list_queries reports: never the input or the result (NFR008).
       catalog.recordQuery({ query_id: out.query_id, tool, repository_id: repo.id, snapshot_id: snapshot.id, duration_ms: Date.now() - ctx.started, truncated: out.completion.truncated, input_hash: query })
@@ -632,7 +635,8 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
         adapters: (JSON.parse(meta.adapters ?? '[]') as Array<Record<string, unknown>>).map((a) => ({ id: a.id, version: a.version, protocol_version: a.protocol_version, languages: a.languages })),
         analysis: {
           mode: ctx.snapshot.analysis_mode,
-          generated_policy: GENERATED_POLICY,
+          // The policy the snapshot was built with; null for one sealed before the policy was recorded.
+          generated_policy: meta.generated_policy ? (JSON.parse(meta.generated_policy) as Record<string, unknown>) : null,
           config: meta.analysis_config ? (JSON.parse(meta.analysis_config) as Record<string, unknown>) : null,
           generated_sources: ctx.snapshot.analysis_mode === 'trusted_build'
             ? 'Build logic ran, so source generators and build-time code generation took part; generated files on disk are indexed like any other unless an exclusion rule or git ignore leaves them out.'
@@ -837,6 +841,14 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     const db = openSnapshot(ctx.catalog, base)
     try {
       const r = compare(db, ctx.db, { base: { id: base.id, published_at: base.published_at! }, head: { id: ctx.snapshot.id, published_at: ctx.snapshot.published_at! } }, ctx.limits.max_rows)
+      // Each side's rows are tagged from the snapshot they came from: removed ones from the base, added and changed ones from the head.
+      const [was, now] = [generatedPaths(db), generatedPaths(ctx.db)]
+      const { symbols, files } = r.data as { symbols: { added: unknown; removed: unknown; changed: unknown; paired: Array<{ base: unknown; head: unknown }>; ambiguous: Array<{ removed: unknown; added: unknown }> }; files: { disposition_changes: Array<{ path: string; generated?: boolean }> } }
+      markGenerated(symbols.removed, was); markGenerated(symbols.added, now); markGenerated(symbols.changed, now)
+      for (const p of symbols.paired) { markGenerated(p.base, was); markGenerated(p.head, now) }
+      for (const a of symbols.ambiguous) { markGenerated(a.removed, was); markGenerated(a.added, now) }
+      const inHead = (p: string) => !!ctx.db.prepare('select 1 from file where path = ?').get(p)
+      for (const c of files.disposition_changes) if ((inHead(c.path) ? now : was).has(c.path)) c.generated = true
       return { data: r.data, stop_reasons: r.truncated ? ['max_rows'] : [], limitations: ['Symbols are matched by kind and qualified name; a removed and an added symbol that match by body hash are paired instead.', ...r.limitations] }
     } finally {
       db.close()
