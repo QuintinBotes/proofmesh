@@ -87,6 +87,10 @@
               ]
             },
             "description": "The roles the adapter gave the symbol, when it gave any: test (a test entry point) or test_support (test code that is no entry point)."
+          },
+          "key": {
+            "type": "string",
+            "description": "The stable_key of the symbol (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file."
           }
         }
       }

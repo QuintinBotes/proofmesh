@@ -4,6 +4,13 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 ## Unreleased
 
+Every row that names a symbol carries its stable key (part of #15; FR280 to FR289):
+
+- `key`, the symbol's `stable_key`, is on every structured row that names a symbol by id: the far side and `via` member of `get_relationships`, `analyze_impact` dependents, `find_tests` rows and each hop of their chains, `trace_paths` nodes and frontier nodes, `find_symbols` rows, `search_sources` hits inside a symbol, `workspace_status` hubs, `find_query_source` candidates, `get_table_reach` tables, symbols, entities, reach rows and accessors, and `impact_completeness` changed symbols, dependents and nearest tests (read from the snapshot that holds the symbol, so a deleted one carries its base key). A row passes back as `key` with no second lookup.
+- Where a row already has a `key` or names a symbol in a field of its own, the key is beside it: `from_key` on an unresolved site, `symbol_key` on property reads and on a symbol child of `get_overview` (whose `key` stays the child's id), `source_key` and `target_key` on `get_ecosystem` samples. A row whose id is no symbol (a file reached by imports, a directory) carries none.
+- `get_symbol`, `get_symbols_at` and `compare_snapshots` already carried `stable_key`; the lean text rows are unchanged. The tool data schemas and `generated.ts` gain the optional fields.
+- Not done: `detail.scip` on the SCIP symbol, which needs a symbol field in the adapter protocol and a snapshot format bump with its reader checks (the #63 change that added `roles` touched about thirty files); `get_overview` links and `trace_paths` explored edges still name their ends by id, which the rows beside them resolve; SC-2 of #15 stays with the benchmark of #9.
+
 HTTP seams in one repository (closes #12; FR250 to FR259):
 
 - The TypeScript adapter records `fetch` and `axios` calls (`axios.<verb>`, `axios(...)`, `axios.request`, `axios.create` clients) with a literal, template, concatenated or constant path as outbound `dispatches_to` endpoints, rules `fetch_client` and `axios_client`, named `VERB path` as the Python client rule names them. A path on a base the code does not state keeps its literal suffix with `detail.prefix_unknown`.

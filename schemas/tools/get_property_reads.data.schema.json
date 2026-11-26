@@ -94,6 +94,10 @@
             "items": {
               "type": "string"
             }
+          },
+          "symbol_key": {
+            "type": "string",
+            "description": "The stable_key of the mapped property (symbol_id) (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file."
           }
         }
       }
@@ -142,6 +146,10 @@
           },
           "symbol_id": {
             "type": "string"
+          },
+          "symbol_key": {
+            "type": "string",
+            "description": "The stable_key of the mapped property (symbol_id) (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file."
           }
         }
       }
@@ -181,6 +189,10 @@
             "type": "integer",
             "minimum": 0,
             "description": "Hops from the endpoint to the nearest reader."
+          },
+          "symbol_key": {
+            "type": "string",
+            "description": "The stable_key of the mapped property (symbol_id) (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file."
           }
         }
       }

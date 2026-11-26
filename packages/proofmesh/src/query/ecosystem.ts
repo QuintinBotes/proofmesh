@@ -38,6 +38,7 @@ export function getEcosystem(dataDir: string, input: Record<string, unknown>): E
         members.set(m.repository_id, { db: openSnapshot(catalog, snapshot), name: m.name, snapshot_id: m.snapshot_id })
       }
       const count = (db: Database.Database, sql: string) => (db.prepare(sql).get() as { n: number }).n
+      const keyOf = (repo: string, symbolId: string | null) => (symbolId ? (members.get(repo)?.db.prepare('select stable_key from symbol where id = ?').get(symbolId) as { stable_key: string } | undefined)?.stable_key : undefined)
       const qn = (repo: string, symbolId: string | null) => (symbolId ? (members.get(repo)?.db.prepare('select qualified_name from symbol where id = ?').get(symbolId) as { qualified_name: string } | undefined)?.qualified_name ?? symbolId : null)
 
       const data = {
@@ -59,7 +60,7 @@ export function getEcosystem(dataDir: string, input: Record<string, unknown>): E
           const key = `${l.source_repository_id}|${l.type}`
           const b = bounds.get(key) ?? { repository_id: l.source_repository_id, type: l.type, count: 0, sample: [] }
           b.count++
-          if (b.sample.length < SAMPLE) b.sample.push({ link_id: l.id, source: qn(l.source_repository_id, l.source_symbol_id), reason: l.reason ?? 'no_match' })
+          if (b.sample.length < SAMPLE) b.sample.push({ link_id: l.id, source: qn(l.source_repository_id, l.source_symbol_id), source_key: keyOf(l.source_repository_id, l.source_symbol_id), reason: l.reason ?? 'no_match' })
           bounds.set(key, b)
           continue
         }
@@ -70,7 +71,7 @@ export function getEcosystem(dataDir: string, input: Record<string, unknown>): E
           const p = pairs.get(key) ?? { source_repository_id: l.source_repository_id, target_repository_id: t.target_repository_id, type: l.type, resolved: 0, candidate: 0, min_confidence: t.confidence, max_confidence: t.confidence, sample: [] }
           if (l.resolution === 'resolved') p.resolved++; else p.candidate++
           p.min_confidence = Math.min(p.min_confidence, t.confidence); p.max_confidence = Math.max(p.max_confidence, t.confidence)
-          if (p.sample.length < SAMPLE) p.sample.push({ link_id: l.id, source: qn(l.source_repository_id, l.source_symbol_id), target: qn(t.target_repository_id, t.target_symbol_id), confidence: t.confidence, rule: l.rule })
+          if (p.sample.length < SAMPLE) p.sample.push({ link_id: l.id, source: qn(l.source_repository_id, l.source_symbol_id), source_key: keyOf(l.source_repository_id, l.source_symbol_id), target: qn(t.target_repository_id, t.target_symbol_id), target_key: keyOf(t.target_repository_id, t.target_symbol_id), confidence: t.confidence, rule: l.rule })
           pairs.set(key, p)
         }
       }

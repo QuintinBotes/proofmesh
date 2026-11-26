@@ -1085,6 +1085,36 @@
     ],
     "FR259": [
       "packages/proofmesh/test/seams-http.test.ts"
+    ],
+    "FR280": [
+      "packages/proofmesh/test/stable-keys-rows.test.ts"
+    ],
+    "FR281": [
+      "packages/proofmesh/test/stable-keys-rows.test.ts"
+    ],
+    "FR282": [
+      "packages/proofmesh/test/stable-keys-rows.test.ts"
+    ],
+    "FR283": [
+      "packages/proofmesh/test/stable-keys-rows.test.ts"
+    ],
+    "FR284": [
+      "packages/proofmesh/test/stable-keys-rows.test.ts"
+    ],
+    "FR285": [
+      "packages/proofmesh/test/stable-keys-rows.test.ts"
+    ],
+    "FR286": [
+      "packages/proofmesh/test/stable-keys-rows.test.ts"
+    ],
+    "FR287": [
+      "packages/proofmesh/test/stable-keys-rows.test.ts"
+    ],
+    "FR288": [
+      "packages/proofmesh/test/stable-keys-rows.test.ts"
+    ],
+    "FR289": [
+      "packages/proofmesh/test/stable-keys-rows.test.ts"
     ]
   },
   "manual": {

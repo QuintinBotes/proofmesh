@@ -30,6 +30,7 @@ import { searchSources } from './sources.js'
 import { NOTE_KINDS, notesMatching, resolveRef, resolveRefs, staleness } from './notes.js'
 import { verify, type Proposition } from './claims.js'
 import { openCursor, queryHash, sealCursor } from './cursor.js'
+import { addKeys } from './keys.js'
 import { leanName, leanRow, leanText, quote } from './lean.js'
 import { innermost } from './symbol-at.js'
 import { compare, hasBodyHash, unreadableFiles } from './compare.js'
@@ -283,6 +284,7 @@ function strictFreshness(ctx: Ctx, root: string): Envelope['freshness'] {
 
 function envelope(ctx: Ctx, tool: ToolName, requested: Limits | undefined, r: Partial, clampNotes: string[], freshness: Envelope['freshness']): Answer {
   const { db } = ctx
+  addKeys(db, tool, r.data)
   const stop = new Set(r.stop_reasons ?? [])
   if (Date.now() - ctx.started > ctx.limits.timeout_ms) stop.add('timeout')
   let cut = r.more ?? false
