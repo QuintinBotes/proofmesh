@@ -38,6 +38,9 @@ function csharpAdapterPath(): string | undefined {
   return candidates.find((c) => fs.existsSync(c))
 }
 
+/** The names an API description goes by (FR253), read by the build adapter for the endpoints it declares: `openapi.yaml`, `swagger.json`, `orders.openapi.yaml`. */
+const OPENAPI_NAME = /^((openapi|swagger)([.\-_].+)?|.+[.\-_](openapi|swagger))\.(ya?ml|json)$/i
+
 const SYNTAX: Record<string, string> = {
   '.java': 'java', '.go': 'go', '.rs': 'rust', '.rb': 'ruby', '.php': 'php',
   '.c': 'c', '.h': 'c', '.cpp': 'cpp', '.cc': 'cpp', '.cxx': 'cpp', '.hpp': 'cpp', '.hh': 'cpp', '.hxx': 'cpp',
@@ -77,7 +80,7 @@ export const BUILT_IN: AdapterSpec[] = [
   // The build graph (FR124 to FR129, FR151 to FR160, FR240 to FR249): each manifest is a source for this adapter and, where another adapter reads it as configuration, for that one too.
   {
     id: 'build', languages: new Set(['build']), extensions: {},
-    manifest: (name) => (/^(go\.(mod|work)|package\.json|pnpm-workspace\.yaml|tsconfig(\..+)?\.json|pom\.xml|(settings|build)\.gradle(\.kts)?|libs\.versions\.toml|Cargo\.toml|pyproject\.toml|composer\.json|.+\.gemspec|BUILD|BUILD\.bazel|BUCK)$/.test(name) ? 'build' : undefined),
+    manifest: (name) => (/^(go\.(mod|work)|package\.json|pnpm-workspace\.yaml|tsconfig(\..+)?\.json|pom\.xml|(settings|build)\.gradle(\.kts)?|libs\.versions\.toml|Cargo\.toml|pyproject\.toml|composer\.json|.+\.gemspec|BUILD|BUILD\.bazel|BUCK)$/.test(name) || OPENAPI_NAME.test(name) ? 'build' : undefined),
     isConfig: () => false,
     entry: () => createRequire(import.meta.url).resolve('@proofmesh/adapter-syntax/build'),
     unavailable: () => 'adapter_unavailable:build',

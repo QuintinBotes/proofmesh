@@ -9,6 +9,7 @@ import readline from 'node:readline'
 import { byteOffsets, send, type Range } from './common.js'
 import { parseStarlark, type SNode, type StarlarkFile } from './starlark.js'
 import { parseToml, type JNode } from './toml.js'
+import { MAX_DEPTH, openApiEndpoints, parseYaml } from './openapi.js'
 import { ParseError, catalogLookup, parseXml, readBuildScript, readCatalog, readPom, readSettings, type Catalog, type GradleDep, type Pom, type XNode } from './jvm.js'
 
 const VERSION = '0.1.0'
@@ -19,8 +20,8 @@ type Eco = 'npm' | 'go' | 'maven' | 'gradle' | 'cargo' | 'python' | 'composer' |
 type Project = { id: string; eco: Eco; manifest: Manifest; dir: string; name: string; range: Range }
 
 /** `strict` is plain JSON (composer.json): no comments and no trailing comma; otherwise JSONC, as a tsconfig is. */
-function parseJson(text: string, strict = false): JNode {
-  let i = 0
+function parseJson(text: string, strictKeys = false, strict = false): JNode {
+  let i = 0, depth = 0
   const skip = () => {
     for (;;) {
       while (i < text.length && /\s/.test(text[i]!)) i++
@@ -42,10 +43,13 @@ function parseJson(text: string, strict = false): JNode {
   const value = (): JNode => {
     skip()
     const c = text[i]
+    // The reader recurses: a document nested deeper than any real one is refused, not left to overflow the stack.
+    if ((c === '{' || c === '[') && ++depth > MAX_DEPTH) throw new ParseError(`nesting is deeper than ${MAX_DEPTH} levels`, i)
     if (c === '"') return string()
     if (c === '{' || c === '[') {
       const start = i++, close = c === '{' ? '}' : ']'
       const node: JNode = c === '{' ? { kind: 'object', start, end: 0, members: [] } : { kind: 'array', start, end: 0, items: [] }
+      const seen = new Set<string>()
       for (;;) {
         skip()
         if (text[i] === close) { i++; break }
@@ -55,6 +59,8 @@ function parseJson(text: string, strict = false): JNode {
           skip()
           if (text[i] !== ':') throw new ParseError(`expected ":" after "${key.value}"`, i)
           i++
+          if (strictKeys && seen.has(key.value!)) throw new ParseError(`duplicate key ${JSON.stringify(key.value)}`, key.start)
+          seen.add(key.value!)
           node.members!.push({ key: key.value!, start: key.start, value: value() })
         } else node.items!.push(value())
         skip()
@@ -63,6 +69,7 @@ function parseJson(text: string, strict = false): JNode {
         throw new ParseError(`expected "," or "${close}", found ${text[i] ?? 'the end'}`, i)
       }
       node.end = i
+      depth--
       return node
     }
     const start = i
@@ -176,6 +183,8 @@ let computed: { symbols: Fact[]; relationships: Fact[] } | undefined
 /** Why a file reports partial, in the workspace response. */
 const diagnostics: Array<{ level: 'warning'; message: string; path: string }> = []
 
+/** The names an API description goes by (FR253): `openapi.yaml`, `swagger.json`, `orders.openapi.yaml`, `orders-swagger.json`. */
+export const OPENAPI_NAME = /^((openapi|swagger)([.\-_].+)?|.+[.\-_](openapi|swagger))\.(ya?ml|json)$/i
 const MAX_EXPANDED = 4096, MAX_SUBSTITUTIONS = 256
 const dirOf = (p: string) => (path.posix.dirname(p) === '.' ? '' : path.posix.dirname(p))
 const lineOf = (m: Manifest, offset: number) => { let lo = 0, hi = m.lines.length - 1; while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (m.lines[mid]! <= offset) lo = mid; else hi = mid - 1 } return lo + 1 }
@@ -316,8 +325,19 @@ function compute(): { symbols: Fact[]; relationships: Fact[] } {
           else if (!ignored) entry.targets.push({ project: declare({ eco, manifest: m, dir: m.dir, name: label, range: rangeOf(m, name.start, name.end) }, `#${name.value}${entry.targets.some((t) => t.project.name === label) ? `@${name.start}` : ''}`), call })
         }
         if (!ignored) builds.push(entry)
+      } else if (OPENAPI_NAME.test(base)) {
+        // An API description (FR253): its endpoints are declared where it states them; a file that is no OpenAPI or Swagger document declares none.
+        const found = openApiEndpoints(/\.json$/i.test(base) ? parseJson(m.text, true) : parseYaml(m.text))
+        const seen = new Set<string>()
+        for (const e of found?.endpoints ?? []) {
+          const id = `${file}#endpoint#${e.name}`
+          if (seen.has(id)) continue
+          seen.add(id)
+          symbols.push({ local_id: id, path: file, kind: 'endpoint', name: e.name.split(' ')[1], qualified_name: e.name, range: rangeOf(m, e.start, e.end), signature: e.operationId ? `operationId: ${e.operationId}` : null })
+        }
+        if (found?.skipped) partial(file, `${found.skipped} path item${found.skipped === 1 ? '' : 's'} not read: only an inline path item is read, a $ref is not followed`)
       } else {
-        const root = parseJson(m.text, base === 'composer.json')
+        const root = parseJson(m.text, false, base === 'composer.json')
         if (base === 'composer.json') {
           const name = member(root, 'name')
           if (!ignored && name?.value.kind === 'string' && name.value.value) composers.push({ m, root, project: declare({ eco: 'composer', manifest: m, dir: m.dir, name: name.value.value, range: rangeOf(m, name.start, name.value.end) }) })
@@ -327,8 +347,8 @@ function compute(): { symbols: Fact[]; relationships: Fact[] } {
           if (!ignored) npm.set(m.dir, { m, root })
         } else if (!ignored) tsconfigs.push({ m, root })
       }
-      results.set(file, { status: 'ok' })
-    } catch (e) { fail(file, e, m, base.startsWith('go.') ? `invalid_${base.replace('.', '_')}` : base === 'pom.xml' ? 'invalid_xml' : base === 'Cargo.toml' || base === 'pyproject.toml' ? 'invalid_toml' : /^(BUILD|BUILD\.bazel|BUCK)$/.test(base) ? 'invalid_starlark' : /gradle|toml/.test(base) ? 'invalid_gradle' : 'invalid_json') }
+      results.set(file, { ...results.get(file), status: 'ok' })
+    } catch (e) { fail(file, e, m, OPENAPI_NAME.test(base) ? 'invalid_openapi' : base.startsWith('go.') ? `invalid_${base.replace('.', '_')}` : base === 'pom.xml' ? 'invalid_xml' : base === 'Cargo.toml' || base === 'pyproject.toml' ? 'invalid_toml' : /^(BUILD|BUILD\.bazel|BUCK)$/.test(base) ? 'invalid_starlark' : /gradle|toml/.test(base) ? 'invalid_gradle' : 'invalid_json') }
   }
 
   // Every captured file, in a fixed order.
