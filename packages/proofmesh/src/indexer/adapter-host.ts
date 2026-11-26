@@ -119,7 +119,9 @@ export class AdapterProcess {
         this.processPeakKb = Math.max(this.processPeakKb ?? 0, kb)
         if (this.budgetMb && kb > this.budgetMb * 1024 && !this.exited && this.overBudgetKb === undefined) {
           this.overBudgetKb = this.processPeakKb
-          this.stopChild(`exceeded its memory budget of ${this.budgetMb} MB${this.loading ? ' while loading the project' : ''} (peak resident memory ${Math.round(kb / 1024)} MB; raise it with adapter_memory_mb) and was stopped with SIGKILL`)
+          this.stopChild(this.loading
+            ? `needed ${Math.round(kb / 1024)} MB to load the project, over its memory budget of ${this.budgetMb} MB (load peak ${Math.round(kb / 1024)} MB; raise it with adapter_memory_mb) and was stopped with SIGKILL`
+            : `exceeded its memory budget of ${this.budgetMb} MB (peak resident memory ${Math.round(kb / 1024)} MB; raise it with adapter_memory_mb) and was stopped with SIGKILL`)
         }
       }
       resolve()
