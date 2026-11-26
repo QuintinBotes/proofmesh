@@ -16,6 +16,7 @@ import { fileURLToPath } from 'node:url'
 const args = process.argv.slice(2)
 const flag = (name, fallback) => { const i = args.indexOf(`--${name}`); return i < 0 ? fallback : args[i + 1] }
 const projects = Number(flag('projects', 20)), files = Number(flag('files', 200)), sampleMs = Number(flag('sample-ms', 500))
+if (!(sampleMs > 0) || !Number.isFinite(sampleMs)) { console.error('--sample-ms must be a positive number'); process.exit(2) }
 if (!Number.isInteger(projects) || !Number.isInteger(files) || projects < 1 || files < projects) { console.error('--projects and --files must be whole numbers with files >= projects'); process.exit(2) }
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const cli = path.join(root, 'packages', 'proofmesh', 'bin', 'proofmesh.mjs')

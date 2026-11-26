@@ -479,8 +479,9 @@ export async function main(argv: string[]): Promise<number> {
         // Observatory's Galaxy reads this; building it now keeps opening the view instant. It is a cache, so failure only costs time later.
         try { galaxyFor(dataDir) } catch { /* rebuilt on first view */ }
         console.log(`discovered ${r.counts.discovered}, indexed ${r.counts.indexed}, excluded ${r.counts.excluded_by_rule}, unsupported ${r.counts.unsupported}, failed ${r.counts.failed}`)
+        console.log(`index host heap ${heapLimitMb()} MB`)
         const budgets = Object.entries(r.adapterBudgets)
-        if (budgets.length) console.log(`adapter memory budget ${budgets.map(([id, b]) => `${id} ${b.mb} MB (${b.source === 'setting' ? 'set' : 'half of this machine\'s memory, 8 to 32 GB'})`).join(', ')}; host heap ${heapLimitMb()} MB`)
+        if (budgets.length) console.log(`adapter memory budget ${budgets.map(([id, b]) => `${id} ${b.mb} MB (${b.source === 'setting' ? 'set' : 'half of this machine\'s memory, 8 to 32 GB'})`).join(', ')}`)
         console.log(`phases ${phases.map((p) => `${p.phase} ${duration(p.ms)}`).join(', ')} (job ${jobId})`)
         for (const m of r.memoryRestarts ?? []) console.log(m.at_load
           ? `adapter ${m.adapter} needed ${m.peak_rss_mb ?? 'unknown'} MB to load the project, over its memory budget of ${m.budget_mb} MB: its ${m.files} file${m.files === 1 ? '' : 's'} failed with memory_budget, with no restart, since a smaller batch cannot shrink the load. Raise the budget: proofmesh repo config <repository> --adapter ${m.adapter} --memory-mb <MB above ${m.peak_rss_mb ?? m.budget_mb}>`

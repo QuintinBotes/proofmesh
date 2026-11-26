@@ -1300,6 +1300,17 @@
     ],
     "FR356": [
       "packages/proofmesh/test/adapter-defaults.test.ts"
+    ],
+    "FR357": [
+      "packages/proofmesh/test/adapter-defaults.test.ts"
+    ],
+
+    "FR358": [
+      "packages/proofmesh/test/adapter-defaults.test.ts"
+    ],
+
+    "FR359": [
+      "packages/proofmesh/test/adapter-defaults.test.ts"
     ]
   },
   "manual": {

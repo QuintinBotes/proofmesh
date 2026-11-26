@@ -299,16 +299,25 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
       for (const run of runs) {
         if (run === late) {
           late.sources.sort((a, b) => byPath.get(a.path)!.i - byPath.get(b.path)!.i)
-          const proc = late.process = new AdapterProcess(syntaxSpec!.entry()!, undefined, undefined, late.spec.id)
+          // The syntax tier that starts here is held to a budget like every adapter, and shown with the others.
+          const { adapter_memory_mb: lateSetting, ...lateConfig } = catalog.adapterConfig(repo.id, 'syntax')
+          const lateBudget = adapterBudget({ adapter_memory_mb: lateSetting })
+          late.budgetMb = lateBudget.mb; late.budgetSource = lateBudget.source
+          adapterBudgets[late.spec.id] = { mb: lateBudget.mb, source: lateBudget.source }
+          const proc = late.process = new AdapterProcess(syntaxSpec!.entry()!, undefined, testMs('PROOFMESH_TEST_ADAPTER_RSS_SAMPLE_MS', 50, 2000), late.spec.id, undefined, lateBudget.mb)
           progress({ phase: 'initialize', adapter: late.spec.id, done: 0, total: late.sources.length })
           const init = await proc.initialize({
             protocol_version: PROTOCOL_VERSION, workspace, repository_root: repo.root, analysis_mode: requestedMode,
             files: late.sources.map((c) => ({ path: c.path, content_hash: hashOf.get(c.path)!, language: c.language! })),
-            config: { ...catalog.adapterConfig(repo.id, 'syntax') },
-          }).catch((e) => { throw e instanceof AdapterProtocolError ? adapterFailure(late!.spec.id, finished, 'failed to initialize', e) : e })
-          late.manifest = init.adapter; late.inputs = []; late.units = init.units
-          late.entrySha256 = sha256File(syntaxSpec!.entry()!)
-          late.keys = fileKeys({ repository: repo.id, adapter: { ...late.manifest, entry_sha256: late.entrySha256 }, analysisMode: late.mode, config: catalog.adapterConfig(repo.id, 'syntax'), externalInputs: [], configs: [], sources: late.sources.map((c) => c.path), units: late.units, hashOf: (p) => hashOf.get(p) })
+            config: lateConfig,
+          }).catch((e) => {
+            // Over budget while loading: its files fail with memory_budget, as for any adapter, and the index goes on.
+            if (e instanceof AdapterBudgetError) { late!.unstartable = e; memoryRestarts.push({ adapter: late!.spec.id, ...peakOf(e), files: late!.sources.length, action: 'adapter_failed' }); return undefined }
+            throw e instanceof AdapterProtocolError ? adapterFailure(late!.spec.id, finished, 'failed to initialize', e) : e
+          })
+          late.manifest = init?.adapter ?? { id: late.spec.id, version: 'not_started', protocol_version: PROTOCOL_VERSION, languages: [...late.spec.languages], toolchain: {} }; late.inputs = []; late.units = init?.units
+          late.entrySha256 = init ? sha256File(syntaxSpec!.entry()!) : 'not_started'
+          late.keys = fileKeys({ repository: repo.id, adapter: { ...late.manifest, entry_sha256: late.entrySha256 }, analysisMode: late.mode, config: lateConfig, externalInputs: [], configs: [], sources: late.sources.map((c) => c.path), units: late.units, hashOf: (p) => hashOf.get(p) })
         }
         for (const c of run.configs) if (c.role === 'config') fileResults.set(c.path, { status: 'ok', capabilities: { text: 'complete' } })
         const producer: Producer = { id: run.manifest!.id, version: run.manifest!.version, mode: run.mode }

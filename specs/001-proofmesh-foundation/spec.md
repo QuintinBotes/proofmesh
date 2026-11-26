@@ -391,6 +391,9 @@ Acceptance: CI runs my pull request without secrets or release credentials; lice
 - FR354: MUST run the index host under `--max-old-space-size` from the same rule (`PROOFMESH_HOST_MEMORY_MB` wins) and show the heap in the index summary.
 - FR355: MUST report an index host that ran out of heap as `BUDGET_EXCEEDED` with detail `host_out_of_memory` naming `PROOFMESH_HOST_MEMORY_MB`, and mark its job failed, instead of leaving a crash.
 - FR356: SHOULD provide a script that generates N projects and M files and records the host's and the adapter's peak memory beside the budget and heap in force, so the defaults are checked against numbers.
+- FR357: MUST hold a syntax-tier fallback that starts mid-run to a budget, show it in the plan, summary and result like any adapter, and fail its files with `memory_budget`, not the index, when its load passes it.
+- FR358: MUST tell the host supervisor apart by a dedicated marker, not by a heap flag, so a person's own `--max-old-space-size` still gets the named host out-of-memory error; and MUST take a host out-of-memory only from V8's fatal-error text together with an abort exit.
+- FR359: MUST print the index host heap on its own line whether or not any adapter ran, and the synthetic script MUST refuse a `--sample-ms` that is not a positive number.
 
 ### Impact completeness
 
