@@ -4,4 +4,6 @@
 (preproc_include path: [(system_lib_string) (string_literal)] @import.module) @import
 (base_class_clause [(type_identifier) (qualified_identifier) (template_type)] @inherits)
 (call_expression function: [(identifier) (qualified_identifier) (template_function)] @name) @reference.call
-(call_expression function: (field_expression field: [(field_identifier) (template_method)] @name)) @reference.call
+(call_expression function: (field_expression field: [(field_identifier) (template_method) (dependent_name)] @name)) @reference.call
+; A method defined outside its template class, `A<T>::f`, is named under the class like `A::f`.
+(function_declarator declarator: (qualified_identifier scope: (template_type) name: (identifier) @name)) @definition.method

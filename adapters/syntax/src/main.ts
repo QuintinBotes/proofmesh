@@ -55,6 +55,9 @@ function scalaImport(n: Node): Record<string, string> {
   const paths = n.childrenForFieldName('path'), tail = n.namedChildren.find((c) => !paths.some((p) => p.equals(c)))
   const written = (a: Node, b: Node) => n.text.slice(a.startIndex - n.startIndex, b.endIndex - n.startIndex).replace(/\s+/g, ' ')
   const base = paths.length ? written(paths[0]!, paths.at(-1)!) : ''
+  // Several clauses (`import a._, b.C`) are one statement: its module is all of them as written.
+  const last = n.namedChildren.at(-1)!
+  if (tail && !tail.equals(last)) return { module: written(paths[0]!, last) }
   if (tail?.type === 'namespace_selectors') return { module: base, names: tail.text.replace(/^\{|\}$/g, '').replace(/\s+/g, ' ').trim() }
   if (tail?.type === 'namespace_wildcard') return { module: `${base}.${tail.text}` }
   if (tail?.type === 'as_renamed_identifier') return { module: `${base}.${tail.childForFieldName('name')!.text}`, alias: tail.childForFieldName('alias')!.text }
@@ -63,13 +66,14 @@ function scalaImport(n: Node): Record<string, string> {
 // A C or C++ callee written `a::b<T>` is called by its last name.
 function lastName(n: Node): Node {
   for (;;) {
-    const next = n.type === 'qualified_identifier' || n.type === 'template_function' || n.type === 'template_method' ? n.childForFieldName('name') : null
+    const next = n.type === 'qualified_identifier' || n.type === 'template_function' || n.type === 'template_method' ? n.childForFieldName('name') : n.type === 'dependent_name' ? n.namedChildren[0] : null
     if (!next) return n
     n = next
   }
 }
-// An include inside `#if`, `#ifdef` or `#else` is conditional, unless the conditional is the file's include guard, which wraps every other statement.
-const conditionalInclude = (n: Node) => { for (let p = n.parent; p; p = p.parent) if (/^preproc_(if|ifdef|elif|elifdef|else)$/.test(p.type) && !(p.parent?.type === 'translation_unit' && p.parent.namedChildren.filter((c) => c.type !== 'comment').length === 1)) return true; return false }
+// An include inside `#if`, `#ifdef` or `#else` is conditional, unless the conditional is the file's include guard: `#ifndef X` then `#define X`, wrapping every other statement.
+const isGuard = (p: Node) => p.type === 'preproc_ifdef' && /^#\s*ifndef\b/.test(p.text) && p.parent?.type === 'translation_unit' && p.parent.namedChildren.filter((c) => c.type !== 'comment').length === 1 && p.namedChildren[1]?.type === 'preproc_def' && p.namedChildren[1].childForFieldName('name')?.text === p.childForFieldName('name')?.text
+const conditionalInclude = (n: Node) => { for (let p = n.parent; p; p = p.parent) if (/^preproc_(if|ifdef|elif|elifdef|else)$/.test(p.type) && !isGuard(p)) return true; return false }
 
 let workspace = ''
 const languageOf = new Map<string, string>()
@@ -130,6 +134,10 @@ async function analyse(file: string, callees = false) {
     }
     const heritage = m.captures.find((c) => /^(inherits|implements)(\.|$)/.test(c.name))
     if (heritage) {
+      // A Scala package object is no symbol of this tier, so its `extends` has no declaring type to run from.
+      let clause: Node | null = heritage.node
+      while (clause && clause.type !== 'extends_clause') clause = clause.parent
+      if (clause?.parent?.type === 'package_object') continue
       const [type, relation] = heritage.name.split('.')
       supertypes.push({ type: type!, ...(relation ? { relation } : {}), node: heritage.node, ...(role('owner') ? { owner: role('owner')! } : {}), ...(role('conditional') ? { conditional: true } : {}) })
       continue

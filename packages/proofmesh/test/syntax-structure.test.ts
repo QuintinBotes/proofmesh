@@ -293,6 +293,36 @@ describe('FR231 FR232 FR233 the syntax tier records imports and heritage in Swif
     })
   }, 240000)
 
+  it('FR231 only a real include guard is no condition: #if FEATURE and an #ifndef with no #define still mark an include conditional', async () => {
+    const { dataDir } = await indexedRepo({
+      'f.c': '#if FEATURE\n#include "f.h"\n#endif\n',
+      'g.c': '#ifndef X\n#define X\n#include "a.h"\n#endif\n',
+      'h.c': '#ifndef X\n#include "a.h"\n#endif\n',
+      'p.c': '#pragma once\n#include "a.h"\n',
+    })
+    expect(importRows(dataDir).map((r) => [r.path, r.line, r.detail.conditional ?? null])).toEqual([['f.c', 2, 'true'], ['g.c', 3, null], ['h.c', 2, 'true'], ['p.c', 2, null]])
+  }, 240000)
+
+  it('FR231 FR232 a Scala import of several clauses keeps its module as written, and a package object has no heritage row of its own', async () => {
+    const { dataDir } = await indexedRepo({ 'm.scala': 'import a._, b.C\nimport a.{B, C}, d.E\npackage object p extends Base\nobject Q extends Z\n' })
+    expect(importRows(dataDir).map((r) => [r.line, r.detail])).toEqual([[1, { module: 'a._, b.C' }], [2, { module: 'a.{B, C}, d.E' }]])
+    withSnapshot(dataDir, (db) => expect(rows(db, 'inherits', 'implements').map((x) => [x.line, x.from, x.detail?.name])).toEqual([[4, 'Q', 'Z']]))
+  }, 240000)
+
+  it('FR233 a C++ dependent call names its last identifier, and a method defined outside its template class owns the calls in its body', async () => {
+    const { dataDir } = await indexedRepo({
+      'd.cpp': 'template<class T> void u(T& p) { p.template g<int>(); T::template h<int>(); p.k<int>(); }\ntemplate<class T> struct A { void f(); };\ntemplate<class T> void A<T>::f() { z(); }\nvoid B::m() { y(); }\n',
+    })
+    expect(calls(dataDir).map(([, l, from, callee]) => [l, from, callee]).sort((a, b) => String(a[2]).localeCompare(String(b[2])))).toEqual([
+      [1, 'd:u', 'g'], [1, 'd:u', 'h'], [1, 'd:u', 'k'], [4, 'd:B.m', 'y'], [3, 'd:A.f', 'z'],
+    ])
+  }, 240000)
+
+  it('FR231 a Bash source of a glob is a call and no import, and a quoted star is a literal path', async () => {
+    const { dataDir } = await indexedRepo({ 'g.sh': 'source *.sh\nsource a?.sh\nsource "*.sh"\nsource ~/x.sh\n' })
+    expect(importRows(dataDir).map((r) => [r.line, r.detail.module])).toEqual([[3, '*.sh'], [4, '~/x.sh']])
+  }, 240000)
+
   it('FR231 FR232 FR233 a file the grammar only partly parses keeps the imports, heritage and calls of the parsed part, and reports syntax partial', async () => {
     const { dataDir } = await indexedRepo({
       'broken.c': '#include <a.h>\nint f(void) { return g(1); }\nint (((\n',
