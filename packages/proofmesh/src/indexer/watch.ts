@@ -53,7 +53,7 @@ export async function watch(dataDir: string, repoIdOrPath: string, o: WatchOptio
           continue
         }
         o.log('working tree changed; indexing')
-        const r = await indexRepository(dataDir, repo.id, undefined, undefined, undefined, false, { onNotice: o.log })
+        const r = await indexRepository(dataDir, repo.id, undefined, undefined, undefined, false, { onNotice: o.log, signal: o.signal })
         o.log(`snapshot ${r.snapshotId} ${r.status}`)
         reported = r.snapshotId
       } while (again && !o.signal.aborted)

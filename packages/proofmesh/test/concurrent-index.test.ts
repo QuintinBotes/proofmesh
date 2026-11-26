@@ -4,6 +4,8 @@ import os from 'node:os'
 import path from 'node:path'
 import Database from 'better-sqlite3'
 import { describe, expect, it } from 'vitest'
+import { busyTimeoutMs } from '../src/core/busy.js'
+import { acquireIndexLock, lockFile, takeGcLock } from '../src/meshstore/index-lock.js'
 import { Catalog, initDataDir } from '../src/meshstore/catalog.js'
 import { FactCache } from '../src/indexer/fact-cache.js'
 import { CLI, cli, copyFixture, tmpDir, tool } from './helpers.js'
@@ -153,13 +155,13 @@ describe('FR320 FR321 FR326 databases wait and retry on busy', () => {
     } finally { c.close(); f.close() }
   })
 
-  it.each([['catalog.db', 'catalog'], [path.join('cache', 'facts.db'), 'facts']])('a write contended beyond one busy wait retries and succeeds (%s)', async (file, label) => {
+  it.each([['catalog.db', 'catalog', true], [path.join('cache', 'facts.db'), 'facts', true], [path.join('cache', 'facts.db'), 'facts first create table', false]])('a write contended beyond one busy wait retries and succeeds (%s, %s)', async (file, label, precreated) => {
     const { d, roots } = setup()
     fs.mkdirSync(path.join(d, 'cache'), { recursive: true })
     const g = gate(), release = path.join(tmpDir('pm-release-'), 'release')
-    const index = () => startIndex(d, roots[0]!, g.entry, [], { PROOFMESH_BUSY_TIMEOUT_MS: '100' })
+    const index = () => startIndex(d, roots[0]!, g.entry, [], { PROOFMESH_BUSY_TIMEOUT_MS: '100', PROOFMESH_TEST_HARNESS: '1' })
     // The fact cache is first written when the index seals; hold its lock from before the run, and the catalog's too for the other case.
-    new FactCache(d).close()
+    if (precreated) new FactCache(d).close()
     g.open()
     const holder = await holdWriteLock(path.join(d, file), release)
     const run = index()
@@ -191,4 +193,106 @@ describe('FR327 a reader keeps working while an index writes', () => {
     expect(await run.exited, run.out.stderr).toBe(0)
     expect((tool(d, 'workspace_status', {}) as any).snapshot.id).not.toBe(before)
   }, 240000)
+})
+
+const lockPath = (d: string, id: string) => lockFile(d, id)
+
+describe('FR328 gc and an index exclude each other, and a wait can be cancelled', () => {
+  it('an index admitted while gc runs waits for it (or with --no-wait is refused), and gc refuses while an index holds a lock', async () => {
+    const { d, roots, ids } = setup()
+    const g = gate()
+    g.open()
+    const gc = takeGcLock(d)
+    const refused = cli(['--data-dir', d, 'index', roots[0]!, '--no-wait'])
+    expect(refused.status).toBe(1)
+    expect(refused.stderr).toContain('INDEX_IN_PROGRESS')
+    expect(refused.stderr).toContain('a gc is running')
+    expect(fs.existsSync(lockPath(d, ids[0]!))).toBe(false)
+    const run = startIndex(d, roots[0]!, g.entry)
+    await until('the index waiting for gc', () => run.out.stderr.includes('waiting for a gc'), run)
+    expect(published(d, ids[0]!)).toBe(0)
+    gc.release()
+    expect(await run.exited, run.out.stderr).toBe(0)
+    expect(published(d, ids[0]!)).toBe(1)
+    const held = await acquireIndexLock(d, ids[0]!, 'repo', { wait: false })
+    expect(cli(['--data-dir', d, 'gc', '--dry-run']).stderr).toContain('holds an index lock')
+    held.release()
+    expect(cli(['--data-dir', d, 'gc', '--dry-run']).status).toBe(0)
+  }, 240000)
+
+  it('aborting a queued wait ends it with CANCELLED, even once the lock frees', async () => {
+    const { d, ids } = setup()
+    const first = await acquireIndexLock(d, ids[0]!, 'repo', { wait: false })
+    const abort = new AbortController()
+    let waiting!: () => void
+    const isWaiting = new Promise<void>((r) => (waiting = r))
+    const second = acquireIndexLock(d, ids[0]!, 'repo', { signal: abort.signal, onNotice: (l) => l.startsWith('waiting') && waiting() }).then(() => 'acquired', (e) => e.code as string)
+    await isWaiting
+    abort.abort()
+    first.release()
+    expect(await second).toBe('CANCELLED')
+  })
+})
+
+describe('FR329 lock robustness', () => {
+  it('a lock whose pid is alive but belongs to another process (start time differs) is taken over', async () => {
+    const { d, ids } = setup()
+    fs.mkdirSync(path.join(d, 'locks'), { recursive: true })
+    fs.writeFileSync(lockPath(d, ids[0]!), JSON.stringify({ pid: process.pid, host: os.hostname(), started_at: '2026-01-01T00:00:00.000Z', start: 'Thu Jan  1 00:00:00 1970' }))
+    const notes: string[] = []
+    const held = await acquireIndexLock(d, ids[0]!, 'repo', { wait: false, onNotice: (l) => notes.push(l) })
+    expect(notes[0]).toContain(`took over the stale index lock of pid ${process.pid}`)
+    held.release()
+  })
+
+  it('a lock with this process\'s own recorded start time stays live', async () => {
+    const { d, ids } = setup()
+    const first = await acquireIndexLock(d, ids[0]!, 'repo', { wait: false })
+    const rec = JSON.parse(fs.readFileSync(lockPath(d, ids[0]!), 'utf8'))
+    expect(rec.start).toEqual(expect.any(String))
+    await expect(acquireIndexLock(d, ids[0]!, 'repo', { wait: false })).rejects.toThrow('already being indexed')
+    first.release()
+  })
+
+  it('SIGINT while an index runs ends it with 130 and leaves no lock file', async () => {
+    const { d, roots, ids } = setup()
+    const g = gate()
+    const run = startIndex(d, roots[0]!, g.entry)
+    await until('the index analysing', analysing(d, ids[0]!), run)
+    expect(fs.existsSync(lockPath(d, ids[0]!))).toBe(true)
+    run.child.kill('SIGINT')
+    expect(await run.exited).toBe(130)
+    expect(fs.existsSync(lockPath(d, ids[0]!))).toBe(false)
+  }, 240000)
+
+  it('a job waiting behind a live lock keeps a heartbeat and stays queued however old its request is', async () => {
+    const { d, roots, ids } = setup()
+    const g = gate()
+    const first = startIndex(d, roots[0]!, g.entry)
+    await until('the first index analysing', analysing(d, ids[0]!), first)
+    const second = startIndex(d, roots[0]!, g.entry)
+    const jobs = () => { const c = Catalog.open(d); try { return c.openJobs(ids[0]!).filter((j) => j.state === 'queued') } finally { c.close() } }
+    await until('the waiting job heartbeat', () => jobs().some((j) => j.progress_at !== null), first, second)
+    const c = Catalog.open(d)
+    const id = jobs()[0]!.id
+    c.db.prepare('update index_job set requested_at = ? where id = ?').run('2026-01-01T00:00:00.000Z', id)
+    expect(c.job(id)!.state).toBe('queued')
+    c.close()
+    g.open()
+    for (const r of [first, second]) expect(await r.exited, r.out.stderr).toBe(0)
+  }, 240000)
+
+  it('the busy timeout override is read only in the harness, and only as a finite positive number, clamped', () => {
+    const keep = { t: process.env.PROOFMESH_BUSY_TIMEOUT_MS, h: process.env.PROOFMESH_TEST_HARNESS }
+    try {
+      process.env.PROOFMESH_TEST_HARNESS = '1'
+      const ms = (v: string) => { process.env.PROOFMESH_BUSY_TIMEOUT_MS = v; return busyTimeoutMs() }
+      expect([ms('-1'), ms('0'), ms('abc'), ms('Infinity')]).toEqual([120000, 120000, 120000, 120000])
+      expect([ms('50'), ms('99999999')]).toEqual([50, 600000])
+      delete process.env.PROOFMESH_TEST_HARNESS
+      expect(ms('50')).toBe(120000)
+    } finally {
+      for (const [k, v] of [['PROOFMESH_BUSY_TIMEOUT_MS', keep.t], ['PROOFMESH_TEST_HARNESS', keep.h]] as const) { if (v === undefined) delete process.env[k]; else process.env[k] = v }
+    }
+  })
 })

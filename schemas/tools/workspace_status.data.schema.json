@@ -200,6 +200,10 @@
           "inbound": {
             "type": "integer",
             "minimum": 1
+          },
+          "key": {
+            "type": "string",
+            "description": "The stable_key of the hub (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file."
           }
         }
       }
@@ -396,6 +400,56 @@
                     },
                     "reuse": {
                       "type": "integer",
+                      "minimum": 0
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          "adapters": {
+            "description": "Per running adapter, refreshed at least every 5 seconds while it analyses: its languages, files done and total, files a second, and the seconds left (null until a file is done). Never holds source text.",
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "adapter",
+                    "language",
+                    "done",
+                    "total",
+                    "files_per_second",
+                    "eta_seconds"
+                  ],
+                  "properties": {
+                    "adapter": {
+                      "type": "string"
+                    },
+                    "language": {
+                      "type": "string"
+                    },
+                    "done": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "total": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "files_per_second": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "eta_seconds": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ],
                       "minimum": 0
                     }
                   }

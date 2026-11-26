@@ -4,11 +4,29 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 ## Unreleased
 
-Indexes of different repositories run in parallel safely, and one index per repository at a time (closes #83; FR320 to FR327):
+Indexes of different repositories run in parallel safely, and one index per repository at a time (closes #83; FR320 to FR329):
 
 - The catalog and the fact cache use WAL and a two-minute busy timeout (`PROOFMESH_BUSY_TIMEOUT_MS`), and a write still busy after that is retried up to ten times, so two indexes meeting at a seal wait instead of failing with `SQLITE_BUSY`.
 - The global index lease is replaced by one lock file per repository under `<data dir>/locks/`, taken by `index` and by each `watch` cycle. Indexes of different repositories run at the same time. A second index of the same repository waits and says so (then reports the first one's snapshot unchanged), or with `--no-wait` exits with `INDEX_IN_PROGRESS` naming the pid and start time. A lock whose process is gone is taken over and the run says so.
+- `gc` and an index exclude each other, a wait for a lock ends when `watch` is aborted, a lock records the process start time so a reused pid is not taken for the holder, locks are released on exit and on SIGINT, SIGTERM and SIGHUP, and a job waiting behind a lock keeps a heartbeat so it is not read as interrupted. `PROOFMESH_BUSY_TIMEOUT_MS` is read only with `PROOFMESH_TEST_HARNESS` set.
 - A lock held from another host is treated as live; remove its file by hand if that host is gone. `gc` still refuses while any index holds a lock.
+
+Bounded adapter memory, and progress while indexing a large repository (closes #6; FR270 to FR277):
+
+- The budget covers the adapter's whole process group, is checked at the end of every batch before its results are accepted, and takes an exit 137 or a SIGKILL the host did not send as an overrun. Enforcement is sampled and documented as such. `proofmesh repo config <repository> --adapter <id> --memory-mb <n>` sets it per repository; `adapter check` and the conformance kit honour the environment setting. The sampling and progress intervals can be set only through `PROOFMESH_TEST_` names and are clamped. `get_job` lists only running adapters, and `progress_at` moves every 5 seconds in every phase.
+
+- Each adapter process runs under a memory budget (8192 MB by default; `adapter_memory_mb` per repository and adapter, or `PROOFMESH_ADAPTER_MEMORY_MB`). The host samples the process, stops one past the budget with SIGKILL, and passes the limit to Node (`--max-old-space-size`) and .NET (`DOTNET_GCHeapHardLimit`). An overrun names the adapter, the budget and the peak resident memory.
+- An adapter that passes its budget is started again with half the files of that batch, and batches of that size after it; the sealed facts are those of an index without a budget. A file that alone passes it fails with `memory_budget` and the census counts it; an adapter that cannot start within the budget fails its files and is not started again. Each restart is printed and recorded in the job's result as `memory_restarts`. The budget is part of a snapshot's identity, so raising it indexes again.
+- Progress repeats every 5 seconds (it was a minute), and a running adapter's line adds its languages, files a second and an estimate. `get_job` returns the same figures in `adapters`, refreshed at the same cadence. The index summary prints seconds per analysed file for each adapter.
+- New benchmark tier `bench/graph-bench/run-large.sh` on a pinned public repository of more than 20,000 files; not run for this change. Not done: reducing a TypeScript program's units on restart, and a budget line in `workspace_status`.
+
+Every row that names a symbol carries its stable key (part of #15; FR280 to FR289):
+
+- `key`, the symbol's `stable_key`, is on every structured row that names a symbol by id: the far side and `via` member of `get_relationships`, `analyze_impact` dependents, `find_tests` rows and each hop of their chains, `trace_paths` nodes and frontier nodes, `find_symbols` rows, `search_sources` hits inside a symbol, `workspace_status` hubs, `find_query_source` candidates, `get_table_reach` tables, symbols, entities, reach rows and accessors, and `impact_completeness` changed symbols, dependents and nearest tests (read from the snapshot that holds the symbol, so a deleted one carries its base key). A row passes back as `key` with no second lookup.
+- Where a row already has a `key` or names a symbol in a field of its own, the key is beside it: `from_key` on an unresolved site, `symbol_key` on property reads and on a symbol child of `get_overview` (whose `key` stays the child's id), `source_key` and `target_key` on `get_ecosystem` samples. A row whose id is no symbol (a file reached by imports, a directory) carries none.
+- The keys count against `max_bytes`: `get_table_reach` (its nested lists), `get_property_reads`, `workspace_status` hubs and `get_relationships` boundaries are cut by whole rows to fit it and say so, `search_sources` counts a hit's key in its own budget, and `get_ecosystem` trims unresolved boundaries after links.
+- `get_symbol`, `get_symbols_at` and `compare_snapshots` already carried `stable_key`; the lean text rows are unchanged. The tool data schemas and `generated.ts` gain the optional fields.
+- Not done: `detail.scip` on the SCIP symbol, which needs a symbol field in the adapter protocol and a snapshot format bump with its reader checks (the #63 change that added `roles` touched about thirty files); `get_overview` links and `trace_paths` explored edges still name their ends by id, which the rows beside them resolve; SC-2 of #15 stays with the benchmark of #9.
 
 A dying adapter fails the index with its name and exit status, instead of crashing it (closes #78; FR260 to FR269):
 

@@ -79,7 +79,7 @@ Benefits: no server process, JVM, or database administration; one public-domain 
 
 Costs: Proofmesh maintains its own traversal engine and query planning and must test them heavily; users get no general-purpose graph query language; SQLite allows one writer per database file; full per-snapshot files cost disk until structural sharing exists; a native Node module needs prebuilt binaries per platform. No claim that this is faster than a dedicated graph database for every workload. Benchmarks must establish acceptable behavior.
 
-Mitigations: a `GraphStore` interface keeps a different engine possible if benchmarks require one. Differential tests compare the traversal engine with a simple in-memory reference on generated graphs. Incremental snapshots start from a copy-on-write clone of the previous sealed file where the filesystem supports it (APFS clones; Btrfs and XFS reflinks) and a full copy elsewhere. Retention and pinning bound disk use. One index coordinator per data directory is enforced by a catalog lease; readers are unlimited.
+Mitigations: a `GraphStore` interface keeps a different engine possible if benchmarks require one. Differential tests compare the traversal engine with a simple in-memory reference on generated graphs. Incremental snapshots start from a copy-on-write clone of the previous sealed file where the filesystem supports it (APFS clones; Btrfs and XFS reflinks) and a full copy elsewhere. Retention and pinning bound disk use. One index per repository at a time is enforced by a lock file in the data directory, and indexes of different repositories run together; readers are unlimited.
 
 ### D02 — Evidence objects live outside the graph
 

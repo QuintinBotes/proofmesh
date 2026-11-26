@@ -13,7 +13,7 @@ import { sameRepository } from '../indexer/discovery.js'
 import { runWorkspaceLink } from './workspace-link.js'
 import { sha256File } from '../core/hash.js'
 import { normalizedDump, openSnapshot } from '../meshstore/snapshot.js'
-import { indexRepository } from '../indexer/coordinator.js'
+import { indexRepository, testMs } from '../indexer/coordinator.js'
 import { watch } from '../indexer/watch.js'
 import { BUILT_IN, Registry, registryFor } from '../indexer/languages.js'
 import { runKit } from '../conformance/kit.js'
@@ -42,6 +42,7 @@ Usage: proofmesh [--data-dir DIR] <command>
   init                              create the data directory
   repo add <path> [--name N]        register a repository
   repo list                         registered repositories: id, name, root, trust
+  repo config <repo> --adapter <id> --memory-mb <n>   set the memory budget of an adapter for this repository (default 8192)
   repo move <repo> <new-path>       re-root a registered repository at another working tree of the same git repository
   repo trust <repo> --build-evaluation   allow build logic to run for this repository: C# build evaluation while indexing, and scip run indexers
   repo untrust <repo>               revoke that trust
@@ -70,7 +71,7 @@ Usage: proofmesh [--data-dir DIR] <command>
   gc [--keep N] [--dry-run]         retire old snapshots and unreferenced evidence; never current, pinned or linked ones
   snapshot pin <id> | snapshot unpin <id>
   mcp-config [--client claude-code|codex] [--scope project|user] [--write .mcp.json]   print the client registration
-  index <repository-id or path> [--rev <commit-ish>]   capture, analyse, seal, and publish a snapshot; --rev indexes a commit without touching the working tree; progress on stderr
+  index <repository-id or path> [--rev <commit-ish>] [--no-wait]   capture, analyse, seal, and publish a snapshot; --rev indexes a commit without touching the working tree; one index per repository at a time: a second waits, or with --no-wait exits INDEX_IN_PROGRESS; progress on stderr
   watch <repository> [--interval S] [--quiet-ms MS] [--poll]   keep the snapshot current; --poll ignores file notifications
   completeness <repository> <base>[..<head>] [--depth N] [--json]   every symbol the change made and what calls, implements, references or imports it, each changed, tested or neither; indexes a side with no snapshot and waits; exits 0 when no dependent is neither, 1 when one is, 2 on a usage error or unknown commit
   tests <repository> <path | path#name> [--json]   the tests that reach a file or symbol, how each is known and its chain; exits 0 when one executes it, 1 when none does, 2 on a usage error or unknown subject
@@ -362,6 +363,20 @@ export async function main(argv: string[]): Promise<number> {
             catalog.close()
           }
         }
+        if (rest[0] === 'config' && rest[1]) {
+          const opts = rest.slice(2), adapter = take(opts, '--adapter'), memory = take(opts, '--memory-mb')
+          if (!adapter || !memory || !/^[1-9]\d*$/.test(memory)) throw new ProofmeshError('INVALID_ARGUMENT', 'usage: proofmesh repo config <repository> --adapter <id> --memory-mb <whole number of MB>')
+          const catalog = Catalog.open(dataDir)
+          try {
+            const repo = catalog.resolveRepository(rest[1])
+            const { extensions: _installed, ...stored } = catalog.adapterConfig(repo.id, adapter)
+            catalog.setAdapterConfig(repo.id, adapter, { ...stored, adapter_memory_mb: Number(memory) })
+            console.log(`adapter ${adapter} may use ${memory} MB of resident memory when indexing ${repo.name}; the next index applies it`)
+            return 0
+          } finally {
+            catalog.close()
+          }
+        }
         if (rest[0] === 'move' && rest[1] && rest[2]) {
           const catalog = Catalog.open(dataDir)
           try {
@@ -381,7 +396,7 @@ export async function main(argv: string[]): Promise<number> {
             catalog.close()
           }
         }
-        if (rest[0] !== 'add' || !rest[1]) throw new ProofmeshError('INVALID_ARGUMENT', 'usage: proofmesh repo add <path> [--name N] | repo list | repo move <repository> <new-path> | repo trust <repository> --build-evaluation | repo untrust <repository>')
+        if (rest[0] !== 'add' || !rest[1]) throw new ProofmeshError('INVALID_ARGUMENT', 'usage: proofmesh repo add <path> [--name N] | repo list | repo config <repository> --adapter <id> --memory-mb <n> | repo move <repository> <new-path> | repo trust <repository> --build-evaluation | repo untrust <repository>')
         const opts = rest.slice(2)
         const name = take(opts, '--name')
         const catalog = Catalog.open(dataDir)
@@ -403,8 +418,15 @@ export async function main(argv: string[]): Promise<number> {
         // Every index is a job row, so status and get_job see it; one the MCP server spawned names its row with --job.
         try { jobId = jobFlag ?? jobs.createJob(jobs.repository(opts[0]).id, os.userInfo().username) } catch (e) { jobs.close(); throw e }
         // Progress goes to stderr, so stdout stays the parseable summary.
-        const report = progressReporter((line) => process.stderr.write(`${line}\n`))
-        let started = false, phase = ''
+        // The same figures go to the job row, at the same cadence, so get_job shows what stderr shows (FR274).
+        const recordAdapters = () => {
+          if (!started) return
+          // Adapters run one after another, so the live ones are the one analysing now; progress_at moves on every tick, in any phase.
+          const live = report.current()
+          jobs.updateJob(jobId, { progress_at: new Date().toISOString(), adapter_progress: JSON.stringify(live ? { [live.adapter]: live } : {}) })
+        }
+        const report = progressReporter((line) => process.stderr.write(`${line}\n`), testMs('PROOFMESH_TEST_PROGRESS_INTERVAL_MS', 50, 60000), recordAdapters)
+        let started = false, phase = '', beat = 0
         const plan: Record<string, { mode: string; analyse: number; reuse: number }> = {}
         let r: Awaited<ReturnType<typeof indexRepository>>
         try {
@@ -420,7 +442,12 @@ export async function main(argv: string[]): Promise<number> {
             started = true
             phase = label
             report.update(p)
-          }, undefined, rev, keepCurrent && !!rev, { wait: !noWait, onNotice: (line) => process.stderr.write(`${line}\n`) })
+            recordAdapters()
+          }, undefined, rev, keepCurrent && !!rev, {
+            wait: !noWait, onNotice: (line) => process.stderr.write(`${line}\n`),
+            // A job waiting behind another index is alive: refresh its heartbeat so no poller reads it as interrupted and starts another.
+            onWait: () => { const at = Date.now(); if (at - beat >= 10_000) { beat = at; jobs.updateJob(jobId, { progress_at: new Date(at).toISOString() }) } },
+          })
         } catch (e) {
           report.stop()
           const failure = asProofmeshError(e)
@@ -432,7 +459,7 @@ export async function main(argv: string[]): Promise<number> {
         }
         const phases = report.stop()
         // A finished job keeps counts that mean something: the files indexed, not the last phase's zero.
-        jobs.updateJob(jobId, { state: 'succeeded', finished_at: new Date().toISOString(), phase: 'done', done: r.counts.indexed, total: r.counts.indexed, progress_at: new Date().toISOString(), result: JSON.stringify({ snapshot_id: r.snapshotId, status: r.status, counts: r.counts, reuse: r.reuse ?? null, commit: r.commit ?? null }) })
+        jobs.updateJob(jobId, { state: 'succeeded', finished_at: new Date().toISOString(), phase: 'done', done: r.counts.indexed, total: r.counts.indexed, progress_at: new Date().toISOString(), result: JSON.stringify({ snapshot_id: r.snapshotId, status: r.status, counts: r.counts, reuse: r.reuse ?? null, commit: r.commit ?? null, ...(r.memoryRestarts ? { memory_restarts: r.memoryRestarts } : {}) }) })
         jobs.close()
         if (r.resumed) console.log(`resumed from checkpoint: ${r.resumed.done} of ${r.resumed.total} batches were already done`)
         if (r.reuse?.reused) console.log(`reused the facts of ${r.reuse.reused} of ${r.reuse.reused + r.reuse.analysed} files whose inputs did not change`)
@@ -441,6 +468,10 @@ export async function main(argv: string[]): Promise<number> {
         try { galaxyFor(dataDir) } catch { /* rebuilt on first view */ }
         console.log(`discovered ${r.counts.discovered}, indexed ${r.counts.indexed}, excluded ${r.counts.excluded_by_rule}, unsupported ${r.counts.unsupported}, failed ${r.counts.failed}`)
         console.log(`phases ${phases.map((p) => `${p.phase} ${duration(p.ms)}`).join(', ')} (job ${jobId})`)
+        for (const m of r.memoryRestarts ?? []) console.log(`adapter ${m.adapter} passed its memory budget of ${m.budget_mb} MB (peak ${m.peak_rss_mb ?? 'unknown'} MB) on ${m.files} file${m.files === 1 ? '' : 's'}: ${m.action === 'smaller_batches' ? 'restarted with smaller batches' : m.action === 'file_failed' ? 'file failed with memory_budget' : 'its files failed with memory_budget'}`)
+        // Seconds per analysed file, per adapter: the figure that says how long a repository of a given size will take (FR276).
+        const perFile = Object.entries(plan).flatMap(([id, p]) => { const ms = phases.find((x) => x.phase === `analyze ${id}`)?.ms; return ms !== undefined && p.analyse > 0 ? [`${id} ${(ms / 1000 / p.analyse).toFixed(2)}`] : [] })
+        if (perFile.length) console.log(`adapter seconds per file ${perFile.join(', ')}`)
         const peaks = Object.entries(r.adapterPeakRssKb)
         if (peaks.length) console.log(`adapter peak memory ${peaks.map(([id, kb]) => `${id} ${kb >= 1048576 ? `${(kb / 1048576).toFixed(1)} GiB` : `${Math.round(kb / 1024)} MiB`}`).join(', ')}`)
         return 0

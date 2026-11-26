@@ -311,6 +311,16 @@ Acceptance: CI runs my pull request without secrets or release credentials; lice
 - FR257: MUST leave a client that matches no endpoint an unresolved `dispatches_to`, reason `unknown_name`, with the path in `detail.path`, and one that matches only declared endpoints with no handler an unresolved `dispatches_to`, reason `not_indexed`.
 - FR258: MUST treat the same `VERB path` in code and in a document as one endpoint for matching, so its client links once and the declaration exposes the same handler; MUST list as candidates, at most five with the rest counted, the handlers of equally good matches and mark the row `ambiguous`.
 - FR259: MUST give the same links for an incremental index as for a clean one, and MUST leave the workspace link rules and the link files they seal as they were.
+- FR280: MUST carry `key` (the symbol's `stable_key`) on every `get_relationships` row's far side and `via` member, and `from_key` on each unresolved site's `from_id`, in `get_relationships` and `trace_paths`; a row whose id is no symbol, such as a file, carries none.
+- FR281: MUST carry `key` on every `analyze_impact` dependent, every `find_tests` row and every hop of its `chain`, so that a row is passed back as `key` without a second lookup.
+- FR282: MUST carry `key` on every `trace_paths` node and every frontier node of its search.
+- FR283: MUST carry `key` on every `find_symbols` row, every `search_sources` hit that is inside a symbol and every `workspace_status` hub, and `symbol_key` on a symbol child of `get_overview` (whose own `key` stays the child's id).
+- FR284: MUST carry `key` on every `impact_completeness` changed symbol, dependent that is a symbol and nearest test, read from the snapshot that holds it, so a deleted symbol carries the key it had in the base.
+- FR285: MUST carry `key` on every `get_table_reach` table, declaring symbol, entity, reach row and accessor, and `symbol_key` on each observed property read.
+- FR286: MUST carry `source_key` and `target_key` on every `get_ecosystem` sample row, and `source_key` on an unresolved one, the keys the member snapshots give the two ends; a repository-level link has no `target_key`.
+- FR287: MUST carry `symbol_key` beside `symbol_id` on every `get_property_reads` row (static, observed and unread mapped property), none when the property maps to no symbol.
+- FR288: MUST give a `get_table_reach` row of a table mapped by Entity Framework the same keys as one mapped by Prisma (FR285).
+- FR289: MUST carry `key` on every `find_query_source` candidate.
 
 ### Adapter failure
 
@@ -325,6 +335,17 @@ Acceptance: CI runs my pull request without secrets or release credentials; lice
 - FR269: MUST have each built-in adapter (typescript, syntax, python, terraform, build, scip, csharp) exit when its input ends.
 - FR265: MUST print a stage line when capture ends (`prepare`) and when each later stage starts, so a crash shows where the index stopped.
 
+### Adapter memory and progress
+
+- FR270: MUST run each adapter process under a memory budget in MB of resident memory (default 8192, set per repository and adapter with `proofmesh repo config <repository> --adapter <id> --memory-mb <n>` or for all with `PROOFMESH_ADAPTER_MEMORY_MB`) that the host enforces by sampling the resident memory of its whole process group, at an interval and at the end of every batch before the results are accepted, and stopping one past it with SIGKILL (an exit 137 or a SIGKILL the host did not send, under a budget, counts as an overrun), and by passing the limit to the engine (`--max-old-space-size` for Node, `DOTNET_GCHeapHardLimit` for .NET); an overrun MUST name the adapter, the budget and the peak resident memory.
+- FR271: MUST start an adapter that passed its budget again with half the files of the batch that did it, and with batches of that size from then on, before any file fails; MUST seal the same facts as an index without a budget; MUST name each restart in the index's result and output.
+- FR272: MUST fail a file that alone passes the budget with `memory_budget` and analyse every other file, with the language census counting it; MUST fail all files of an adapter that passes its budget while starting or answering `workspace`, with `memory_budget`, and MUST NOT start that adapter again; MUST NOT cache a file a budget failed, nor answer any file of an adapter that cannot run within its budget from the cache; MUST name such an adapter, its budget and its peak in the job's result.
+- FR273: MUST print, at least every 5 seconds for each running adapter, its name, its languages, files done and total, files a second and an estimate of the time left, holding figures and never source text.
+- FR274: MUST return the same figures for each running adapter, and only for those, in `get_job` (`adapters`), and refresh `progress_at` at least every 5 seconds in every phase.
+- FR275: MUST provide a large benchmark tier, `bench/graph-bench/run-large.sh`, on a pinned public repository of at least 20,000 source files in at least three languages, reporting as the median of three runs, with the machine described (NFR005), the cold index time, the peak memory of each adapter process, the store size, the time and files re-analysed for a one-file edit and seconds per file; no time or size budget is promised before it has measured one.
+- FR276: MUST print the seconds per analysed file of each adapter in the index summary, and `docs/proofmesh/operations.md` MUST record the Python adapter's measured figure.
+- FR277: MUST make each adapter's budget part of the snapshot's identity, so that raising a budget indexes again, while cached facts are still replayed.
+
 ### Concurrent indexes
 
 - FR320: MUST open the catalog and the fact cache in WAL mode with a busy timeout of two minutes (`PROOFMESH_BUSY_TIMEOUT_MS` overrides it), so a run that meets another process's write waits rather than fails.
@@ -335,6 +356,8 @@ Acceptance: CI runs my pull request without secrets or release credentials; lice
 - FR325: MUST treat a lock whose pid is not alive on this host as stale, take it over and say so; a lock held from another host counts as live.
 - FR326: MUST finish a write that was contended for longer than one busy wait once the other writer lets go.
 - FR327: MUST keep queries and `status` answering from the published snapshot while an index writes.
+- FR328: MUST make `gc` and an index exclude each other: `gc` holds a data-directory lock for its whole run and refuses while any index holds a lock, and an index that finds `gc` running (checked after taking its own lock) steps aside and waits, or with `--no-wait` refuses; and MUST end a wait for a lock with `CANCELLED` when `watch` is aborted.
+- FR329: MUST record the holder's process start time in a lock and treat a pid whose start time differs as gone; MUST release every lock this process holds when it exits or is ended by SIGINT, SIGTERM or SIGHUP; MUST keep a job that waits behind a live lock `queued` by refreshing its heartbeat, so a poller does not start a second index; MUST name a lock's temporary files with the host and a random nonce; MUST retry the fact cache's first `create table`; and MUST read `PROOFMESH_BUSY_TIMEOUT_MS` only with `PROOFMESH_TEST_HARNESS` set, as a finite positive number of at most ten minutes.
 
 ### Impact completeness
 

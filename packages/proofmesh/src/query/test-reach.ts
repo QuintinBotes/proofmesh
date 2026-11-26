@@ -11,11 +11,11 @@ export const EVIDENCE = ['call', 'transitive_call', 'dispatch', 'reference', 'im
 export const EXECUTING = new Set<string>(['call', 'transitive_call', 'dispatch', 'observed'])
 
 type Evidence = (typeof EVIDENCE)[number]
-type Hop = { name: string; path: string; line: number }
+type Hop = { name: string; key: string; path: string; line: number }
 export type TestRow = { id: string; kind: string; name: string; qualified_name: string; path: string; project: string | null; line: number; depth: number; evidence: Evidence; basis: Basis; via?: string }
 /** A node on the way from a subject to a test; `next` leads back to the subject. mode 0 runs the subject, 1 runs it by dispatch, 2 only references it. */
 type State = { node: string; mode: number; depth: number; next?: State; assertion?: string; peer?: boolean; via?: string }
-type Info = { id: string; kind: string; name: string; qualified_name: string; start_line: number; file_id: string; path: string; roles: string | null }
+type Info = { id: string; kind: string; name: string; qualified_name: string; start_line: number; stable_key: string; file_id: string; path: string; roles: string | null }
 
 const NODE_BUDGET = 50000
 /** Kinds a call through an interface or base member can reach. */
@@ -61,7 +61,7 @@ export function testReach(db: Database.Database, snapshotId: string, subjects: s
     const todo = [...new Set(ids)].filter((id) => !infos.has(id))
     for (let i = 0; i < todo.length; i += 500) {
       const chunk = todo.slice(i, i + 500)
-      for (const r of db.prepare(`select s.id, s.kind, s.name, s.qualified_name, s.start_line, s.file_id, f.path, ${rolesSql(db)} as roles from symbol s join file f on f.id = s.file_id where s.id in (${chunk.map(() => '?').join(',')})`).all(...chunk) as Info[]) infos.set(r.id, r)
+      for (const r of db.prepare(`select s.id, s.kind, s.name, s.qualified_name, s.start_line, s.stable_key, s.file_id, f.path, ${rolesSql(db)} as roles from symbol s join file f on f.id = s.file_id where s.id in (${chunk.map(() => '?').join(',')})`).all(...chunk) as Info[]) infos.set(r.id, r)
     }
   }
   const testCode = (i: Info) => isTest(i.path, projectOfFile.get(i.file_id) ?? null, parseRoles(i.roles))
@@ -180,7 +180,7 @@ export function testReach(db: Database.Database, snapshotId: string, subjects: s
     for (let s = chainStart.get(row.id); s; s = s.next) {
       if (s.peer) continue
       const i = infos.get(s.node)!
-      hops.push(s.next ? { name: local(i.qualified_name), ...(site.get(s.assertion) as { path: string; line: number }) } : { name: local(i.qualified_name), path: i.path, line: i.start_line })
+      hops.push(s.next ? { name: local(i.qualified_name), key: i.stable_key, ...(site.get(s.assertion) as { path: string; line: number }) } : { name: local(i.qualified_name), key: i.stable_key, path: i.path, line: i.start_line })
     }
     return hops
   }

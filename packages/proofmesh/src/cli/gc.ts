@@ -6,6 +6,7 @@ import path from 'node:path'
 import Database from 'better-sqlite3'
 import { ProofmeshError } from '../core/errors.js'
 import { Catalog } from '../meshstore/catalog.js'
+import { takeGcLock } from '../meshstore/index-lock.js'
 import { sealedPath } from '../meshstore/snapshot.js'
 import { EvidenceStore } from '../evidence/store.js'
 
@@ -54,6 +55,8 @@ export function runGc(dataDir: string, rest: string[], take: (args: string[], fl
   const opts = [...rest]
   const keep = Number(take(opts, '--keep') ?? 3), dryRun = has(opts, '--dry-run')
   if (!(keep >= 1)) throw new ProofmeshError('INVALID_ARGUMENT', '--keep takes the number of newest published snapshots to keep per repository, at least 1')
+  // Held until gc ends: an index that starts meanwhile waits for it, so it cannot create evidence gc then deletes.
+  const gcLock = takeGcLock(dataDir)
   const catalog = Catalog.open(dataDir)
   try {
     const p = plan(catalog, keep)
@@ -64,5 +67,6 @@ export function runGc(dataDir: string, rest: string[], take: (args: string[], fl
     return 0
   } finally {
     catalog.close()
+    gcLock.release()
   }
 }
