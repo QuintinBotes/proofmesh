@@ -19,9 +19,10 @@ type Capability = Coverage['capabilities'][keyof Coverage['capabilities']]
 const RANK: Record<Capability, number> = { complete: 0, partial: 1, unsupported: 2, not_run: 3, failed: 4 }
 const SAMPLE = 5
 
-export function getEcosystem(dataDir: string, input: Record<string, unknown>): Envelope {
+/** `now` is the clock the deadline is read from; a test passes its own. */
+export function getEcosystem(dataDir: string, input: Record<string, unknown>, now: () => number = Date.now): Envelope {
   // The input schema admits no freshness: a workspace tool answers only from its sealed link file.
-  const started = Date.now()
+  const started = now()
   const { applied, limitations: clampNotes } = applyLimits(input.limits as Limits | undefined)
   const catalog = Catalog.open(dataDir)
   try {
@@ -79,7 +80,6 @@ export function getEcosystem(dataDir: string, input: Record<string, unknown>): E
       data.boundaries = [...bounds.values()]
       const stop = new Set<'max_rows' | 'max_bytes' | 'timeout'>()
       if (data.links.length > applied.max_rows) { data.links.length = applied.max_rows; stop.add('max_rows') }
-      if (Date.now() - started > applied.timeout_ms) stop.add('timeout')
 
       // Coverage spans the members: counts add up, and a capability is as weak as its weakest member.
       const summaries = [...members.values()].map((m) => snapshotSummary(m.db, m.snapshot_id))
@@ -101,8 +101,14 @@ export function getEcosystem(dataDir: string, input: Record<string, unknown>): E
       })
       // The budget is the whole answer's, measured with the note and flags a cut adds. Links go first, then the unresolved boundaries.
       const size = (e: Envelope) => Buffer.byteLength(JSON.stringify(e))
-      let out = build()
-      while ((data.links.length || data.boundaries.length) && size(out) > applied.max_bytes) { (data.links.length ? data.links : data.boundaries).pop(); stop.add('max_bytes'); out = build() }
+      // The deadline is read again after every cut, so one that passes while trimming is reported.
+      let out: Envelope
+      for (;;) {
+        if (now() - started > applied.timeout_ms) stop.add('timeout')
+        out = build()
+        if (size(out) <= applied.max_bytes || !(data.links.length || data.boundaries.length)) break
+        (data.links.length ? data.links : data.boundaries).pop(); stop.add('max_bytes')
+      }
       if (size(out) > applied.max_bytes) throw new ProofmeshError('INVALID_ARGUMENT', `max_bytes ${applied.max_bytes} is too small for a get_ecosystem answer; its envelope alone takes ${size(out)} bytes`, { detail: 'max_bytes_too_small', max_bytes: applied.max_bytes, needed: size(out) })
       return out
     } finally {

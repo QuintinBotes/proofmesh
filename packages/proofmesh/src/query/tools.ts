@@ -958,11 +958,11 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     const data = { hits: r.hits, files_scanned: scanned, files_total: r.files_total, ...(notes.length ? { notes } : {}) }
     const result: Partial = { data, stop_reasons: r.stopped ? [r.stopped] : [], limitations, next_offset: r.next_offset, shrink: 'hits', keep: 1 }
     // A hit the byte budget drops takes its whole file with it, and the cursor continues at that file: no hit is skipped or repeated.
-    // The first file alone is cut hit by hit, as the scan cuts a file with more matches than a page holds.
+    // The first file is never cut: a page continues at a file, so cutting inside it would skip the hits cut (FR368).
     result.prune = (d) => {
       const hits = d.hits as unknown[]
       const dropped = r.hit_files[hits.length]!
-      if (r.hit_files[0] === dropped) return
+      if (r.hit_files[0] === dropped) throw new ProofmeshError('INVALID_ARGUMENT', `max_bytes ${ctx.limits.max_bytes} is too small for the matches of one file in a search_sources answer; raise it or narrow path_prefix`, { detail: 'max_bytes_too_small', max_bytes: ctx.limits.max_bytes })
       while (hits.length && r.hit_files[hits.length - 1] === dropped) hits.pop()
       d.files_scanned = result.next_offset = dropped
     }

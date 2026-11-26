@@ -1241,6 +1241,12 @@
     "FR334": [
       "packages/proofmesh/test/max-bytes-exact.test.ts"
     ],
+    "FR368": [
+      "packages/proofmesh/test/max-bytes-exact.test.ts"
+    ],
+    "FR369": [
+      "packages/proofmesh/test/max-bytes-exact.test.ts"
+    ],
     "FR365": [
       "packages/proofmesh/test/cache-intact.test.ts"
     ],

@@ -4,6 +4,7 @@ import { beforeAll, describe, expect, it } from 'vitest'
 import { Catalog, initDataDir } from '../src/meshstore/catalog.js'
 import { indexRepository } from '../src/indexer/coordinator.js'
 import { openSnapshot } from '../src/meshstore/snapshot.js'
+import { getEcosystem } from '../src/query/ecosystem.js'
 import { LEAN, runTool } from '../src/query/tools.js'
 import type { ProofmeshError } from '../src/core/errors.js'
 import { fixtureRepo, indexedDataDir, indexedRepo, ROOT, tmpDir, withSnapshot } from './helpers.js'
@@ -105,7 +106,8 @@ describe('FR330 FR331 FR332 FR333 FR334 a cut answer is at most max_bytes, note 
     expect(got).toEqual(all)
   }, 240000)
 
-  it('FR334 get_ecosystem holds max_bytes with its note and flags, or is refused', async () => {
+  /** A workspace of two repositories whose links are all unresolved, so its answer has many boundaries to trim. */
+  const shop = async (): Promise<string> => {
     const dd = tmpDir()
     initDataDir(dd)
     const members: Array<{ repository_id: string; snapshot_id: string; name: string; fns: string[] }> = []
@@ -127,8 +129,39 @@ describe('FR330 FR331 FR332 FR333 FR334 a cut answer is at most max_bytes, note 
     c.close()
     const links = members.flatMap((m) => (['calls_endpoint', 'messages'] as const).flatMap((type) => m.fns.map((fn) => ({ type, rule: type === 'messages' ? 'messaging' : 'http_route', source: [m.repository_id, fn] as [string, string], confidence: 1, resolution: 'unresolved' as const, reason: 'no_match' }))))
     writeLinkFile(dd, 'shop', members, links as never, { http_route: '1', messaging: '1' })
+    return dd
+  }
+
+  it('FR334 get_ecosystem holds max_bytes with its note and flags, or is refused', async () => {
+    const dd = await shop()
     const call = { name: 'get_ecosystem', input: { workspace: 'shop' }, dataDir: dd }
     expect(holdsBudget(call).cut).toBe(true)
     expect(refusal(call, 40)?.details.detail).toBe('max_bytes_too_small')
+  }, 240000)
+
+  it('FR369 get_ecosystem reports timed_out when the deadline passes while it trims, read from an injected clock', async () => {
+    const dd = await shop()
+    const full = runTool(dd, 'get_ecosystem', { workspace: 'shop' })
+    const budget = sent(full) - 600
+    // The clock moves 600 ms a read against a 1000 ms deadline: the start and the first check do not pass it, the read after the first cut does.
+    let t = -600
+    const a = getEcosystem(dd, { workspace: 'shop', limits: { max_bytes: budget, timeout_ms: 1000 } }, () => (t += 600))
+    expect(a.completion.stop_reasons).toContain('max_bytes')
+    expect(a.completion.timed_out).toBe(true)
+    expect(a.completion.stop_reasons).toContain('timeout')
+    expect(Buffer.byteLength(JSON.stringify(a))).toBeLessThanOrEqual(budget)
+    const b = getEcosystem(dd, { workspace: 'shop', limits: { max_bytes: budget } }, () => 0)
+    expect(b.completion.timed_out).toBe(false)
+  }, 240000)
+
+  it('FR368 search_sources never cuts inside its first file: a budget that cannot hold it is refused, not answered with hits the cursor skips', async () => {
+    const { dataDir } = await indexedRepo({ 'src/only.ts': Array.from({ length: 12 }, (_, i) => `export const needle${i} = ${i}`).join('\n') + '\n' })
+    const all = runTool(dataDir, 'search_sources', { text: 'needle' })
+    const hits = (all.data as { hits: unknown[] }).hits
+    expect(hits).toHaveLength(12)
+    const budget = sent(all) - 300
+    const e = refusal({ name: 'search_sources', input: { text: 'needle' }, dataDir }, budget)
+    expect(e?.code).toBe('INVALID_ARGUMENT')
+    expect(e?.details.detail).toBe('max_bytes_too_small')
   }, 240000)
 })

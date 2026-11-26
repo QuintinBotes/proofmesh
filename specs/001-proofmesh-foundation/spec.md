@@ -368,6 +368,8 @@ Acceptance: CI runs my pull request without secrets or release credentials; lice
 - FR365: MUST cut an answer to `max_bytes` on a copy of its data, so a later answer in the same process, with or without `max_bytes`, equals one taken before the cut.
 - FR366: MUST hold FR365 for every tool that shortens a list to fit `max_bytes`.
 - FR367: MUST keep the cached snapshot summary frozen, so a mutation of it throws instead of changing later answers.
+- FR368: MUST NOT cut a `search_sources` page inside its first file, because the cursor continues at a file: a `max_bytes` that cannot hold that file's matches is refused as `max_bytes_too_small`.
+- FR369: MUST read the deadline of `get_ecosystem` again after each cut to `max_bytes`, so a deadline that passes while trimming is reported as `timeout` with `timed_out: true`.
 
 ### Adapter memory and progress
 
