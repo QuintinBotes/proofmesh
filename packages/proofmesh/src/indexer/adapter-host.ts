@@ -4,6 +4,7 @@ import path from 'node:path'
 import { StringDecoder } from 'node:string_decoder'
 import { checkAdapterMessage as check } from '../core/schemas.js'
 import { log } from '../core/log.js'
+import { machineMemoryMb } from './memory.js'
 import type { AnalyzeResponse, InitializeRequest, InitializeResponse } from '../core/generated.js'
 
 /** `stored` is the message without the adapter's stderr: stderr can hold source text or environment values, so only the live error carries it. */
@@ -13,19 +14,19 @@ export class AdapterProtocolError extends Error {
 
 /** An adapter stopped because it passed its memory budget: the host's own measure, or the engine's out-of-memory under the budget. */
 export class AdapterBudgetError extends AdapterProtocolError {
-  constructor(message: string, readonly budgetMb: number, readonly peakRssKb: number | undefined, stored?: string) { super(message, stored) }
+  constructor(message: string, readonly budgetMb: number, readonly peakRssKb: number | undefined, stored?: string, /** The budget was passed while loading the project, before any file was analysed: fewer files per batch cannot help. */ readonly atLoad = false) { super(message, stored) }
 }
 
 /**
- * The resident memory one adapter process may use, in MB. A default that lets a large C# repository finish on a 48 GB machine with
- * several adapters running; raise it per repository and adapter with `adapter_memory_mb` in the adapter's configuration, or for every
- * adapter with PROOFMESH_ADAPTER_MEMORY_MB.
+ * The resident memory one adapter process may use, in MB: an explicit setting wins (`adapter_memory_mb` in the adapter's configuration, or
+ * PROOFMESH_ADAPTER_MEMORY_MB for every adapter), else half of physical memory between 8 and 32 GB, so a large C# repository finishes on
+ * the machine it runs on.
  */
-export const DEFAULT_ADAPTER_MEMORY_MB = 8192
-export function adapterBudgetMb(config: Record<string, unknown>): number {
-  for (const v of [config.adapter_memory_mb, process.env.PROOFMESH_ADAPTER_MEMORY_MB]) if (v !== undefined && v !== '' && Number.isInteger(Number(v)) && Number(v) > 0) return Number(v)
-  return DEFAULT_ADAPTER_MEMORY_MB
+export function adapterBudget(config: Record<string, unknown>, totalBytes?: number): { mb: number; source: 'setting' | 'machine' } {
+  for (const v of [config.adapter_memory_mb, process.env.PROOFMESH_ADAPTER_MEMORY_MB]) if (v !== undefined && v !== '' && Number.isInteger(Number(v)) && Number(v) > 0) return { mb: Number(v), source: 'setting' }
+  return { mb: machineMemoryMb(totalBytes), source: 'machine' }
 }
+export const adapterBudgetMb = (config: Record<string, unknown>, totalBytes?: number): number => adapterBudget(config, totalBytes).mb
 
 /** What an error keeps of an adapter's stderr: the last lines, each cut short, so a flood cannot grow a message. */
 const STDERR_TAIL_LINES = 10
@@ -88,6 +89,8 @@ export class AdapterProcess {
   /** Set when the host stopped the adapter for passing its budget: the peak it had then. */
   private overBudgetKb?: number
   private processPeakKb?: number
+  /** True from the start until the first batch is asked for: the adapter is still loading the project. */
+  private loading = true
   restarts = 0
   /** The largest resident set size seen, in KiB; undefined where `ps` is unavailable. */
   peakRssKb?: number
@@ -116,7 +119,9 @@ export class AdapterProcess {
         this.processPeakKb = Math.max(this.processPeakKb ?? 0, kb)
         if (this.budgetMb && kb > this.budgetMb * 1024 && !this.exited && this.overBudgetKb === undefined) {
           this.overBudgetKb = this.processPeakKb
-          this.stopChild(`exceeded its memory budget of ${this.budgetMb} MB (peak resident memory ${Math.round(kb / 1024)} MB; raise it with adapter_memory_mb) and was stopped with SIGKILL`)
+          this.stopChild(this.loading
+            ? `needed ${Math.round(kb / 1024)} MB to load the project, over its memory budget of ${this.budgetMb} MB (load peak ${Math.round(kb / 1024)} MB; raise it with adapter_memory_mb) and was stopped with SIGKILL`
+            : `exceeded its memory budget of ${this.budgetMb} MB (peak resident memory ${Math.round(kb / 1024)} MB; raise it with adapter_memory_mb) and was stopped with SIGKILL`)
         }
       }
       resolve()
@@ -131,6 +136,7 @@ export class AdapterProcess {
     this.stderrOom = false
     this.overBudgetKb = undefined
     this.processPeakKb = undefined
+    this.loading = true
     clearInterval(this.rssTimer)
     const [command, args] = launcher(this.entry, this.budgetMb)
     const child = this.child = spawn(command, args, {
@@ -160,7 +166,7 @@ export class AdapterProcess {
       const cause = this.stderrTail.length ? `; the adapter's last output: ${this.stderrTail.join(' | ')}` : ''
       // Under a budget, the engine's own out-of-memory exit is the budget at work, not the machine's.
       const stored = `${head}${this.stderrTail.length ? `; ${this.stderrTail.length} lines of its stderr are not stored` : ''}`
-      this.failure = this.overBudgetKb !== undefined || (this.budgetMb && !hostKilled && killedOther()) ? new AdapterBudgetError(`${head}${cause}`, this.budgetMb!, this.processPeakKb, stored) : new AdapterProtocolError(`${head}${cause}`, stored)
+      this.failure = this.overBudgetKb !== undefined || (this.budgetMb && !hostKilled && killedOther()) ? new AdapterBudgetError(`${head}${cause}`, this.budgetMb!, this.processPeakKb, stored, this.loading) : new AdapterProtocolError(`${head}${cause}`, stored)
       this.failAll(this.failure)
     }
     // A stream error (EPIPE, ECONNRESET) is a fact about the adapter, never an unhandled event: the exit status follows on 'close'.
@@ -287,7 +293,17 @@ export class AdapterProcess {
     if (typeof spoken !== 'string' || !/^1\.(0|[1-9][0-9]*)$/.test(spoken)) throw new AdapterProtocolError(`the adapter speaks protocol ${String(spoken)} and this core speaks 1.x`)
     const problem = check('adapter-protocol/initialize.response.schema.json', result)
     if (problem) { this.stopChild(`sent an invalid initialize response (stopped with SIGKILL)`); throw new AdapterProtocolError(`invalid initialize response: ${problem}`) }
+    await this.checkLoad()
     return result as InitializeResponse
+  }
+
+  /** The load is over budget when its peak, sampled now as well as by the timer, passes it: reported at once, since a restart repeats the same load. */
+  private async checkLoad(): Promise<void> {
+    await this.sampleRss()
+    if (this.overBudgetKb !== undefined && this.budgetMb) {
+      const mb = Math.round(this.overBudgetKb / 1024)
+      throw new AdapterBudgetError(`adapter ${this.name} needed ${mb} MB to load the project, over its memory budget of ${this.budgetMb} MB (load peak ${mb} MB; raise it with adapter_memory_mb)`, this.budgetMb, this.overBudgetKb, undefined, true)
+    }
   }
 
   /** Facts that do not belong to one analysed file; asked once per index, before any batch, and never cached. */
@@ -295,6 +311,7 @@ export class AdapterProcess {
     const result = await this.request('workspace', {}, undefined, 'reading workspace facts')
     const problem = check('adapter-protocol/analyze.response.schema.json', result)
     if (problem) { this.stopChild(`sent an invalid workspace response (stopped with SIGKILL)`); throw new AdapterProtocolError(`invalid workspace response: ${problem}`) }
+    await this.checkLoad()
     return result as AnalyzeResponse
   }
 
@@ -322,6 +339,7 @@ export class AdapterProcess {
   }
 
   private async analyzeOnce(paths: string[]): Promise<AnalyzeResponse> {
+    this.loading = false
     const result = await this.request('analyze', { paths }, undefined, `analysing ${paths[0] ?? 'no file'}${paths.length > 1 ? ` and ${paths.length - 1} more of its batch` : ''}`)
     const problem = check('adapter-protocol/analyze.response.schema.json', result)
     if (problem) { this.stopChild(`sent an invalid analyze response (stopped with SIGKILL)`); throw new AdapterProtocolError(`invalid analyze response: ${problem}`) }
