@@ -95,13 +95,13 @@ describe('FR260 to FR269 a dying adapter fails the index with its name and exit 
     expect(cli(['--data-dir', d, 'index', repo]).status).toBe(0)
     const before = (() => { const c = Catalog.open(d); try { return c.currentSnapshot(c.repositories()[0]!.id) } finally { c.close() } })()
     fs.writeFileSync(`${repo}/Billing.cs`, 'class Billing { }\n')
-    const r = cli(['--data-dir', d, 'index', repo], { PROOFMESH_CS_ADAPTER: fake('sigkill.mjs') })
+    const r = cli(['--data-dir', d, 'index', repo], { PROOFMESH_CS_ADAPTER: fake('crashing.mjs') })
     const c = Catalog.open(d)
     try {
       expect(r.status).toBe(1)
       expect(c.currentSnapshot(c.repositories()[0]!.id)).toEqual(before)
       expect(r.stderr).toContain('adapter csharp')
-      expect(r.stderr).toContain('signal SIGKILL')
+      expect(r.stderr).toContain('exited with code 3')
       const jobs = c.db.prepare("select result from index_job where state = 'failed'").all() as Array<{ result: string }>
       expect(jobs).toHaveLength(1)
       expect(JSON.parse(jobs[0]!.result)).toEqual({ failed_adapter: 'csharp', completed_adapters: ['typescript'] })

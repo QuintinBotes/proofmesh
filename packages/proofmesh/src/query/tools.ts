@@ -162,7 +162,7 @@ function catalogTool(catalog: Catalog, tool: ToolName, input: Record<string, unk
     const repo = input.repository_id ? catalog.repository(String(input.repository_id)) : null
     if (!job || (repo && job.repository_id !== repo.id)) throw new ProofmeshError('NOT_FOUND', `no index job ${String(input.job_id)} for this repository`)
     data = { job }
-    limitations = job.state === 'interrupted' ? ['The process running this job stopped before finishing; request a new index.'] : job.state === 'running' ? ['A running job reports progress at least once a minute; if progress_at stops moving for several minutes, the run is stuck rather than slow.'] : []
+    limitations = job.state === 'interrupted' ? ['The process running this job stopped before finishing; request a new index.'] : job.state === 'running' ? ['A running job refreshes progress_at every 5 seconds; if it stops moving for a minute, the run is stuck rather than slow.'] : []
   } else if (tool === 'list_snapshots') {
     // The snapshots a query can pin: what the Observatory's snapshot picker shows, for any client (FR055).
     const repo = catalog.resolveRepository(input.repository_id as string | undefined), current = catalog.currentSnapshot(repo.id)?.id

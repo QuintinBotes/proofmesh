@@ -423,6 +423,56 @@
               }
             ]
           },
+          "adapters": {
+            "description": "Per running adapter, refreshed at least every 5 seconds while it analyses: its languages, files done and total, files a second, and the seconds left (null until a file is done). Never holds source text.",
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "adapter",
+                    "language",
+                    "done",
+                    "total",
+                    "files_per_second",
+                    "eta_seconds"
+                  ],
+                  "properties": {
+                    "adapter": {
+                      "type": "string"
+                    },
+                    "language": {
+                      "type": "string"
+                    },
+                    "done": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "total": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "files_per_second": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "eta_seconds": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ],
+                      "minimum": 0
+                    }
+                  }
+                }
+              }
+            ]
+          },
           "elapsed_ms": {
             "type": [
               "integer",
