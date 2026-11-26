@@ -118,7 +118,7 @@ describe('FR228 scip run runs only a pinned indexer, in a disposable copy, offli
     expect(fs.existsSync(call!.cwd)).toBe(false)
     expect(noMarker(t.home)).toEqual([])
     const list = t.run('scip', 'list', t.repo).stdout
-    expect(list).toMatch(/^scip-go {2}\S+scip-go\.scip {2}2 files {2}scip-go 1\.0 {2}current {2}by \S+ at \S+ {2}run by proofmesh: scip-go v0\.2\.9 sha256 [0-9a-f]{64}, grant trust_\w+, process/)
+    expect(list).toMatch(/^scip-go {2}\S+scip-go-[0-9a-f]{16}\.scip {2}2 files {2}scip-go 1\.0 {2}current {2}by \S+ at \S+ {2}run by proofmesh: scip-go v0\.2\.9 sha256 [0-9a-f]{64}, grant trust_\w+, process/)
     expect(list).toContain(s.digest)
   }, 240000)
 
