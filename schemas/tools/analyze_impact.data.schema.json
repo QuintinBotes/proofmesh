@@ -87,9 +87,17 @@
               "start_line": {
                 "type": "integer",
                 "minimum": 1
+              },
+              "generated": {
+                "type": "boolean",
+                "description": "Present and true when the file is generated (FR292); absent otherwise."
               }
             },
             "description": "For a file reached through imports (kind file): the import statement that reached it."
+          },
+          "generated": {
+            "type": "boolean",
+            "description": "Present and true when the file is generated (FR292); absent otherwise."
           }
         }
       }

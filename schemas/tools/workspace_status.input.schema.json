@@ -88,6 +88,11 @@
       "minLength": 1,
       "maxLength": 4096,
       "description": "The next_cursor of the previous page. It continues the same query on the same snapshot; it expires after an hour."
+    },
+    "include_generated": {
+      "type": "boolean",
+      "default": false,
+      "description": "List generated files among the hubs too (FR298). By default hubs leave them out, and the answer says how many generated files there are."
     }
   },
   "required": []

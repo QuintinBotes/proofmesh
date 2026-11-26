@@ -135,6 +135,10 @@
               "start_line": {
                 "type": "integer",
                 "minimum": 1
+              },
+              "generated": {
+                "type": "boolean",
+                "description": "Present and true when the file is generated (FR292); absent otherwise."
               }
             }
           },
@@ -155,6 +159,10 @@
               },
               "end_line": {
                 "type": "integer"
+              },
+              "generated": {
+                "type": "boolean",
+                "description": "Present and true when the file is generated (FR292); absent otherwise."
               }
             }
           },
@@ -249,6 +257,10 @@
           "calls_name": {
             "type": "boolean",
             "description": "True when the unresolved site calls the subject's name."
+          },
+          "generated": {
+            "type": "boolean",
+            "description": "Present and true when the file is generated (FR292); absent otherwise."
           }
         }
       }

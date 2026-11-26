@@ -170,7 +170,15 @@ project: (string | null)
 site?: {
 path: string
 start_line: number
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
 }
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
 }[]
 totals: {
 dependents: number
@@ -342,6 +350,10 @@ disposition_changes: {
 path: string
 from: string
 to: string
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
 }[]
 }
 }
@@ -435,6 +447,10 @@ note: string
 target: string
 }[]
 }
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
 }[]
 /**
  * Endpoints and jobs that reach any of the tables.
@@ -494,6 +510,10 @@ signature: (string | null)
  * The roles the adapter gave the symbol, when it gave any: test (a test entry point) or test_support (test code that is no entry point).
  */
 roles?: ("test" | "test_support")[]
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
 }[]
 }
 
@@ -578,7 +598,15 @@ chain: {
 name: string
 path: string
 line: number
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
 }[]
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
 }[]
 totals: {
 /**
@@ -857,6 +885,10 @@ external_ids: number
 sample_sites: {
 path: string
 line: number
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
 }[]
 }[]
 /**
@@ -1090,6 +1122,10 @@ by_type: {
 }
 }[]
 omitted: number
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
 }
 
 /**
@@ -1272,11 +1308,19 @@ path?: string
 module?: string
 symbol_kind?: string
 start_line?: number
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
 }
 site: {
 path: string
 start_line: number
 end_line: number
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
 }
 reason: (string | null)
 evidence_ids: string[]
@@ -1302,6 +1346,10 @@ type: string
  * True when the unresolved site calls the subject's name.
  */
 calls_name?: boolean
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
 }[]
 /**
  * Every matching relationship in each direction, before row and byte limits.
@@ -1420,6 +1468,10 @@ body_hash: (string | null)
  * The roles the adapter gave the symbol, when it gave any: test (a test entry point) or test_support (test code that is no entry point).
  */
 roles?: ("test" | "test_support")[]
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
 }
 }
 
@@ -1488,6 +1540,10 @@ end_line: number
  * The tier of the adapter that declared the symbol: precise (a compiler-grade or language-specific adapter), syntax (Tree-sitter) or scip (an index a person named).
  */
 tier: ("precise" | "syntax" | "scip")
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
 } | null)
 /**
  * The file's disposition when the snapshot does not index it.
@@ -1553,6 +1609,10 @@ symbols?: {
 id: string
 qualified_name: string
 path: string
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
 }[]
 entities: {
 id: string
@@ -1576,6 +1636,10 @@ depth: number
  * inferred when a hop of the chain that reaches the endpoint or job is inferred, or the link from the table to that chain is.
  */
 basis: ("observed" | "inferred")
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
 }[]
 /**
  * True when a limit stopped the search, so the reach is a lower bound.
@@ -1626,6 +1690,10 @@ id: string
 qualified_name: string
 readers: number
 }[]
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
 }[]
 stopped_by: ("max_depth" | "node_budget" | null)
 }
@@ -1783,6 +1851,10 @@ depth: number
  * The diff changes the test itself.
  */
 changed: boolean
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
 } | null)
 /**
  * By relation (calls, implements, overrides, inherits, references, imports), then path and line; from the base snapshot for a deleted symbol.
@@ -1822,8 +1894,20 @@ depth: number
  * The diff changes the test itself.
  */
 changed: boolean
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
 } | null)
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
 }[]
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
 }[]
 /**
  * Over every changed symbol, on this page or not; changed, tested and neither count the dependents.
@@ -2153,6 +2237,10 @@ status: ("verified" | "failed" | "unavailable")
 actual_hash?: string
 }
 text: (string | null)
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
 }[]
 }
 
@@ -2311,6 +2399,10 @@ id: string
 kind: string
 qualified_name: string
 })
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
 }[]
 files_scanned: number
 files_total: number
@@ -2405,6 +2497,10 @@ path: string
 line: number
 from_id: string
 type: string
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
 }[]
 nodes: {
 [k: string]: {
@@ -2413,6 +2509,10 @@ name: string
 qualified_name: string
 path: string
 start_line: number
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
 }
 }
 /**
@@ -2702,8 +2802,16 @@ capabilities: {
  * The tier that produced the file's facts: precise:<adapter>, scip:<index> or syntax. Absent on files no adapter analysed.
  */
 tier?: string
-[k: string]: "complete" | "partial" | "unsupported" | "failed" | "not_run" | string | undefined
+/**
+ * Present on a generated file: indexed like any other and flagged (FR292).
+ */
+generated?: "true"
+[k: string]: "complete" | "partial" | "unsupported" | "failed" | "not_run" | string | "true" | undefined
 }
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
 }[]
 /**
  * The most-referenced symbols by resolved inbound relationships, as starting points for exploration.
@@ -2717,6 +2825,10 @@ name: string
 qualified_name: string
 path: string
 inbound: number
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
 }[]
 /**
  * Cycles among build modules that syntax-tier name matches form, in an ecosystem whose builds forbid them (Maven, Gradle, Go modules, Cargo, .NET); empty when there is none. Each names its modules and the edges that form it, with one site of each.
@@ -2732,6 +2844,10 @@ sites: number
 path: string
 line: number
 assertion_id: string
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
 }[]
 }[]
 /**
@@ -2881,6 +2997,14 @@ reason: (string | null)
  * Advice only: what a person can do to deepen the row. The census runs nothing and installs nothing.
  */
 remedy: (string | null)
+/**
+ * Files of this language flagged generated, already counted in files (FR297). Absent on a snapshot sealed before the policy.
+ */
+generated?: number
+/**
+ * Files of this language left out as vendored, already counted in files (FR297). Absent on a snapshot sealed before the policy.
+ */
+vendored?: number
 }[]
 /**
  * How the snapshot was analysed (FR004): discovery's rules, what happens to generated source, and each adapter's external inputs.
@@ -2907,6 +3031,12 @@ inputs_missing: number
  */
 missing: string[]
 }[]
+/**
+ * The generated and vendored code policy (FR296): the markers, attributes and paths used, and what is done with each kind of file.
+ */
+generated_policy: {
+[k: string]: unknown
+}
 }
 }
 
@@ -2950,6 +3080,10 @@ path_prefix?: string
  * The next_cursor of the previous page. It continues the same query on the same snapshot; it expires after an hour.
  */
 cursor?: string
+/**
+ * List generated files among the hubs too (FR298). By default hubs leave them out, and the answer says how many generated files there are.
+ */
+include_generated?: boolean
 }
 
 export interface AnalyzeRequest {

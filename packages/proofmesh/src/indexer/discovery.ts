@@ -5,8 +5,11 @@ import { ProofmeshError } from '../core/errors.js'
 import { BUILT_IN_REGISTRY, type Registry } from './languages.js'
 import { ADAPTER_LANGUAGE_NAMES, adapterLanguageId, detectLanguage, type Kind } from './language-detect.js'
 import { CODEOWNERS_PATHS } from './ownership.js'
+import { attributeLookup, isGeneratedFile, type Attributes } from './generated-vendored.js'
 
-export const EXCLUDED_DIRS = ['node_modules', 'dist', 'build', 'bin', 'obj'] as const
+/** Directories excluded wherever they sit. `build` is not one: it is output only where a manifest names it (FR295). */
+export const EXCLUDED_DIRS = ['node_modules', 'dist', 'bin', 'obj'] as const
+const GRADLE_MANIFESTS = ['build.gradle', 'build.gradle.kts', 'settings.gradle', 'settings.gradle.kts']
 export const MAX_FILE_BYTES = 1048576
 export const BINARY_PROBE_BYTES = 8192
 
@@ -17,6 +20,8 @@ export type Discovered = {
   detail: string | null
   language: string | null
   role: 'source' | 'config' | 'ownership' | 'registry' | null
+  /** A captured file the policy flags generated (FR290, FR291): indexed, and every answer row from it says so. */
+  generated?: true
   /** The adapter a file goes to regardless of its language: a SCIP index covers it (A27). */
   adapter?: string
   /** For a file the SCIP adapter takes: the name of the index that covers it, which the file's tier names. */
@@ -29,6 +34,7 @@ export type GitInfo = { available: boolean; reason?: string; commit?: string; re
 
 export const analysisConfig = () => ({
   excluded_dirs: EXCLUDED_DIRS.map((d) => `**/${d}/**`),
+  build_output: ['gradle:build', 'maven:target', 'cmake:CMakeCache.txt'],
   max_file_bytes: MAX_FILE_BYTES,
   binary_probe_bytes: BINARY_PROBE_BYTES,
   symlinks: 'not_followed',
@@ -52,7 +58,8 @@ function gitIgnored(root: string): (rel: string) => boolean {
 /** Every file under the root, each with exactly one discovery status. `.git` is metadata, not content. */
 export function discover(root: string, registry: Registry = BUILT_IN_REGISTRY, ignored = gitIgnored(root)): Discovered[] {
   const out: Discovered[] = []
-  const walk = (dirRel: string) => {
+  const attributes = attributeLookup(root)
+  const walk = (dirRel: string, inherited: Place) => {
     const abs = path.join(root, dirRel)
     let entries: fs.Dirent[]
     try {
@@ -62,24 +69,39 @@ export function discover(root: string, registry: Registry = BUILT_IN_REGISTRY, i
       return
     }
     entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
+    const here = placeOf(entries, inherited)
     for (const entry of entries) {
       if (entry.name === '.git') continue
       const rel = (dirRel ? `${dirRel}/${entry.name}` : entry.name).normalize('NFC')
       if (entry.isSymbolicLink()) {
         out.push({ path: rel, size: 0, status: 'unsupported', detail: 'symlink_not_followed', language: null, role: null })
       } else if (entry.isDirectory()) {
-        walk(rel)
+        walk(rel, childPlace(here, entry.name, entries, root, dirRel))
       } else if (entry.isFile()) {
-        out.push(registry.route(classify(root, rel, ignored, registry), root))
+        out.push(registry.route(classify(root, rel, ignored, registry, here, attributes(rel)), root))
       }
     }
   }
-  walk('')
+  walk('', {})
   // Every file, links and unreadable directories included, is in one row of the language census.
   return out.map((d) => ({ ...d, census: censusLabel(d, root) }))
 }
 
-function classify(root: string, rel: string, ignored: (rel: string) => boolean, registry: Registry): Discovered {
+/** What the directories above a file make of it: the first rule that applies from the top (FR293, FR295). */
+type Place = { vendored?: string; output?: string }
+/** A directory holding CMakeCache.txt is a CMake binary directory, with everything in it. */
+const placeOf = (entries: fs.Dirent[], inherited: Place): Place =>
+  inherited.output || !entries.some((e) => e.name === 'CMakeCache.txt' && e.isFile()) ? inherited : { ...inherited, output: 'build_output:cmake' }
+/** The place of a subdirectory: `vendor` is Go's only beside vendor/modules.txt, `build` and `target` are output only beside the manifest that names them. */
+function childPlace(here: Place, name: string, entries: fs.Dirent[], root: string, dirRel: string): Place {
+  const has = (file: string) => entries.some((e) => e.name === file && e.isFile())
+  const vendored = here.vendored ?? (name === 'third_party' ? 'vendored:third_party' : name === 'Pods' ? 'vendored:pods'
+    : name === 'vendor' && fs.existsSync(path.join(root, dirRel, 'vendor', 'modules.txt')) ? 'vendored:go_vendor' : undefined)
+  const output = here.output ?? (name === 'build' && GRADLE_MANIFESTS.some(has) ? 'build_output:gradle' : name === 'target' && has('pom.xml') ? 'build_output:maven' : undefined)
+  return { ...(vendored ? { vendored } : {}), ...(output ? { output } : {}) }
+}
+
+function classify(root: string, rel: string, ignored: (rel: string) => boolean, registry: Registry, place: Place, attrs: Attributes): Discovered {
   const abs = path.join(root, rel)
   const segments = rel.split('/').slice(0, -1)
   let size = 0
@@ -91,6 +113,10 @@ function classify(root: string, rel: string, ignored: (rel: string) => boolean, 
   const excluded = EXCLUDED_DIRS.find((d) => segments.includes(d))
   if (excluded) return { path: rel, size, status: 'excluded', detail: `**/${excluded}/**`, language: null, role: null }
   if (ignored(rel)) return { path: rel, size, status: 'excluded', detail: 'gitignore', language: null, role: null }
+  // An attribute set to false overrides the path rules (FR291); one set to true makes a file vendored when no path rule did.
+  const vendored = attrs.vendored === false ? undefined : place.vendored ?? (attrs.vendored ? 'vendored:linguist_vendored' : undefined)
+  if (vendored) return { path: rel, size, status: 'excluded', detail: vendored, language: null, role: null }
+  if (place.output) return { path: rel, size, status: 'excluded', detail: place.output, language: null, role: null }
   if (size > MAX_FILE_BYTES) return { path: rel, size, status: 'excluded', detail: `max_file_bytes:${MAX_FILE_BYTES}`, language: null, role: null }
   let head = ''
   try {
@@ -104,6 +130,11 @@ function classify(root: string, rel: string, ignored: (rel: string) => boolean, 
     return { path: rel, size, status: 'failed', detail: (e as NodeJS.ErrnoException).code ?? 'EREAD', language: null, role: null }
   }
   const name = path.posix.basename(rel)
+  const found = classifyCaptured(root, rel, name, head, size, registry)
+  return found.status === 'capture' && found.role === 'source' && (attrs.generated ?? isGeneratedFile(name, head)) ? { ...found, generated: true } : found
+}
+
+function classifyCaptured(root: string, rel: string, name: string, head: string, size: number, registry: Registry): Discovered {
   if (registry.serviceRegistries.includes(rel)) return { path: rel, size, status: 'capture', detail: null, language: 'service-registry', role: 'registry' }
   if ((CODEOWNERS_PATHS as readonly string[]).includes(rel)) return { path: rel, size, status: 'capture', detail: null, language: 'codeowners', role: 'ownership' }
   // A source stays a source when another adapter also reads it as configuration, as the TypeScript adapter reads Prisma schemas (A36)

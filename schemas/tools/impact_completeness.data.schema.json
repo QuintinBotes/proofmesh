@@ -175,6 +175,10 @@
               "changed": {
                 "type": "boolean",
                 "description": "The diff changes the test itself."
+              },
+              "generated": {
+                "type": "boolean",
+                "description": "Present and true when the file is generated (FR292); absent otherwise."
               }
             }
           },
@@ -290,11 +294,23 @@
                     "changed": {
                       "type": "boolean",
                       "description": "The diff changes the test itself."
+                    },
+                    "generated": {
+                      "type": "boolean",
+                      "description": "Present and true when the file is generated (FR292); absent otherwise."
                     }
                   }
+                },
+                "generated": {
+                  "type": "boolean",
+                  "description": "Present and true when the file is generated (FR292); absent otherwise."
                 }
               }
             }
+          },
+          "generated": {
+            "type": "boolean",
+            "description": "Present and true when the file is generated (FR292); absent otherwise."
           }
         }
       }

@@ -3,6 +3,8 @@
  * then `# ` lines for the limitations of this answer and the cursor to the next page. Plain text, so a client spends no context on JSON.
  */
 
+import { isGeneratedPath } from './generated-policy.js'
+
 /** Quoted as JSON when a space, a quote or a # would make the row ambiguous or read as a comment. */
 export const quote = (token: string): string => (token === '' || /[\s"#]/.test(token) ? JSON.stringify(token) : token)
 
@@ -17,7 +19,9 @@ export function leanName(s: { kind?: string; name: string; qualified_name?: stri
 }
 
 /** One row. A file row is its path and line alone; a row with no site in the repository is the name and `external`. */
-export function leanRow(name: string | null, path: string | null, line: number | null, tags: string[] = []): string {
+export function leanRow(name: string | null, path: string | null, line: number | null, rowTags: string[] = []): string {
+  // A row from a generated file says so, as the structured rows do (FR292).
+  const tags = isGeneratedPath(path) ? [...rowTags, 'generated'] : rowTags
   if (path === null) return [quote(name ?? '?'), 'external', ...tags.filter((t) => t !== 'external')].join(' ')
   return [...(name === null || name === path ? [] : [quote(name)]), `${quote(path)}:${line}`, ...tags].join(' ')
 }

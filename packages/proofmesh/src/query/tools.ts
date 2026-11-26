@@ -14,7 +14,7 @@ import { staticPropertyReads } from './static-reads.js'
 import { externalUsage, type UsageGroup } from './external-usage.js'
 import { findQuerySource, WEIGHED } from './query-source.js'
 import { EvidenceStore } from '../evidence/store.js'
-import { snapshotSummary, UNRESOLVED_REASONS } from './summary.js'
+import { hubsOf, snapshotSummary, UNRESOLVED_REASONS } from './summary.js'
 import type { ModuleCycle } from '../indexer/module-cycles.js'
 import { overview } from './overview.js'
 import { getEcosystem } from './ecosystem.js'
@@ -32,6 +32,8 @@ import { NOTE_KINDS, notesMatching, resolveRef, resolveRefs, staleness } from '.
 import { verify, type Proposition } from './claims.js'
 import { openCursor, queryHash, sealCursor } from './cursor.js'
 import { leanName, leanRow, leanText, quote } from './lean.js'
+import { generatedLeftOut, generatedPaths, markGenerated, withGeneratedPaths } from './generated-policy.js'
+import { GENERATED_POLICY } from '../indexer/generated-vendored.js'
 import { innermost } from './symbol-at.js'
 import { compare, hasBodyHash, unreadableFiles } from './compare.js'
 import { loadSchema } from '../core/schemas.js'
@@ -237,8 +239,13 @@ function runRepositoryTool(dataDir: string, tool: string, input: Record<string, 
       const lean = input.envelope === 'lean'
       const ctx: Ctx = { dataDir, db, catalog, snapshot, limits: applied, started: Date.now(), store: new EvidenceStore(dataDir), repo: { id: repo.id, name: repo.name, root: repo.root }, page: { offset: cursor?.offset ?? 0, query }, compact: lean || input.envelope === 'compact' || (input.envelope === undefined && !!session?.fullSent.has(snapshot.id)), lean }
       const freshness = strict ? strictFreshness(ctx, repo.root) : SNAPSHOT_FRESHNESS
-      const result = IMPL[tool as ToolName](ctx, withNamedIds(db, tool, input))
-      const out = envelope(ctx, tool as ToolName, input.limits as Limits | undefined, result, limitations, freshness)
+      // Every row that names a file the policy flags generated says so, in the data and in a lean row (FR292).
+      const generated = generatedPaths(db)
+      const out = withGeneratedPaths(generated, () => {
+        const result = IMPL[tool as ToolName](ctx, withNamedIds(db, tool, input))
+        markGenerated(result.data, generated)
+        return envelope(ctx, tool as ToolName, input.limits as Limits | undefined, result, limitations, freshness)
+      })
       // Only what list_queries reports: never the input or the result (NFR008).
       catalog.recordQuery({ query_id: out.query_id, tool, repository_id: repo.id, snapshot_id: snapshot.id, duration_ms: Date.now() - ctx.started, truncated: out.completion.truncated, input_hash: query })
       return out
@@ -612,6 +619,7 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
         adapters: (JSON.parse(meta.adapters ?? '[]') as Array<Record<string, unknown>>).map((a) => ({ id: a.id, version: a.version, protocol_version: a.protocol_version, languages: a.languages })),
         analysis: {
           mode: ctx.snapshot.analysis_mode,
+          generated_policy: GENERATED_POLICY,
           config: meta.analysis_config ? (JSON.parse(meta.analysis_config) as Record<string, unknown>) : null,
           generated_sources: ctx.snapshot.analysis_mode === 'trusted_build'
             ? 'Build logic ran, so source generators and build-time code generation took part; generated files on disk are indexed like any other unless an exclusion rule or git ignore leaves them out.'
@@ -624,7 +632,7 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
         files,
         file_summary: fileSummary,
         languages,
-        hubs: snapshotSummary(ctx.db, ctx.snapshot.id).hubs,
+        hubs: input.include_generated === true ? hubsOf(ctx.db, true) : snapshotSummary(ctx.db, ctx.snapshot.id).hubs,
         module_cycles: cycles,
         jobs: ctx.catalog.openJobs(ctx.repo.id),
         calls: { sites: snapshotSummary(ctx.db, ctx.snapshot.id).call_sites, unresolved: snapshotSummary(ctx.db, ctx.snapshot.id).unresolved_calls.count, by_reason: snapshotSummary(ctx.db, ctx.snapshot.id).unresolved_calls.by_reason, dependency_missing_by_package: snapshotSummary(ctx.db, ctx.snapshot.id).unresolved_calls.dependency_missing_by_package },
@@ -634,6 +642,7 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
       more: all.length > ctx.limits.max_rows,
       limitations: [
         ...cycles.map((c) => `Warning: build modules ${c.modules.join(', ')} form a cycle through syntax-tier name matches, and ${c.ecosystem} forbids module cycles; the edges are ${c.edges.map((e) => `${e.from} to ${e.to} (${e.type}, ${e.sites} site${e.sites === 1 ? '' : 's'}, first ${e.path}:${e.line})`).join(', ')}.`),
+        ...[generatedLeftOut('hubs', (ctx.db.prepare("select count(*) as n from file where json_extract(capabilities, '$.generated') = 'true'").get() as { n: number }).n, input.include_generated === true)].filter((n): n is string => !!n),
         ...(ask ? [] : ['No file rows were asked for: file_summary groups the files by disposition, reason and extension; pass files to list rows.']),
         ...(!meta.census ? ['This snapshot was sealed before the language census existed, so languages is empty; index again to build it.'] : []),
         ...(meta.census && !censusRows.some((r) => r.kind === 'code' || r.kind === 'template') ? ['No code was recognised in this repository: the rows are data and prose files.'] : []),

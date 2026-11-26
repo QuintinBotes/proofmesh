@@ -1,0 +1,2 @@
+docs/gen/** linguist-generated
+web/marked.ts linguist-generated=false

@@ -20,6 +20,8 @@ import { assemble, FactCache, fileKeys, splitByFile } from './fact-cache.js'
 import { analysisConfig, checkoutCommit, discover, gitInfo, type Discovered } from './discovery.js'
 import { registryFor, type AdapterSpec, type Registry } from './languages.js'
 import { buildCensus } from './census.js'
+import { GENERATED_POLICY } from './generated-vendored.js'
+import { vendoredGoImports } from './vendored-imports.js'
 import { constrain, RESOLUTION_VERSION, type Sym } from './constrained/index.js'
 import { type EndpointSym, linkHttp, SEAMS_VERSION } from './seams-http.js'
 import { moduleCycles } from './module-cycles.js'
@@ -167,7 +169,7 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
     const adapters = runs.map((r) => ({ ...r.manifest!, analysis_mode: r.mode, external_inputs: r.inputs ?? [], entry_sha256: r.entrySha256! })).sort((a, b) => (a.id < b.id ? -1 : 1))
     const analysisMode: Mode = adapters.some((a) => a.analysis_mode === 'trusted_build') ? 'trusted_build' : 'no_execution'
     const configs = Object.fromEntries(runs.map((r) => [r.spec.id, catalog.adapterConfig(repo.id, r.spec.id)]))
-    const identity = { repository_id: repo.id, manifest_hash: manifest, config_hash: sha256(canonicalJson({ ...analysisConfig(), adapters: configs })), analysis_mode: analysisMode, adapters, format_version: FORMAT_VERSION, format_ddl: sha256(readSql(`snapshot-format/${FORMAT_VERSION}.sql`)), ownership: OWNERSHIP_VERSION, resolution: RESOLUTION_VERSION, seams: SEAMS_VERSION }
+    const identity = { repository_id: repo.id, manifest_hash: manifest, config_hash: sha256(canonicalJson({ ...analysisConfig(), generated_policy: GENERATED_POLICY, adapters: configs })), analysis_mode: analysisMode, adapters, format_version: FORMAT_VERSION, format_ddl: sha256(readSql(`snapshot-format/${FORMAT_VERSION}.sql`)), ownership: OWNERSHIP_VERSION, resolution: RESOLUTION_VERSION, seams: SEAMS_VERSION }
     const identityJson = canonicalJson(identity)
     const snapshotId = `snap_${sha256(identityJson).slice(0, 24)}`
     const peaks = async () => {
@@ -288,7 +290,7 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
       if (moved.length) throw new ProofmeshError('UNSTABLE_WORKTREE', `${moved.length} file${moved.length === 1 ? '' : 's'} changed while indexing (${moved.slice(0, 3).join(', ')}); index again when the tree is quiet`, { detail: 'changed_during_capture', paths: moved.slice(0, 20) })
       progress({ phase: 'write', done: 0, total: pending.length })
       // The names the language's rules can bind are bound before anything is written, from the whole workspace's facts (FR171).
-      const bound = constrain(declared, pending, (p) => { const h = hashOf.get(p); return h ? store.read(h) : undefined })
+      const bound = vendoredGoImports(constrain(declared, pending, (p) => { const h = hashOf.get(p); return h ? store.read(h) : undefined }), discovered, (p) => fs.readFileSync(path.join(root, p), 'utf8'))
       // Millions of relationships take minutes to write: progress inside the transaction keeps the job and the index lease alive.
       // Each HTTP client is then linked to the handler of the endpoint it names, whatever language either is in (FR255).
       const linked = [...bound, ...linkHttp(declared, endpoints, bound, { id: 'seams-http', version: SEAMS_VERSION, mode: analysisMode })]
@@ -310,13 +312,15 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
         const id = owner(c.language!)?.id
         return id ? { tier: id === 'syntax' ? 'syntax' : `precise:${id}` } : {}
       }
+      // A generated file is indexed like any other and says it is generated (FR292).
+      const flagOf = (c: Captured): { generated: string } | {} => (c.generated ? { generated: 'true' } : {})
       db.transaction(() => {
         for (const c of captured) {
           const fr = fileResults.get(c.path)
           if (!fr) updateFile.run('failed', 'not_analysed', null, capabilities({}, 'failed'), c.path)
           // Discovery's detail stays: a file a stale SCIP index covers is indexed by its usual adapter and says why (A27).
-          else if (fr.status === 'ok') updateFile.run('indexed', c.detail, c.hash, capabilities({ ...fr.capabilities, ...tierOf(c) }, 'unsupported'), c.path)
-          else updateFile.run('failed', fr.detail ?? 'adapter_failure', null, capabilities(fr.capabilities, 'failed'), c.path)
+          else if (fr.status === 'ok') updateFile.run('indexed', c.detail, c.hash, capabilities({ ...fr.capabilities, ...tierOf(c), ...flagOf(c) }, 'unsupported'), c.path)
+          else updateFile.run('failed', fr.detail ?? 'adapter_failure', null, capabilities({ ...fr.capabilities, ...flagOf(c) }, 'failed'), c.path)
         }
       })()
       // Hashing needs each file's captured text and the declared spans, so it follows the last write and costs adapters nothing (FR130).

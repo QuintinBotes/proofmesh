@@ -20,6 +20,9 @@ export type CensusRow = {
   /** Only on `unknown` rows: the extension, or the whole file name when it has none. */
   extension?: string
   files: number
+  /** Files of the language the policy flags generated (indexed, FR292) and files left out as vendored (FR293), each already in `files`. */
+  generated: number
+  vendored: number
   dispositions: { indexed: number; excluded: number; unsupported: number; failed: number }
   /** Files left out by rule, by the rule: the census says how much of the language was not read. */
   excluded: Record<string, number>
@@ -147,7 +150,10 @@ export function buildCensus(files: CensusFile[], ctx: CensusContext = {}): Censu
     const tiers = new Map<string, number>()
     const capabilities = Object.fromEntries(CENSUS_CAPABILITIES.map((c) => [c, zero()])) as CensusRow['capabilities']
     const open: Array<{ f: CensusFile; tier: string }> = []
+    let generated = 0, vendored = 0
     for (const f of group) {
+      if (f.capabilities.generated === 'true') generated++
+      if (f.disposition === 'excluded_by_rule' && f.detail?.startsWith('vendored:')) vendored++
       for (const c of CENSUS_CAPABILITIES) capabilities[c][(LEVELS as readonly string[]).includes(f.capabilities[c]!) ? (f.capabilities[c] as keyof Counts) : 'not_run']++
       if (f.disposition === 'excluded_by_rule') {
         dispositions.excluded++
@@ -166,7 +172,7 @@ export function buildCensus(files: CensusFile[], ctx: CensusContext = {}): Censu
     const reason = !open.length ? 'excluded' : reasons.find((r) => r.startsWith('scip_revoked:')) ?? reasons.find((r) => r.startsWith('scip_stale:')) ?? (reasons.length ? mostCommon(reasons) : null)
     return {
       language: first.language, kind: first.kind, ...(first.kind === 'unknown' ? { extension: first.extension! } : {}),
-      files: group.length, dispositions, excluded, tier: ranked[0]?.tier ?? 'none', tiers: ranked, capabilities, reason, remedy: remedy(first.language, first.kind, reason, ctx),
+      files: group.length, generated, vendored, dispositions, excluded, tier: ranked[0]?.tier ?? 'none', tiers: ranked, capabilities, reason, remedy: remedy(first.language, first.kind, reason, ctx),
     }
   }
   const order = (a: CensusRow, b: CensusRow) => KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind) || b.files - a.files || (a.language < b.language ? -1 : a.language > b.language ? 1 : (a.extension ?? '') < (b.extension ?? '') ? -1 : 1)
