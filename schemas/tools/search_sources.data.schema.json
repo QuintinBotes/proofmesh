@@ -54,6 +54,10 @@
                   },
                   "qualified_name": {
                     "type": "string"
+                  },
+                  "key": {
+                    "type": "string",
+                    "description": "The stable_key of the symbol the hit is in (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file."
                   }
                 }
               }

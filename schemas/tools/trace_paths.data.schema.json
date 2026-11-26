@@ -119,6 +119,10 @@
               },
               "unexplored_edges": {
                 "type": "integer"
+              },
+              "key": {
+                "type": "string",
+                "description": "The stable_key of the frontier node (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file."
               }
             }
           }
@@ -203,6 +207,10 @@
           },
           "type": {
             "type": "string"
+          },
+          "from_key": {
+            "type": "string",
+            "description": "The stable_key of the symbol the unresolved site is in (from_id) (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file."
           }
         }
       }
@@ -234,6 +242,10 @@
           },
           "start_line": {
             "type": "integer"
+          },
+          "key": {
+            "type": "string",
+            "description": "The stable_key of the node (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file."
           }
         }
       }

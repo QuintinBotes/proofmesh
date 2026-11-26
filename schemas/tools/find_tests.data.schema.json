@@ -103,9 +103,17 @@
                 "line": {
                   "type": "integer",
                   "minimum": 1
+                },
+                "key": {
+                  "type": "string",
+                  "description": "The stable_key of the symbol at this hop (FR280)."
                 }
               }
             }
+          },
+          "key": {
+            "type": "string",
+            "description": "The stable_key of the test (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file."
           }
         }
       }

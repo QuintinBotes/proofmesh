@@ -44,7 +44,7 @@ describe('A9 A36 a table is its name: table symbols that share a qualified name,
       const r = reach(d, name)
       expect(r.data.tables.map((t) => ({ table: t.qualified_name, path: t.path, symbols: t.symbols, entities: t.entities.map((x) => x.qualified_name), reach: t.reach.map(({ kind, qualified_name, path, depth }) => ({ kind, qualified_name, path, depth })) }))).toEqual([{
         table: 'orders', path: 'db/orders.sql',
-        symbols: [{ id: expect.any(String), qualified_name: 'orders', path: 'db/orders.sql' }, { id: expect.any(String), qualified_name: 'Orders', path: 'src/Shop.Data/Entities.cs' }],
+        symbols: [{ id: expect.any(String), key: expect.any(String), qualified_name: 'orders', path: 'db/orders.sql' }, { id: expect.any(String), key: expect.any(String), qualified_name: 'Orders', path: 'src/Shop.Data/Entities.cs' }],
         entities: ['Shop.Data.Order'], reach: orders.reach,
       }])
     }
