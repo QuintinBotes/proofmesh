@@ -454,7 +454,7 @@ export async function main(argv: string[]): Promise<number> {
           // The run report names the adapter that failed and those that had finished, so a failed index says where it broke.
           const { failed_adapter: failedAdapter, completed_adapters: completedAdapters, batches_kept: kept, batches_total: keptOf } = failure.details
           jobs.updateJob(jobId, { state: 'failed', finished_at: new Date().toISOString(), error: storedMessage(failure), ...(failedAdapter ? { result: JSON.stringify({ failed_adapter: failedAdapter, completed_adapters: completedAdapters ?? [] }) } : {}) })
-          if (kept) process.stderr.write(`${kept} of ${keptOf} batches were kept; index again to resume, or with --allow-partial to publish what was analysed\n`)
+          if (kept !== undefined) process.stderr.write(`${kept} of ${keptOf} batches were kept; index again to resume, or with --allow-partial to publish what was analysed\n`)
           jobs.close()
           throw e
         }

@@ -6,13 +6,16 @@ import readline from 'node:readline'
 const here = path.dirname(process.argv[1])
 const send = (id, result) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id, result }) + '\n')
 const limit = fs.existsSync(path.join(here, 'limit')) ? Number(fs.readFileSync(path.join(here, 'limit'), 'utf8')) : Infinity
+// `die-at` holds `initialize` or `workspace` to make the adapter exit during that call instead.
+const dieAt = fs.existsSync(path.join(here, 'die-at')) ? fs.readFileSync(path.join(here, 'die-at'), 'utf8').trim() : ''
 let files = []
 readline.createInterface({ input: process.stdin }).on('line', (line) => {
   const req = JSON.parse(line)
   if (req.method === 'initialize') {
+    if (dieAt === 'initialize') process.exit(3)
     files = req.params.files.map((f) => f.path)
     send(req.id, { adapter: { id: 'dying', version: '0', protocol_version: '1.0', languages: ['dying'], toolchain: {} }, capabilities: {}, external_inputs: [], units: files.map((p) => ({ id: p, files: [p] })) })
-  } else if (req.method === 'workspace') send(req.id, { symbols: [], relationships: [], file_results: [], diagnostics: [] })
+  } else if (req.method === 'workspace') { if (dieAt === 'workspace') process.exit(3); send(req.id, { symbols: [], relationships: [], file_results: [], diagnostics: [] }) }
   else if (req.method === 'analyze') {
     fs.appendFileSync(path.join(here, 'calls.log'), JSON.stringify(req.params.paths) + '\n')
     // The host starts a crashed adapter once more, so the count lives in the log, not in this process.

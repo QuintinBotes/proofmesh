@@ -9,6 +9,7 @@ Keep the facts of finished batches when an index fails, so the next run resumes 
 - Checked first: the fact cache was already written batch by batch and a failed index already kept its checkpoint, so a rerun replayed finished work. Tests now pin this (a fake adapter that dies after N batches): an identical rerun analyses only the unfinished files, and after an edit it replays the unchanged finished ones from the cache.
 - A failed index says how many batches were kept and that indexing again resumes them.
 - New `index --allow-partial`: an adapter with no syntax tier that dies no longer ends the index; the files it analysed are indexed and the rest are `failed` with `adapter_died`. The snapshot's meta `partial`, the job result and a line of output name the adapter and the missing files, and every query answer from it says `partial:` in its limitations. The next index asks the adapter again and replays finished files from the cache. Without the flag nothing changes.
+- Review pass (FR347 to FR349): `--allow-partial` also covers an adapter that exits during `initialize` or `workspace`; `compare_snapshots`, `impact_completeness` and `get_ecosystem` carry a `partial:` limitation for every partial snapshot they read; a failure before any batch finished still prints `0 of N batches were kept`.
 - Not done: a partial snapshot becomes current like any other, so it replaces a complete one; the per-file list is capped at 20 paths (the file table has them all).
 
 Index files at the syntax tier when their precise adapter cannot run (closes #18; FR310 to FR319):

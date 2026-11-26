@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import Database from 'better-sqlite3'
@@ -18,7 +19,8 @@ function setup(limit?: number) {
   const index = (...flags: string[]) => cli(['--data-dir', d, 'index', repo, ...flags], { PROOFMESH_INDEX_BATCH: '1' })
   const calls = () => (fs.existsSync(path.join(adapter, 'calls.log')) ? fs.readFileSync(path.join(adapter, 'calls.log'), 'utf8').trim().split('\n').map((l) => JSON.parse(l) as string[]).flat() : [])
   const reset = () => fs.rmSync(path.join(adapter, 'calls.log'), { force: true })
-  return { d, repo, limitTo, index, calls, reset }
+  const dieAt = (where: string) => fs.writeFileSync(path.join(adapter, 'die-at'), where)
+  return { d, repo, limitTo, index, calls, reset, dieAt }
 }
 const facts = (d: string) => (new Database(path.join(d, 'cache', 'facts.db'), { readonly: true }).prepare('select count(*) as n from fact').get() as { n: number }).n
 const current = (d: string) => { const c = Catalog.open(d); try { return c.currentSnapshot(c.repositories()[0]!.id) } finally { c.close() } }
@@ -148,5 +150,61 @@ describe('FR340 to FR346 index --allow-partial publishes what was analysed and s
     const s = setup(3)
     expect(s.index('--allow-partial').status).toBe(0)
     expect(facts(s.d)).toBe(3)
+  })
+})
+
+describe('FR347 to FR349 partial snapshots reach every failure of an adapter and every snapshot an answer reads', () => {
+  for (const where of ['initialize', 'workspace']) {
+    it(`FR347: an adapter that exits during ${where} fails the index without the flag, and with --allow-partial publishes every one of its files as failed with adapter_died`, () => {
+      const s = setup()
+      s.dieAt(where)
+      expect(s.index().status).toBe(1)
+      const r = s.index('--allow-partial')
+      expect(r.status).toBe(0)
+      expect(r.stdout).toContain('partial snapshot: adapter dying failed, 6 of 6 files are missing')
+      withSnapshot(s.d, (db) => {
+        const rows = db.prepare("select disposition, disposition_detail as detail from file where path like '%.fake'").all() as Array<{ disposition: string; detail: string }>
+        expect(rows).toHaveLength(FILES)
+        expect(rows.every((x) => x.disposition === 'failed' && x.detail === 'adapter_died')).toBe(true)
+      })
+      expect(tool(s.d, 'workspace_status', {}).limitations.join('\n')).toMatch(/partial: adapter dying failed, 6 of 6 files are missing/)
+    })
+  }
+
+  it('FR348: compare_snapshots, impact_completeness and get_ecosystem name each partial snapshot they read, not only the answer\'s own', () => {
+    const s = setup(0)
+    const git = (...args: string[]) => execFileSync('git', ['-c', 'user.name=T', '-c', 'user.email=t@example.com', '-c', 'commit.gpgsign=false', ...args], { cwd: s.repo, encoding: 'utf8' }).trim()
+    git('init', '-q'); git('add', '-A'); git('commit', '-q', '-m', 'base')
+    const base = git('rev-parse', 'HEAD')
+    expect(s.index('--rev', base, '--keep-current', '--allow-partial').status).toBe(0)
+    fs.writeFileSync(path.join(s.repo, 'f0.fake'), 'changed\n')
+    git('add', '-A'); git('commit', '-q', '-m', 'head')
+    const head = git('rev-parse', 'HEAD')
+    expect(s.index('--rev', head, '--allow-partial').status).toBe(0)
+    const ids = (tool(s.d, 'list_snapshots', {}).data.snapshots as Array<{ id: string; git: { commit: string } | null }>)
+    const baseId = ids.find((x) => x.git?.commit === base)!.id, headId = ids.find((x) => x.git?.commit === head)!.id
+    const noted = (limitations: string[], id: string) => limitations.some((l) => l.startsWith('partial') && l.includes(id))
+    const cmp = tool(s.d, 'compare_snapshots', { base_snapshot_id: baseId, snapshot_id: headId }).limitations
+    expect(noted(cmp, baseId)).toBe(true)
+    expect(noted(cmp, headId)).toBe(true)
+    const impact = tool(s.d, 'impact_completeness', { base, head }).limitations
+    expect(noted(impact, baseId)).toBe(true)
+    expect(noted(impact, headId)).toBe(true)
+    const other = tmpDir('pm-rs2-')
+    fs.writeFileSync(path.join(other, 'g.fake'), 'g\n')
+    let secondRepo = ''
+    for (const args of [['repo', 'add', other, '--name', 'second'], ['index', other, '--allow-partial'], ['workspace', 'add', 'ws', s.repo, other]]) { const r = cli(['--data-dir', s.d, ...args]); expect(r.status, r.stderr).toBe(0); secondRepo ||= /^(repo_\w+)/m.exec(r.stdout)?.[1] ?? '' }
+    const otherId = (tool(s.d, 'list_snapshots', { repository_id: secondRepo }).data.snapshots as Array<{ id: string }>)[0]!.id
+    expect(cli(['--data-dir', s.d, 'workspace', 'link', 'ws']).status).toBe(0)
+    const eco = tool(s.d, 'get_ecosystem', { workspace: 'ws' }).limitations
+    expect(noted(eco, headId)).toBe(true)
+    expect(noted(eco, otherId)).toBe(true)
+  })
+
+  it('FR349: a failure in the first batch still says that no batch was kept and that indexing again resumes', () => {
+    const s = setup(0)
+    const failed = s.index()
+    expect(failed.status).toBe(1)
+    expect(failed.stderr).toContain('0 of 6 batches were kept; index again to resume')
   })
 })

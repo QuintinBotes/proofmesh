@@ -193,7 +193,7 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
         // An adapter that cannot even start within its budget fails its own files, rather than the index; asking it again would pass the same budget.
         if (e instanceof AdapterBudgetError) { run.unstartable = e; memoryRestarts.push({ adapter: run.spec.id, budget_mb: e.budgetMb, peak_rss_mb: e.peakRssKb ? Math.round(e.peakRssKb / 1024) : null, files: run.sources.length, action: 'adapter_failed' }); return undefined }
         // A fallback adapter that cannot start gives its files to the syntax tier; every later call of it fails with the same reason.
-        if (e instanceof AdapterProtocolError && canFallBack(run.spec)) { run.initFailure = e; return undefined }
+        if (e instanceof AdapterProtocolError && (canFallBack(run.spec) || lock.allowPartial)) { run.initFailure = e; return undefined }
         throw e instanceof AdapterProtocolError ? adapterFailure(run.spec.id, finished, 'failed to initialize', e) : e
       })
       if (!init) { run.manifest = { id: run.spec.id, version: run.unstartable ? 'not_started' : 'failed_to_initialize', protocol_version: PROTOCOL_VERSION, languages: [...run.spec.languages], toolchain: {} }; run.inputs = []; continue }
@@ -332,7 +332,7 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
             if (!(e instanceof AdapterProtocolError)) throw e
             if (!(e instanceof AdapterBudgetError)) {
               // Precise file facts are never published without their workspace facts: a fallback adapter that cannot answer gives all its files to the syntax tier.
-              if (!canFallBack(run.spec)) throw adapterFailure(run.spec.id, finished, 'failed to answer workspace', e)
+              if (!canFallBack(run.spec) && !lock.allowPartial) throw adapterFailure(run.spec.id, finished, 'failed to answer workspace', e)
               run.initFailure = e
               ws = { symbols: [], relationships: [], file_results: [], diagnostics: [] }
               wsFailed = true
@@ -519,7 +519,7 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
     } catch (e) {
       // The batches the checkpoint holds survive the failure: the next index resumes them, and their facts are in the cache.
       if (db.open && !analysed && e instanceof ProofmeshError && e.details.failed_adapter) {
-        try { const kept = (db.prepare('select count(*) as n from resume_batch where batch >= 0').get() as { n: number }).n; if (kept) { e.details.batches_kept = kept; e.details.batches_total = runs.reduce((n, r) => n + Math.ceil(r.sources.length / BATCH()), 0) } } catch { /* a checkpoint that cannot be read is not reported */ }
+        try { const kept = (db.prepare('select count(*) as n from resume_batch where batch >= 0').get() as { n: number }).n; { e.details.batches_kept = kept; e.details.batches_total = runs.reduce((n, r) => n + Math.ceil(r.sources.length / BATCH()), 0) } } catch { /* a checkpoint that cannot be read is not reported */ }
       }
       if (db.open) db.close()
       catalog.markFailed(snapshotId, storedMessage(e))

@@ -396,6 +396,9 @@ Acceptance: CI runs my pull request without secrets or release credentials; lice
 - FR344: MUST report a partial snapshot in the job's result and in a line of `index` output.
 - FR345: MUST, after a partial snapshot, ask the adapter again on the next index (the identity takes a `retry` number), replay the finished files from the cache and publish a complete snapshot.
 - FR346: MUST NOT cache the facts of a file the adapter died on, so a rerun never replays a failure.
+- FR347: MUST, with `index --allow-partial`, also publish a partial snapshot when an adapter with no syntax tier exits during `initialize` or `workspace`: every file of that adapter is `failed` with `adapter_died`.
+- FR348: MUST add a `partial:` limitation naming the snapshot for every partial snapshot an answer reads, including the base side of `compare_snapshots` and `impact_completeness` and every member of `get_ecosystem`, not only the answer's own snapshot.
+- FR349: MUST report, when an index fails on an adapter after its checkpoint was opened, how many batches were kept, also when none were.
 
 ### Impact completeness
 
