@@ -134,6 +134,30 @@ describe('FR371 a signal or a cancel during discover stops the index and release
   }, 120000)
 })
 
+describe('FR373 a cancel while discovery waits on git ends the index at once', () => {
+  it.skipIf(process.platform === 'win32')('an abort while git never answers kills git, rejects CANCELLED and releases the lock', async () => {
+    const repo = textRepo(1), { d, id } = registered(repo), git = stuckGit(), keep = process.env.PATH
+    const stop = new AbortController()
+    let settled = 0
+    try {
+      process.env.PATH = git.PATH
+      const run = indexRepository(d, id, undefined, undefined, undefined, false, { signal: stop.signal })
+      void run.then(() => { settled++ }, () => { settled++ })
+      expect(await until(() => git.pid() !== undefined || settled > 0)).toBe(true)
+      const pid = git.pid()!
+      expect(settled).toBe(0)
+      stop.abort()
+      expect(await until(() => settled > 0, 200), 'the index kept waiting on git after the abort').toBe(true)
+      await expect(run).rejects.toMatchObject({ code: 'CANCELLED' })
+      expect(fs.existsSync(lockFile(d, id))).toBe(false)
+      expect(await until(() => !alive(pid), 200)).toBe(true)
+    } finally {
+      process.env.PATH = keep
+      git.open()
+    }
+  }, 120000)
+})
+
 describe('FR372 the git child of discovery is bounded', () => {
   it.skipIf(process.platform === 'win32')('git that never answers and ignores SIGTERM is killed at its timeout, and the index fails naming it', async () => {
     const repo = textRepo(1), { d, id } = registered(repo), git = stuckGit()

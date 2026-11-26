@@ -434,6 +434,7 @@ Acceptance: CI runs my pull request without secrets or release credentials; lice
 - FR370: MUST report, during `discover`, the files found so far every 1000 files, in the progress line (`discover 1000 files found`), the job row, `status` and the no-snapshot refusal.
 - FR371: MUST let the event loop run while `discover` walks the tree and while it waits on git, so SIGTERM during it ends the index with 143 and releases its lock, the progress heartbeat keeps printing, and an aborted signal (as `watch` passes) ends the walk as `CANCELLED`; a git still running when the index exits is killed.
 - FR372: MUST run discovery's `git ls-files` without a shell, with an allowlisted environment, its output capped, and a timeout of ten minutes after which git is killed with SIGKILL and the index fails as `DEPENDENCY_UNAVAILABLE` naming git and the root, never reading the timeout as "nothing ignored"; a missing git still ignores nothing.
+- FR373: MUST, when the index's signal aborts while discovery waits on `git ls-files` (a `watch` being stopped), kill git with SIGKILL and end the index as `CANCELLED` with its lock released, without waiting for git's timeout.
 
 ### Impact completeness
 

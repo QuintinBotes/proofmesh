@@ -1408,6 +1408,9 @@
     ],
     "FR372": [
       "packages/proofmesh/test/discover-stall.test.ts"
+    ],
+    "FR373": [
+      "packages/proofmesh/test/discover-stall.test.ts"
     ]
   },
   "manual": {

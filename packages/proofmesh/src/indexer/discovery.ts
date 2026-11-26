@@ -72,18 +72,21 @@ function gitIgnored(root: string): (rel: string) => boolean {
   return ignoredFrom(root, { status: r.status, stdout: r.stdout ?? '', failure: code === 'ETIMEDOUT' ? 'timeout' : code === 'ENOBUFS' ? 'output' : undefined })
 }
 
-/** gitIgnored without blocking the event loop; git is killed if this process exits first, so a signal leaves no git behind. */
-function gitIgnoredAsync(root: string): Promise<(rel: string) => boolean> {
+/** gitIgnored without blocking the event loop; git is killed if this process exits first or the signal aborts (FR373), so neither leaves a git behind. */
+function gitIgnoredAsync(root: string, signal?: AbortSignal): Promise<(rel: string) => boolean> {
   return new Promise((resolve, reject) => {
     const kill = () => child.kill('SIGKILL')
     // execFile answers on 'close', so every byte git printed is read.
     const child = execFile('git', ignoredArgs(root), gitOptions(), (error, stdout) => {
       process.off('exit', kill)
+      signal?.removeEventListener('abort', kill)
+      if (signal?.aborted) return reject(new ProofmeshError('CANCELLED', `discovery of ${root} was cancelled`))
       const e = error as (NodeJS.ErrnoException & { killed?: boolean }) | null
       const failure = e?.code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER' ? 'output' : e?.killed ? 'timeout' : undefined
       try { resolve(ignoredFrom(root, { status: e ? (typeof e.code === 'number' ? e.code : null) : 0, stdout, failure })) } catch (x) { reject(x) }
     })
     process.once('exit', kill)
+    signal?.addEventListener('abort', kill, { once: true })
   })
 }
 
@@ -106,7 +109,7 @@ const PROGRESS_EVERY = 1000
 export async function discoverAsync(root: string, registry: Registry, ignored: ((rel: string) => boolean) | undefined, o: { onFound?: (files: number) => void; signal?: AbortSignal } = {}): Promise<Discovered[]> {
   const cancelled = () => { if (o.signal?.aborted) throw new ProofmeshError('CANCELLED', `discovery of ${root} was cancelled`) }
   cancelled()
-  const steps = walk(root, registry, ignored ?? await gitIgnoredAsync(root))
+  const steps = walk(root, registry, ignored ?? await gitIgnoredAsync(root, o.signal))
   for (let n = 1; ; n++) {
     const r = steps.next()
     if (r.done) return r.value
