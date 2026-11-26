@@ -1161,6 +1161,30 @@
     ],
     "FR269": [
       "packages/proofmesh/test/adapter-failure.test.ts"
+    ],
+    "FR270": [
+      "packages/proofmesh/test/adapter-budget.test.ts"
+    ],
+    "FR271": [
+      "packages/proofmesh/test/adapter-budget.test.ts"
+    ],
+    "FR272": [
+      "packages/proofmesh/test/adapter-budget.test.ts"
+    ],
+    "FR273": [
+      "packages/proofmesh/test/progress.test.ts"
+    ],
+    "FR274": [
+      "packages/proofmesh/test/progress.test.ts"
+    ],
+    "FR275": [
+      "packages/proofmesh/test/adapter-budget.test.ts"
+    ],
+    "FR276": [
+      "packages/proofmesh/test/progress.test.ts"
+    ],
+    "FR277": [
+      "packages/proofmesh/test/adapter-budget.test.ts"
     ]
   },
   "manual": {

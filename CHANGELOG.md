@@ -4,6 +4,15 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 ## Unreleased
 
+Bounded adapter memory, and progress while indexing a large repository (closes #6; FR270 to FR277):
+
+- The budget covers the adapter's whole process group, is checked at the end of every batch before its results are accepted, and takes an exit 137 or a SIGKILL the host did not send as an overrun. Enforcement is sampled and documented as such. `proofmesh repo config <repository> --adapter <id> --memory-mb <n>` sets it per repository; `adapter check` and the conformance kit honour the environment setting. The sampling and progress intervals can be set only through `PROOFMESH_TEST_` names and are clamped. `get_job` lists only running adapters, and `progress_at` moves every 5 seconds in every phase.
+
+- Each adapter process runs under a memory budget (8192 MB by default; `adapter_memory_mb` per repository and adapter, or `PROOFMESH_ADAPTER_MEMORY_MB`). The host samples the process, stops one past the budget with SIGKILL, and passes the limit to Node (`--max-old-space-size`) and .NET (`DOTNET_GCHeapHardLimit`). An overrun names the adapter, the budget and the peak resident memory.
+- An adapter that passes its budget is started again with half the files of that batch, and batches of that size after it; the sealed facts are those of an index without a budget. A file that alone passes it fails with `memory_budget` and the census counts it; an adapter that cannot start within the budget fails its files and is not started again. Each restart is printed and recorded in the job's result as `memory_restarts`. The budget is part of a snapshot's identity, so raising it indexes again.
+- Progress repeats every 5 seconds (it was a minute), and a running adapter's line adds its languages, files a second and an estimate. `get_job` returns the same figures in `adapters`, refreshed at the same cadence. The index summary prints seconds per analysed file for each adapter.
+- New benchmark tier `bench/graph-bench/run-large.sh` on a pinned public repository of more than 20,000 files; not run for this change. Not done: reducing a TypeScript program's units on restart, and a budget line in `workspace_status`.
+
 Every row that names a symbol carries its stable key (part of #15; FR280 to FR289):
 
 - `key`, the symbol's `stable_key`, is on every structured row that names a symbol by id: the far side and `via` member of `get_relationships`, `analyze_impact` dependents, `find_tests` rows and each hop of their chains, `trace_paths` nodes and frontier nodes, `find_symbols` rows, `search_sources` hits inside a symbol, `workspace_status` hubs, `find_query_source` candidates, `get_table_reach` tables, symbols, entities, reach rows and accessors, and `impact_completeness` changed symbols, dependents and nearest tests (read from the snapshot that holds the symbol, so a deleted one carries its base key). A row passes back as `key` with no second lookup.
