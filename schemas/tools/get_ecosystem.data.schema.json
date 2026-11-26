@@ -41,7 +41,7 @@
           "sample": {
             "type": "array", "maxItems": 5,
             "items": { "type": "object", "additionalProperties": false, "required": ["link_id", "source", "target", "confidence", "rule"],
-              "properties": { "link_id": { "type": "string" }, "source": { "type": "string", "description": "Qualified name of the source symbol." }, "target": { "type": ["string", "null"], "description": "Qualified name of the target symbol, or null for a repository-level link." }, "confidence": { "type": "number" }, "rule": { "type": "string" } } }
+              "properties": { "link_id": { "type": "string" }, "source": { "type": "string", "description": "Qualified name of the source symbol." }, "source_key": { "type": "string", "description": "The stable_key of that symbol in its member snapshot (FR280); absent when the end is no symbol." }, "target": { "type": ["string", "null"], "description": "Qualified name of the target symbol, or null for a repository-level link." }, "target_key": { "type": "string", "description": "The stable_key of that symbol in its member snapshot (FR280); absent when the end is no symbol." }, "confidence": { "type": "number" }, "rule": { "type": "string" } } }
           }
         }
       }
@@ -53,7 +53,7 @@
         "type": "object", "additionalProperties": false, "required": ["repository_id", "type", "count", "sample"],
         "properties": {
           "repository_id": { "type": "string" }, "type": { "enum": ["calls_endpoint", "messages", "depends_on_package", "calls_service", "deploys", "uses_resource"] }, "count": { "type": "integer", "minimum": 0 },
-          "sample": { "type": "array", "maxItems": 5, "items": { "type": "object", "additionalProperties": false, "required": ["link_id", "source", "reason"], "properties": { "link_id": { "type": "string" }, "source": { "type": "string" }, "reason": { "type": "string" } } } }
+          "sample": { "type": "array", "maxItems": 5, "items": { "type": "object", "additionalProperties": false, "required": ["link_id", "source", "reason"], "properties": { "link_id": { "type": "string" }, "source": { "type": "string" }, "source_key": { "type": "string", "description": "The stable_key of that symbol in its member snapshot (FR280); absent when the end is no symbol." }, "reason": { "type": "string" } } } }
         }
       }
     }

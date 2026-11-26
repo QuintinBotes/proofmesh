@@ -10,7 +10,7 @@ import { openSnapshot } from '../src/meshstore/snapshot.js'
 import { fixtureRepo, tmpDir, tool } from './helpers.js'
 import { writeLinkFile } from './helpers-links.js'
 
-type Member = { repository_id: string; snapshot_id: string; name: string; fn: [string, string]; symbols: number; files_indexed: number }
+type Member = { repository_id: string; snapshot_id: string; name: string; fn: [string, string]; key: string; symbols: number; files_indexed: number }
 
 /** Two indexed TypeScript repositories in one workspace, each with one function symbol picked as a link end. */
 async function workspace() {
@@ -26,6 +26,7 @@ async function workspace() {
     const { snapshotId } = await indexRepository(d, id)
     members.push({ repository_id: id, snapshot_id: snapshotId, name, ...inSnapshot(d, snapshotId, (db) => ({
       fn: [(db.prepare("select id, qualified_name from symbol where kind = 'function' order by qualified_name limit 1").get() as { id: string; qualified_name: string }).id, (db.prepare("select qualified_name from symbol where kind = 'function' order by qualified_name limit 1").get() as { qualified_name: string }).qualified_name] as [string, string],
+      key: (db.prepare("select stable_key from symbol where kind = 'function' order by qualified_name limit 1").get() as { stable_key: string }).stable_key,
       symbols: (db.prepare('select count(*) as n from symbol').get() as { n: number }).n,
       files_indexed: (db.prepare("select count(*) as n from file where disposition = 'indexed'").get() as { n: number }).n,
     })) })
@@ -62,11 +63,11 @@ describe('A11 A28 get_ecosystem: a workspace as nodes and links, from one sealed
       members: [member(a!), member(b!)].sort((x, y) => (x.repository_id < y.repository_id ? -1 : 1)),
       links: [
         { source_repository_id: a!.repository_id, target_repository_id: b!.repository_id, type: 'calls_endpoint', resolved: 1, candidate: 1, min_confidence: 0.6, max_confidence: 1, sample: [
-          { link_id: 'lk_0000', source: a!.fn[1], target: b!.fn[1], confidence: 1, rule: 'http_route' }, { link_id: 'lk_0001', source: a!.fn[1], target: b!.fn[1], confidence: 0.6, rule: 'http_route' },
+          { link_id: 'lk_0000', source: a!.fn[1], source_key: a!.key, target: b!.fn[1], target_key: b!.key, confidence: 1, rule: 'http_route' }, { link_id: 'lk_0001', source: a!.fn[1], source_key: a!.key, target: b!.fn[1], target_key: b!.key, confidence: 0.6, rule: 'http_route' },
         ] },
-        { source_repository_id: b!.repository_id, target_repository_id: a!.repository_id, type: 'messages', resolved: 1, candidate: 0, min_confidence: 1, max_confidence: 1, sample: [{ link_id: 'lk_0003', source: b!.fn[1], target: a!.fn[1], confidence: 1, rule: 'messaging' }] },
+        { source_repository_id: b!.repository_id, target_repository_id: a!.repository_id, type: 'messages', resolved: 1, candidate: 0, min_confidence: 1, max_confidence: 1, sample: [{ link_id: 'lk_0003', source: b!.fn[1], source_key: b!.key, target: a!.fn[1], target_key: a!.key, confidence: 1, rule: 'messaging' }] },
       ].sort((x, y) => (x.source_repository_id < y.source_repository_id ? -1 : 1)),
-      boundaries: [{ repository_id: a!.repository_id, type: 'calls_endpoint', count: 1, sample: [{ link_id: 'lk_0002', source: a!.fn[1], reason: 'no_match' }] }],
+      boundaries: [{ repository_id: a!.repository_id, type: 'calls_endpoint', count: 1, sample: [{ link_id: 'lk_0002', source: a!.fn[1], source_key: a!.key, reason: 'no_match' }] }],
     })
     expect(env.unresolved).toEqual({ count: 1, scope: 'query', sample: [], by_reason: { no_match: 1 } })
     expect(env.coverage!.files_discovered).toBeGreaterThan(0)

@@ -16,18 +16,18 @@ type Ranges = Map<string, Array<[number, number]>>
 export type Diff = { head: Ranges; base: Ranges; renamed: Map<string, string> }
 /** One side of the comparison: its snapshot database, its id and its changed ranges. */
 type Snap = { db: Database.Database; id: string; ranges: Ranges }
-type Sym = { id: string; kind: string; name: string; qualified_name: string; path: string; file_id: string; start_line: number; end_line: number }
-type Test = { name: string; path: string; line: number; evidence: string; depth: number; basis: Basis; changed: boolean }
+type Sym = { id: string; stable_key: string; kind: string; name: string; qualified_name: string; path: string; file_id: string; start_line: number; end_line: number }
+type Test = { key?: string; name: string; path: string; line: number; evidence: string; depth: number; basis: Basis; changed: boolean }
 /** A caller, implementer, overrider, subclass, reference or importer of a changed symbol, with its status. */
-export type Dependent = { id: string; name: string; path: string; line: number; relation: string; via: string | null; basis: Basis; status: 'changed' | 'tested' | 'neither'; test: Test | null }
+export type Dependent = { id: string; key?: string; name: string; path: string; line: number; relation: string; via: string | null; basis: Basis; status: 'changed' | 'tested' | 'neither'; test: Test | null }
 /** A symbol the diff changed, with its status and dependents. */
-export type Changed = { id: string; name: string; path: string; line: number; change: 'added' | 'modified' | 'deleted'; status: 'tested' | 'neither'; test: Test | null; dependents: Dependent[] }
+export type Changed = { id: string; key: string; name: string; path: string; line: number; change: 'added' | 'modified' | 'deleted'; status: 'tested' | 'neither'; test: Test | null; dependents: Dependent[] }
 
 /** Dependents' relations in row order (FR111); overrides joins them, since a member overriding a changed one is an implementer of it. */
 const RELATIONS = ['calls', 'implements', 'overrides', 'inherits', 'references', 'imports']
 /** Java, Kotlin, Scala and PHP qualified names carry no path, so the same name in two files is two symbols; other languages' names say their file or are matched across files as before. */
 const SAME_FILE = "(f.path = ? or f.language not in ('java', 'kotlin', 'scala', 'php'))"
-const SYMBOL_SQL = 'select s.id, s.kind, s.name, s.qualified_name, f.path, s.file_id, s.start_line, s.end_line from symbol s join file f on f.id = s.file_id'
+const SYMBOL_SQL = 'select s.id, s.stable_key, s.kind, s.name, s.qualified_name, f.path, s.file_id, s.start_line, s.end_line from symbol s join file f on f.id = s.file_id'
 
 /**
  * The lines `git diff --unified=0` changed between base and head, or the working tree when head is null, with untracked files wholly
@@ -169,7 +169,7 @@ export function complete(c: { sym: Sym; change: Changed['change']; snap: Snap },
       return null
     }
     const own = symbol.get(t.id) as Sym | undefined
-    return { name: leanName(t), path: t.path, line: t.line, evidence: t.evidence, depth: t.depth, basis: t.basis, changed: !!own && changedIn(own) }
+    return { ...(own ? { key: own.stable_key } : {}), name: leanName(t), path: t.path, line: t.line, evidence: t.evidence, depth: t.depth, basis: t.basis, changed: !!own && changedIn(own) }
   }
   const statusOf = (changed: boolean, ids: string[], files: string[]): Pick<Dependent, 'status' | 'test'> => {
     if (changed) return { status: 'changed', test: null }
@@ -185,7 +185,7 @@ export function complete(c: { sym: Sym; change: Changed['change']; snap: Snap },
     const had = rows.get(key)
     // A dependent an observed chain reaches is observed: that chain's row replaces an inferred one (FR184).
     if (had && !(had.basis === 'inferred' && basis === 'observed') && (had.basis !== basis || had.path < at.path || (had.path === at.path && had.line <= at.line))) return
-    rows.set(key, { id: s.id, name: leanName(s), path: at.path, line: at.line, relation, via, basis, status: 'neither', test: null })
+    rows.set(key, { id: s.id, key: s.stable_key, name: leanName(s), path: at.path, line: at.line, relation, via, basis, status: 'neither', test: null })
   }
   // Every member above the changed one, at any distance, whose calls may dispatch to it.
   const above = db.prepare(`select e.dst, ${inferredSql()} as inferred from edge e join assertion a on a.id = e.assertion_id where e.src = ? and e.type in ('implements', 'overrides') and e.resolution = 'resolved'`)
@@ -248,7 +248,7 @@ export function complete(c: { sym: Sym; change: Changed['change']; snap: Snap },
   const test = nearest([c.sym.id], module ? [c.sym.file_id] : [])
   // The candidate sites naming the symbol or a dependent: followed, or counted so the answer can say it did not follow them.
   const sites = sitesNaming(db, [c.sym.id, ...dependents.map((d) => d.id)], ['calls', 'inherits', 'implements'])
-  return { changed: { id: c.sym.id, name: leanName(c.sym), path: c.sym.path, line: c.sym.start_line, change: c.change, status: test ? 'tested' : 'neither', test, dependents }, stopped, unfollowed: [...unfollowed], follow, sites }
+  return { changed: { id: c.sym.id, key: c.sym.stable_key, name: leanName(c.sym), path: c.sym.path, line: c.sym.start_line, change: c.change, status: test ? 'tested' : 'neither', test, dependents }, stopped, unfollowed: [...unfollowed], follow, sites }
 }
 
 const statusText = (s: { status: string; test: Test | null }) => s.test
