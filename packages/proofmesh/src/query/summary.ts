@@ -61,6 +61,14 @@ const memo = new Map<string, SnapshotSummary>()
 const deepFreeze = <T>(o: T): T => { if (o !== null && typeof o === 'object' && !Object.isFrozen(o)) { Object.freeze(o); Object.values(o).forEach(deepFreeze) } return o }
 
 /** The summary stored in the snapshot at index time; snapshots published before it existed compute it once per process. */
+/** The `partial:` limitation of a snapshot published with files missing, none for a complete one (FR343, FR348). */
+export function partialLimitations(db: Database.Database, id: string): string[] {
+  const row = db.prepare("select value from meta where key = 'partial'").get() as { value: string } | undefined
+  if (!row) return []
+  const p = JSON.parse(row.value) as { adapters: string[]; missing: number; files: number }
+  return [`partial: adapter ${p.adapters.join(', ')} failed, ${p.missing} of ${p.files} files are missing from snapshot ${id} (failed with adapter_died); answers leave them out. Index again to complete the snapshot.`]
+}
+
 export function snapshotSummary(db: Database.Database, snapshotId: string): SnapshotSummary {
   const hit = memo.get(snapshotId)
   if (hit) return hit

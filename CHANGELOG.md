@@ -12,6 +12,14 @@ A cut answer fits max_bytes exactly, note and flags included (closes #88 and #92
 - `search_sources` never cuts inside its first file (a budget that cannot hold it is refused as `max_bytes_too_small`), and `get_ecosystem` reads its deadline again after each cut (FR368, FR369).
 - Cutting an answer to `max_bytes` works on a copy of its data, and the cached snapshot summary is frozen, so a cut no longer shortens cached lists for later answers in the same process.
 
+Keep the facts of finished batches when an index fails, so the next run resumes (closes #79; FR335 to FR346):
+
+- Checked first: the fact cache was already written batch by batch and a failed index already kept its checkpoint, so a rerun replayed finished work. Tests now pin this (a fake adapter that dies after N batches): an identical rerun analyses only the unfinished files, and after an edit it replays the unchanged finished ones from the cache.
+- A failed index says how many batches were kept and that indexing again resumes them.
+- New `index --allow-partial`: an adapter with no syntax tier that dies no longer ends the index; the files it analysed are indexed and the rest are `failed` with `adapter_died`. The snapshot's meta `partial`, the job result and a line of output name the adapter and the missing files, and every query answer from it says `partial:` in its limitations. The next index asks the adapter again and replays finished files from the cache. Without the flag nothing changes.
+- Review pass (FR347 to FR349): `--allow-partial` also covers an adapter that exits during `initialize` or `workspace`; `compare_snapshots`, `impact_completeness` and `get_ecosystem` carry a `partial:` limitation for every partial snapshot they read; a failure before any batch finished still prints `0 of N batches were kept`.
+- Not done: a partial snapshot becomes current like any other, so it replaces a complete one; the per-file list is capped at 20 paths (the file table has them all).
+
 Every busy SQLite write is retried, so parallel indexes never fail with `database is locked` (closes #90; FR360 to FR364):
 
 - A connection now sets its busy timeout before anything else, WAL included. Before, two runs creating the fact cache together could meet the other's lock with no wait at all and fail with an internal error. Pragmas, `exec` calls and reads are retried like writes.
