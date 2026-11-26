@@ -153,6 +153,7 @@ Each grammar's WebAssembly build ships in `dist/grammars/` with its license text
 | @tree-sitter-grammars/tree-sitter-kotlin | 1.1.0 | MIT |
 | tree-sitter-bash | 0.25.1 | MIT |
 | tree-sitter-c | 0.24.1 | MIT |
+| tree-sitter-c-sharp | 0.23.1 | MIT |
 | tree-sitter-cpp | 0.23.4 | MIT |
 | tree-sitter-go | 0.25.0 | MIT |
 | tree-sitter-java | 0.23.5 | MIT |
@@ -163,6 +164,7 @@ Each grammar's WebAssembly build ships in `dist/grammars/` with its license text
 | tree-sitter-rust | 0.24.0 | MIT |
 | tree-sitter-scala | 0.24.0 | MIT |
 | tree-sitter-swift | 0.7.1 | MIT |
+| tree-sitter-typescript | 0.23.2 | MIT |
 
 ## Vendored data
 

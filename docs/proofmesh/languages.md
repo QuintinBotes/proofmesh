@@ -70,7 +70,7 @@ Static HCL through Tree-sitter. Proofmesh never runs `terraform init`, so remote
 
 ## The syntax tier
 
-Tree-sitter grammars on WebAssembly (A6, A23) for Java, Go, Rust, Ruby, PHP, C, C++, Bash, Scala, Kotlin, Swift and SQL, and for Prisma schemas.
+Tree-sitter grammars on WebAssembly (A6, A23) for Java, Go, Rust, Ruby, PHP, C, C++, Bash, Scala, Kotlin, Swift and SQL, and for Prisma schemas. The TypeScript, TSX (which also reads JavaScript and JSX) and C# grammars are the floor under their precise adapters, below.
 
 - Symbols: the declarations each grammar's tags query finds.
 - Calls: every call site, with the callee's name as detail, unresolved with `outside_capability` unless constrained name matching binds it (below). The syntax tier never claims a call target as `resolved`. A Java `new T()` is a call of `T`. In Go and Java the detail also holds `qualifier` (the identifiers written before the name), `receiver` `expression` (when the operand is not a plain name), `shadowed` `local` (when a variable, parameter or field of that name is in scope) and `form` `new`.
@@ -96,12 +96,24 @@ What the tier records per language (FR118):
 | C | `#include`, with `detail.system` and `detail.conditional` | no | yes |
 | C++ | `#include`, with `detail.system` and `detail.conditional` | base classes, as `inherits` | yes |
 | Bash | `source` and `.` of a literal path | no | yes |
+| TypeScript, TSX | `import`, `export ... from` and `import x = require()`, with module | `extends`, `implements` | yes |
+| C# | `using`, with module and alias | no | yes |
 | SQL | no | no | no; table references instead |
 | Prisma | no | no | no; model references instead |
 - Grammars: each is pinned by its package version and the hash of its WebAssembly, which join the adapter's identity. Swift, SQL and Prisma ship no WebAssembly, so `adapters/syntax/grammars/rebuild.mjs` builds them from their packages' source with the Tree-sitter CLI 0.27.2; the build is reproducible, and the syntax adapter's build refuses a grammar whose hash or version differs from `grammars/built.json`, or whose license `policy/licenses.json` does not allow. Each grammar's license text ships beside it, and `THIRD_PARTY_NOTICES.md` lists every grammar.
 - Swift: classes and actors, structs, enums, protocols, functions, methods and properties; members of an `extension X` are named `X.member`. Imports are unresolved import statements. Initializers, subscripts, enum cases and top-level `let` and `var` are not symbols.
 - SQL: `CREATE TABLE`, `VIEW` and `MATERIALIZED VIEW` are `table` symbols named by their schema-qualified name, and functions and procedures are functions. A table named in FROM, JOIN, UPDATE, INSERT INTO, DELETE FROM or a `REFERENCES` clause is a `references` candidate when the same file declares it, and unresolved otherwise. T-SQL bracket identifiers do not parse, so such names are skipped and the file reports partial.
 - Prisma (A9): each model and view is a class that `maps_to` a `table` symbol: the name `@@map` gives (rule `prisma_map`) or else the model's own (rule `prisma_convention`, marked `inferred`), qualified by `@@schema`. A field whose type is a model in the same file is a resolved `references`; a relation to a model another file declares is unresolved. Prisma Client calls in TypeScript reach these tables (see the TypeScript section).
+
+## The syntax tier as the floor under TypeScript, JavaScript and C#
+
+The TypeScript, TSX and C# grammars are shipped too (FR310), but the tier reads these languages only when their precise adapter cannot (FR311, FR313, FR314); a file the adapter analyses never reaches it (FR318).
+
+- A file goes to the syntax tier when its adapter is unavailable (no .NET SDK, the adapter missing), answers `failed` for it, dies, runs out of restarts or cannot start. The rest of the repository keeps its precise facts, and the snapshot publishes. A file the adapter had already analysed before it died keeps its facts.
+- Each such file records tier `syntax` and why in its disposition detail: `adapter_unavailable:<adapter>`, or `adapter_failed:<adapter>` with the adapter's own detail after it. The census row names the same reason with its remedy (FR312); the finished job's result, a line of `proofmesh index` and the snapshot's meta `fallbacks` give the adapter, the number of files and the stored failure, never the adapter's stderr (FR314).
+- Facts: declarations, call sites without targets, imports (`import` and `export ... from`, `require`, C# `using`), and TypeScript `extends` and `implements`. Framework rules (routes, dependency injection, EF) and resolved calls are `unsupported` on these files (FR319). C# heritage needs the precise tier, because a base list does not say which base is an interface.
+- Keys are the precise tier's: TypeScript names are `<module>:<Class>.<member>`; C# names are in namespace form, read from the source (block and file-scoped namespaces, nested types, a generic type with its parameters, an overload not told apart by parameter types), so every declaration the syntax tier finds has the key Roslyn gives it (FR316). Roslyn adds the projects and generated members. When the adapter comes back the files move to the precise tier with their keys unchanged, a note on them reads `tier_changed`, and the index equals a clean one (FR315).
+- A snapshot degraded by a crash is never the answer to a later index: the next index asks the adapter again under a new `retry` number, and an adapter that is merely unavailable is part of identity as before. An adapter that cannot answer workspace gives all its files to the syntax tier.
 
 ## The syntax tier: constrained name matching in Go and Java
 
@@ -263,7 +275,7 @@ A tier gives a row, or states under `not_at_tier` why it cannot; a row neither g
 - A file whose language only its shebang or content gives is routed to that language when the syntax tier reads it, so an extensionless bash script is Shell and its functions are symbols. A script in a language a semantic adapter reads, such as Python, still waits for its extension.
 - `tier` is the tier that read most of the row's files: `precise:<adapter>`, `scip:<index>`, `syntax` or `none`, and `tiers` lists each with its file count. Each indexed source file records its tier as the `tier` key of its capabilities. Files left out by rule are counted under `excluded`, by rule, and are in no tier.
 - `capabilities` counts the row's files at each level (`complete`, `partial`, `unsupported`, `failed`, `not_run`) for `symbols`, `imports`, `references` and `resolved_calls`; each capability's counts sum to `files`.
-- `reason` says why the row's weakest files stop where they do (`no_precise_tier`, `no_grammar`, `not_code`, `adapter_unavailable:<id>`, `scip_stale:<index>`, `scip_revoked:<index>:<grant>`, `unknown_language`, `binary`, `excluded`), and `remedy` is advice from the table below. The census runs nothing and installs nothing; a SCIP indexer runs only in a repository you trust.
+- `reason` says why the row's weakest files stop where they do (`no_precise_tier`, `no_grammar`, `not_code`, `adapter_unavailable:<id>`, `adapter_failed:<id>`, `scip_stale:<index>`, `scip_revoked:<index>:<grant>`, `unknown_language`, `binary`, `excluded`), and `remedy` is advice from the table below. The census runs nothing and installs nothing; a SCIP indexer runs only in a repository you trust.
 
 ### Remedies
 
