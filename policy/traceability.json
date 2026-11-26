@@ -1280,6 +1280,38 @@
     "FR329": [
       "packages/proofmesh/test/concurrent-index.test.ts"
     ],
+    "FR350": [
+      "packages/proofmesh/test/adapter-defaults.test.ts"
+    ],
+    "FR351": [
+      "packages/proofmesh/test/adapter-defaults.test.ts"
+    ],
+    "FR352": [
+      "packages/proofmesh/test/adapter-defaults.test.ts"
+    ],
+    "FR353": [
+      "packages/proofmesh/test/adapter-defaults.test.ts"
+    ],
+    "FR354": [
+      "packages/proofmesh/test/adapter-defaults.test.ts"
+    ],
+    "FR355": [
+      "packages/proofmesh/test/adapter-defaults.test.ts"
+    ],
+    "FR356": [
+      "packages/proofmesh/test/adapter-defaults.test.ts"
+    ],
+    "FR357": [
+      "packages/proofmesh/test/adapter-defaults.test.ts"
+    ],
+
+    "FR358": [
+      "packages/proofmesh/test/adapter-defaults.test.ts"
+    ],
+
+    "FR359": [
+      "packages/proofmesh/test/adapter-defaults.test.ts"
+    ],
     "FR360": [
       "packages/proofmesh/test/database-busy.test.ts"
     ],

@@ -1015,13 +1015,21 @@ progress_at?: (string | null)
  */
 phase_started_at?: (string | null)
 /**
- * Per adapter: incremental or full, how many files it re-analyses and how many replay cached facts; null until analysis starts.
+ * Per adapter: incremental or full, how many files it re-analyses and how many replay cached facts, and the memory budget it runs under; null until analysis starts.
  */
 plan?: (null | {
 [k: string]: {
 mode: ("incremental" | "full")
 analyse: number
 reuse: number
+/**
+ * The memory budget of the adapter's process, in MB.
+ */
+budget_mb?: number
+/**
+ * Whether an explicit setting or half of the machine's memory (8 to 32 GB) chose the budget.
+ */
+budget_source?: ("setting" | "machine")
 }
 })
 /**
@@ -2426,6 +2434,14 @@ plan?: (null | {
 mode: ("incremental" | "full")
 analyse: number
 reuse: number
+/**
+ * The memory budget of the adapter's process, in MB.
+ */
+budget_mb?: number
+/**
+ * Whether an explicit setting or half of the machine's memory (8 to 32 GB) chose the budget.
+ */
+budget_source?: ("setting" | "machine")
 }
 })
 /**
@@ -3034,6 +3050,14 @@ plan?: (null | {
 mode: ("incremental" | "full")
 analyse: number
 reuse: number
+/**
+ * The memory budget of the adapter's process, in MB.
+ */
+budget_mb?: number
+/**
+ * Whether an explicit setting or half of the machine's memory (8 to 32 GB) chose the budget.
+ */
+budget_source?: ("setting" | "machine")
 }
 })
 /**
