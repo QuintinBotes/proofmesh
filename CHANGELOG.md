@@ -4,6 +4,12 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 ## Unreleased
 
+Indexes of different repositories run in parallel safely, and one index per repository at a time (closes #83; FR320 to FR327):
+
+- The catalog and the fact cache use WAL and a two-minute busy timeout (`PROOFMESH_BUSY_TIMEOUT_MS`), and a write still busy after that is retried up to ten times, so two indexes meeting at a seal wait instead of failing with `SQLITE_BUSY`.
+- The global index lease is replaced by one lock file per repository under `<data dir>/locks/`, taken by `index` and by each `watch` cycle. Indexes of different repositories run at the same time. A second index of the same repository waits and says so (then reports the first one's snapshot unchanged), or with `--no-wait` exits with `INDEX_IN_PROGRESS` naming the pid and start time. A lock whose process is gone is taken over and the run says so.
+- A lock held from another host is treated as live; remove its file by hand if that host is gone. `gc` still refuses while any index holds a lock.
+
 A dying adapter fails the index with its name and exit status, instead of crashing it (closes #78; FR260 to FR269):
 
 - Every stream of an adapter child has an error handler. A write to an adapter that has exited, been killed or closed its input (`EPIPE`, `ECONNRESET`) fails that adapter's call instead of raising an unhandled `error` event that ended the process. The failure names the adapter, its exit code or signal, the last 10 stderr lines (cut at 300 characters) and the file it was on, and says so when the exit looks like memory pressure (a signal, exit 137 or an out-of-memory message); such an adapter is not restarted.

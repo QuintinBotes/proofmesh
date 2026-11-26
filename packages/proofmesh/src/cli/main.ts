@@ -396,8 +396,8 @@ export async function main(argv: string[]): Promise<number> {
       }
       case 'index': {
         const opts = [...rest]
-        const jobFlag = take(opts, '--job'), rev = take(opts, '--rev'), keepCurrent = has(opts, '--keep-current')
-        if (!opts[0]) throw new ProofmeshError('INVALID_ARGUMENT', 'usage: proofmesh index <repository-id or path> [--rev <commit-ish> [--keep-current]]')
+        const jobFlag = take(opts, '--job'), rev = take(opts, '--rev'), keepCurrent = has(opts, '--keep-current'), noWait = has(opts, '--no-wait')
+        if (!opts[0]) throw new ProofmeshError('INVALID_ARGUMENT', 'usage: proofmesh index <repository-id or path> [--rev <commit-ish> [--keep-current]] [--no-wait]')
         const jobs = Catalog.open(dataDir)
         let jobId: string
         // Every index is a job row, so status and get_job see it; one the MCP server spawned names its row with --job.
@@ -420,7 +420,7 @@ export async function main(argv: string[]): Promise<number> {
             started = true
             phase = label
             report.update(p)
-          }, undefined, rev, keepCurrent && !!rev)
+          }, undefined, rev, keepCurrent && !!rev, { wait: !noWait, onNotice: (line) => process.stderr.write(`${line}\n`) })
         } catch (e) {
           report.stop()
           const failure = asProofmeshError(e)

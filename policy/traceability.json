@@ -1131,6 +1131,30 @@
     ],
     "FR269": [
       "packages/proofmesh/test/adapter-failure.test.ts"
+    ],
+    "FR320": [
+      "packages/proofmesh/test/concurrent-index.test.ts"
+    ],
+    "FR321": [
+      "packages/proofmesh/test/concurrent-index.test.ts"
+    ],
+    "FR322": [
+      "packages/proofmesh/test/concurrent-index.test.ts"
+    ],
+    "FR323": [
+      "packages/proofmesh/test/concurrent-index.test.ts"
+    ],
+    "FR324": [
+      "packages/proofmesh/test/concurrent-index.test.ts"
+    ],
+    "FR325": [
+      "packages/proofmesh/test/concurrent-index.test.ts"
+    ],
+    "FR326": [
+      "packages/proofmesh/test/concurrent-index.test.ts"
+    ],
+    "FR327": [
+      "packages/proofmesh/test/concurrent-index.test.ts"
     ]
   },
   "manual": {

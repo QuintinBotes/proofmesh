@@ -6,7 +6,8 @@ import { canonicalJson, derivedId, sha256, sha256File } from '../core/hash.js'
 import { ProofmeshError, storedMessage } from '../core/errors.js'
 import { log } from '../core/log.js'
 import type { AnalyzeResponse, InitializeResponse } from '../core/generated.js'
-import { Catalog, LEASE_OWNER } from '../meshstore/catalog.js'
+import { Catalog } from '../meshstore/catalog.js'
+import { acquireIndexLock, type HeldLock } from '../meshstore/index-lock.js'
 import { createStagingStore, faultPoint, FORMAT_VERSION, openStagingStore, sealAndPublish, stagingDir } from '../meshstore/snapshot.js'
 import { CAPS, computeSummary } from '../query/summary.js'
 import { fillAggregates } from '../query/overview.js'
@@ -85,17 +86,18 @@ export type Progress = { phase: 'discover' | 'capture' | 'prepare' | 'initialize
  * registry: the conformance kit indexes with the adapter it checks first; everything else uses the data directory's own.
  * rev: a commit to index instead of the working tree. Its snapshot becomes current like any other, unless keepCurrent and the repository has one.
  */
-export async function indexRepository(dataDir: string, repoIdOrPath: string, onProgress?: (p: Progress) => void, registry?: Registry, rev?: string, keepCurrent = false): Promise<IndexResult> {
+export async function indexRepository(dataDir: string, repoIdOrPath: string, onProgress?: (p: Progress) => void, registry?: Registry, rev?: string, keepCurrent = false, lock: { wait?: boolean; onNotice?: (line: string) => void } = {}): Promise<IndexResult> {
   const catalog = Catalog.open(dataDir)
-  const owner = LEASE_OWNER
-  catalog.acquireLease(owner)
-  const progress = (p: Progress) => { catalog.renewLease(owner); onProgress?.(p) }
+  let held: HeldLock | undefined
+  const progress = (p: Progress) => onProgress?.(p)
   let runs: AdapterRun[] = []
   const finished: string[] = []
   let jobDir: string | undefined
   let cache: FactCache | undefined
   try {
     const repo = catalog.repository(repoIdOrPath)
+    // One index per repository at a time; indexes of other repositories run beside this one.
+    held = await acquireIndexLock(dataDir, repo.id, repo.name, lock)
     jobDir = path.join(dataDir, 'staging', `job-${process.pid}-${Date.now()}`)
     // A commit is read from git objects into a private tree under jobDir; the registered working tree is never touched.
     const checkout = rev ? checkoutCommit(repo.root, rev, path.join(jobDir, 'commit')) : undefined
@@ -357,7 +359,7 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
     cache?.close()
     for (const r of runs) await r.process?.shutdown()
     if (jobDir) fs.rmSync(jobDir, { recursive: true, force: true })
-    catalog.releaseLease(owner)
+    held?.release()
     catalog.close()
   }
 }

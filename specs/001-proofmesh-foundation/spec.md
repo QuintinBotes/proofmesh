@@ -325,6 +325,17 @@ Acceptance: CI runs my pull request without secrets or release credentials; lice
 - FR269: MUST have each built-in adapter (typescript, syntax, python, terraform, build, scip, csharp) exit when its input ends.
 - FR265: MUST print a stage line when capture ends (`prepare`) and when each later stage starts, so a crash shows where the index stopped.
 
+### Concurrent indexes
+
+- FR320: MUST open the catalog and the fact cache in WAL mode with a busy timeout of two minutes (`PROOFMESH_BUSY_TIMEOUT_MS` overrides it), so a run that meets another process's write waits rather than fails.
+- FR321: MUST retry a write that is still busy after that wait, up to ten tries, each transaction beginning immediate so the retry happens before any of it ran, and MUST log each retry; it MUST NOT fail with `SQLITE_BUSY` while a try is left.
+- FR322: MUST let indexes of different repositories run at the same time in one data directory: both publish, each query is scoped to its own repository, and a workspace query sees both.
+- FR323: MUST allow one index of a repository at a time, held by a lock file `locks/index-<repository id>.lock` in the data directory (created atomically; it records the pid, host and start time), taken by `index` and by each `watch` cycle; a second index of the same repository waits and says so, then finds the first one's snapshot current, so exactly one job publishes.
+- FR324: MUST, with `index --no-wait`, refuse while another index of the repository runs with `INDEX_IN_PROGRESS`, naming its pid, host and start time, and MUST leave the running index untouched.
+- FR325: MUST treat a lock whose pid is not alive on this host as stale, take it over and say so; a lock held from another host counts as live.
+- FR326: MUST finish a write that was contended for longer than one busy wait once the other writer lets go.
+- FR327: MUST keep queries and `status` answering from the published snapshot while an index writes.
+
 ### Impact completeness
 
 - FR108: MUST provide `impact_completeness` with `base`, a commit-ish, optional `head` (omitted, the working tree), `depth` (default 1, at most 5), `include_tests` and the usual limits, and the CLI `proofmesh completeness <repository> <base>[..<head>] [--depth N] [--json]`.

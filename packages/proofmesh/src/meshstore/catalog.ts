@@ -4,6 +4,8 @@ import path from 'node:path'
 import Database from 'better-sqlite3'
 import { derivedId, randomToken, sha256File } from '../core/hash.js'
 import { ProofmeshError } from '../core/errors.js'
+import { hardenDatabase } from '../core/busy.js'
+import { liveLocks, lockHolder, ownerOf } from './index-lock.js'
 import { schemasDir } from '../core/paths.js'
 import { readSql } from '../core/schemas.js'
 
@@ -33,14 +35,8 @@ export type IndexJob = { id: string; repository_id: string; state: 'queued' | 'r
 export type InstalledAdapter = { id: string; entry: string; sha256: string; extensions: Record<string, string>; configNames: string[]; added_by: string; added_at: string; kit: { passed: boolean; checked_at: string; sha256: string; checks: number; failed: string[] } | null }
 /** The note source of notes saved by agents rather than synced from a person's directory. */
 export const AGENT_NOTES = 'agent:'
-/** The index lease owner for this process: its pid and host, so a lease whose process died on this host is free at once. */
+/** The index lock owner for this process: its pid and host, as a job row records it. */
 export const LEASE_OWNER = `pid:${process.pid}@${os.hostname()}`
-
-function holderAlive(owner: string): boolean {
-  const m = /^pid:(\d+)@(.+)$/.exec(owner)
-  if (!m || m[2] !== os.hostname()) return true
-  try { process.kill(Number(m[1]), 0); return true } catch (e) { return (e as NodeJS.ErrnoException).code === 'EPERM' }
-}
 
 /** Applies each catalog/NNNN.sql not yet applied, in order, each in its own transaction; never rewrites an applied migration. */
 function migrate(db: Database.Database): void {
@@ -79,9 +75,8 @@ export class Catalog {
       throw new ProofmeshError('INVALID_ARGUMENT', `data directory ${dataDir} is not initialized; run "proofmesh init" first`)
     }
     const db = new Database(file)
-    db.pragma('journal_mode = WAL')
+    hardenDatabase(db)
     db.pragma('foreign_keys = ON')
-    db.pragma('busy_timeout = 5000')
     migrate(db)
     return new Catalog(db, dataDir)
   }
@@ -529,25 +524,10 @@ export class Catalog {
     this.db.prepare('insert into adapter_config (repository_id, adapter_id, config) values (?, ?, ?) on conflict(repository_id, adapter_id) do update set config = excluded.config').run(repositoryId, adapterId, JSON.stringify(config))
   }
 
-  acquireLease(owner: string, ttlMs = 30 * 60 * 1000): void {
-    this.db.transaction(() => {
-      const row = this.leaseHolder()
-      if (row && row.owner !== owner) {
-        throw new ProofmeshError('INVALID_ARGUMENT', `another index job (${row.owner}) holds the lease until ${row.expires_at}`)
-      }
-      this.db.prepare('insert into index_lease (singleton, owner, expires_at) values (1, ?, ?) on conflict(singleton) do update set owner = excluded.owner, expires_at = excluded.expires_at')
-        .run(owner, new Date(Date.now() + ttlMs).toISOString())
-    })()
-  }
-
-  /** Long index runs renew their lease as they progress, so it never lapses while the work is alive. */
-  renewLease(owner: string, ttlMs = 30 * 60 * 1000): void {
-    this.db.prepare('update index_lease set expires_at = ? where singleton = 1 and owner = ?').run(new Date(Date.now() + ttlMs).toISOString(), owner)
-  }
-
-  leaseHolder(): { owner: string; expires_at: string } | undefined {
-    const row = this.db.prepare('select owner, expires_at from index_lease where singleton = 1').get() as { owner: string; expires_at: string } | undefined
-    return row && Date.parse(row.expires_at) > Date.now() && holderAlive(row.owner) ? row : undefined
+  /** The live holder of a repository's index lock; with no repository, of any repository's. */
+  leaseHolder(repositoryId?: string): { owner: string; started_at: string } | undefined {
+    const h = repositoryId ? lockHolder(this.dataDir, repositoryId) : liveLocks(this.dataDir)[0]?.holder
+    return h ? { owner: ownerOf(h), started_at: h.started_at } : undefined
   }
 
   /** A job already queued or running for the repository is returned instead of starting a second one. */
@@ -579,15 +559,11 @@ export class Catalog {
   job(id: string): IndexJob | undefined {
     const row = this.db.prepare('select * from index_job where id = ?').get(id) as Record<string, string | number | null> | undefined
     if (!row) return undefined
-    const holder = this.leaseHolder()
+    const holder = this.leaseHolder(row.repository_id as string)
     const interrupted = (row.state === 'running' && (!holder || holder.owner !== row.owner)) || (row.state === 'queued' && Date.now() - Date.parse(row.requested_at as string) > 120000)
     const { owner: _owner, ...rest } = row
     const started = row.started_at ? Date.parse(row.started_at as string) : null
     const elapsed = started === null ? null : (row.finished_at ? Date.parse(row.finished_at as string) : Date.now()) - started
     return { ...rest, state: interrupted ? 'interrupted' : row.state, result: row.result ? JSON.parse(row.result as string) : null, plan: row.plan ? JSON.parse(row.plan as string) : null, elapsed_ms: elapsed } as never
-  }
-
-  releaseLease(owner: string): void {
-    this.db.prepare('delete from index_lease where singleton = 1 and owner = ?').run(owner)
   }
 }

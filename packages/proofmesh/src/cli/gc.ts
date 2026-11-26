@@ -13,7 +13,7 @@ export type GcPlan = { retire: Array<{ id: string; repository_id: string; publis
 
 export function plan(catalog: Catalog, keep: number): GcPlan {
   const holder = catalog.leaseHolder()
-  if (holder) throw new ProofmeshError('INVALID_ARGUMENT', `an index job (${holder.owner}) holds the lease until ${holder.expires_at}; run gc when it is done`)
+  if (holder) throw new ProofmeshError('INVALID_ARGUMENT', `an index job (${holder.owner}) holds an index lock since ${holder.started_at}; run gc when it is done`)
   const protectedIds = new Set([...catalog.currentSnapshotIds(), ...catalog.linkedSnapshotIds()])
   const retire: GcPlan['retire'] = []
   for (const repo of catalog.repositories()) {

@@ -47,10 +47,10 @@ describe('FR051 retention retires old snapshots and unreferenced evidence, never
 
   it('refuses to run while an index lease is live', async () => {
     const { dataDir } = await indexedDataDir()
-    const c = Catalog.open(dataDir)
-    try { c.db.prepare("insert into index_lease (singleton, owner, expires_at) values (1, 'pid:1@elsewhere', ?)").run(new Date(Date.now() + 60000).toISOString()) } finally { c.close() }
+    fs.mkdirSync(path.join(dataDir, 'locks'), { recursive: true })
+    fs.writeFileSync(path.join(dataDir, 'locks', 'index-repo_x.lock'), JSON.stringify({ pid: 1, host: 'elsewhere', started_at: new Date().toISOString() }))
     const r = cli(['--data-dir', dataDir, 'gc'])
     expect(r.status).not.toBe(0)
-    expect(r.stderr).toMatch(/holds the lease/)
+    expect(r.stderr).toMatch(/holds an index lock/)
   })
 })
