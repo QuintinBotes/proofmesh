@@ -12,6 +12,14 @@ Keep the facts of finished batches when an index fails, so the next run resumes 
 - Review pass (FR347 to FR349): `--allow-partial` also covers an adapter that exits during `initialize` or `workspace`; `compare_snapshots`, `impact_completeness` and `get_ecosystem` carry a `partial:` limitation for every partial snapshot they read; a failure before any batch finished still prints `0 of N batches were kept`.
 - Not done: a partial snapshot becomes current like any other, so it replaces a complete one; the per-file list is capped at 20 paths (the file table has them all).
 
+The adapter budget and the host heap follow the machine, and a project load over budget is reported at once (closes #89; FR350 to FR359):
+
+- An adapter's memory budget defaults to half of physical memory, at least 8192 MB and at most 32768 MB (24576 MB on a 48 GB machine, 8192 MB on 16 GB). `adapter_memory_mb` and `PROOFMESH_ADAPTER_MEMORY_MB` still win. The index summary, `get_job`'s `plan` and its `result` say each adapter's budget and whether a setting or the machine chose it.
+- An adapter that passes its budget while loading the project, before its first batch, fails its files with `memory_budget` at once, without a restart: halving the batch cannot shrink a load. The summary names the load peak and the command that raises the budget.
+- `proofmesh index` runs its host under `--max-old-space-size` from the same rule (`PROOFMESH_HOST_MEMORY_MB` wins) and shows the heap in the summary. A host that runs out of heap fails with `BUDGET_EXCEEDED` (detail `host_out_of_memory`) naming `PROOFMESH_HOST_MEMORY_MB`, and its job is marked failed.
+- The syntax tier that starts mid-run is held to a budget, listed with the others, and fails its files with `memory_budget` when its load is over it. The supervisor is told apart by a marker so a person's own heap flag still gets the named error, a host out-of-memory needs V8's fatal-error text and an abort, and the host heap prints on its own line (FR357 to FR359).
+- `bench/graph-bench/synthetic-large.mjs` generates N C# projects and M files and records the host's and the adapter's peak memory.
+
 Index files at the syntax tier when their precise adapter cannot run (closes #18; FR310 to FR319):
 
 - The syntax tier now reads TypeScript, JavaScript (JSX, TSX) and C# through pinned Tree-sitter WebAssembly grammars (TypeScript, TSX, C#; MIT, shipped with their licence texts, no network at run time). It records declarations, call sites without targets, imports, and TypeScript `extends` and `implements`. It reads these languages only as a fallback, so an index whose adapters run is unchanged.

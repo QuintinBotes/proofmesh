@@ -114,6 +114,8 @@ describe('#28 a CLI index is an index job that status and MCP report while it ru
     expect(cli(['--data-dir', d, 'status']).stdout).toContain(`index job ${job!.id} running since ${job!.started_at} by ${user}: analyze typescript ${job!.done}/${job!.total}\n`)
     second.child.kill('SIGKILL')
     await second.exited
+    // The host runs under its own heap and stops when the process that started it is gone, a moment after it.
+    for (let i = 0; i < 200 && (tool(d, 'get_job', { job_id: job!.id }).data.job as { state: string }).state !== 'interrupted'; i++) await new Promise((r) => setTimeout(r, 50))
     expect(tool(d, 'get_job', { job_id: job!.id }).data.job).toMatchObject({ state: 'interrupted', phase: 'analyze typescript' })
     expect(jobs()).toEqual([])
     expect(cli(['--data-dir', d, 'status']).stdout).not.toContain('index job')

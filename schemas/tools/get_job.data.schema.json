@@ -104,7 +104,7 @@
           "description": "When the current phase began."
         },
         "plan": {
-          "description": "Per adapter: incremental or full, how many files it re-analyses and how many replay cached facts; null until analysis starts.",
+          "description": "Per adapter: incremental or full, how many files it re-analyses and how many replay cached facts, and the memory budget it runs under; null until analysis starts.",
           "anyOf": [
             {
               "type": "null"
@@ -133,6 +133,18 @@
                   "reuse": {
                     "type": "integer",
                     "minimum": 0
+                  },
+                  "budget_mb": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "The memory budget of the adapter's process, in MB."
+                  },
+                  "budget_source": {
+                    "enum": [
+                      "setting",
+                      "machine"
+                    ],
+                    "description": "Whether an explicit setting or half of the machine's memory (8 to 32 GB) chose the budget."
                   }
                 }
               }

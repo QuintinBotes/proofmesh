@@ -184,7 +184,7 @@ describe('FR272 a file that alone exceeds the budget fails with memory_budget an
     const { d, r } = await index(names(5), 128, { ...MODEL, init_mb: 400 })
     expect((facts(d).files as Array<{ disposition: string; disposition_detail: string | null }>).map((f) => [f.disposition, f.disposition_detail])).toEqual(Array(5).fill(['failed', 'memory_budget']))
     expect(r.counts).toMatchObject({ indexed: 0, failed: 5 })
-    expect(r.memoryRestarts).toEqual([{ adapter: 'memlang', budget_mb: 128, peak_rss_mb: expect.any(Number), files: 5, action: 'adapter_failed' }])
+    expect(r.memoryRestarts).toEqual([{ adapter: 'memlang', budget_mb: 128, peak_rss_mb: expect.any(Number), at_load: true, files: 5, action: 'adapter_failed' }])
   }, 120000)
 
   it('FR272 scenario 3: after a reindex under a budget its workspace step overruns, no file is answered from the cache of the earlier index', async () => {
@@ -200,7 +200,7 @@ describe('FR272 a file that alone exceeds the budget fails with memory_budget an
     const lower = await indexRepository(d, repo, undefined, registry({ ...MODEL, workspace_mb: 400 }))
     expect(lower.counts).toMatchObject({ indexed: 0, failed: 6 })
     expect((facts(d).files as Array<{ disposition_detail: string | null }>).every((f) => f.disposition_detail === 'memory_budget')).toBe(true)
-    expect(lower.memoryRestarts).toEqual([{ adapter: 'memlang', budget_mb: 128, peak_rss_mb: expect.any(Number), files: 6, action: 'adapter_failed' }])
+    expect(lower.memoryRestarts).toEqual([{ adapter: 'memlang', budget_mb: 128, peak_rss_mb: expect.any(Number), at_load: true, files: 6, action: 'adapter_failed' }])
   }, 120000)
 })
 
