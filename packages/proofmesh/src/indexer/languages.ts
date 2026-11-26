@@ -77,10 +77,10 @@ export const BUILT_IN: AdapterSpec[] = [
     entry: () => createRequire(import.meta.url).resolve('@proofmesh/adapter-syntax/terraform'),
     unavailable: () => 'adapter_unavailable:terraform',
   },
-  // The build graph (FR124 to FR129, FR151 to FR160): each manifest is a source for this adapter and, where another adapter reads it as configuration, for that one too.
+  // The build graph (FR124 to FR129, FR151 to FR160, FR240 to FR249): each manifest is a source for this adapter and, where another adapter reads it as configuration, for that one too.
   {
     id: 'build', languages: new Set(['build']), extensions: {},
-    manifest: (name) => (/^(go\.(mod|work)|package\.json|pnpm-workspace\.yaml|tsconfig(\..+)?\.json|pom\.xml|(settings|build)\.gradle(\.kts)?|libs\.versions\.toml)$/.test(name) || OPENAPI_NAME.test(name) ? 'build' : undefined),
+    manifest: (name) => (/^(go\.(mod|work)|package\.json|pnpm-workspace\.yaml|tsconfig(\..+)?\.json|pom\.xml|(settings|build)\.gradle(\.kts)?|libs\.versions\.toml|Cargo\.toml|pyproject\.toml|composer\.json|.+\.gemspec|BUILD|BUILD\.bazel|BUCK)$/.test(name) || OPENAPI_NAME.test(name) ? 'build' : undefined),
     isConfig: () => false,
     entry: () => createRequire(import.meta.url).resolve('@proofmesh/adapter-syntax/build'),
     unavailable: () => 'adapter_unavailable:build',

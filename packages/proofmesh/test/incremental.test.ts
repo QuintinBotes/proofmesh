@@ -23,7 +23,7 @@ const dump = (d: string, id: string) => run(['--data-dir', d, 'debug', 'dump', '
 const git = (cwd: string, ...args: string[]) => expect(spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { cwd }).status).toBe(0)
 const write = (repo: string, file: string, change: (text: string) => string) => fs.writeFileSync(path.join(repo, file), change(fs.readFileSync(path.join(repo, file), 'utf8')))
 
-type Transition = { name: string; fixture: string; reused: number; before?: (repo: string, d: string) => void; change: (repo: string, d: string) => void }
+type Transition = { name: string; fixture: string; reused: number; shows?: string; before?: (repo: string, d: string) => void; change: (repo: string, d: string) => void }
 
 // cs-orders: Orders.Core (4 files) references Orders.Pricing (2 files); only Pricing's facts survive a change confined to Core.
 const transitions: Transition[] = [
@@ -64,12 +64,15 @@ const transitions: Transition[] = [
   // build-graph: the build adapter answers every fact in `workspace`, which is asked on each index and never cached, so a build fact never
   // goes stale. A manifest edit reanalyses the seven manifests (cheap file results) and, for package.json, which the TypeScript adapter also
   // reads as configuration, the four TypeScript files; a new Go file changes no adapter's inputs, so all 13 files keep their facts (FR129).
-  { name: 'FR129 edit a go.mod', fixture: 'build-graph', reused: 6, change: (r) => write(r, 'svc/go.mod', (t) => t.replace('v1.8.1', 'v1.9.0')) },
-  { name: 'FR129 add a Go file under a project', fixture: 'build-graph', reused: 13, change: (r) => fs.writeFileSync(path.join(r, 'lib/extra.go'), 'package lib\n\nfunc Extra() int {\n\treturn 1\n}\n') },
-  { name: 'FR129 rename a package', fixture: 'build-graph', reused: 2, change: (r) => write(r, 'packages/core/package.json', (t) => t.replace('@acme/core', '@acme/kernel')) },
+  { name: 'FR129 edit a go.mod', fixture: 'build-graph', reused: 13, change: (r) => write(r, 'svc/go.mod', (t) => t.replace('v1.8.1', 'v1.9.0')) },
+  { name: 'FR129 add a Go file under a project', fixture: 'build-graph', reused: 27, change: (r) => fs.writeFileSync(path.join(r, 'lib/extra.go'), 'package lib\n\nfunc Extra() int {\n\treturn 1\n}\n') },
+  { name: 'FR129 rename a package', fixture: 'build-graph', reused: 9, change: (r) => write(r, 'packages/core/package.json', (t) => t.replace('@acme/core', '@acme/kernel')) },
   // build-graph-jvm: pom and Gradle facts are answered in `workspace` too, so an edited version never leaves a stale fact (FR160).
-  { name: 'FR160 edit a pom dependency version', fixture: 'build-graph-jvm', reused: 5, change: (r) => write(r, 'maven/web/pom.xml', (t) => t.replace('33.0.0-jre', '33.1.0-jre')) },
-  { name: 'FR160 edit a Gradle script dependency version', fixture: 'build-graph-jvm', reused: 5, change: (r) => write(r, 'gradle/app/build.gradle.kts', (t) => t.replace('3.9.0', '3.9.1')) },
+  { name: 'FR160 edit a pom dependency version', fixture: 'build-graph-jvm', reused: 9, change: (r) => write(r, 'maven/web/pom.xml', (t) => t.replace('33.0.0-jre', '33.1.0-jre')) },
+  { name: 'FR160 edit a Gradle script dependency version', fixture: 'build-graph-jvm', reused: 9, change: (r) => write(r, 'gradle/app/build.gradle.kts', (t) => t.replace('3.9.0', '3.9.1')) },
+  // FR245: Cargo and Bazel facts are answered in `workspace` as well, so an edited version or dependency never leaves a stale fact.
+  { name: 'FR245 edit a Cargo.toml dependency version', fixture: 'build-graph', reused: 13, shows: '1.0.200', change: (r) => write(r, 'crates/app/Cargo.toml', (t) => t.replace('serde = "1"', 'serde = "1.0.200"')) },
+  { name: 'FR245 edit a BUILD.bazel dep', fixture: 'build-graph-jvm', reused: 9, shows: 'com_google_guava_failureaccess', change: (r) => write(r, 'bazel/BUILD.bazel', (t) => t.replace('com_google_guava_guava', 'com_google_guava_failureaccess')) },
 ]
 
 describe('SC004 FR008 FR014 A16 an incremental index seals exactly what a clean index of the same tree seals', () => {
@@ -91,6 +94,10 @@ describe('SC004 FR008 FR014 A16 an incremental index seals exactly what a clean 
       expect(cleanRun.id).toBe(incremental.id)
       expect(cleanRun.reused).toBe(0)
       expect(dump(d, incremental.id)).toBe(dump(clean, incremental.id))
+      if (t.shows) {
+        expect(dump(d, base.id)).not.toContain(t.shows)
+        expect(dump(d, incremental.id)).toContain(t.shows)
+      }
     }, 300000)
   }
 
