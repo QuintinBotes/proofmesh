@@ -588,6 +588,87 @@ function prismaFact(call: TS.CallExpression, p: string, sf: TS.SourceFile): Reco
   }
 }
 
+// ---- HTTP clients (FR250 to FR252): `fetch` and `axios` calls whose path the code writes as a literal ----
+const CLIENT_VERBS = new Set(['get', 'post', 'put', 'patch', 'delete', 'head', 'options'])
+/** A path expression's text with each non-literal part a `{param}`: `known` is false when the expression starts with one (a base URL held in a variable). Undefined for anything that is no string. */
+function pathText(e: TS.Expression, depth = 0): { text: string; known: boolean } | undefined {
+  if (ts.isParenthesizedExpression(e) || ts.isAsExpression(e) || ts.isNonNullExpression(e)) return pathText(e.expression, depth)
+  if (ts.isStringLiteralLike(e)) return { text: e.text, known: true }
+  if (ts.isTemplateExpression(e)) {
+    // A span that is a module constant is its text; any other is a parameter.
+    const spans = e.templateSpans.map((s) => ({ part: pathText(s.expression, depth + 1), after: s.literal.text }))
+    return { text: e.head.text + spans.map((s) => `${s.part?.known ? s.part.text : '{param}'}${s.after}`).join(''), known: e.head.text !== '' || !!spans[0]?.part?.known }
+  }
+  if (ts.isBinaryExpression(e) && e.operatorToken.kind === ts.SyntaxKind.PlusToken) {
+    const l = pathText(e.left, depth), r = pathText(e.right, depth)
+    // A string on either side makes `+` concatenation; a side that is no literal stands for one parameter.
+    if (!l && !r) return undefined
+    const side = (x: { text: string; known: boolean } | undefined) => x ?? { text: '{param}', known: false }
+    return { text: side(l).text + side(r).text, known: side(l).known }
+  }
+  // A module constant, followed a few steps as the Python rule follows one.
+  if (ts.isIdentifier(e) && depth < 3) {
+    const d = checker.getSymbolAtLocation(e)?.valueDeclaration
+    if (d && ts.isVariableDeclaration(d) && d.initializer && ts.isVariableDeclarationList(d.parent) && d.parent.flags & ts.NodeFlags.Const) return pathText(d.initializer, depth + 1)
+  }
+  return undefined
+}
+/** An expression without the wrappers that only change its type: parentheses, `as`, `satisfies`, `!` and `<T>`. */
+function unwrap(e: TS.Expression | undefined): TS.Expression | undefined {
+  while (e && (ts.isParenthesizedExpression(e) || ts.isAsExpression(e) || ts.isSatisfiesExpression(e) || ts.isNonNullExpression(e) || ts.isTypeAssertionExpression(e))) e = e.expression
+  return e
+}
+const stringProp = (given: TS.Expression | undefined, name: string): { value: TS.Expression } | undefined => {
+  const o = unwrap(given)
+  if (!o || !ts.isObjectLiteralExpression(o)) return undefined
+  const prop = o.properties.find((x): x is TS.PropertyAssignment => ts.isPropertyAssignment(x) && (ts.isIdentifier(x.name) || ts.isStringLiteralLike(x.name)) && x.name.text === name)
+  return prop && { value: prop.initializer }
+}
+/** Whether an identifier is the global `fetch`: nothing in the repository declares it. */
+const isGlobal = (id: TS.Identifier) => (checker.getSymbolAtLocation(id)?.declarations ?? []).every((d) => program!.isSourceFileDefaultLibrary(d.getSourceFile()))
+/** The axios instance a name is: `axios` itself or a variable initialised by `axios.create(...)`, with the literal `baseURL` of the latter (null when it is not a literal). */
+function axiosClient(root: TS.Expression): { base: string | null } | undefined {
+  if (!ts.isIdentifier(root)) return undefined
+  const imported = importedCallee(root)
+  if (imported?.module === 'axios' && imported.name === 'default') return { base: '' }
+  const d = checker.getSymbolAtLocation(root)?.valueDeclaration
+  const init = d && ts.isVariableDeclaration(d) ? d.initializer : undefined
+  if (!init || !ts.isCallExpression(init) || !ts.isPropertyAccessExpression(init.expression) || init.expression.name.text !== 'create') return undefined
+  const made = axiosClient(init.expression.expression)
+  if (!made) return undefined
+  const base = stringProp(init.arguments[0], 'baseURL')?.value, text = base && pathText(base)
+  return { base: !base ? '' : text && text.known ? text.text : null }
+}
+/** The endpoint `VERB path` a `fetch` or `axios` call names, as the Python client rule names it: no scheme, host, query or outer slash, each interpolation a `{param}`. */
+function httpClient(call: TS.CallExpression): { endpoint: string; rule: 'fetch_client' | 'axios_client'; prefixUnknown: boolean } | undefined {
+  const callee = call.expression, args = call.arguments
+  let rule: 'fetch_client' | 'axios_client', verb = 'GET', target: TS.Expression | undefined, config: TS.Expression | undefined, base: string | null = ''
+  if (ts.isIdentifier(callee) && callee.text === 'fetch' && isGlobal(callee)) { rule = 'fetch_client'; target = args[0]; config = args[1] }
+  else {
+    const method = ts.isPropertyAccessExpression(callee) ? callee.name.text : undefined
+    const client = axiosClient(ts.isPropertyAccessExpression(callee) ? callee.expression : callee)
+    if (!client) return undefined
+    rule = 'axios_client'; base = client.base
+    const object = unwrap(args[0]) && ts.isObjectLiteralExpression(unwrap(args[0])!) ? unwrap(args[0]) : undefined
+    if (method && CLIENT_VERBS.has(method)) { verb = method.toUpperCase(); target = args[0] }
+    else if (method === 'request' || !method) { target = object ? stringProp(object, 'url')?.value : args[0]; config = object ?? args[1] }
+    else return undefined
+  }
+  const m = stringProp(config, 'method')?.value
+  if (m) verb = ts.isStringLiteralLike(m) ? m.text.toUpperCase() : 'ANY'
+  const written = target && pathText(target)
+  if (!written) return undefined
+  // A leading interpolation, or a base the client does not state, is a prefix the code does not say.
+  let text = written.text
+  const prefixUnknown = !written.known || base === null
+  if (!written.known) text = text.replace(/^(?:\{param\})+/, '')
+  else if (base) text = `${base.replace(/\/+$/, '')}/${text.replace(/^\/+/, '')}`
+  // A path starts with `/` or a scheme, or is relative to a base URL and shaped like a route (`rates/add`); a prefix we do not know needs the `/` that ends it.
+  if (!(/^(\/|https?:\/\/)/.test(text) || (!prefixUnknown && /^[\w.{}-]+(\/[\w.{}-]+)+(\?|$)/.test(text)))) return undefined
+  const clean = text.replace(/^https?:\/\/[^/]*/, '').split(/[?#]/)[0]!.replace(/^\/+|\/+$/g, '')
+  return clean ? { endpoint: `${verb} ${clean}`, rule, prefixUnknown } : undefined
+}
+
 const EXPRESS_VERBS = new Map([['get', 'GET'], ['post', 'POST'], ['put', 'PUT'], ['patch', 'PATCH'], ['delete', 'DELETE'], ['options', 'OPTIONS'], ['head', 'HEAD'], ['all', 'ANY']])
 const NEST_VERBS = new Map([['Get', 'GET'], ['Post', 'POST'], ['Put', 'PUT'], ['Patch', 'PATCH'], ['Delete', 'DELETE'], ['Options', 'OPTIONS'], ['Head', 'HEAD'], ['All', 'ANY']])
 
@@ -869,6 +950,7 @@ function analyze(paths: string[]) {
     use(project)
     symbols.push(...(symbolsByFile.get(p) ?? []))
     let unresolvedCalls = 0, unresolvedImports = 0
+    const endpoints = new Set<string>(), clientEndpoints: Array<Record<string, unknown>> = []
     /** One reference per user and target, cited at its first site, with every way the user uses the target. */
     const references = new Map<string, { from: string; target: string; site: TS.Node; uses: Set<string> }>()
     const visit = (node: TS.Node) => {
@@ -893,6 +975,12 @@ function analyze(paths: string[]) {
             const callee = ts.isPropertyAccessExpression(node.expression) ? node.expression.name.text : ts.isIdentifier(node.expression) ? node.expression.text : undefined
             const unbound = r.resolution === 'resolved' || r.resolution === 'resolved_external' ? {} : { detail: { ...('detail' in r ? (r.detail as Record<string, string>) : {}), ...(callee ? { callee } : {}), arity: String(node.arguments?.length ?? 0) } }
             relationships.push({ type: 'calls', origin: 'semantic_resolver', source: { symbol: from }, site: { path: p, range: range(sf, node.getStart(sf), node.getEnd()) }, ...r, ...unbound })
+          }
+          const client = ts.isCallExpression(node) ? httpClient(node) : undefined
+          if (client) {
+            const r = range(sf, node.getStart(sf), node.getEnd()), local = `${p}#endpoint#${client.endpoint}`
+            if (!endpoints.has(local)) { endpoints.add(local); clientEndpoints.push({ local_id: local, path: p, kind: 'endpoint', name: client.endpoint.split(' ')[1]!, qualified_name: client.endpoint, range: r, signature: null }) }
+            relationships.push({ type: 'dispatches_to', origin: 'framework_adapter', source: { symbol: from }, site: { path: p, range: r }, resolution: 'resolved', target: { symbol: local }, detail: { direction: 'outbound', rule: client.rule, ...(client.prefixUnknown ? { prefix_unknown: 'true' } : {}) } })
           }
           const hook = ts.isCallExpression(node) ? hookFact(node) : undefined
           if (hook) relationships.push({ origin: 'framework_adapter', source: { symbol: from }, site: { path: p, range: range(sf, node.getStart(sf), node.getEnd()) }, ...hook })
@@ -922,9 +1010,10 @@ function analyze(paths: string[]) {
     visit(sf)
     for (const r of references.values()) relationships.push({ type: 'references', origin: 'semantic_resolver', source: { symbol: r.from }, site: { path: p, range: range(sf, r.site.getStart(sf), r.site.getEnd()) }, resolution: 'resolved', target: { symbol: r.target }, detail: { use: [...r.uses].sort().join(',') } })
     relationships.push(...(routeFacts.get(p) ?? []))
+    symbols.push(...clientEndpoints)
     file_results.push({
       path: p, status: 'ok',
-      capabilities: { text: 'complete', syntax: 'complete', symbols: 'complete', imports: unresolvedImports ? 'partial' : 'complete', references: 'partial', resolved_calls: unresolvedCalls ? 'partial' : 'complete', framework: 'unsupported' },
+      capabilities: { text: 'complete', syntax: 'complete', symbols: 'complete', imports: unresolvedImports ? 'partial' : 'complete', references: 'partial', resolved_calls: unresolvedCalls ? 'partial' : 'complete', framework: clientEndpoints.length ? 'partial' : 'unsupported' },
     })
   }
   return { symbols, relationships, file_results, diagnostics }
