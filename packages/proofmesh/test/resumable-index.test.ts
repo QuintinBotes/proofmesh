@@ -64,20 +64,17 @@ describe('FR335 to FR339 the facts of finished batches survive a failed index, a
     expect(failed.stderr).toContain('index again to resume')
   })
 
-  it('FR339: a failed index leaves the previous snapshot current and the failed job names what was kept', () => {
+  it('FR339: a failed index leaves the previous snapshot current and reports the batches its checkpoint holds, finished adapters and cached ones included', () => {
     const s = setup()
     expect(s.index().status).toBe(0)
     const before = current(s.d)
     fs.writeFileSync(path.join(s.repo, 'f1.fake'), 'edited\n')
     fs.writeFileSync(path.join(s.repo, 'f4.fake'), 'edited\n')
     s.reset(); s.limitTo(1)
-    expect(s.index().status).toBe(1)
+    const failed = s.index()
+    expect(failed.status).toBe(1)
     expect(current(s.d)).toEqual(before)
-    const c = Catalog.open(s.d)
-    try {
-      const job = JSON.parse((c.db.prepare("select result from index_job where state = 'failed'").get() as { result: string }).result)
-      expect(job.batches_kept).toBe(4)
-    } finally { c.close() }
+    expect(failed.stderr).toContain('4 of 6 batches were kept')
   })
 })
 

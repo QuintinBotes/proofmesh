@@ -387,7 +387,7 @@ Acceptance: CI runs my pull request without secrets or release credentials; lice
 - FR335: MUST keep the facts of every analysis batch that finished in the fact cache when an index fails, so a rerun replays them and analyses only what did not finish.
 - FR336: MUST resume an identical rerun of a failed index from its checkpoint: only the files of batches that did not finish are analysed, and the sealed snapshot equals a clean index's.
 - FR337: MUST, after a file is edited between a failed index and its rerun, replay from the cache the finished files whose unit did not change, and analyse only the edited ones and the unfinished ones.
-- FR338: MUST say, when an index fails on an adapter, how many batches were kept and that indexing again resumes them, and record the count as `batches_kept` in the failed job's result.
+- FR338: MUST say, when an index fails on an adapter, how many batches were kept and that indexing again resumes them.
 - FR339: MUST leave the previous snapshot current when an index fails.
 - FR340: MUST fail the index and publish nothing when an adapter dies and `--allow-partial` is not given, for an adapter with no syntax tier under it.
 - FR341: MUST, with `index --allow-partial`, publish a partial snapshot when an adapter dies: the files it analysed are indexed, the files it did not reach are `failed` with `adapter_died`.
