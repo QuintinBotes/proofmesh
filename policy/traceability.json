@@ -1311,6 +1311,21 @@
 
     "FR359": [
       "packages/proofmesh/test/adapter-defaults.test.ts"
+    ],
+    "FR360": [
+      "packages/proofmesh/test/database-busy.test.ts"
+    ],
+    "FR361": [
+      "packages/proofmesh/test/database-busy.test.ts"
+    ],
+    "FR362": [
+      "packages/proofmesh/test/database-busy.test.ts"
+    ],
+    "FR363": [
+      "packages/proofmesh/test/database-busy.test.ts"
+    ],
+    "FR364": [
+      "packages/proofmesh/test/database-busy.test.ts"
     ]
   },
   "manual": {

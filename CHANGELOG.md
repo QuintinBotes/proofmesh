@@ -4,6 +4,13 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 ## Unreleased
 
+Every busy SQLite write is retried, so parallel indexes never fail with `database is locked` (closes #90; FR360 to FR364):
+
+- A connection now sets its busy timeout before anything else, WAL included. Before, two runs creating the fact cache together could meet the other's lock with no wait at all and fail with an internal error. Pragmas, `exec` calls and reads are retried like writes.
+- A write still busy after the retry budget ends as a `BUSY` error naming the database file and the statement, and any busy error from any connection is reported as `BUSY`, never `INTERNAL_ERROR`.
+- A transaction that cannot begin names `BEGIN IMMEDIATE` in its `BUSY` error. The workspace link store is hardened like the other shared databases and builds in a staging directory of its own, so two runs sealing the same link file no longer remove each other's staging, and the first to seal keeps its file. The per-job snapshot staging stores stay as they are: each is keyed by repository and snapshot, and one index per repository runs at a time.
+- The parallel-index test now forces both runs into the contended catalog and fact-cache writes with lock holders and gates, and `PROOFMESH_STRESS_RUNS=50` repeats it in one process.
+
 The adapter budget and the host heap follow the machine, and a project load over budget is reported at once (closes #89; FR350 to FR359):
 
 - An adapter's memory budget defaults to half of physical memory, at least 8192 MB and at most 32768 MB (24576 MB on a 48 GB machine, 8192 MB on 16 GB). `adapter_memory_mb` and `PROOFMESH_ADAPTER_MEMORY_MB` still win. The index summary, `get_job`'s `plan` and its `result` say each adapter's budget and whether a setting or the machine chose it.
