@@ -7,7 +7,12 @@
     "kotlin/Circle.kt": ["indexed", null],
     "php/Circle.php": ["indexed", null],
     "ruby/circle.rb": ["indexed", null],
-    "rust/lib.rs": ["indexed", null]
+    "rust/lib.rs": ["indexed", null],
+    "scala/Circle.scala": ["indexed", null],
+    "c/total.c": ["indexed", null],
+    "cpp/area.cpp": ["indexed", null],
+    "bash/run.sh": ["indexed", null],
+    "swift/Circle.swift": ["indexed", null]
   },
   "symbols": [
     { "kind": "module", "qualified_name": "go/shape", "lines": [1, 13], "signature": null },
@@ -31,12 +36,33 @@
     { "kind": "interface", "qualified_name": "rust/lib:Shape", "lines": [5, 5], "signature": null },
     { "kind": "interface", "qualified_name": "rust/lib:Named", "lines": [7, 7], "signature": null },
     { "kind": "class", "qualified_name": "rust/lib:Circle", "lines": [9, 9], "signature": null },
-    { "kind": "function", "qualified_name": "rust/lib:area", "lines": [13, 15], "signature": null }
+    { "kind": "function", "qualified_name": "rust/lib:area", "lines": [13, 15], "signature": null },
+    { "kind": "module", "qualified_name": "swift/Circle", "lines": [1, 4], "signature": null },
+    { "kind": "class", "qualified_name": "swift/Circle:Circle", "lines": [3, 4], "signature": null },
+    { "kind": "module", "qualified_name": "scala/Circle", "lines": [1, 10], "signature": null },
+    { "kind": "namespace", "qualified_name": "com.acme.sshapes", "lines": [1, 1], "signature": null },
+    { "kind": "class", "qualified_name": "com.acme.sshapes.Circle", "lines": [5, 10], "signature": null },
+    { "kind": "function", "qualified_name": "com.acme.sshapes.Circle.area", "lines": [6, 9], "signature": null },
+    { "kind": "module", "qualified_name": "c/total", "lines": [1, 10], "signature": null },
+    { "kind": "function", "qualified_name": "c/total:total", "lines": [8, 8], "signature": null },
+    { "kind": "function", "qualified_name": "c/total:biggest", "lines": [10, 10], "signature": null },
+    { "kind": "module", "qualified_name": "cpp/area", "lines": [1, 6], "signature": null },
+    { "kind": "class", "qualified_name": "cpp/area:Circle", "lines": [3, 4], "signature": null },
+    { "kind": "function", "qualified_name": "cpp/area:f", "lines": [6, 6], "signature": null },
+    { "kind": "module", "qualified_name": "bash/run", "lines": [1, 8], "signature": null },
+    { "kind": "function", "qualified_name": "bash/run:greet", "lines": [4, 6], "signature": null }
   ],
   "calls": [
     { "from": "ruby/circle", "line": 1, "site_text": "require \"json\"", "resolution": "unresolved", "reason": "outside_capability" },
     { "from": "ruby/circle", "line": 2, "site_text": "require_relative \"base\"", "resolution": "unresolved", "reason": "outside_capability" },
-    { "from": "ruby/circle:Circle", "line": 5, "site_text": "include Comparable", "resolution": "unresolved", "reason": "outside_capability" }
+    { "from": "ruby/circle:Circle", "line": 5, "site_text": "include Comparable", "resolution": "unresolved", "reason": "outside_capability" },
+    { "from": "c/total:total", "line": 8, "site_text": "add(1, 2)", "resolution": "unresolved", "reason": "outside_capability" },
+    { "from": "c/total:biggest", "line": 10, "site_text": "MAX(a, b)", "resolution": "unresolved", "reason": "outside_capability" },
+    { "from": "cpp/area:f", "line": 6, "site_text": "c.area()", "resolution": "unresolved", "reason": "outside_capability" },
+    { "from": "bash/run", "line": 1, "site_text": "source ./lib.sh", "resolution": "unresolved", "reason": "outside_capability" },
+    { "from": "bash/run", "line": 2, "site_text": ". ./lib.sh", "resolution": "unresolved", "reason": "outside_capability" },
+    { "from": "bash/run:greet", "line": 5, "site_text": "echo hi", "resolution": "unresolved", "reason": "outside_capability" },
+    { "from": "bash/run", "line": 8, "site_text": "greet", "resolution": "unresolved", "reason": "outside_capability" }
   ],
   "structure": [
     { "type": "inherits", "from": "go/shape:Shape", "to": null, "detail": { "name": "Base", "relation": "embedding", "rule": "go_same_package" }, "site_text": "Base" },
@@ -53,9 +79,20 @@
     { "type": "inherits", "from": "ruby/circle:Circle", "to": null, "detail": { "name": "Base" }, "site_text": "Base" },
     { "type": "inherits", "from": "ruby/circle:Circle", "to": null, "detail": { "name": "Comparable", "relation": "include" }, "site_text": "Comparable" },
     { "type": "implements", "from": "rust/lib:Circle", "to": null, "detail": { "name": "Shape" }, "site_text": "Shape" },
-    { "type": "inherits", "from": "rust/lib:Named", "to": null, "detail": { "name": "Shape" }, "site_text": "Shape" }
+    { "type": "inherits", "from": "rust/lib:Named", "to": null, "detail": { "name": "Shape" }, "site_text": "Shape" },
+    { "type": "inherits", "from": "swift/Circle:Circle", "to": null, "detail": { "name": "Base", "relation": "supertype" }, "site_text": "Base" },
+    { "type": "inherits", "from": "swift/Circle:Circle", "to": null, "detail": { "name": "Shape", "relation": "supertype" }, "site_text": "Shape" },
+    { "type": "inherits", "from": "com.acme.sshapes.Circle", "to": null, "detail": { "name": "Base" }, "site_text": "Base" },
+    { "type": "implements", "from": "com.acme.sshapes.Circle", "to": null, "detail": { "name": "Shape" }, "site_text": "Shape" },
+    { "type": "inherits", "from": "cpp/area:Circle", "to": null, "detail": { "name": "Shape" }, "site_text": "Shape" }
   ],
   "imports_unresolved": [
+    { "from": "bash/run.sh", "line": 1, "site_text": "source ./lib.sh", "detail": { "module": "./lib.sh" } },
+    { "from": "bash/run.sh", "line": 2, "site_text": ". ./lib.sh", "detail": { "module": "./lib.sh" } },
+    { "from": "c/total.c", "line": 1, "site_text": "#include <stdio.h>", "detail": { "module": "stdio.h", "system": "true" } },
+    { "from": "c/total.c", "line": 2, "site_text": "#include \"add.h\"", "detail": { "module": "add.h", "system": "false" } },
+    { "from": "c/total.c", "line": 5, "site_text": "#include \"extra.h\"", "detail": { "module": "extra.h", "system": "false", "conditional": "true" } },
+    { "from": "cpp/area.cpp", "line": 1, "site_text": "#include \"shape.hpp\"", "detail": { "module": "shape.hpp", "system": "false" } },
     { "from": "go/shape.go", "line": 4, "site_text": "\"fmt\"", "detail": { "module": "fmt" } },
     { "from": "go/shape.go", "line": 5, "site_text": "geo \"example.com/shop/geo\"", "detail": { "module": "example.com/shop/geo", "alias": "geo" } },
     { "from": "java/Circle.java", "line": 3, "site_text": "import com.acme.geo.Point;", "detail": { "module": "com.acme.geo.Point" } },
@@ -66,6 +103,9 @@
     { "from": "ruby/circle.rb", "line": 2, "site_text": "require_relative \"base\"", "detail": { "module": "base" } },
     { "from": "rust/lib.rs", "line": 1, "site_text": "use crate::geo::{Point, Line};", "detail": { "module": "crate::geo", "names": "Point, Line" } },
     { "from": "rust/lib.rs", "line": 3, "site_text": "mod geo;", "detail": { "module": "geo" } },
-    { "from": "rust/lib.rs", "line": 14, "site_text": "use std::fmt;", "detail": { "module": "std::fmt" } }
+    { "from": "rust/lib.rs", "line": 14, "site_text": "use std::fmt;", "detail": { "module": "std::fmt" } },
+    { "from": "scala/Circle.scala", "line": 3, "site_text": "import com.acme.geo.{Point, Line}", "detail": { "module": "com.acme.geo", "names": "Point, Line" } },
+    { "from": "scala/Circle.scala", "line": 7, "site_text": "import scala.math.Pi", "detail": { "module": "scala.math.Pi" } },
+    { "from": "swift/Circle.swift", "line": 1, "site_text": "import Foundation", "detail": { "module": "Foundation" } }
   ]
 }

@@ -19,6 +19,10 @@ Test importers and sibling implementations (closes #67, #68):
 - `get_relationships` with `include_tests` false now leaves out an importer row whose source is a test file; the filter looked up a symbol, and an importer's source is the file (FR224).
 - `analyze_impact` on one implementation of an interface or base member no longer lists a sibling implementation as a dependent; callers of the member and dispatch callers are still reached (FR225). The four Rosetta known-defect rows these fixed (TypeScript imports and impact, Python imports, C# impact) are now plain expected rows.
 
+Syntax-tier structure, Swift, Scala, C, C++ and Bash (closes #59, part 2; part 1 is #66):
+
+- The syntax tier records each Swift `import`, Scala `import` (also inside a function body, with `detail.names` for braces), C and C++ `#include` (`detail.system`, and `detail.conditional` inside `#if`) and Bash `source` or `.` of a literal path as an unresolved `imports` row, and each Swift supertype, Scala `extends` and `with` and C++ base class as an unresolved `inherits` or `implements` row from the declaring type (FR231, FR232). C and C++ call sites are recorded, from the function or method that holds them, a macro call included (FR233). `docs/proofmesh/languages.md` and the Rosetta rows for C++ state what is recorded.
+
 Syntax-tier structure, Kotlin, Rust, PHP and Ruby (#59, part 1):
 
 - The syntax tier records each Kotlin `import`, Rust `use` (a grouped one with `detail.names`, also inside a function body) and `mod x;`, PHP `use` clause and Ruby `require` or `require_relative` of a string as an unresolved `imports` row, and each Kotlin supertype, Rust `impl Trait for Type` and trait bound, PHP `extends` and `implements`, and Ruby superclass and `include` as an unresolved `inherits` or `implements` row from the declaring type (FR221 to FR223). The Rosetta gaps for these languages now state that the rows exist and have no target. Swift, Scala, C, C++ and Bash follow in part 2.

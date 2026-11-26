@@ -12,6 +12,9 @@
 (class_body (property_declaration name: (pattern bound_identifier: (simple_identifier) @name)) @definition.member)
 (enum_class_body (property_declaration name: (pattern bound_identifier: (simple_identifier) @name)) @definition.member)
 (protocol_body (protocol_property_declaration name: (pattern bound_identifier: (simple_identifier) @name)) @definition.member)
-(import_declaration (identifier) @name) @import
+; Imports and supertypes (FR231, FR232). The tier cannot tell a class from a protocol in a supertype list, so every entry is a supertype. An extension's supertypes are not recorded: it declares no type.
+(import_declaration (identifier) @import.module) @import
+(class_declaration declaration_kind: ["class" "struct" "enum" "actor"] (inheritance_specifier inherits_from: (user_type) @inherits.supertype))
+(protocol_declaration (inheritance_specifier inherits_from: (user_type) @inherits.supertype))
 (call_expression . (simple_identifier) @name) @reference.call
 (call_expression . (navigation_expression suffix: (navigation_suffix suffix: (simple_identifier) @name))) @reference.call
