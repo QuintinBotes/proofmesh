@@ -6,7 +6,7 @@ import { ProofmeshError } from '../core/errors.js'
 import { readSql } from '../core/schemas.js'
 import type { Catalog, SnapshotRow } from './catalog.js'
 
-export const FORMAT_VERSION = '0.9'
+export const FORMAT_VERSION = '0.10'
 
 export const stagingDir = (dataDir: string, snapshotId: string) => path.join(dataDir, 'staging', snapshotId)
 export const sealedPath = (dataDir: string, snapshotId: string) => path.join(dataDir, 'snapshots', `${snapshotId}.db`)
