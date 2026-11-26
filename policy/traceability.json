@@ -821,6 +821,39 @@
       "packages/proofmesh/test/build-graph-jvm.test.ts",
       "packages/proofmesh/test/incremental.test.ts"
     ],
+    "FR240": [
+      "packages/proofmesh/test/build-graph.test.ts"
+    ],
+    "FR241": [
+      "packages/proofmesh/test/build-graph.test.ts"
+    ],
+    "FR242": [
+      "packages/proofmesh/test/build-graph.test.ts"
+    ],
+    "FR243": [
+      "packages/proofmesh/test/build-graph.test.ts"
+    ],
+    "FR244": [
+      "packages/proofmesh/test/build-graph.test.ts"
+    ],
+    "FR245": [
+      "packages/proofmesh/test/build-graph.test.ts",
+      "packages/proofmesh/test/build-graph-jvm.test.ts",
+      "packages/proofmesh/test/incremental.test.ts"
+    ],
+    "FR246": [
+      "packages/proofmesh/test/build-graph-jvm.test.ts"
+    ],
+    "FR247": [
+      "packages/proofmesh/test/build-graph-jvm.test.ts"
+    ],
+    "FR248": [
+      "packages/proofmesh/test/build-graph-jvm.test.ts"
+    ],
+    "FR249": [
+      "packages/proofmesh/test/build-graph.test.ts",
+      "packages/proofmesh/test/build-graph-jvm.test.ts"
+    ],
     "FR136": [
       "packages/proofmesh/test/census.test.ts"
     ],

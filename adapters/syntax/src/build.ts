@@ -1,4 +1,4 @@
-// The build adapter (FR124 to FR129, FR151 to FR160): the module graph of JavaScript, Go, Maven and Gradle, read from manifests as captured text and never by running
+// The build adapter (FR124 to FR129, FR151 to FR160, FR240 to FR249): the module graph of JavaScript, Go, Rust, Python, PHP, Ruby, Maven, Gradle, Bazel and Buck, read from manifests as captured text and never by running
 // a build tool, package manager or script (FR079). A package.json that names a package and a go.mod are `project` symbols; each file
 // is contained by the project of its nearest enclosing manifest; a project depends_on the projects in the repository that its
 // manifests name (package.json dependencies, tsconfig references, go.mod requires satisfied by go.work or a local replace) and
@@ -7,16 +7,16 @@ import fs from 'node:fs'
 import path from 'node:path'
 import readline from 'node:readline'
 import { byteOffsets, send, type Range } from './common.js'
+import { parseStarlark, type SNode, type StarlarkFile } from './starlark.js'
+import { parseToml, type JNode } from './toml.js'
 import { ParseError, catalogLookup, parseXml, readBuildScript, readCatalog, readPom, readSettings, type Catalog, type GradleDep, type Pom, type XNode } from './jvm.js'
 
 const VERSION = '0.1.0'
 type Ref = { symbol: string } | { file: string } | { external: { module: string; name: string } }
 type Fact = Record<string, unknown>
 type Manifest = { path: string; dir: string; text: string; at: Uint32Array; lines: number[] }
-type Project = { id: string; eco: 'npm' | 'go' | 'maven' | 'gradle'; manifest: Manifest; dir: string; name: string; range: Range }
-
-/** A node of a JSON document with where it sits; comments and trailing commas are allowed, as tsconfig.json allows them. */
-type JNode = { kind: 'object' | 'array' | 'string' | 'other'; start: number; end: number; value?: string; members?: Array<{ key: string; start: number; value: JNode }>; items?: JNode[] }
+type Eco = 'npm' | 'go' | 'maven' | 'gradle' | 'cargo' | 'python' | 'composer' | 'gem' | 'bazel' | 'buck'
+type Project = { id: string; eco: Eco; manifest: Manifest; dir: string; name: string; range: Range }
 
 function parseJson(text: string): JNode {
   let i = 0
@@ -111,6 +111,59 @@ function parseGoFile(text: string): Directive[] {
   return out
 }
 
+/** Bazel and Buck rules that run an action or only name files, so a target of one is no build unit and no project. */
+const NOT_UNITS = /(^|_)genrule$|^(filegroup|alias|config_setting|test_suite|package_group|exports_files|platform|toolchain|constraint_setting|constraint_value|export_file|remote_file)$/
+
+/** One `add_dependency` of a gemspec; `name` is absent when the first argument is not a string literal. */
+type GemDep = { start: number; end: number; name?: string; version: string; versionExpression?: string; dev: boolean; source: string }
+
+/** A name loaded from a `.bzl` file of this repository is a macro this adapter does not expand; one loaded from another repository is taken for the rule it names. */
+const isMacro = (file: StarlarkFile, name: string) => { const from = file.loaded.get(name); return from !== undefined && !/^@[^/]/.test(from) }
+
+const RUBY_STRING = /^(['"])((?:(?!\1)[^\\])*)\1$/
+/** A gemspec is Ruby, so only its declarative lines are read, as patterns: `s.name = "x"` and `s.add_dependency "y", "~> 1"`. Any other form is named, not guessed. */
+function readGemspec(text: string): { name?: { value: string; start: number; end: number }; deps: GemDep[] } {
+  const out: { name?: { value: string; start: number; end: number }; deps: GemDep[] } = { deps: [] }
+  let offset = 0
+  for (const raw of text.split('\n')) {
+    const lineStart = offset
+    offset += raw.length + 1
+    // A comment runs to the end of the line unless the `#` is inside a string; `quoted` marks the characters inside one.
+    let quote = '', cut = raw.length
+    const quoted: boolean[] = []
+    for (let i = 0; i < raw.length; i++) {
+      const c = raw[i]!
+      quoted[i] = !!quote
+      if (quote) { if (c === '\\') quoted[++i] = true; else if (c === quote) quote = '' } else if (c === '"' || c === "'") quote = c; else if (c === '#') { cut = i; break }
+    }
+    const line = raw.slice(0, cut).trimEnd()
+    const literal = (arg: string) => { const m = RUBY_STRING.exec(arg.trim()); return m && !(m[1] === '"' && m[2]!.includes('#{')) ? m[2]! : undefined }
+    const nameMatch = /^(\s*)\w+\.name\s*=\s*(.+)$/.exec(line)
+    if (nameMatch && !out.name) {
+      const value = literal(nameMatch[2]!)
+      if (value) out.name = { value, start: lineStart + nameMatch[1]!.length, end: lineStart + line.length }
+      continue
+    }
+    // The call may be anywhere on the line (in a block or a loop), but not inside a string.
+    const dep = /\b\w+\.add_(runtime_|development_)?dependency\b\s*\(?\s*(.*?)\)?\s*(?:\}|\bend\b)?\s*$/.exec(line)
+    if (!dep || quoted[dep.index]) continue
+    const argText = dep[2]!
+    // Arguments split on commas outside strings.
+    const args: string[] = []
+    let current = '', q = ''
+    for (let i = 0; i < argText.length; i++) {
+      const c = argText[i]!
+      if (q) { current += c; if (c === '\\') current += argText[++i] ?? ''; else if (c === q) q = '' } else if (c === '"' || c === "'") { q = c; current += c } else if (c === ',') { args.push(current); current = '' } else current += c
+    }
+    args.push(current)
+    const rest = args.slice(1).map((a) => a.trim()).filter(Boolean)
+    const versions = rest.map(literal)
+    const start = lineStart + dep.index, end = lineStart + line.length
+    out.deps.push({ start, end, name: literal(args[0] ?? ''), version: versions.every((v) => v !== undefined) ? versions.join(', ') : '', ...(versions.some((v) => v === undefined) ? { versionExpression: rest.join(', ') } : {}), dev: dep[1] === 'development_', source: line.trim() })
+  }
+  return out
+}
+
 let workspace = ''
 let manifests: string[] = []
 const results = new Map<string, { status: 'ok' | 'failed'; detail?: string; partial?: boolean }>()
@@ -170,6 +223,11 @@ function compute(): { symbols: Fact[]; relationships: Fact[] } {
   const settings: Array<{ m: Manifest; notes: string[]; projects: Map<string, Project> }> = []
   const gradleBuilds: Array<{ m: Manifest; deps: GradleDep[]; notes: string[] }> = []
   const catalogs = new Map<string, Catalog>()
+  const cargos = new Map<string, { m: Manifest; root: JNode; project?: Project }>()
+  const pys: Array<{ m: Manifest; root: JNode; project?: Project }> = []
+  const composers: Array<{ m: Manifest; root: JNode; project: Project }> = []
+  const gems: Array<{ m: Manifest; project: Project; deps: GemDep[] }> = []
+  const builds: Array<{ m: Manifest; file: StarlarkFile; eco: 'bazel' | 'buck'; targets: Array<{ project: Project; call: Extract<SNode, { kind: 'call' }> }>; others: Array<{ label: string; call: Extract<SNode, { kind: 'call' }> }> }> = []
   const partial = (file: string, reason: string) => { results.set(file, { ...results.get(file)!, partial: true }); if (!diagnostics.some((d) => d.path === file && d.message === reason)) diagnostics.push({ level: 'warning', message: reason, path: file }) }
   const declare = (p: Omit<Project, 'id'>, idSuffix = '') => {
     const project = { ...p, id: `project:${p.manifest.path}${idSuffix}` }
@@ -213,25 +271,71 @@ function compute(): { symbols: Fact[]; relationships: Fact[] } {
         if (!ignored) gradleBuilds.push({ m, deps, notes })
       } else if (base === 'libs.versions.toml') {
         if (!ignored && path.posix.basename(m.dir) === 'gradle') catalogs.set(dirOf(m.dir), readCatalog(m.text))
+      } else if (base === 'Cargo.toml') {
+        const root = parseToml(m.text), name = member(member(root, 'package')?.value, 'name')
+        const entry: { m: Manifest; root: JNode; project?: Project } = { m, root }
+        if (!ignored) {
+          if (name?.value.kind === 'string' && name.value.value) entry.project = declare({ eco: 'cargo', manifest: m, dir: m.dir, name: name.value.value, range: rangeOf(m, name.start, name.value.end) })
+          cargos.set(m.dir, entry)
+        }
+      } else if (base === 'pyproject.toml') {
+        const root = parseToml(m.text)
+        const name = member(member(root, 'project')?.value, 'name') ?? member(member(member(root, 'tool')?.value, 'poetry')?.value, 'name')
+        const entry: { m: Manifest; root: JNode; project?: Project } = { m, root }
+        if (!ignored) {
+          if (name?.value.kind === 'string' && name.value.value) entry.project = declare({ eco: 'python', manifest: m, dir: m.dir, name: name.value.value, range: rangeOf(m, name.start, name.value.end) })
+          pys.push(entry)
+        }
+      } else if (base.endsWith('.gemspec')) {
+        const { name, deps } = readGemspec(m.text)
+        if (!ignored && name) gems.push({ m, deps, project: declare({ eco: 'gem', manifest: m, dir: m.dir, name: name.value, range: rangeOf(m, name.start, name.end) }) })
+      } else if (base === 'BUILD' || base === 'BUILD.bazel' || base === 'BUCK') {
+        const file = parseStarlark(m.text), eco = base === 'BUCK' ? 'buck' as const : 'bazel' as const
+        const entry: (typeof builds)[number] = { m, file, eco, targets: [], others: [] }
+        for (const call of file.calls) {
+          const name = call.args.find((a) => a.name === 'name')?.value
+          if (name?.kind !== 'string' || isMacro(file, call.name)) continue
+          const label = `//${m.dir}:${name.value}`
+          // A rule that only runs an action, or names files, is not a build unit: it is read, never run, and is not a project.
+          if (NOT_UNITS.test(call.name)) entry.others.push({ label, call })
+          else if (!ignored) entry.targets.push({ project: declare({ eco, manifest: m, dir: m.dir, name: label, range: rangeOf(m, name.start, name.end) }, `#${name.value}${entry.targets.some((t) => t.project.name === label) ? `@${name.start}` : ''}`), call })
+        }
+        if (!ignored) builds.push(entry)
       } else {
         const root = parseJson(m.text)
-        if (base === 'package.json') {
+        if (base === 'composer.json') {
+          const name = member(root, 'name')
+          if (!ignored && name?.value.kind === 'string' && name.value.value) composers.push({ m, root, project: declare({ eco: 'composer', manifest: m, dir: m.dir, name: name.value.value, range: rangeOf(m, name.start, name.value.end) }) })
+        } else if (base === 'package.json') {
           const name = member(root, 'name')
           if (!ignored && name?.value.kind === 'string' && name.value.value) declare({ eco: 'npm', manifest: m, dir: m.dir, name: name.value.value, range: rangeOf(m, name.start, name.value.end) })
           if (!ignored) npm.set(m.dir, { m, root })
         } else if (!ignored) tsconfigs.push({ m, root })
       }
       results.set(file, { status: 'ok' })
-    } catch (e) { fail(file, e, m, base.startsWith('go.') ? `invalid_${base.replace('.', '_')}` : base === 'pom.xml' ? 'invalid_xml' : /gradle|toml/.test(base) ? 'invalid_gradle' : 'invalid_json') }
+    } catch (e) { fail(file, e, m, base.startsWith('go.') ? `invalid_${base.replace('.', '_')}` : base === 'pom.xml' ? 'invalid_xml' : base === 'Cargo.toml' || base === 'pyproject.toml' ? 'invalid_toml' : /^(BUILD|BUILD\.bazel|BUCK)$/.test(base) ? 'invalid_starlark' : /gradle|toml/.test(base) ? 'invalid_gradle' : 'invalid_json') }
   }
+
+  // Every captured file, in a fixed order.
+  const files: string[] = []
+  const manifestSet = new Set(manifests)
+  const list = (dir: string) => {
+    for (const e of fs.readdirSync(path.join(workspace, dir), { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : 1))) {
+      const rel = dir ? `${dir}/${e.name}` : e.name
+      if (e.isDirectory()) list(rel)
+      else if (e.isFile()) files.push(rel)
+    }
+  }
+  list('')
 
   // The nearest project at or above a directory, the files' container; both ecosystems in one directory, Go first.
   const byDir = new Map<string, Project[]>()
-  for (const p of projects) byDir.set(p.dir, [...(byDir.get(p.dir) ?? []), p])
+  // A Bazel or Buck target owns the files it names, not its whole directory, so it is no container by directory.
+  for (const p of projects) if (p.eco !== 'bazel' && p.eco !== 'buck') byDir.set(p.dir, [...(byDir.get(p.dir) ?? []), p])
   const projectAt = (dir: string): Project | undefined => {
     for (let d = dir; ; d = dirOf(d)) { const p = byDir.get(d)?.[0]; if (p) return p; if (!d) return undefined }
   }
-  const exactAt = (dir: string, eco?: Project['eco']) => byDir.get(dir)?.find((p) => !eco || p.eco === eco)
+  const exactAt = (dir: string, eco?: Eco) => byDir.get(dir)?.find((p) => !eco || p.eco === eco)
 
   const rel = (type: string, source: Project, site: Range, manifest: Manifest, extra: Fact): Fact => ({ type, origin: 'configuration_adapter', source: { symbol: source.id }, site: { path: manifest.path, range: site }, ...extra })
   /** `extra` is detail every outcome carries: a Gradle fact says it was read from a script by pattern. */
@@ -250,10 +354,10 @@ function compute(): { symbols: Fact[]; relationships: Fact[] } {
     partial(manifest.path, `a dependency of ${source.name} cannot be read statically (${Object.values(detail).join(' ')})`)
     return rel('depends_on_package', source, site, manifest, { resolution: 'unresolved', reason: 'dynamic_specifier', detail })
   }
-  const pathDependency = (source: Project, site: Range, manifest: Manifest, name: string, written: string, from: string, eco: Project['eco']) => {
+  const pathDependency = (source: Project, site: Range, manifest: Manifest, name: string, written: string, from: string, eco: Eco, extra: Record<string, string> = {}) => {
     const target = resolveFrom(from, written)
     const hit = outside(target) ? undefined : exactAt(target, eco)
-    return dependsOn(source, site, manifest, hit && hit !== source ? [hit] : [], { name, path: written })
+    return dependsOn(source, site, manifest, hit && hit !== source ? [hit] : [], { name, path: written }, extra)
   }
 
   // npm: a workspace member is a named package.json under a pattern of a root's `workspaces` or a pnpm-workspace.yaml's `packages`, minus its `!` patterns.
@@ -411,16 +515,206 @@ function compute(): { symbols: Fact[]; relationships: Fact[] } {
     }
   }
 
-  // Each captured file, nearest project first; the core attaches it to its module symbol, and skips a file that has none.
-  const walk = (dir: string) => {
-    for (const e of fs.readdirSync(path.join(workspace, dir), { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : 1))) {
-      const rel = dir ? `${dir}/${e.name}` : e.name
-      if (e.isDirectory()) { walk(rel); continue }
-      const p = e.isFile() && !manifests.includes(rel) ? projectAt(dirOf(rel)) : undefined
-      if (p) relationships.push({ type: 'contains', origin: 'configuration_adapter', source: { symbol: p.id }, site: { path: p.manifest.path, range: p.range }, resolution: 'resolved', target: { file: rel } })
+  const strOf = (n: JNode | undefined) => (n?.kind === 'string' ? n.value : undefined)
+  const isTrue = (m: Manifest, n: JNode | undefined) => n?.kind === 'other' && m.text.slice(n.start, n.end) === 'true'
+
+  // Cargo: a crate is a package.json-like named manifest; a `path` dependency is a project of the repository, any other a crate. A `workspace = true`
+  // dependency takes its spec from `[workspace.dependencies]` of the nearest workspace root that lists the crate in `members` and not in `exclude`.
+  const cargoRoots = [...cargos.values()].filter((e) => member(e.root, 'workspace'))
+  const wsGlobs = (e: { m: Manifest; root: JNode }, key: string) => strings(member(member(e.root, 'workspace')?.value, key)?.value).map((g) => globRegex(path.posix.join(e.m.dir || '.', g)))
+  const cargoWorkspace = (e: { m: Manifest }) => cargoRoots.filter((r) => r.m.dir === e.m.dir || (wsGlobs(r, 'members').some((re) => re.test(e.m.dir)) && !wsGlobs(r, 'exclude').some((re) => re.test(e.m.dir)))).sort((a, b) => b.m.dir.length - a.m.dir.length)[0]
+  const CARGO_SECTIONS: Array<[string, Record<string, string>]> = [['dependencies', {}], ['dev-dependencies', { scope: 'test' }], ['build-dependencies', { scope: 'build' }]]
+  for (const p of projects.filter((x) => x.eco === 'cargo')) {
+    const e = cargos.get(p.dir)!, ws = cargoWorkspace(e)
+    const tables: Array<{ table: JNode; scope: Record<string, string> }> = []
+    const target = member(e.root, 'target')?.value
+    for (const holder of [e.root, ...(target?.kind === 'object' ? target.members!.map((t) => t.value) : [])]) for (const [key, scope] of CARGO_SECTIONS) { const t = member(holder, key)?.value; if (t?.kind === 'object') tables.push({ table: t, scope }) }
+    for (const { table, scope } of tables) for (const dep of table.members!) {
+      const site = rangeOf(e.m, dep.start, dep.value.end)
+      let spec = dep.value, base = e.m.dir
+      if (spec.kind === 'object' && isTrue(e.m, member(spec, 'workspace')?.value)) {
+        const inherited = ws && member(member(member(ws.root, 'workspace')?.value, 'dependencies')?.value, dep.key)
+        if (!ws || !inherited) { relationships.push(dependsOn(p, site, e.m, [], { name: dep.key }, scope)); continue }
+        spec = inherited.value; base = ws.m.dir
+      }
+      const written = strOf(member(spec, 'path')?.value), real = strOf(member(spec, 'package')?.value) ?? dep.key
+      if (written !== undefined) relationships.push(pathDependency(p, site, e.m, real, written, base, 'cargo', scope))
+      else relationships.push(external(p, site, e.m, 'cargo', real, spec.kind === 'string' ? spec.value! : strOf(member(spec, 'version')?.value) ?? '', scope))
     }
   }
-  walk('')
+
+  // Python: PEP 621 `[project]`, Poetry `[tool.poetry]` and uv `[tool.uv]`. A uv `workspace = true` source names a member of the workspace and a `path` source a
+  // directory; every other dependency is a PyPI package. A `dynamic` dependency list is named, not read.
+  const norm = (s: string) => s.toLowerCase().replace(/[-_.]+/g, '-')
+  const uv = (e: { root: JNode }) => member(member(e.root, 'tool')?.value, 'uv')?.value
+  const uvRoots = pys.filter((e) => member(uv(e), 'workspace'))
+  const uvWorkspace = (e: { m: Manifest }) => uvRoots.filter((r) => r.m.dir === e.m.dir || (strings(member(member(uv(r), 'workspace')?.value, 'members')?.value).some((g) => globRegex(path.posix.join(r.m.dir || '.', g)).test(e.m.dir)) && !strings(member(member(uv(r), 'workspace')?.value, 'exclude')?.value).some((g) => globRegex(path.posix.join(r.m.dir || '.', g)).test(e.m.dir)))).sort((a, b) => b.m.dir.length - a.m.dir.length)[0]
+  for (const e of pys) {
+    const p = e.project
+    if (!p) continue
+    const root = uvWorkspace(e)
+    // Without any workspace table a `workspace = true` source can only mean a named project of the repository.
+    const pool = root ? pys.filter((x) => x.project && uvWorkspace(x) === root).map((x) => x.project!) : uvRoots.length ? [] : pys.flatMap((x) => (x.project ? [x.project] : []))
+    const sources = (name: string) => [e, root].flatMap((x) => { const s = x && member(uv(x), 'sources')?.value; const hit = s?.kind === 'object' ? s.members!.find((k) => norm(k.key) === norm(name)) : undefined; return hit ? [{ spec: hit.value, owner: x! }] : [] })[0]
+    const depend = (name: string, version: string, site: Range) => {
+      const src = sources(name)
+      if (isTrue(src?.owner.m ?? e.m, member(src?.spec, 'workspace')?.value)) return dependsOn(p, site, e.m, pool.filter((x) => norm(x.name) === norm(name) && x !== p), { name })
+      const written = strOf(member(src?.spec, 'path')?.value)
+      if (written !== undefined) return pathDependency(p, site, e.m, name, written, src!.owner.m.dir, 'python')
+      return external(p, site, e.m, 'pypi', name, version)
+    }
+    const requirements = (list: JNode | undefined) => {
+      for (const item of list?.kind === 'array' ? list.items! : []) {
+        if (item.kind !== 'string') continue
+        const site = rangeOf(e.m, item.start, item.end), req = /^\s*([A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?)\s*(?:\[[^\]]*\])?\s*([^;]*?)\s*(?:;.*)?$/.exec(item.value!)
+        relationships.push(req ? depend(req[1]!, req[2]!, site) : dynamic(p, site, e.m, { requirement: item.value! }))
+      }
+    }
+    const project = member(e.root, 'project')?.value
+    requirements(member(project, 'dependencies')?.value)
+    for (const g of [member(project, 'optional-dependencies')?.value, member(e.root, 'dependency-groups')?.value]) for (const x of g?.kind === 'object' ? g.members! : []) requirements(x.value)
+    requirements(member(uv(e), 'dev-dependencies')?.value)
+    const dyn = member(project, 'dynamic')?.value
+    for (const item of dyn?.kind === 'array' ? dyn.items! : []) if (item.kind === 'string' && /^(dependencies|optional-dependencies)$/.test(item.value!)) relationships.push(dynamic(p, rangeOf(e.m, item.start, item.end), e.m, { field: item.value! }))
+    const poetry = member(member(e.root, 'tool')?.value, 'poetry')?.value
+    const groups = member(poetry, 'group')?.value
+    for (const table of [member(poetry, 'dependencies')?.value, member(poetry, 'dev-dependencies')?.value, ...(groups?.kind === 'object' ? groups.members!.map((g) => member(g.value, 'dependencies')?.value) : [])]) {
+      for (const dep of table?.kind === 'object' ? table.members! : []) {
+        if (dep.key === 'python') continue
+        const site = rangeOf(e.m, dep.start, dep.value.end), v = dep.value
+        const written = strOf(member(v, 'path')?.value)
+        if (written !== undefined) relationships.push(pathDependency(p, site, e.m, dep.key, written, e.m.dir, 'python'))
+        else relationships.push(external(p, site, e.m, 'pypi', dep.key, v.kind === 'string' ? v.value! : strOf(member(v, 'version')?.value) ?? ''))
+      }
+    }
+  }
+
+  // Composer: `require` and `require-dev` name packages; one a `path` repository of the manifest brings from a project of the repository is a depends_on. The
+  // `autoload` psr-4 and psr-0 maps are recorded as reads_config rows whose detail names the prefix and the directory, for resolution to read.
+  const PLATFORM = /^(php|hhvm|php-64bit|php-ipv6|php-zts|php-debug|ext-.+|lib-.+|composer|composer-plugin-api|composer-runtime-api)$/
+  for (const { m, root, project } of composers) {
+    const repos = member(root, 'repositories')?.value
+    const local = (repos?.kind === 'array' ? repos.items! : repos?.kind === 'object' ? repos.members!.map((x) => x.value) : []).flatMap((r) => (strOf(member(r, 'type')?.value) === 'path' && strOf(member(r, 'url')?.value) !== undefined ? [globRegex(resolveFrom(m.dir, strOf(member(r, 'url')?.value)!))] : []))
+    for (const section of ['require', 'require-dev']) {
+      const deps = member(root, section)?.value
+      for (const dep of deps?.kind === 'object' ? deps.members! : []) {
+        if (dep.value.kind !== 'string' || PLATFORM.test(dep.key)) continue
+        const site = rangeOf(m, dep.start, dep.value.end)
+        const named = composers.filter((c) => c.project.name === dep.key && c.project !== project && local.some((re) => re.test(c.project.dir)))
+        relationships.push(named.length ? dependsOn(project, site, m, named.map((c) => c.project), { name: dep.key }) : external(project, site, m, 'composer', dep.key, dep.value.value!))
+      }
+    }
+    for (const key of ['autoload', 'autoload-dev']) for (const kind of ['psr-4', 'psr-0']) {
+      const map = member(member(root, key)?.value, kind)?.value
+      for (const entry of map?.kind === 'object' ? map.members! : []) {
+        const dirs = entry.value.kind === 'array' ? entry.value.items! : [entry.value]
+        for (const d of dirs) {
+          if (d.kind !== 'string') continue
+          const dir = resolveFrom(m.dir, d.value!), written = dir ? `${dir}/` : ''
+          relationships.push(rel('reads_config', project, rangeOf(m, entry.start, d.end), m, { resolution: 'resolved_external', target: { external: { module: 'composer-autoload', name: `${kind}:${entry.key}=>${written}` } }, detail: { autoload: kind, prefix: entry.key, path: written, ...(key === 'autoload-dev' ? { dev: 'true' } : {}) } }))
+        }
+      }
+    }
+  }
+
+  // Ruby: a gemspec is code, so its `name` and `add_dependency` lines are read as patterns and every fact says so; any other form is named dynamic.
+  const GEM = { inferred: 'gemspec_pattern' }
+  for (const { m, project, deps } of gems) {
+    for (const d of deps) {
+      const site = rangeOf(m, d.start, d.end)
+      if (!d.name) { relationships.push(dynamic(project, site, m, { source: d.source, ...GEM })); continue }
+      const scope: Record<string, string> = d.dev ? { scope: 'development' } : {}
+      const named = gems.filter((g) => g.project.name === d.name && g.project !== project)
+      if (named.length) relationships.push(dependsOn(project, site, m, named.map((g) => g.project), { name: d.name }, { ...GEM, ...scope }))
+      else relationships.push(external(project, site, m, 'gem', d.name, d.version, { ...GEM, ...scope, ...(d.versionExpression ? { version_expression: d.versionExpression } : {}) }))
+    }
+  }
+
+  // Bazel and Buck: a target is a rule call with a literal name, labelled by its package (the directory of its build file) and its name. `deps` are read
+  // with every `select()` branch, `srcs`, `hdrs` and `exported_headers` with `glob` expanded against the captured files. A macro, a loop, a condition or a
+  // value computed from a name is not expanded: it is named, and the build file reports partial.
+  const buildDirs = new Set(files.filter((f) => /^(BUILD|BUILD\.bazel|BUCK)$/.test(path.posix.basename(f))).map(dirOf))
+  const targetsBy = new Map<string, Project[]>()
+  for (const b of builds) for (const t of b.targets) targetsBy.set(b.eco + t.project.name, [...(targetsBy.get(b.eco + t.project.name) ?? []), t.project])
+  const notUnits = new Set(builds.flatMap((b) => b.others.map((o) => b.eco + o.label)))
+  const leaves = (n: SNode, condition?: string): Array<{ node: SNode; condition?: string }> => {
+    if (n.kind === 'list') return n.items.flatMap((i) => leaves(i, condition))
+    if (n.kind === 'concat') return n.parts.flatMap((i) => leaves(i, condition))
+    const table = n.kind === 'call' && n.name === 'select' ? n.args[0]?.value : undefined
+    if (table?.kind === 'dict') return table.entries.flatMap((e) => leaves(e.value, e.key.kind === 'string' ? e.key.value : 'dynamic'))
+    return [{ node: n, ...(condition !== undefined ? { condition } : {}) }]
+  }
+  /** The label a dependency names, as `//package:name`, or the whole label when it is another repository's. */
+  const labelOf = (raw: string, pkg: string, eco: 'bazel' | 'buck'): string | undefined => {
+    let r = raw
+    if (eco === 'buck') { const cell = /^([\w.-]*)(\/\/.*)$/.exec(r); if (cell) { if (cell[1] && cell[1] !== 'root') return undefined; r = cell[2]! } }
+    else if (r.startsWith('@//')) r = r.slice(1)
+    else if (r.startsWith('@')) return undefined
+    if (r.startsWith(':')) return `//${pkg}:${r.slice(1)}`
+    if (r.startsWith('//')) { const [p, n] = r.slice(2).split(':'); return `//${p}:${n ?? path.posix.basename(p!)}` }
+    return `//${pkg}:${r}`
+  }
+  const globFiles = (call: Extract<SNode, { kind: 'call' }>, pkg: string): string[] | undefined => {
+    const arg = (n: string, i: number) => call.args.find((a) => a.name === n)?.value ?? (n === 'include' || n === 'exclude' ? call.args.filter((a) => !a.name)[i]?.value : undefined)
+    const lists = (n: SNode | undefined) => (n ? leaves(n) : [])
+    const include = lists(arg('include', 0)), exclude = lists(arg('exclude', 1))
+    if ([...include, ...exclude].some((l) => l.node.kind !== 'string')) return undefined
+    const re = (l: Array<{ node: SNode }>) => l.map((x) => globRegex(path.posix.join(pkg || '.', (x.node as { value: string }).value)))
+    const inc = re(include), exc = re(exclude)
+    return files.filter((f) => {
+      if (pkg && !f.startsWith(`${pkg}/`)) return false
+      // A directory with its own build file is another package, and a glob stops at it.
+      for (let d = dirOf(f); d !== pkg && d; d = dirOf(d)) if (buildDirs.has(d)) return false
+      return inc.some((r) => r.test(f)) && !exc.some((r) => r.test(f))
+    })
+  }
+  const fileSet = new Set(files)
+  for (const b of builds) {
+    const { m, file, eco } = b
+    if (file.compound.length) partial(m.path, 'a for, if or def statement is not read, so the targets it creates are not declared')
+    for (const call of file.calls) {
+      if (isMacro(file, call.name)) partial(m.path, `${call.name} is a macro loaded from a .bzl file and is not expanded, so the targets it creates are not declared`)
+      else if (call.args.some((a) => a.name === 'name' && a.value.kind !== 'string')) partial(m.path, `a ${call.name} call with a name that is not a literal declares no target`)
+    }
+    for (const { project, call } of b.targets) {
+      const arg = (n: string) => call.args.find((a) => a.name === n)?.value
+      for (const key of ['deps', 'exported_deps']) {
+        const node = arg(key)
+        for (const leaf of node ? leaves(node) : []) {
+          const site = rangeOf(m, leaf.node.start, leaf.node.end), extra: Record<string, string> = leaf.condition !== undefined ? { condition: leaf.condition } : {}
+          if (leaf.node.kind !== 'string') { relationships.push(dynamic(project, site, m, { field: key, ...extra })); continue }
+          const raw = leaf.node.value, label = labelOf(raw, m.dir, eco)
+          if (!label) { relationships.push(external(project, site, m, eco, raw, '', extra)); continue }
+          const found = targetsBy.get(eco + label) ?? []
+          if (notUnits.has(eco + label) || (found.length === 1 && found[0] === project)) continue
+          relationships.push(dependsOn(project, site, m, found.filter((x) => x !== project), { label: raw }, extra))
+        }
+      }
+      const owned = new Set<string>()
+      for (const key of ['srcs', 'hdrs', 'exported_headers']) {
+        const node = arg(key)
+        for (const leaf of node ? leaves(node) : []) {
+          const n = leaf.node
+          if (n.kind === 'string') {
+            const raw = n.value, rest = raw.startsWith('//') ? raw.slice(2).replace(':', '/') : raw.startsWith(':') ? raw.slice(1) : raw
+            const f = raw.startsWith('//') ? rest : path.posix.join(m.dir || '.', rest).replace(/^\.\//, '')
+            if (fileSet.has(f) && !manifestSet.has(f)) owned.add(f)
+          } else if (n.kind === 'call' && n.name === 'glob') {
+            const hit = globFiles(n, m.dir)
+            if (hit) for (const f of hit) owned.add(f)
+            else partial(m.path, `a glob of ${project.name} has a pattern that is not a literal, so its files are not read`)
+          } else partial(m.path, `${key} of ${project.name} is not a literal list, so its files are not read`)
+        }
+      }
+      for (const f of [...owned].sort()) relationships.push({ type: 'contains', origin: 'configuration_adapter', source: { symbol: project.id }, site: { path: m.path, range: project.range }, resolution: 'resolved', target: { file: f } })
+    }
+  }
+
+  // Each captured file, nearest project first; the core attaches it to its module symbol, and skips a file that has none.
+  for (const rel of files) {
+    const p = manifestSet.has(rel) ? undefined : projectAt(dirOf(rel))
+    if (p) relationships.push({ type: 'contains', origin: 'configuration_adapter', source: { symbol: p.id }, site: { path: p.manifest.path, range: p.range }, resolution: 'resolved', target: { file: rel } })
+  }
   return { symbols, relationships }
 }
 

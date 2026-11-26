@@ -1,0 +1,7 @@
+[project]
+name = "api"
+version = "0.1.0"
+dependencies = ["models", "httpx>=0.27"]
+
+[tool.uv.sources]
+models = { workspace = true }

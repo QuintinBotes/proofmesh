@@ -1,0 +1,21 @@
+java_library(
+    name = "util",
+    srcs = glob(["util/*.java"]),
+)
+
+java_binary(
+    name = "main",
+    srcs = ["Main.java"],
+    main_class = "Main",
+    deps = [
+        ":util",
+        "@maven//:com_google_guava_guava",
+    ],
+)
+
+# A sentinel (FR079, SC015): it would write a marker file if Bazel ran it.
+genrule(
+    name = "marker",
+    outs = ["MARKER-genrule"],
+    cmd = "echo ran > $@",
+)

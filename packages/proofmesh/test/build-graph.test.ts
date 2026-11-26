@@ -11,15 +11,16 @@ const EXPECTED = expectedFor('build-graph')
 let fixtureDir: Promise<string> | undefined
 const fixtureIndex = () => (fixtureDir ??= indexedDataDir(fixtureRepo('build-graph')).then((r) => r.dataDir))
 
-describe('FR124 FR125 FR126 FR127 the build graph of JavaScript and Go: each file in its declared module, each module its declared dependencies', () => {
+describe('FR124 FR125 FR126 FR127 FR240 FR241 FR242 FR243 FR244 the build graph of JavaScript, Go, Rust, Python and PHP: each file in its declared module, each module its declared dependencies', () => {
   it('FR124 issue 5 scenario 1: find_symbols with kind project returns one project per named manifest, at the line of its name', async () => {
     const d = await fixtureIndex()
     // find_symbols searches by name, so ask for each declared name and keep the projects.
-    const names = ['@acme/ui', '@acme/core', 'example.com/svc', 'example.com/lib']
+    const names = ['@acme/ui', '@acme/core', 'example.com/svc', 'example.com/lib', 'app', 'util', 'api', 'models', 'acme/shop']
     const hits = names.flatMap((n) => tool(d, 'find_symbols', { text: n, kinds: ['project'] }).data.symbols as Array<{ qualified_name: string; path: string; start_line: number }>)
     const found = [...new Set(hits.map((s) => `${s.qualified_name} ${s.path}:${s.start_line}`))].sort()
     expect(found).toEqual([
-      '@acme/core packages/core/package.json:2', '@acme/ui packages/ui/package.json:2', 'example.com/lib lib/go.mod:1', 'example.com/svc svc/go.mod:1',
+      '@acme/core packages/core/package.json:2', '@acme/ui packages/ui/package.json:2', 'acme/shop php/composer.json:2', 'api py/api/pyproject.toml:2', 'app crates/app/Cargo.toml:2',
+      'example.com/lib lib/go.mod:1', 'example.com/svc svc/go.mod:1', 'models py/models/pyproject.toml:2', 'util crates/util/Cargo.toml:2',
     ])
   }, 240000)
 
@@ -29,6 +30,8 @@ describe('FR124 FR125 FR126 FR127 the build graph of JavaScript and Go: each fil
       expect(rows(db, 'depends_on').map((r) => [r.from, r.to, r.resolution, r.origin, r.path, r.line])).toEqual([
         ['@acme/ui', '@acme/core', 'resolved', 'configuration_adapter', 'packages/ui/tsconfig.json', 3],
         ['@acme/ui', '@acme/core', 'resolved', 'configuration_adapter', 'packages/ui/package.json', 5],
+        ['api', 'models', 'resolved', 'configuration_adapter', 'py/api/pyproject.toml', 4],
+        ['app', 'util', 'resolved', 'configuration_adapter', 'crates/app/Cargo.toml', 7],
         ['example.com/svc', 'example.com/lib', 'resolved', 'configuration_adapter', 'svc/go.mod', 5],
       ])
     })
@@ -39,6 +42,9 @@ describe('FR124 FR125 FR126 FR127 the build graph of JavaScript and Go: each fil
     withSnapshot(d, (db) => {
       expect(rows(db, 'depends_on_package').map((r) => [r.from, r.to, r.resolution, r.detail, r.path, r.line])).toEqual([
         ['@acme/ui', 'npm:react', 'resolved_external', { version: '^18.3.1' }, 'packages/ui/package.json', 6],
+        ['acme/shop', 'composer:monolog/monolog', 'resolved_external', { version: '^3.0' }, 'php/composer.json', 5],
+        ['api', 'pypi:httpx', 'resolved_external', { version: '>=0.27' }, 'py/api/pyproject.toml', 4],
+        ['app', 'cargo:serde', 'resolved_external', { version: '1' }, 'crates/app/Cargo.toml', 8],
         ['example.com/svc', 'go:github.com/spf13/cobra', 'resolved_external', { version: 'v1.8.1' }, 'svc/go.mod', 7],
       ])
     })
@@ -49,10 +55,17 @@ describe('FR124 FR125 FR126 FR127 the build graph of JavaScript and Go: each fil
     withSnapshot(d, (db) => {
       const sources = db.prepare("select f.path, (select p.qualified_name from assertion a join symbol p on p.id = a.source_id where a.type = 'contains' and p.kind = 'project' and a.target_id = m.id) as project from symbol m join file f on f.id = m.file_id where m.kind = 'module' order by f.path").all()
       expect(sources).toEqual([
+        { path: 'crates/app/build.rs', project: 'app' },
+        { path: 'crates/app/src/main.rs', project: 'app' },
+        { path: 'crates/util/src/lib.rs', project: 'util' },
         { path: 'lib/lib.go', project: 'example.com/lib' },
         { path: 'packages/core/src/index.ts', project: '@acme/core' },
         { path: 'packages/ui/src/button.ts', project: '@acme/ui' },
         { path: 'packages/ui/src/theme.ts', project: '@acme/ui' },
+        { path: 'php/src/Shop.php', project: 'acme/shop' },
+        { path: 'py/api/api/__init__.py', project: 'api' },
+        { path: 'py/api/setup.py', project: 'api' },
+        { path: 'py/models/models/__init__.py', project: 'models' },
         { path: 'scripts/orphan.ts', project: null },
         { path: 'svc/main.go', project: 'example.com/svc' },
       ])
@@ -65,13 +78,32 @@ describe('FR124 FR125 FR126 FR127 the build graph of JavaScript and Go: each fil
     expect(data.totals.by_project).toEqual([{ name: '@acme/ui', count: 1 }])
   }, 240000)
 
-  it('FR079 SC015 issue 5 scenario 7: a package.json preinstall script is read, never run', async () => {
+  it('FR243 issue 5 scenario 6: composer.json records the namespace prefix Acme\\Shop\\ mapped to php/src/ in detail.autoload, at the autoload entry', async () => {
     const d = await fixtureIndex()
-    // The manifest was read (its project exists), and no script wrote its marker.
-    expect(withSnapshot(d, (db) => db.prepare("select qualified_name from symbol where kind = 'project' and qualified_name = '@acme/core'").all())).toHaveLength(1)
-    const repo = fixtureRepo('build-graph')
-    expect(fs.readdirSync(path.join(repo, 'packages', 'core'))).toEqual(['package.json', 'src'])
-    expect(fs.existsSync(path.join(repo, 'MARKER-preinstall'))).toBe(false)
+    withSnapshot(d, (db) => {
+      expect(rows(db, 'reads_config').map((r) => [r.from, r.resolution, r.origin, r.detail, r.path, r.line])).toEqual([
+        ['acme/shop', 'resolved_external', 'configuration_adapter', { autoload: 'psr-4', prefix: 'Acme\\Shop\\', path: 'php/src/' }, 'php/composer.json', 8],
+      ])
+    })
+  }, 240000)
+
+  it('FR079 SC015 FR249 issue 5 scenario 7: a package.json preinstall script, a build.rs and a setup.py are read, never run', async () => {
+    const repo = tmpDir('pm-bg-sentinel-')
+    fs.cpSync(fixtureRepo('build-graph'), repo, { recursive: true })
+    const { dataDir } = await indexedDataDir(repo)
+    // The manifests were read (their projects exist), so an empty marker list is not an empty index.
+    expect(withSnapshot(dataDir, (db) => (db.prepare("select qualified_name from symbol where kind = 'project' and qualified_name in ('@acme/core', 'app', 'api') order by 1").all() as Array<{ qualified_name: string }>).map((r) => r.qualified_name))).toEqual(['@acme/core', 'api', 'app'])
+    // The sentinel files are in the tree, each of which would write its marker if run.
+    expect(fs.readFileSync(path.join(repo, 'packages', 'core', 'package.json'), 'utf8')).toContain('preinstall')
+    expect(fs.readFileSync(path.join(repo, 'crates', 'app', 'build.rs'), 'utf8')).toContain('MARKER-build-rs')
+    expect(fs.readFileSync(path.join(repo, 'py', 'api', 'setup.py'), 'utf8')).toContain('MARKER-setup-py')
+    const markers: string[] = []
+    const walk = (dir: string) => { for (const e of fs.readdirSync(dir, { withFileTypes: true })) { if (e.isDirectory()) walk(path.join(dir, e.name)); else if (e.name.startsWith('MARKER')) markers.push(path.join(dir, e.name)) } }
+    walk(repo)
+    expect(markers).toEqual([])
+    expect(fs.existsSync(path.join(repo, 'target'))).toBe(false)
+    expect(fs.existsSync(path.join(repo, 'crates', 'app', 'target'))).toBe(false)
+    expect(fs.existsSync(path.join(repo, 'py', 'api', 'build'))).toBe(false)
   }, 240000)
 
   it('FR124 FR126 FR127 the build adapter passes the conformance kit on the fixture, against the hand-written expected facts', async () => {
@@ -322,5 +354,285 @@ describe('FR125 a manifest is no area of its own in the overview', () => {
     const data = tool(dataDir, 'get_overview', {}).data as { path: string; children: Array<{ name: string }> }
     expect(data.path).toBe('src')
     expect(data.children.map((c) => c.name).sort()).toEqual(['a.ts', 'b', 'd'])
+  }, 240000)
+})
+
+const ownersOf = (db: Database.Database) => db.prepare("select f.path, p.qualified_name as project from assertion a join symbol p on p.id = a.source_id join symbol m on m.id = a.target_id join file f on f.id = m.file_id where a.type = 'contains' order by f.path").all()
+const names = (db: Database.Database) => (db.prepare("select qualified_name from symbol where kind = 'project' order by 1").all() as Array<{ qualified_name: string }>).map((r) => r.qualified_name)
+const cap = (db: Database.Database, p: string) => JSON.parse((db.prepare('select capabilities from file where path = ?').get(p) as { capabilities: string }).capabilities)
+
+describe('FR240 Cargo workspaces and crates', () => {
+  it('FR240 a path dependency is a project, workspace = true takes its spec from the workspace root that lists the crate, a rename and the dev, build and target tables are read', async () => {
+    const { dataDir } = await indexedRepo({
+      'Cargo.toml': '[workspace]\nmembers = ["crates/*"]\nexclude = ["crates/skip"]\n\n[workspace.dependencies]\nutil = { path = "crates/util" }\nserde = "1.0"\n',
+      'crates/app/Cargo.toml': '[package]\nname = "app"\n\n[dependencies]\nutil = { workspace = true }\nserde = { workspace = true }\nrx = { package = "regex", version = "1" }\n\n[dev-dependencies]\ntempfile = "3"\n\n[build-dependencies]\ncc = "1"\n\n[target.\'cfg(unix)\'.dependencies]\nlibc = "0.2"\n',
+      'crates/util/Cargo.toml': '[package]\nname = "util"\n',
+      'crates/skip/Cargo.toml': '[package]\nname = "skip"\n\n[dependencies]\nutil = { workspace = true }\n',
+    })
+    withSnapshot(dataDir, (db) => {
+      expect(names(db)).toEqual(['app', 'skip', 'util'])
+      expect(rows(db, 'depends_on').map((r) => [r.from, r.to, r.resolution, r.reason, r.detail, r.line])).toEqual([
+        ['app', 'util', 'resolved', null, null, 5],
+        ['skip', null, 'unresolved', 'dependency_missing', { name: 'util' }, 5],
+      ])
+      expect(rows(db, 'depends_on_package').map((r) => [r.to, r.detail, r.line])).toEqual([
+        ['cargo:cc', { version: '1', scope: 'build' }, 13],
+        ['cargo:libc', { version: '0.2' }, 16],
+        ['cargo:regex', { version: '1' }, 7],
+        ['cargo:serde', { version: '1.0' }, 6],
+        ['cargo:tempfile', { version: '3', scope: 'test' }, 10],
+      ])
+    })
+  }, 240000)
+
+  it('FR240 a path outside the repository, or to a directory with no crate, is unresolved dependency_missing naming it; a git dependency is a crate with no version', async () => {
+    const { dataDir } = await indexedRepo({
+      'svc/Cargo.toml': '[package]\nname = "svc"\n\n[dependencies]\next = { path = "../../outside" }\nhole = { path = "./hole" }\nfmt = { git = "https://example.invalid/fmt" }\n',
+    })
+    withSnapshot(dataDir, (db) => {
+      expect(rows(db, 'depends_on').map((r) => [r.to, r.resolution, r.reason, r.detail, r.line])).toEqual([
+        [null, 'unresolved', 'dependency_missing', { name: 'ext', path: '../../outside' }, 5],
+        [null, 'unresolved', 'dependency_missing', { name: 'hole', path: './hole' }, 6],
+      ])
+      expect(rows(db, 'depends_on_package').map((r) => [r.to, r.detail, r.line])).toEqual([['cargo:fmt', null, 7]])
+    })
+  }, 240000)
+
+  it('FR240 a [package] table declared in pieces, a dependency written as a table, and a virtual workspace root that names no crate', async () => {
+    const { dataDir } = await indexedRepo({
+      'Cargo.toml': '[workspace]\nmembers = ["a"]\n',
+      'a/Cargo.toml': '[package]\nname = "a"\nversion = "1"\n\n[dependencies.serde]\nversion = "1"\nfeatures = ["derive"]\n\n[dependencies.b]\npath = "../b"\n',
+      'b/Cargo.toml': '[package]\nname = "b"\n',
+    })
+    withSnapshot(dataDir, (db) => {
+      expect(names(db)).toEqual(['a', 'b'])
+      expect(rows(db, 'depends_on').map((r) => [r.from, r.to, r.line])).toEqual([['a', 'b', 9]])
+      expect(rows(db, 'depends_on_package').map((r) => [r.to, r.detail, r.line])).toEqual([['cargo:serde', { version: '1' }, 5]])
+    })
+  }, 240000)
+})
+
+describe('FR241 pyproject.toml: PEP 621, uv workspaces and Poetry', () => {
+  it('FR241 a uv workspace = true source names a member, an excluded project is not one, extras and markers are cut from the name, groups and optional dependencies are read', async () => {
+    const { dataDir } = await indexedRepo({
+      'pyproject.toml': [
+        '[project]', 'name = "root"', 'dependencies = [', '  "Requests[socks]>=2.31; python_version >= \'3.9\'",', '  "wk",', '  "skipme",', ']', '',
+        '[project.optional-dependencies]', 'extra = ["httpx"]', '', '[dependency-groups]', 'dev = ["pytest>=8", { include-group = "lint" }]', 'lint = ["ruff"]', '',
+        '[tool.uv.workspace]', 'members = ["pkgs/*"]', 'exclude = ["pkgs/skip"]', '', '[tool.uv.sources]', 'wk = { workspace = true }', 'skipme = { workspace = true }', '',
+      ].join('\n'),
+      'pkgs/wk/pyproject.toml': '[project]\nname = "wk"\n',
+      'pkgs/skip/pyproject.toml': '[project]\nname = "skipme"\n',
+    })
+    withSnapshot(dataDir, (db) => {
+      expect(names(db)).toEqual(['root', 'skipme', 'wk'])
+      expect(rows(db, 'depends_on').map((r) => [r.from, r.to, r.resolution, r.reason, r.detail, r.line])).toEqual([
+        ['root', null, 'unresolved', 'dependency_missing', { name: 'skipme' }, 6],
+        ['root', 'wk', 'resolved', null, null, 5],
+      ])
+      expect(rows(db, 'depends_on_package').map((r) => [r.to, r.detail, r.line])).toEqual([
+        ['pypi:httpx', null, 10], ['pypi:pytest', { version: '>=8' }, 13], ['pypi:Requests', { version: '>=2.31' }, 4], ['pypi:ruff', null, 14],
+      ])
+    })
+  }, 240000)
+
+  it('FR241 Poetry: dependencies, groups and a path dependency are read, and the python interpreter constraint is not a package', async () => {
+    const { dataDir } = await indexedRepo({
+      'poet/pyproject.toml': '[tool.poetry]\nname = "poet"\n\n[tool.poetry.dependencies]\npython = "^3.10"\nrequests = "^2.31"\nlocal = { path = "../local", develop = true }\ndjango = { version = "^4.2", extras = ["bcrypt"] }\n\n[tool.poetry.group.test.dependencies]\npytest = "^8"\n',
+      'local/pyproject.toml': '[project]\nname = "local"\n',
+    })
+    withSnapshot(dataDir, (db) => {
+      expect(rows(db, 'depends_on').map((r) => [r.from, r.to, r.line])).toEqual([['poet', 'local', 7]])
+      expect(rows(db, 'depends_on_package').map((r) => [r.to, r.detail, r.line])).toEqual([['pypi:django', { version: '^4.2' }, 8], ['pypi:pytest', { version: '^8' }, 11], ['pypi:requests', { version: '^2.31' }, 6]])
+    })
+  }, 240000)
+
+  it('FR241 a dependency list the project says is dynamic is named, not read, not guessed, and its file reports partial', async () => {
+    const { dataDir } = await indexedRepo({
+      'a/pyproject.toml': '[project]\nname = "a"\ndynamic = ["version", "dependencies"]\n',
+      'b/pyproject.toml': '[project]\nname = "b"\ndynamic = ["version"]\ndependencies = ["x"]\n',
+    })
+    withSnapshot(dataDir, (db) => {
+      expect(rows(db, 'depends_on_package').map((r) => [r.from, r.to, r.resolution, r.reason, r.detail, r.line])).toEqual([
+        ['a', null, 'unresolved', 'dynamic_specifier', { field: 'dependencies' }, 3],
+        ['b', 'pypi:x', 'resolved_external', null, null, 4],
+      ])
+      expect(cap(db, 'a/pyproject.toml').symbols).toBe('partial')
+      expect(cap(db, 'b/pyproject.toml').symbols).toBe('complete')
+    })
+  }, 240000)
+
+  it('FR241 two projects of one name make a workspace source on it ambiguous; a path source outside the repository is dependency_missing', async () => {
+    const { dataDir } = await indexedRepo({
+      'pyproject.toml': '[tool.uv.workspace]\nmembers = ["p/*"]\n',
+      'p/a/pyproject.toml': '[project]\nname = "dup"\n',
+      'p/b/pyproject.toml': '[project]\nname = "dup"\n',
+      'p/c/pyproject.toml': '[project]\nname = "c"\ndependencies = ["dup", "far"]\n\n[tool.uv.sources]\ndup = { workspace = true }\nfar = { path = "../../../outside" }\n',
+    })
+    withSnapshot(dataDir, (db) => {
+      expect(rows(db, 'depends_on').map((r) => [r.from, r.resolution, r.reason, r.detail, r.candidates])).toEqual([
+        ['c', 'ambiguous', 'ambiguous', null, ['dup@p/a/pyproject.toml', 'dup@p/b/pyproject.toml']],
+        ['c', 'unresolved', 'dependency_missing', { name: 'far', path: '../../../outside' }, []],
+      ])
+    })
+  }, 240000)
+})
+
+describe('FR242 FR243 composer.json', () => {
+  const composer = (o: unknown) => JSON.stringify(o, null, 2) + '\n'
+  it('FR242 require and require-dev are packages, a package a path repository brings from the repository is a project, platform requirements are neither', async () => {
+    const { dataDir } = await indexedRepo({
+      'composer.json': composer({
+        name: 'acme/root',
+        require: { php: '>=8.1', 'ext-json': '*', 'acme/lib': '^1.0', 'vendor/ext': '^2.0', 'acme/hidden': '^1.0' },
+        'require-dev': { 'phpunit/phpunit': '^11' },
+        repositories: [{ type: 'path', url: 'packages/*' }, { type: 'vcs', url: 'https://example.invalid/x' }],
+      }),
+      'packages/lib/composer.json': composer({ name: 'acme/lib' }),
+      'hidden/composer.json': composer({ name: 'acme/hidden' }),
+    })
+    withSnapshot(dataDir, (db) => {
+      expect(rows(db, 'depends_on').map((r) => [r.from, r.to, r.resolution])).toEqual([['acme/root', 'acme/lib', 'resolved']])
+      expect(rows(db, 'depends_on_package').map((r) => [r.to, r.detail])).toEqual([
+        ['composer:acme/hidden', { version: '^1.0' }], ['composer:phpunit/phpunit', { version: '^11' }], ['composer:vendor/ext', { version: '^2.0' }],
+      ])
+    })
+  }, 240000)
+
+  it('FR242 two projects of one name under the path repository make a dependency on it ambiguous', async () => {
+    const { dataDir } = await indexedRepo({
+      'composer.json': composer({ name: 'acme/root', require: { 'acme/dup': '*' }, repositories: [{ type: 'path', url: 'pk/*' }] }),
+      'pk/a/composer.json': composer({ name: 'acme/dup' }),
+      'pk/b/composer.json': composer({ name: 'acme/dup' }),
+    })
+    withSnapshot(dataDir, (db) => {
+      const [r, ...rest] = rows(db, 'depends_on')
+      expect(rest).toEqual([])
+      expect([r!.from, r!.resolution, r!.candidates]).toEqual(['acme/root', 'ambiguous', ['acme/dup@pk/a/composer.json', 'acme/dup@pk/b/composer.json']])
+    })
+  }, 240000)
+
+  it('FR243 psr-4 and psr-0 maps, with several directories, the empty prefix and autoload-dev, are recorded with the prefix and the directory from the repository root', async () => {
+    const { dataDir } = await indexedRepo({
+      'composer.json': composer({
+        name: 'acme/root',
+        autoload: { 'psr-4': { 'Acme\\Root\\': ['src/', 'lib'], '': 'fallback/' }, 'psr-0': { Legacy_: 'legacy/' }, classmap: ['x/'] },
+        'autoload-dev': { 'psr-4': { 'Acme\\Tests\\': 'tests/' } },
+      }),
+      'packages/lib/composer.json': composer({ name: 'acme/lib', autoload: { 'psr-4': { 'Lib\\': 'src' } } }),
+    })
+    withSnapshot(dataDir, (db) => {
+      const key = (r: unknown[]) => `${r[0]}|${(r[2] as Record<string, string>).autoload}|${(r[2] as Record<string, string>).prefix}|${(r[2] as Record<string, string>).path}`
+      expect(rows(db, 'reads_config').map((r) => [r.from, r.origin, r.detail]).sort((a, b) => key(a).localeCompare(key(b)))).toEqual([
+        ['acme/lib', 'configuration_adapter', { autoload: 'psr-4', prefix: 'Lib\\', path: 'packages/lib/src/' }],
+        ['acme/root', 'configuration_adapter', { autoload: 'psr-0', prefix: 'Legacy_', path: 'legacy/' }],
+        ['acme/root', 'configuration_adapter', { autoload: 'psr-4', prefix: '', path: 'fallback/' }],
+        ['acme/root', 'configuration_adapter', { autoload: 'psr-4', prefix: 'Acme\\Root\\', path: 'lib/' }],
+        ['acme/root', 'configuration_adapter', { autoload: 'psr-4', prefix: 'Acme\\Root\\', path: 'src/' }],
+        ['acme/root', 'configuration_adapter', { autoload: 'psr-4', prefix: 'Acme\\Tests\\', path: 'tests/', dev: 'true' }],
+      ].sort((a, b) => key(a).localeCompare(key(b))))
+    })
+  }, 240000)
+})
+
+describe('FR244 gemspecs, read as patterns because a gemspec is Ruby', () => {
+  it('FR244 name and add_dependency lines are read and marked inferred; a gem of the repository is a project; a version or a name that is not a literal is named, not guessed', async () => {
+    const { dataDir } = await indexedRepo({
+      'a/a.gemspec': [
+        'Gem::Specification.new do |s|', '  s.name = "a"  # the gem', '  s.version = "1.0"', '  s.add_dependency "b", "~> 1.0"', '  s.add_runtime_dependency("rack", ">= 2", "< 4")',
+        "  s.add_development_dependency 'rspec', '~> 3.0'", '  s.add_dependency "pinned", Gem::Requirement.default', '  %w[x y].each { |n| s.add_dependency n }', '  # s.add_dependency "commented"',
+        '  s.description = "call s.add_dependency \\"quoted\\""', 'end', '',
+      ].join('\n'),
+      'b/b.gemspec': 'Gem::Specification.new do |s|\n  s.name = "b"\nend\n',
+      'c/c.gemspec': 'Gem::Specification.new do |s|\n  s.name = NAME\nend\n',
+    })
+    const inferred = { inferred: 'gemspec_pattern' }
+    withSnapshot(dataDir, (db) => {
+      expect(names(db)).toEqual(['a', 'b'])
+      expect(rows(db, 'depends_on').map((r) => [r.from, r.to, r.resolution, r.detail, r.line])).toEqual([['a', 'b', 'resolved', inferred, 4]])
+      expect(rows(db, 'depends_on_package').map((r) => [r.to, r.resolution, r.reason, r.detail, r.line])).toEqual([
+        ['gem:pinned', 'resolved_external', null, { ...inferred, version_expression: 'Gem::Requirement.default' }, 7],
+        ['gem:rack', 'resolved_external', null, { ...inferred, version: '>= 2, < 4' }, 5],
+        ['gem:rspec', 'resolved_external', null, { ...inferred, version: '~> 3.0', scope: 'development' }, 6],
+        [null, 'unresolved', 'dynamic_specifier', { ...inferred, source: '%w[x y].each { |n| s.add_dependency n }' }, 8],
+      ])
+      expect(cap(db, 'a/a.gemspec').symbols).toBe('partial')
+      expect(cap(db, 'b/b.gemspec').symbols).toBe('complete')
+    })
+  }, 240000)
+})
+
+describe('FR245 manifests that cannot be read, sit under testdata or vendor, or nest', () => {
+  it('FR245 a Cargo.toml, pyproject.toml or composer.json that does not parse fails that file with the line, and every other manifest is still read', async () => {
+    const { dataDir } = await indexedRepo({
+      'good/Cargo.toml': '[package]\nname = "good"\n',
+      'bad-cargo/Cargo.toml': '[package]\nname = "bad"\n\n[dependencies\nx = "1"\n',
+      'bad-py/pyproject.toml': '[project]\nname = "bad\n',
+      'bad-php/composer.json': '{\n  "name": "bad",\n  "require": {\n    "x":\n  }\n}\n',
+      'good-py/pyproject.toml': '[project]\nname = "good-py"\n',
+    })
+    withSnapshot(dataDir, (db) => {
+      expect(db.prepare("select path, disposition, disposition_detail from file where path like 'bad-%' or path like 'good%' order by path").all()).toEqual([
+        { path: 'bad-cargo/Cargo.toml', disposition: 'failed', disposition_detail: expect.stringMatching(/^invalid_toml:line 4\b/) },
+        { path: 'bad-php/composer.json', disposition: 'failed', disposition_detail: expect.stringMatching(/^invalid_json:line 5\b/) },
+        { path: 'bad-py/pyproject.toml', disposition: 'failed', disposition_detail: expect.stringMatching(/^invalid_toml:line 2\b/) },
+        { path: 'good-py/pyproject.toml', disposition: 'indexed', disposition_detail: null },
+        { path: 'good/Cargo.toml', disposition: 'indexed', disposition_detail: null },
+      ])
+      expect(names(db)).toEqual(['good', 'good-py'])
+    })
+  }, 240000)
+
+  it('FR245 TOML the reader must take: comments, quoted and dotted keys, literal and multi-line strings, inline and nested arrays, arrays of tables', async () => {
+    const { dataDir } = await indexedRepo({
+      'Cargo.toml': [
+        '# a crate', '[package]', 'name = "t"   # the name', 'description = """', 'two "quoted" lines', '"""', "literal = 'C:\\path'", 'metadata.x.y = { a = [1, 2, [3]], b = true }', '',
+        '[[bin]]', 'name = "one"', '', '[[bin]]', 'name = "two"', '',
+        '[dependencies]', '"quoted-name" = "1"', 'multi = [', '  "a", # c', '  "b",', ']', 'dotted.version = "2"', '',
+      ].join('\n'),
+    })
+    withSnapshot(dataDir, (db) => {
+      expect(names(db)).toEqual(['t'])
+      expect(rows(db, 'depends_on_package').map((r) => [r.to, r.detail, r.line])).toEqual([['cargo:dotted', { version: '2' }, 22], ['cargo:multi', null, 18], ['cargo:quoted-name', { version: '1' }, 17]])
+    })
+  }, 240000)
+
+  it('FR245 each source file is contained by the project of its nearest named manifest, in every ecosystem, and a manifest that names nothing hides none', async () => {
+    const { dataDir } = await indexedRepo({
+      'Cargo.toml': '[package]\nname = "root"\n',
+      'src/lib.rs': 'pub fn a() {}\n',
+      'sub/Cargo.toml': '[package]\nname = "sub"\n',
+      'sub/src/lib.rs': 'pub fn b() {}\n',
+      'virt/Cargo.toml': '[workspace]\nmembers = []\n',
+      'virt/x.rs': 'pub fn c() {}\n',
+      'py/pyproject.toml': '[project]\nname = "py"\n',
+      'py/m.py': 'def f():\n    pass\n',
+      'php/composer.json': '{"name": "a/php"}\n',
+      'php/A.php': '<?php\nfunction a() {}\n',
+      'rb/rb.gemspec': 'Gem::Specification.new do |s|\n  s.name = "rb"\nend\n',
+      'rb/lib/r.rb': 'def r\nend\n',
+    })
+    withSnapshot(dataDir, (db) => {
+      expect(ownersOf(db)).toEqual([
+        { path: 'php/A.php', project: 'a/php' }, { path: 'py/m.py', project: 'py' }, { path: 'rb/lib/r.rb', project: 'rb' },
+        { path: 'src/lib.rs', project: 'root' }, { path: 'sub/src/lib.rs', project: 'sub' }, { path: 'virt/x.rs', project: 'root' },
+      ])
+    })
+  }, 240000)
+
+  it('FR245 a manifest under testdata or vendor declares no project in any ecosystem, and is still read', async () => {
+    const { dataDir } = await indexedRepo({
+      'Cargo.toml': '[package]\nname = "root"\n',
+      'vendor/a/Cargo.toml': '[package]\nname = "va"\n',
+      'testdata/b/pyproject.toml': '[project]\nname = "tb"\n',
+      'vendor/c/composer.json': '{"name": "v/c"}\n',
+      'vendor/d/d.gemspec': 'Gem::Specification.new do |s|\n  s.name = "vd"\nend\n',
+    })
+    withSnapshot(dataDir, (db) => {
+      expect(names(db)).toEqual(['root'])
+      expect(db.prepare("select path, disposition from file where path like 'vendor/%' or path like 'testdata/%' order by path").all()).toEqual([
+        { path: 'testdata/b/pyproject.toml', disposition: 'indexed' }, { path: 'vendor/a/Cargo.toml', disposition: 'indexed' },
+        { path: 'vendor/c/composer.json', disposition: 'indexed' }, { path: 'vendor/d/d.gemspec', disposition: 'indexed' },
+      ])
+    })
   }, 240000)
 })
