@@ -69,6 +69,8 @@ describe('A21 build output and ignored files are not snapshot identity', () => {
     d = tmpDir(); repo = copyFixture()
     expect(spawnSync('git', ['init', '-q'], { cwd: repo }).status).toBe(0)
     fs.writeFileSync(path.join(repo, '.gitignore'), 'scratch/\n')
+    // FR295: build/ is output only beside a manifest that names it, here a Gradle build file.
+    fs.writeFileSync(path.join(repo, 'packages/format/build.gradle'), "plugins { id 'java' }\n")
     for (const args of [['init'], ['repo', 'add', repo], ['index', repo]]) expect(cli(['--data-dir', d, ...args]).status).toBe(0)
   }, 240000)
 

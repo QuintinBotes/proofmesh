@@ -104,6 +104,10 @@
             ]
           },
           "description": "The roles the adapter gave the symbol, when it gave any: test (a test entry point) or test_support (test code that is no entry point)."
+        },
+        "generated": {
+          "type": "boolean",
+          "description": "Present and true when the file is generated (FR292); absent otherwise."
         }
       }
     }

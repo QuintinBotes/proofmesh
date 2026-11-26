@@ -70,6 +70,10 @@
                       "scip"
                     ],
                     "description": "The tier of the adapter that declared the symbol: precise (a compiler-grade or language-specific adapter), syntax (Tree-sitter) or scip (an index a person named)."
+                  },
+                  "generated": {
+                    "type": "boolean",
+                    "description": "Present and true when the file is generated (FR292); absent otherwise."
                   }
                 }
               },

@@ -1,5 +1,6 @@
 import type Database from 'better-sqlite3'
 import type { Envelope } from '../core/generated.js'
+import { excludeGeneratedSql } from './generated-policy.js'
 
 export const CAPS = ['text', 'syntax', 'symbols', 'imports', 'references', 'resolved_calls', 'framework'] as const
 export const UNRESOLVED_REASONS = new Set(['dynamic_element_access', 'untyped_receiver', 'unknown_name', 'chained_callee', 'import_unresolved', 'dynamic_specifier', 'not_indexed', 'dependency_missing', 'configuration_error', 'outside_capability'])
@@ -18,6 +19,13 @@ export type SnapshotSummary = {
   hubs: Array<{ id: string; kind: string; name: string; qualified_name: string; path: string; inbound: number }>
 }
 
+/** The most-referenced symbols; generated files are left out unless asked for (FR298). */
+export function hubsOf(db: Database.Database, includeGenerated: boolean): SnapshotSummary['hubs'] {
+  return db.prepare(`select e.dst as id, s.kind, s.name, s.qualified_name, f.path, count(*) as inbound from edge e
+    join symbol s on s.id = e.dst join file f on f.id = s.file_id where e.resolution = 'resolved'${includeGenerated ? '' : ` and ${excludeGeneratedSql()}`}
+    group by e.dst order by inbound desc, s.qualified_name, f.path, s.start_byte, e.dst limit 12`).all() as SnapshotSummary['hubs']
+}
+
 export function computeSummary(db: Database.Database): SnapshotSummary {
   const files = db.prepare('select disposition, capabilities from file').all() as Array<{ disposition: string; capabilities: string }>
   const dispositions = { indexed: 0, excluded_by_rule: 0, unsupported: 0, failed: 0, pending: 0 }
@@ -34,9 +42,7 @@ export function computeSummary(db: Database.Database): SnapshotSummary {
   const sample = (db.prepare(`select a.id as assertion_id, a.reason, f.path as file, e.start_line as line from assertion a
     join assertion_evidence ae on ae.assertion_id = a.id join evidence e on e.id = ae.evidence_id join file f on f.id = e.file_id
     where a.resolution = 'unresolved' group by a.id order by f.path, e.start_byte limit 20`).all() as SnapshotSummary['unresolved']['sample'])
-  const hubs = (db.prepare(`select e.dst as id, s.kind, s.name, s.qualified_name, f.path, count(*) as inbound from edge e
-    join symbol s on s.id = e.dst join file f on f.id = s.file_id where e.resolution = 'resolved'
-    group by e.dst order by inbound desc, s.qualified_name, f.path, s.start_byte, e.dst limit 12`).all() as SnapshotSummary['hubs'])
+  const hubs = hubsOf(db, false)
   const calls = Object.fromEntries((db.prepare("select reason, count(*) as n from assertion where resolution = 'unresolved' and type = 'calls' group by reason order by reason").all() as Array<{ reason: string; n: number }>).map((r) => [r.reason, r.n]))
   // Which missing packages the dependency_missing sites are blamed on, from the detail the adapter attached.
   // A site names every package its project lacks; it counts once under each, so the counts say what restoring one package could fix.
