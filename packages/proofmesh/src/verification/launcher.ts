@@ -90,6 +90,8 @@ export function execute(argv: string[], cwd: string, env: Record<string, string>
       if (slice.length < chunk.length) truncated = true
     }
     child.stdout.on('data', sink); child.stderr.on('data', sink)
+    // A broken pipe ends the read; the exit status still arrives on 'close'.
+    child.stdout.on('error', () => {}); child.stderr.on('error', () => {})
     const timer = setTimeout(() => { timedOut = true; kill() }, timeoutMs)
     const watch = opts.maxRssKb && child.pid ? setInterval(() => void groupRssKb(child.pid!).then((kb) => { if (kb > opts.maxRssKb! && !memoryExceeded) { memoryExceeded = true; kill() } }), opts.rssSampleMs ?? 100) : undefined
     const done = () => { clearTimeout(timer); clearInterval(watch); fs.closeSync(out) }

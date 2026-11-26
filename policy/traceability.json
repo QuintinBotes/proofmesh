@@ -1101,6 +1101,36 @@
     ],
     "FR259": [
       "packages/proofmesh/test/seams-http.test.ts"
+    ],
+    "FR260": [
+      "packages/proofmesh/test/adapter-failure.test.ts"
+    ],
+    "FR261": [
+      "packages/proofmesh/test/adapter-failure.test.ts"
+    ],
+    "FR262": [
+      "packages/proofmesh/test/adapter-failure.test.ts"
+    ],
+    "FR263": [
+      "packages/proofmesh/test/adapter-failure.test.ts"
+    ],
+    "FR264": [
+      "packages/proofmesh/test/adapter-failure.test.ts"
+    ],
+    "FR265": [
+      "packages/proofmesh/test/adapter-failure.test.ts"
+    ],
+    "FR266": [
+      "packages/proofmesh/test/adapter-failure.test.ts"
+    ],
+    "FR267": [
+      "packages/proofmesh/test/adapter-failure.test.ts"
+    ],
+    "FR268": [
+      "packages/proofmesh/test/adapter-failure.test.ts"
+    ],
+    "FR269": [
+      "packages/proofmesh/test/adapter-failure.test.ts"
     ]
   },
   "manual": {

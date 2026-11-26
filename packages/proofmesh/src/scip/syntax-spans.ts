@@ -35,9 +35,11 @@ export async function syntaxSymbols(files: SyntaxFile[], workspace: string, entr
   let dead = false
   const die = () => { dead = true; for (const w of waiting.values()) w(undefined); waiting.clear() }
   readline.createInterface({ input: child.stdout! }).on('line', (l) => { try { const m = JSON.parse(l); waiting.get(m.id)?.(m.error ? undefined : m.result); waiting.delete(m.id) } catch { /* not a reply */ } })
-  child.on('exit', die)
+  // 'close', not 'exit': replies still in the pipe are read before the adapter counts as gone.
+  child.on('close', die)
   child.on('error', die)
   child.stdin!.on('error', die)
+  child.stdout!.on('error', die)
   let id = 0
   const ask = (method: string, params: unknown) => new Promise<Reply>((resolve) => {
     if (dead) return resolve(undefined)
