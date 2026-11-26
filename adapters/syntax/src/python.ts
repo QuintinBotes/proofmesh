@@ -126,7 +126,7 @@ function readFacts(file: string): Promise<FileFacts> {
             // A property is its getter; its setter and deleter share the name, so they take their parameters as a suffix (FR146).
             const decorators = c.type === 'decorated_definition' ? c.namedChildren.filter((x) => x.type === 'decorator').map((x) => x.text.replace(/^@\s*/, '')) : []
             const accessor = inClass && d.type === 'function_definition' && decorators.some((t) => /^\w+\.(setter|deleter)\b/.test(t))
-            const property = accessor || (inClass && d.type === 'function_definition' && decorators.some((t) => /^(?:[\w.]+\.)?(?:property|cached_property)$/.test(t)))
+            const property = accessor || (inClass && d.type === 'function_definition' && (decorators.some((t) => /^(?:[\w.]+\.)?(?:property|cached_property)$/.test(t)) || decoratedAs({ tree }, c, /^(?:[\w.]+\.)?(?:property|cached_property)$/)))
             const kind = d.type === 'class_definition' ? 'class' : property ? 'property' : inClass ? 'method' : 'function'
             const params = accessor ? `(${(d.childForFieldName('parameters')?.namedChildren ?? []).slice(1).map((p) => (p.childForFieldName('name') ?? p.namedChildren[0] ?? p).text).join(',')})` : ''
             symbols.push({ local_id: id, path: file, kind, name, qualified_name: `${module}:${[...chain, name].join('.')}${params}`, range: rangeOf({ at }, d), signature: header(d) })
@@ -383,6 +383,15 @@ function dotted(f: FileFacts, n: Node): string | undefined {
   return bound === undefined ? undefined : [bound, ...parts].join('.')
 }
 
+/** Whether a decorated definition carries a decorator the pattern matches, by its text or by the dotted name its import gives (`from builtins import property as prop`). */
+function decoratedAs(f: { tree: { rootNode: Node } }, c: Node, re: RegExp): boolean {
+  return c.type === 'decorated_definition' && c.namedChildren.some((x) => {
+    if (x.type !== 'decorator') return false
+    const e = x.namedChildren[0]!, target = e.type === 'call' ? e.childForFieldName('function')! : e
+    return re.test(target.text) || re.test(dotted(f as FileFacts, target) ?? '')
+  })
+}
+
 /** The workspace class a name refers to, by Pyright; the file must be open. */
 async function classAt(file: string, name: Node): Promise<string | undefined> {
   for (const id of await Promise.all(((await definitionsOf(file, name)) ?? []).map(declaredAt))) if (id && (await readFacts(fileOf(id))).classes.has(id)) return id
@@ -397,12 +406,15 @@ function basesOf(id: string): Promise<Base[]> {
   if (!b) {
     b = (async () => {
       const file = fileOf(id), f = await readFacts(file)
-      const nodes = f.classes.get(id)!.childForFieldName('superclasses')?.namedChildren.filter((c) => c.type === 'identifier' || c.type === 'attribute') ?? []
+      const nodes = f.classes.get(id)!.childForFieldName('superclasses')?.namedChildren.filter((c) => c.type === 'identifier' || c.type === 'attribute' || c.type === 'subscript') ?? []
       if (!nodes.length) return []
-      return inOpenFile(file, () => Promise.all(nodes.map(async (node): Promise<Base> => {
-        const symbol = await classAt(file, node.type === 'attribute' ? node.childForFieldName('attribute')! : node)
-        return symbol ? { node, symbol } : { node, external: dotted(f, node) }
+      // A generic base (`Base[int]`) is its subscripted class; one that is not a repository class is left out, as every subscripted base was.
+      const found = await inOpenFile(file, () => Promise.all(nodes.map(async (node): Promise<Base | null> => {
+        const sub = node.type === 'subscript', named = sub ? node.childForFieldName('value')! : node
+        const symbol = await classAt(file, named.type === 'attribute' ? named.childForFieldName('attribute')! : named)
+        return symbol ? { node, symbol } : sub ? null : { node, external: dotted(f, node) }
       })))
+      return found.filter((b): b is Base => b !== null)
     })()
     bases.set(id, b)
   }
@@ -442,6 +454,33 @@ async function inheritedTestRoles(file: string, f: FileFacts): Promise<void> {
       if (s) s.roles = /^test/.test(d.childForFieldName('name')!.text) ? ['test'] : ['test_support']
     }
   }
+}
+
+/** The methods a class body declares by name, with the node of each name. A static method and a property are not dispatched to, so they are left out. */
+async function methodsOf(id: string): Promise<Map<string, { id: string; name: Node }>> {
+  const f = await readFacts(fileOf(id)), cls = f.classes.get(id)!, kinds = new Map(f.symbols.map((s) => [s.local_id, s.kind])), out = new Map<string, { id: string; name: Node }>()
+  const owner = cls.childForFieldName('name')!.text.replace(/^_+/, '')
+  for (const c of cls.childForFieldName('body')?.namedChildren ?? []) {
+    const d = c.type === 'decorated_definition' ? c.childForFieldName('definition') ?? c : c
+    const mid = `${fileOf(id)}#${d.startIndex}`
+    if (d.type !== 'function_definition' || kinds.get(mid) !== 'method' || decoratedAs(f, c, /^(?:[\w.]+\.)?staticmethod$/)) continue
+    const name = d.childForFieldName('name')!
+    // A private name (`__x`, not `__x__`) is mangled with its class, so it is never the same name in two classes.
+    out.set(name.text.startsWith('__') && !name.text.endsWith('__') ? `_${owner}${name.text}` : name.text, { id: mid, name })
+  }
+  return out
+}
+
+/** The nearest declaration of a method name on each base branch above a class: a base that declares it stops its branch, so a chain links one level at a time. */
+async function overriddenIn(id: string, name: string, seen = new Set<string>()): Promise<string[]> {
+  const out: string[] = []
+  for (const b of await basesOf(id)) {
+    if (!b.symbol || seen.has(b.symbol)) continue
+    seen.add(b.symbol)
+    const own = (await methodsOf(b.symbol)).get(name)
+    out.push(...(own ? [own.id] : await overriddenIn(b.symbol, name, seen)))
+  }
+  return out
 }
 
 /** Every base outside the workspace a class derives from, directly or through its workspace bases. */
@@ -843,6 +882,11 @@ async function analyseWithPyright(file: string) {
   await inheritedTestRoles(file, f)
   for (const id of f.classes.keys()) {
     for (const b of await basesOf(id)) if (b.symbol) relationships.push({ type: 'inherits', origin: 'semantic_resolver', source: { symbol: id }, site: { path: file, range: rangeOf(f, b.node) }, resolution: 'resolved', target: { symbol: b.symbol } })
+  }
+  for (const id of f.classes.keys()) {
+    for (const [name, m] of await methodsOf(id)) {
+      for (const target of new Set(await overriddenIn(id, name))) relationships.push({ type: 'overrides', origin: 'semantic_resolver', source: { symbol: m.id }, site: { path: file, range: rangeOf(f, m.name) }, resolution: 'resolved', target: { symbol: target } })
+    }
   }
   const resources = await resourcesIn(file)
   let resourceReferences = 0

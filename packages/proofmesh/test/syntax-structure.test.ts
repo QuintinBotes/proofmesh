@@ -42,7 +42,7 @@ describe('FR115 FR116 FR117 the syntax tier records imports and heritage in Go a
         { path: 'php/Circle.php', imports: 'partial' },
         { path: 'ruby/circle.rb', imports: 'partial' },
         { path: 'rust/lib.rs', imports: 'partial' },
-        // FR224: Swift, Scala, C, C++ and Bash name imports too.
+        // FR231: Swift, Scala, C, C++ and Bash name imports too.
         { path: 'scala/Circle.scala', imports: 'partial' },
         { path: 'swift/Circle.swift', imports: 'partial' },
       ])
@@ -194,8 +194,8 @@ describe('FR221 FR222 FR223 the syntax tier records imports and heritage in Kotl
 const NEW = /^(swift|scala|c|cpp|bash)\//
 const calls = (dataDir: string) => withSnapshot(dataDir, (db) => rows(db, 'calls').map((x) => [x.path, x.line, x.from, x.detail?.callee, x.resolution, x.reason] as const))
 
-describe('FR224 FR225 FR226 the syntax tier records imports and heritage in Swift, Scala, C, C++ and Bash, and calls in C and C++', () => {
-  it('FR224 each import statement of the fixture is one unresolved row with the module as written, and a C include says whether it is a system include and whether #if wraps it', () => {
+describe('FR231 FR232 FR233 the syntax tier records imports and heritage in Swift, Scala, C, C++ and Bash, and calls in C and C++', () => {
+  it('FR231 each import statement of the fixture is one unresolved row with the module as written, and a C include says whether it is a system include and whether #if wraps it', () => {
     expect(importRows(structureIndex()).filter((r) => NEW.test(r.path)).map((r) => [r.path, r.line, r.detail, r.state])).toEqual([
       ['bash/run.sh', 1, { module: './lib.sh' }, 'unresolved outside_capability null'],
       ['bash/run.sh', 2, { module: './lib.sh' }, 'unresolved outside_capability null'],
@@ -209,7 +209,7 @@ describe('FR224 FR225 FR226 the syntax tier records imports and heritage in Swif
     ])
   }, 240000)
 
-  it('FR225 FR226 FR117 heritage and the calls of the fixture hold as a closed world, from the declaring type or function, with no target', async () => {
+  it('FR232 FR233 FR117 heritage and the calls of the fixture hold as a closed world, from the declaring type or function, with no target', async () => {
     const r = await runKit(syntax(), fixtureRepo('syntax-structure'), EXPECTED)
     expect(r.checks.filter((c) => !c.passed).map((c) => `${c.id}: ${c.detail}`)).toEqual([])
     withSnapshot(structureIndex(), (db) => {
@@ -223,7 +223,7 @@ describe('FR224 FR225 FR226 the syntax tier records imports and heritage in Swif
     })
   }, 240000)
 
-  it('FR226 a C function has a call row for the call in its body, a macro call is a call, and every function of the C fixture with a call has one (SC-3)', () => {
+  it('FR233 a C function has a call row for the call in its body, a macro call is a call, and every function of the C fixture with a call has one (SC-3)', () => {
     const c = withSnapshot(structureIndex(), (db) => rows(db, 'calls').filter((x) => x.path === 'c/total.c').map((x) => [x.from, x.detail?.callee, x.resolution, x.reason, x.to]))
     expect(c).toEqual([['c/total:biggest', 'MAX', 'unresolved', 'outside_capability', null], ['c/total:total', 'add', 'unresolved', 'outside_capability', null]])
     // Every function of the file whose body has a call: both of them, by the fixture's own text.
@@ -232,7 +232,7 @@ describe('FR224 FR225 FR226 the syntax tier records imports and heritage in Swif
     expect(withCall.sort()).toEqual(c.map((x) => x[0]).sort())
   }, 240000)
 
-  it('FR226 a C++ call names its last identifier, qualified, templated or through an object, from the function or method that holds it, and a callee with no name is no row', async () => {
+  it('FR233 a C++ call names its last identifier, qualified, templated or through an object, from the function or method that holds it, and a callee with no name is no row', async () => {
     const { dataDir } = await indexedRepo({
       'k.cpp': 'void g() { h<int>(2); ns::k(); a::b::c(); std::make_unique<T>(1); this->m(); p.q<int>(1); (*fp)(1); r(); }\nclass W { double area() { return z(); } };\n',
       'k.c': 'int f(void) { (*fp)(1); return s(2) + t->u(3) + tab[0](4); }\n',
@@ -244,7 +244,7 @@ describe('FR224 FR225 FR226 the syntax tier records imports and heritage in Swif
     ])
   }, 240000)
 
-  it('FR224 the other forms: Scala wildcard, rename and selectors, Swift attribute and kind, a C include guard, #else and a computed include, Bash quoted, expanded and later arguments', async () => {
+  it('FR231 the other forms: Scala wildcard, rename and selectors, Swift attribute and kind, a C include guard, #else and a computed include, Bash quoted, expanded and later arguments', async () => {
     const { dataDir } = await indexedRepo({
       'a.scala': 'import a.b._\nimport a.b.*\nimport a.b.{C => D, E}\nimport a.b.C as D\nimport a.B, c.D\nobject O { def f = { import x.y.Z\n 1 } }\n',
       'a.swift': '@testable import Foo\nimport struct Foo.Bar\nimport Foo.Bar.Baz\n',
@@ -262,7 +262,7 @@ describe('FR224 FR225 FR226 the syntax tier records imports and heritage in Swif
     ])
   }, 240000)
 
-  it('FR225 the other forms: Swift struct, enum, protocol, generic and qualified supertypes and no extension; Scala trait, with, comma, generic and qualified; C++ several bases, qualified, templated, struct', async () => {
+  it('FR232 the other forms: Swift struct, enum, protocol, generic and qualified supertypes and no extension; Scala trait, with, comma, generic and qualified; C++ several bases, qualified, templated, struct', async () => {
     const { dataDir } = await indexedRepo({
       'a.swift': 'struct S: Equatable, Hashable {}\nprotocol P: Q, R {}\nextension S: P {}\nenum E: Int, Codable { case a }\nclass G: Base<Int>, Mod.Proto {}\n',
       'a.scala': 'class A extends B(1) with C with D[Int]\ntrait T extends U with V\nobject O extends X\nclass F(x: Int) extends G.H with I.J\nclass K extends L, M\n',
@@ -293,7 +293,7 @@ describe('FR224 FR225 FR226 the syntax tier records imports and heritage in Swif
     })
   }, 240000)
 
-  it('FR224 FR225 FR226 a file the grammar only partly parses keeps the imports, heritage and calls of the parsed part, and reports syntax partial', async () => {
+  it('FR231 FR232 FR233 a file the grammar only partly parses keeps the imports, heritage and calls of the parsed part, and reports syntax partial', async () => {
     const { dataDir } = await indexedRepo({
       'broken.c': '#include <a.h>\nint f(void) { return g(1); }\nint (((\n',
       'broken.cpp': '#include "x.h"\nclass A : public B {};\nvoid h() { k(); }\nvoid (((\n',
@@ -310,12 +310,12 @@ describe('FR224 FR225 FR226 the syntax tier records imports and heritage in Swif
     expect(calls(dataDir).filter(([p]) => /^broken\.c(pp)?$/.test(p)).map(([p, , from, callee]) => [p, from, callee])).toEqual([['broken.c', 'broken:f', 'g'], ['broken.cpp', 'broken:h', 'k']])
   }, 240000)
 
-  it('FR226 a call inside a googletest macro body is a call, and so is the assertion macro itself', async () => {
+  it('FR233 a call inside a googletest macro body is a call, and so is the assertion macro itself', async () => {
     const { dataDir } = await indexedRepo({ 't_test.cc': '#include <gtest/gtest.h>\nTEST(Calc, Adds) { EXPECT_EQ(add(1, 2), 3); }\n' })
     expect(calls(dataDir).map(([p, l, , callee]) => [p, l, callee]).sort()).toEqual([['t_test.cc', 2, 'EXPECT_EQ'], ['t_test.cc', 2, 'add']])
   }, 240000)
 
-  it('FR224 FR225 FR226 languages.md states imports, heritage and calls for Swift, Scala, C, C++ and Bash', () => {
+  it('FR231 FR232 FR233 languages.md states imports, heritage and calls for Swift, Scala, C, C++ and Bash', () => {
     const doc = fs.readFileSync(path.join(ROOT, 'docs', 'proofmesh', 'languages.md'), 'utf8')
     const row = (name: string) => doc.split('\n').find((l) => l.startsWith('| ') && l.split('|')[1]!.trim().split(', ').includes(name))!.split('|').slice(2, -1).map((c) => c.trim())
     expect(row('Swift')).toEqual(['yes, with module', 'supertypes, as `inherits` with `detail.relation` `supertype`', 'yes'])

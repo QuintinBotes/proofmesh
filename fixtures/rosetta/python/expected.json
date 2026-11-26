@@ -76,12 +76,10 @@
             {
               "role": "circleArea",
               "row": "circle_area shapes.py:30"
-            }
-          ],
-          "not_at_tier": [
+            },
             {
               "role": "total",
-              "reason": "known defect (issue 20 scenario 2 expects it): the adapter records no overrides, so a call written against Shape.area is not given as a call of Circle.area"
+              "row": "total shapes.py:25 dispatch"
             }
           ]
         },
@@ -90,10 +88,6 @@
             {
               "role": "report",
               "row": "report.py:1"
-            },
-            {
-              "row": "test_shapes.py:1",
-              "known_defect": "known defect: include_tests false does not leave out an importing file that is test code (get_relationships, tools.ts notTest filter)"
             }
           ]
         },
@@ -102,20 +96,18 @@
             {
               "role": "circleArea",
               "row": "circle_area shapes.py:30 depth=1 calls"
-            }
-          ],
-          "not_at_tier": [
+            },
             {
               "role": "total",
-              "reason": "known defect (issue 20 scenario 2 expects it): the adapter records no overrides, so a call written against Shape.area is not given as a call of Circle.area"
+              "row": "total shapes.py:25 depth=1 calls"
             },
             {
               "role": "report",
-              "reason": "known defect (issue 20 scenario 2 expects it): reached only through total, which is missing"
+              "row": "report report.py:5 depth=2 calls"
             },
             {
               "role": "totalOfTwo",
-              "reason": "known defect (issue 20 scenario 2 expects it): reached only through total, which is missing"
+              "row": "test_total_of_two test_shapes.py:5 depth=2 calls"
             }
           ]
         },

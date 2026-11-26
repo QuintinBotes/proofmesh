@@ -96,12 +96,13 @@ function scipAdapterPath(): string | undefined {
 }
 
 /** A SCIP index as discovery sees it: whether the index file still has the hash it had when a person named it. */
-type ScipCoverage = ScipIndexRecord & { current: boolean }
+/** `revoked` is the id of the revoked grant an index Proofmesh produced was run under: such an index is not read (A38). */
+type ScipCoverage = ScipIndexRecord & { current: boolean; revoked?: string }
 
 function scipSpec(indexes: ScipCoverage[]): AdapterSpec {
   return {
     id: 'scip', languages: new Set(), extensions: {}, isConfig: () => false, entry: scipAdapterPath, unavailable: () => 'adapter_unavailable:scip',
-    config: () => ({ indexes: indexes.filter((i) => i.current).map((i) => ({ name: i.name, path: i.path, sha256: i.sha256 })) }),
+    config: () => ({ indexes: indexes.filter((i) => i.current).map((i) => ({ name: i.name, path: i.path, sha256: i.sha256, ...(i.run ? { run: i.run } : {}) })) }),
   }
 }
 
@@ -125,6 +126,7 @@ export class Registry {
    * index was named against; a covered file that changed since, or whose index changed, stays with its usual adapter and says so.
    */
   route(d: Discovered, root: string): Discovered {
+    let unusable: Discovered | undefined
     for (const ix of this.scip) {
       const covered = ix.files[d.path]
       if (!covered) continue
@@ -132,9 +134,10 @@ export class Registry {
       if (owner && owner.id !== 'syntax') return d
       if (d.status !== 'capture' && !(d.status === 'unsupported' && d.detail?.startsWith('no_adapter:'))) return d
       if (ix.current && sha256File(path.join(root, d.path)) === covered.hash) return { ...d, status: 'capture', detail: null, role: 'source', language: d.language ?? covered.language, adapter: 'scip', scip: ix.name }
-      return { ...d, detail: `scip_stale:${ix.name}` }
+      // A stale or revoked index does not stop the search: a later index may be valid. The first that is not is what is reported if none is.
+      unusable ??= { ...d, detail: ix.revoked ? `scip_revoked:${ix.name}:${ix.revoked}` : `scip_stale:${ix.name}` }
     }
-    return d
+    return unusable ?? d
   }
   sourceLanguage(fileName: string): string | undefined {
     const ext = path.posix.extname(fileName).toLowerCase()
@@ -162,7 +165,8 @@ export const BUILT_IN_REGISTRY = new Registry(BUILT_IN)
 export function registryFor(dataDir: string, repositoryId?: string): Registry {
   const catalog = Catalog.open(dataDir)
   try {
-    const scip = repositoryId ? catalog.scipIndexes(repositoryId).map((i) => ({ ...i, current: fs.existsSync(i.path) && sha256File(i.path) === i.sha256 })) : []
+    const revokedGrant = (i: ScipIndexRecord) => (i.run && (!catalog.trustGrant(i.run.grant_id) || catalog.trustGrant(i.run.grant_id)!.revoked_at) ? i.run.grant_id : undefined)
+    const scip = repositoryId ? catalog.scipIndexes(repositoryId).map((i) => { const revoked = revokedGrant(i); return { ...i, current: !revoked && fs.existsSync(i.path) && sha256File(i.path) === i.sha256, ...(revoked ? { revoked } : {}) } }) : []
     return new Registry([...BUILT_IN, ...catalog.installedAdapters().map(installedSpec), ...(scip.length ? [scipSpec(scip)] : [])], scip, repositoryId ? catalog.registryPaths(repositoryId) : [])
   } finally {
     catalog.close()

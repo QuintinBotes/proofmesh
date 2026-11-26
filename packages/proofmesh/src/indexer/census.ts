@@ -87,7 +87,7 @@ function fileReason(f: CensusFile, tier: string): string | null {
   // A data file an adapter read, such as a manifest, has a tier; one nothing reads is simply not code.
   if (f.disposition === 'indexed' && depth(tier) >= 2) return null
   if (f.label.kind === 'data' || f.label.kind === 'prose') return 'not_code'
-  if (f.disposition === 'indexed') return f.detail?.startsWith('scip_stale:') ? f.detail : 'no_precise_tier'
+  if (f.disposition === 'indexed') return f.detail?.startsWith('scip_stale:') || f.detail?.startsWith('scip_revoked:') ? f.detail : 'no_precise_tier'
   return f.detail?.startsWith('no_adapter') || !f.detail ? 'no_grammar' : f.detail
 }
 
@@ -115,6 +115,10 @@ function remedy(language: string, kind: Kind, reason: string | null, ctx: Census
   if (reason.startsWith('scip_stale:')) {
     const name = reason.slice('scip_stale:'.length)
     return `The SCIP index ${name} no longer matches these files. Produce it again${r?.run ? ` with \`${r.run}\`` : r?.scip ? ` with ${r.scip}` : ''} and name it again: \`proofmesh scip add <repository> <index.scip> --name ${name}\`.`
+  }
+  if (reason.startsWith('scip_revoked:')) {
+    const [, name, grant] = reason.split(':')
+    return `The SCIP index ${name} was produced by an indexer that ran under the build-evaluation grant ${grant}, which was revoked, so it is not read. Grant it again with \`proofmesh repo trust <repository> --build-evaluation\` and run \`proofmesh scip run <repository>\` again, or produce the index yourself and name it with \`proofmesh scip add <repository> <index.scip> --name ${name}\`.`
   }
   if (reason === 'no_precise_tier' || reason === 'no_grammar') return r?.scip ? scip(r) : `Install an adapter that reads ${language}: \`proofmesh adapter add <entry> --id <id> --extension <.ext>=<language>\`.`
   return null
@@ -159,7 +163,7 @@ export function buildCensus(files: CensusFile[], ctx: CensusContext = {}): Censu
     // The files that hold the row back: those at its weakest tier. A stale index is named before a plain lack of one.
     const weakest = Math.min(...open.map((o) => depth(o.tier)))
     const reasons = open.filter((o) => depth(o.tier) === weakest).map((o) => fileReason(o.f, o.tier)).filter((r): r is string => r !== null)
-    const reason = !open.length ? 'excluded' : reasons.find((r) => r.startsWith('scip_stale:')) ?? (reasons.length ? mostCommon(reasons) : null)
+    const reason = !open.length ? 'excluded' : reasons.find((r) => r.startsWith('scip_revoked:')) ?? reasons.find((r) => r.startsWith('scip_stale:')) ?? (reasons.length ? mostCommon(reasons) : null)
     return {
       language: first.language, kind: first.kind, ...(first.kind === 'unknown' ? { extension: first.extension! } : {}),
       files: group.length, dispositions, excluded, tier: ranked[0]?.tier ?? 'none', tiers: ranked, capabilities, reason, remedy: remedy(first.language, first.kind, reason, ctx),

@@ -692,13 +692,13 @@
     "FR223": [
       "packages/proofmesh/test/syntax-structure.test.ts"
     ],
-    "FR224": [
+    "FR231": [
       "packages/proofmesh/test/syntax-structure.test.ts"
     ],
-    "FR225": [
+    "FR232": [
       "packages/proofmesh/test/syntax-structure.test.ts"
     ],
-    "FR226": [
+    "FR233": [
       "packages/proofmesh/test/syntax-structure.test.ts"
     ],
     "FR119": [
@@ -997,6 +997,31 @@
     ],
     "FR220": [
       "packages/proofmesh/test/rosetta.test.ts"
+    ],
+    "FR224": [
+      "packages/proofmesh/test/rosetta.test.ts",
+      "packages/proofmesh/test/impact-dispatch.test.ts"
+    ],
+    "FR225": [
+      "packages/proofmesh/test/rosetta.test.ts",
+      "packages/proofmesh/test/impact-dispatch.test.ts"
+    ],
+    "FR226": [
+      "packages/proofmesh/test/python.overrides.test.ts",
+      "packages/proofmesh/test/rosetta.test.ts"
+    ],
+    "FR227": [
+      "packages/proofmesh/test/scip-run.test.ts",
+      "packages/proofmesh/test/contract.test.ts"
+    ],
+    "FR228": [
+      "packages/proofmesh/test/scip-run.test.ts"
+    ],
+    "FR229": [
+      "packages/proofmesh/test/scip-run.test.ts"
+    ],
+    "FR230": [
+      "packages/proofmesh/test/scip-run.test.ts"
     ]
   },
   "manual": {
