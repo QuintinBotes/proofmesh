@@ -87,7 +87,7 @@ What the tier records per language (FR118):
 | C++ | `#include`, with `detail.system` and `detail.conditional` | base classes, as `inherits` | yes |
 | Bash | `source` and `.` of a literal path | no | yes |
 | TypeScript, TSX | `import`, `export ... from` and `import x = require()`, with module | `extends`, `implements` | yes |
-| C# | `using`, with module, alias and `static` as written | no | yes |
+| C# | `using`, with module and alias | no | yes |
 | SQL | no | no | no; table references instead |
 | Prisma | no | no | no; model references instead |
 - Grammars: each is pinned by its package version and the hash of its WebAssembly, which join the adapter's identity. Swift, SQL and Prisma ship no WebAssembly, so `adapters/syntax/grammars/rebuild.mjs` builds them from their packages' source with the Tree-sitter CLI 0.27.2; the build is reproducible, and the syntax adapter's build refuses a grammar whose hash or version differs from `grammars/built.json`, or whose license `policy/licenses.json` does not allow. Each grammar's license text ships beside it, and `THIRD_PARTY_NOTICES.md` lists every grammar.

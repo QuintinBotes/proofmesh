@@ -25,8 +25,8 @@ describe('#28 index progress: a line per phase change, and the latest again ever
     report.update({ phase: 'capture', done: 1000, total: 30000 })
     report.update({ phase: 'initialize', adapter: 'csharp', done: 0, total: 28000 })
     vi.advanceTimersByTime(150000)
-    report.update({ phase: 'analyze', adapter: 'csharp', done: 0, total: 28000 })
-    report.update({ phase: 'analyze', adapter: 'csharp', done: 200, total: 28000 })
+    report.update({ phase: 'analyze', adapter: 'csharp', language: 'csharp', done: 0, total: 28000 })
+    report.update({ phase: 'analyze', adapter: 'csharp', language: 'csharp', done: 200, total: 28000 })
     vi.advanceTimersByTime(30000)
     expect(report.stop()).toEqual([{ phase: 'discover', ms: 2000 }, { phase: 'capture', ms: 1000 }, { phase: 'initialize csharp', ms: 150000 }, { phase: 'analyze csharp', ms: 30000 }])
     vi.advanceTimersByTime(120000)
@@ -37,7 +37,7 @@ describe('#28 index progress: a line per phase change, and the latest again ever
       '[1m00s] initialize csharp 0/28000 (still running)',
       '[2m00s] initialize csharp 0/28000 (still running)',
       '[2m33s] analyze csharp 0/28000',
-      '[3m00s] analyze csharp 200/28000 (still running)',
+      '[3m00s] analyze csharp 200/28000 (csharp: 7.4 files/s, about 62m33s left) (still running)',
     ])
   })
 })
@@ -63,7 +63,7 @@ describe('#28 adapter memory: the host samples each adapter process and keeps th
   it.skipIf(process.platform === 'win32')('records a peak resident set size while the adapter runs', async () => {
     const a = new AdapterProcess(path.join(import.meta.dirname, 'fake-adapters', 'slow.mjs'), 60000, 20)
     try {
-      for (let i = 0; i < 250 && a.peakRssKb === undefined; i++) await sleep(20)
+      for (let i = 0; i < 250 && !(a.peakRssKb! > 1024); i++) await sleep(20)
       expect(a.peakRssKb).toBeGreaterThan(1024)
     } finally {
       await a.shutdown()
@@ -79,7 +79,7 @@ describe('#28 a CLI index is an index job that status and MCP report while it ru
     for (const args of [['init'], ['repo', 'add', repo]]) expect(cli(['--data-dir', d, ...args]).status).toBe(0)
     const user = os.userInfo().username
     const start = () => {
-      const child = spawn(process.execPath, [CLI, '--data-dir', d, 'index', repo], { env: { ...process.env, PROOFMESH_TS_ADAPTER: gated } })
+      const child = spawn(process.execPath, [CLI, '--data-dir', d, 'index', repo], { env: { ...process.env, PROOFMESH_TS_ADAPTER: gated, PROOFMESH_TEST_PROGRESS_INTERVAL_MS: '60000' } })
       const out = { stdout: '', stderr: '' }
       child.stdout.on('data', (b) => (out.stdout += b))
       child.stderr.on('data', (b) => (out.stderr += b))
@@ -101,7 +101,7 @@ describe('#28 a CLI index is an index job that status and MCP report while it ru
     fs.writeFileSync(gate, '')
     expect(await first.exited, first.out.stderr).toBe(0)
     expect(first.out.stderr.replace(/^\[\d+s\] /gm, '')).toBe('discover\ncapture 0/10\nprepare\ninitialize typescript 0/7\ninitialize build 0/1\nanalyze typescript 0/6\nanalyze build 0/1\nwrite\ncheck\nseal\n')
-    expect(first.out.stdout).toMatch(new RegExp(`^phases discover \\d+s, capture \\d+s, prepare \\d+s, initialize typescript \\d+s, initialize build \\d+s, analyze typescript \\d+s, analyze build \\d+s, write \\d+s, check \\d+s, seal \\d+s \\(job ${firstId}\\)\\nadapter peak memory typescript \\d+ MiB, build \\d+ MiB\\n$`, 'm'))
+    expect(first.out.stdout).toMatch(new RegExp(`^phases discover \\d+s, capture \\d+s, prepare \\d+s, initialize typescript \\d+s, initialize build \\d+s, analyze typescript \\d+s, analyze build \\d+s, write \\d+s, check \\d+s, seal \\d+s \\(job ${firstId}\\)\\nadapter seconds per file typescript \\d+\\.\\d\\d, build \\d+\\.\\d\\d\\nadapter peak memory typescript \\d+ MiB, build \\d+ MiB\\n$`, 'm'))
     expect(tool(d, 'get_job', { job_id: firstId }).data.job).toMatchObject({ state: 'succeeded', phase: 'done', requested_by: user, finished_at: expect.any(String), error: null })
     expect(jobs()).toEqual([])
 

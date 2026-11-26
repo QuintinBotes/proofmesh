@@ -22,7 +22,9 @@ const dbName = (n: Node) => (n.hasError ? null : n.text.split('.').map((p) => p.
 // The languages whose qualified name starts with the package or namespace the source declares; every other language's starts with the file path (FR146).
 const PACKAGE_NODES: Record<string, string[]> = { java: ['package_declaration'], kotlin: ['package_header'], scala: ['package_clause'], php: ['namespace_definition'], csharp: ['namespace_declaration', 'file_scoped_namespace_declaration'] }
 type Package = { node: Node; name: string; braced: boolean }
-const packagesOf = (lang: string, root: Node): Package[] => root.descendantsOfType(PACKAGE_NODES[lang]!).map((node) => ({ node, name: (/^(?:package|namespace)\s*([\w.\\]*)/.exec(node.text)?.[1] ?? '').replace(/\\/g, '.'), braced: !!node.childForFieldName('body') }))
+// A C# namespace name is read from the tree, so a comment or a line break inside it is no part of it.
+const dotted = (n: Node | null): string => (!n ? '' : n.type === 'qualified_name' ? `${dotted(n.childForFieldName('qualifier'))}.${dotted(n.childForFieldName('name'))}` : n.text)
+const packagesOf = (lang: string, root: Node): Package[] => root.descendantsOfType(PACKAGE_NODES[lang]!).map((node) => ({ node, name: lang === 'csharp' ? dotted(node.childForFieldName('name')) : (/^(?:package|namespace)\s*([\w.\\]*)/.exec(node.text)?.[1] ?? '').replace(/\\/g, '.'), braced: !!node.childForFieldName('body') }))
 // The packages a declaration sits in: braced ones around it, and the unbraced ones before it (Scala chains them, PHP's last one replaces the rest).
 function packageParts(lang: string, packages: Package[], at: Node): string[] {
   const around = packages.filter((p) => p.braced && p.node.startIndex <= at.startIndex && at.endIndex <= p.node.endIndex)
@@ -80,7 +82,7 @@ const languageOf = new Map<string, string>()
 const queries = new Map<string, Promise<Query>>()
 
 // TypeScript, TSX and JavaScript are read by two grammars: `.ts` by TypeScript's, whose angle-bracket casts a JSX grammar cannot parse, and the rest by TSX's (FR310).
-const grammarOf = (lang: string, file: string) => (lang !== 'typescript' && lang !== 'javascript' ? lang : /\.[mc]?ts$/.test(file) ? 'typescript' : 'tsx')
+const grammarOf = (lang: string, file: string) => (lang !== 'typescript' && lang !== 'javascript' ? lang : /\.[mc]?ts$/i.test(file) ? 'typescript' : 'tsx')
 // Roslyn names a generic type with its parameters, `Box<T, U>`, and a member after it.
 const GENERIC_TYPES = new Set(['class_declaration', 'struct_declaration', 'interface_declaration', 'record_declaration'])
 const typeName = (lang: string, def: Node, name: Node) => {
@@ -208,6 +210,14 @@ async function analyse(file: string, callees = false) {
     s.qualified_name = !packages ? `${module}:${parts.join('.')}` : own ? [...packageParts(lang, packages.filter((p) => p !== own), own.node), own.name].join('.') : [...packageParts(lang, packages, d.node), ...parts].join('.')
     return { s, d, types: parameterTypes(d.node) }
   })
+  // The precise TypeScript tier keeps one method for an overload set, the first declaration.
+  if (lang === 'typescript' || lang === 'javascript') {
+    const seen = new Set<string>()
+    for (const n of members) {
+      if (n.s.kind !== 'method') continue
+      if (seen.has(String(n.s.qualified_name))) { symbols.splice(symbols.indexOf(n.s), 1); defs.splice(defs.indexOf(n.d), 1) } else seen.add(String(n.s.qualified_name))
+    }
+  }
   const byName = new Map<string, typeof members>()
   for (const n of members) if ((n.s.kind === 'function' || n.s.kind === 'method') && !OVERLOADS_ALIKE.has(lang)) byName.set(String(n.s.qualified_name), [...(byName.get(String(n.s.qualified_name)) ?? []), n])
   for (const group of byName.values()) {

@@ -29,7 +29,7 @@ export type PropertyRead = { source: string; window_from: string; window_to: str
 export type PropertyReadInput = { endpoint: string; entity: string; property: string; reads: number; read_kind?: 'orm' | 'application'; declaring_type?: string; calls?: number; callers?: string[] }
 /** A verification (D07): what a person approved, bound by hash, and what its one run recorded. */
 export type Verification = { id: string; repository_id: string; snapshot_id: string; state: 'prepared' | 'approved' | 'consumed' | 'finished' | 'failed' | 'expired'; binding: Record<string, unknown>; binding_hash: string; prepared_by: string; prepared_at: string; expires_at: string; approved_by: string | null; approved_at: string | null; consumed_at: string | null; record: { record: Record<string, unknown>; mac: string } | null; error: string | null }
-export type IndexJob = { id: string; repository_id: string; state: 'queued' | 'running' | 'succeeded' | 'failed' | 'interrupted'; requested_by: string; requested_at: string; started_at: string | null; finished_at: string | null; phase: string | null; done: number | null; total: number | null; result: unknown; error: string | null; progress_at: string | null; phase_started_at: string | null; plan: Record<string, { mode: string; analyse: number; reuse: number }> | null; elapsed_ms: number | null }
+export type IndexJob = { id: string; repository_id: string; state: 'queued' | 'running' | 'succeeded' | 'failed' | 'interrupted'; requested_by: string; requested_at: string; started_at: string | null; finished_at: string | null; phase: string | null; done: number | null; total: number | null; result: unknown; error: string | null; progress_at: string | null; phase_started_at: string | null; plan: Record<string, { mode: string; analyse: number; reuse: number }> | null; adapters: Record<string, { adapter: string; language: string; done: number; total: number; files_per_second: number; eta_seconds: number | null }> | null; elapsed_ms: number | null }
 export type InstalledAdapter = { id: string; entry: string; sha256: string; extensions: Record<string, string>; configNames: string[]; added_by: string; added_at: string; kit: { passed: boolean; checked_at: string; sha256: string; checks: number; failed: string[] } | null }
 /** The note source of notes saved by agents rather than synced from a person's directory. */
 export const AGENT_NOTES = 'agent:'
@@ -570,7 +570,7 @@ export class Catalog {
       .map((r) => this.job(r.id)!).filter((j) => j.state === 'queued' || j.state === 'running')
   }
 
-  updateJob(id: string, patch: Partial<{ state: string; started_at: string; finished_at: string; phase: string; done: number; total: number; result: string; error: string; owner: string; progress_at: string; phase_started_at: string; plan: string }>): void {
+  updateJob(id: string, patch: Partial<{ state: string; started_at: string; finished_at: string; phase: string; done: number; total: number; result: string; error: string; owner: string; progress_at: string; phase_started_at: string; plan: string; adapter_progress: string }>): void {
     const keys = Object.keys(patch)
     if (keys.length) this.db.prepare(`update index_job set ${keys.map((k) => `${k} = ?`).join(', ')} where id = ?`).run(...keys.map((k) => (patch as Record<string, unknown>)[k]), id)
   }
@@ -581,10 +581,10 @@ export class Catalog {
     if (!row) return undefined
     const holder = this.leaseHolder()
     const interrupted = (row.state === 'running' && (!holder || holder.owner !== row.owner)) || (row.state === 'queued' && Date.now() - Date.parse(row.requested_at as string) > 120000)
-    const { owner: _owner, ...rest } = row
+    const { owner: _owner, adapter_progress: adapterProgress, ...rest } = row
     const started = row.started_at ? Date.parse(row.started_at as string) : null
     const elapsed = started === null ? null : (row.finished_at ? Date.parse(row.finished_at as string) : Date.now()) - started
-    return { ...rest, state: interrupted ? 'interrupted' : row.state, result: row.result ? JSON.parse(row.result as string) : null, plan: row.plan ? JSON.parse(row.plan as string) : null, elapsed_ms: elapsed } as never
+    return { ...rest, state: interrupted ? 'interrupted' : row.state, result: row.result ? JSON.parse(row.result as string) : null, plan: row.plan ? JSON.parse(row.plan as string) : null, adapters: adapterProgress ? JSON.parse(adapterProgress as string) : null, elapsed_ms: elapsed } as never
   }
 
   releaseLease(owner: string): void {

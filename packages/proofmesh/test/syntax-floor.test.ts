@@ -132,6 +132,7 @@ describe('FR313 FR318 a file its precise adapter answers failed for is read by t
 describe('FR314 an adapter that dies hands its files to the syntax tier instead of failing the index', () => {
   it('FR314 scenario 5: after the restart it is allowed dies again, the files it did not analyse fall back, and the job names the adapter and the crash', () => {
     const repo = write(fs.realpathSync(tmpDir('pm-floor-')), { 'tsconfig.json': '{}\n', 'a.ts': 'export const a = 1\n', 'die.ts': 'export const die = 2\n', 'z.ts': 'export function z() { return 3 }\n' })
+    fs.writeFileSync(`${repo}.die`, '')
     const { d, stdout, result, stored } = index(repo, { PROOFMESH_TS_ADAPTER: fake('ts-precise.mjs'), PROOFMESH_INDEX_BATCH: '1' })
     expect(files(d).filter((f) => f.path.endsWith('.ts')).map((f) => [f.path, f.tier, f.detail])).toEqual([['a.ts', 'precise:typescript', null], ['die.ts', 'syntax', 'adapter_failed:typescript'], ['z.ts', 'syntax', 'adapter_failed:typescript']])
     expect(symbols(d, "f.path = 'z.ts'").map((s) => s.qn)).toEqual(['z', 'z:z'])
@@ -202,5 +203,71 @@ describe('FR315 a tier change is a change of the analysing adapter, so an increm
     const back = index(repo, NO_CS, incremental.d)
     expect(snapshotOf(back.stdout)).toBe(snapshotOf(incremental.stdout))
     expect(dump(incremental.d, snapshotOf(back.stdout))).toBe(dump(index(repo, NO_CS).d, snapshotOf(back.stdout)))
+  }, 240000)
+})
+
+describe('FR311 FR313 FR314 FR315 FR316 FR317 the fallback is recorded, replaced when the adapter recovers, and names things as the precise tier does', () => {
+  const ts = { PROOFMESH_TS_ADAPTER: fake('ts-precise.mjs') }
+  const fresh2 = (entries: Record<string, string>) => write(fs.realpathSync(tmpDir('pm-floor-')), entries)
+  const meta = (d: string) => withSnapshot(d, (db) => JSON.parse((db.prepare("select value from meta where key = 'fallbacks'").get() as { value: string } | undefined)?.value ?? 'null') as { handoffs: Array<{ adapter: string; files: number; kind: string }> } | null)
+
+  it('FR311 FR314 an unavailable adapter is a fallback in the job result, the CLI line and the snapshot meta, as a dying one is', () => {
+    const { d, stdout, result } = index(fixtureRepo('cs-orders'), NO_CS)
+    expect(result.fallbacks).toEqual([{ adapter: 'csharp', files: 6, reason: 'adapter_unavailable:csharp' }])
+    expect(stdout).toContain('adapter csharp could not analyse 6 files, so the syntax tier read them: adapter_unavailable:csharp')
+    expect(meta(d)!.handoffs).toEqual([{ adapter: 'csharp', files: 6, reason: 'adapter_unavailable:csharp', kind: 'unavailable' }])
+  }, 240000)
+
+  it('FR314 a TypeScript adapter override that names no file falls back instead of failing the index', () => {
+    const repo = fresh2({ 'a.ts': 'export const a = 1\n' })
+    const { d, result } = index(repo, { PROOFMESH_TS_ADAPTER: '/nonexistent/adapter.js' })
+    expect(files(d).find((f) => f.path === 'a.ts')).toMatchObject({ tier: 'syntax' })
+    expect(result.fallbacks).toHaveLength(1)
+  }, 240000)
+
+  it('FR314 an adapter that cannot answer workspace gives all its files to the syntax tier, never precise file facts without workspace facts', () => {
+    const repo = fresh2({ 'a.ts': 'export const a = 1\n', 'b.ts': 'export const b = 2\n' })
+    fs.writeFileSync(`${repo}.noworkspace`, '')
+    const { d, result } = index(repo, ts)
+    expect(files(d).filter((f) => f.path.endsWith('.ts')).map((f) => f.tier)).toEqual(['syntax', 'syntax'])
+    expect(result.fallbacks).toEqual([{ adapter: 'typescript', files: 2, reason: expect.stringContaining('no project model') }])
+  }, 240000)
+
+  it('FR315 indexing again after a transient crash asks the adapter again and replaces the degraded snapshot; a healthy one is then unchanged', () => {
+    const repo = fresh2({ 'tsconfig.json': '{}\n', 'a.ts': 'export const a = 1\n', 'die.ts': 'export const die = 2\n' })
+    fs.writeFileSync(`${repo}.die`, '')
+    const first = index(repo, ts)
+    expect(files(first.d).find((f) => f.path === 'die.ts')).toMatchObject({ tier: 'syntax' })
+    expect(meta(first.d)!.handoffs[0]).toMatchObject({ adapter: 'typescript', kind: 'failed' })
+    fs.rmSync(`${repo}.die`)
+    const second = index(repo, ts, first.d)
+    expect(second.stdout).toContain('published')
+    expect(files(first.d).find((f) => f.path === 'die.ts')).toMatchObject({ tier: 'precise:typescript' })
+    expect(meta(first.d)).toBeNull()
+    expect(index(repo, ts, first.d).stdout).toContain('unchanged')
+  }, 240000)
+
+  it('FR313 a file a precise adapter failed on is not cached as failed: the adapter is asked about it again when another file changes', () => {
+    const repo = write(tsModule(), { 'src/other.ts': 'export const other = 1\n' })
+    const first = index(repo, ts)
+    fs.appendFileSync(path.join(repo, 'src/other.ts'), '// edit\n')
+    index(repo, ts, first.d)
+    expect(fs.readFileSync(`${repo}.calls`, 'utf8').split('\n').filter((p) => p === 'src/app.ts')).toHaveLength(2)
+  }, 240000)
+
+  it('FR310 FR316 FR317 TypeScript namespaces are scopes, an overload set is one method, and .TS is a TypeScript file', () => {
+    const repo = fresh2({
+      'a.ts': 'namespace N { export function g() {} }\ninterface I { m(a: string): void; m(a: number): void }\n',
+      'B.TS': 'export const cast = <number>(<unknown>1)\nexport function f() {}\n',
+    })
+    const { d } = index(repo, { PROOFMESH_TS_ADAPTER: fake('versioned-2.0.mjs') })
+    expect(symbols(d).filter((s) => s.kind !== 'module').map((s) => `${s.kind} ${s.qn}`)).toEqual(['variable B:cast', 'function B:f', 'function a:N.g', 'interface a:I', 'method a:I.m'])
+  }, 240000)
+
+  it('FR316 a C# namespace is read from the tree, whatever comments sit in it, and `new A.B<T>()` is a call', () => {
+    const repo = fresh2({ 'K.cs': 'namespace /* c */ Outer . Inner\n{\n    class K { void M() { new N.Box<int>(); } }\n}\n' })
+    const { d } = index(repo, NO_CS)
+    expect(symbols(d).filter((s) => s.kind !== 'module').map((s) => `${s.kind} ${s.qn}`)).toEqual(['class Outer.Inner.K', 'method Outer.Inner.K.M'])
+    expect(calls(d).map((c) => [c.callee, c.site])).toEqual([['Box', 'new N.Box<int>()']])
   }, 240000)
 })

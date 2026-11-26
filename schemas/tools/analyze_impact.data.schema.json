@@ -90,6 +90,10 @@
               }
             },
             "description": "For a file reached through imports (kind file): the import statement that reached it."
+          },
+          "key": {
+            "type": "string",
+            "description": "The stable_key of the dependent (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file."
           }
         }
       }

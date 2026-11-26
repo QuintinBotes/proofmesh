@@ -22,6 +22,7 @@
 (object_creation_expression type: (identifier) @name) @reference.call
 (object_creation_expression type: (generic_name (identifier) @name)) @reference.call
 (object_creation_expression type: (qualified_name name: (identifier) @name)) @reference.call
+(object_creation_expression type: (qualified_name name: (generic_name (identifier) @name))) @reference.call
 ; Usings (FR115): the namespace or type as written, and the alias of `using A = B.C;`.
 (using_directive !name . [(identifier) (qualified_name)] @import.module) @import
 (using_directive name: (identifier) @import.alias . [(identifier) (qualified_name)] @import.module) @import

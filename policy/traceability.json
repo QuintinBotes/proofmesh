@@ -1102,6 +1102,36 @@
     "FR259": [
       "packages/proofmesh/test/seams-http.test.ts"
     ],
+    "FR280": [
+      "packages/proofmesh/test/stable-keys-rows.test.ts"
+    ],
+    "FR281": [
+      "packages/proofmesh/test/stable-keys-rows.test.ts"
+    ],
+    "FR282": [
+      "packages/proofmesh/test/stable-keys-rows.test.ts"
+    ],
+    "FR283": [
+      "packages/proofmesh/test/stable-keys-rows.test.ts"
+    ],
+    "FR284": [
+      "packages/proofmesh/test/stable-keys-rows.test.ts"
+    ],
+    "FR285": [
+      "packages/proofmesh/test/stable-keys-rows.test.ts"
+    ],
+    "FR286": [
+      "packages/proofmesh/test/stable-keys-rows.test.ts"
+    ],
+    "FR287": [
+      "packages/proofmesh/test/stable-keys-rows.test.ts"
+    ],
+    "FR288": [
+      "packages/proofmesh/test/stable-keys-rows.test.ts"
+    ],
+    "FR289": [
+      "packages/proofmesh/test/stable-keys-rows.test.ts"
+    ],
     "FR260": [
       "packages/proofmesh/test/adapter-failure.test.ts"
     ],
@@ -1165,6 +1195,30 @@
     ],
     "FR319": [
       "packages/proofmesh/test/syntax-floor.test.ts"
+    ],
+    "FR270": [
+      "packages/proofmesh/test/adapter-budget.test.ts"
+    ],
+    "FR271": [
+      "packages/proofmesh/test/adapter-budget.test.ts"
+    ],
+    "FR272": [
+      "packages/proofmesh/test/adapter-budget.test.ts"
+    ],
+    "FR273": [
+      "packages/proofmesh/test/progress.test.ts"
+    ],
+    "FR274": [
+      "packages/proofmesh/test/progress.test.ts"
+    ],
+    "FR275": [
+      "packages/proofmesh/test/adapter-budget.test.ts"
+    ],
+    "FR276": [
+      "packages/proofmesh/test/progress.test.ts"
+    ],
+    "FR277": [
+      "packages/proofmesh/test/adapter-budget.test.ts"
     ]
   },
   "manual": {

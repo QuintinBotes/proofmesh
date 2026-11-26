@@ -59,6 +59,10 @@
                 },
                 "path": {
                   "type": "string"
+                },
+                "key": {
+                  "type": "string",
+                  "description": "The stable_key of the symbol (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file."
                 }
               }
             }
@@ -86,6 +90,10 @@
                     "inherits"
                   ],
                   "description": "maps_to: mapped to the table; inherits: a subtype of a mapped entity, sharing its table (table-per-hierarchy)."
+                },
+                "key": {
+                  "type": "string",
+                  "description": "The stable_key of the entity (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file."
                 }
               }
             }
@@ -134,6 +142,10 @@
                     "inferred"
                   ],
                   "description": "inferred when a hop of the chain that reaches the endpoint or job is inferred, or the link from the table to that chain is."
+                },
+                "key": {
+                  "type": "string",
+                  "description": "The stable_key of the endpoint or job (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file."
                 }
               }
             }
@@ -265,6 +277,10 @@
                   "items": {
                     "type": "string"
                   }
+                },
+                "symbol_key": {
+                  "type": "string",
+                  "description": "The stable_key of the mapped property (symbol_id) (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file."
                 }
               }
             }
@@ -290,9 +306,17 @@
                 "readers": {
                   "type": "integer",
                   "minimum": 0
+                },
+                "key": {
+                  "type": "string",
+                  "description": "The stable_key of the accessor (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file."
                 }
               }
             }
+          },
+          "key": {
+            "type": "string",
+            "description": "The stable_key of the table (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file."
           }
         }
       }

@@ -7,8 +7,8 @@
 (interface_declaration name: (type_identifier) @name) @definition.interface
 (enum_declaration name: (identifier) @name) @definition.enum
 (type_alias_declaration name: (type_identifier) @name) @definition.type
-; A namespace is no symbol of the precise tier, but it is part of the name of what it holds.
-(internal_module name: [(identifier) (nested_identifier)] @name) @definition.module
+; A namespace is a scope, as for the precise tier: no symbol, but part of the name of what it holds.
+(internal_module name: [(identifier) (nested_identifier)] @name) @scope
 ; A constructor and an accessor are no method of the precise tier.
 (class_body (method_definition name: [(property_identifier) (private_property_identifier)] @name (#not-eq? @name "constructor")) @definition.method)
 (abstract_method_signature name: (property_identifier) @name) @definition.method
