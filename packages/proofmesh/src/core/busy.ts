@@ -1,4 +1,6 @@
+import path from 'node:path'
 import type Database from 'better-sqlite3'
+import { ProofmeshError, isBusy } from './errors.js'
 import { log } from './log.js'
 
 const DEFAULT_BUSY_MS = 120_000
@@ -15,15 +17,18 @@ export function busyTimeoutMs(): number {
 /** Tries of one write after its busy wait ran out. Each try waits busyTimeoutMs itself, so no sleep sits between them. */
 const ATTEMPTS = 10
 
-const isBusy = (e: unknown): boolean => /^SQLITE_(BUSY|LOCKED)/.test((e as { code?: string }).code ?? '')
-
-export function retryBusy<T>(fn: () => T): T {
+/**
+ * Runs a write again when the database is still busy after its busy wait. What is left of the budget ends as a BUSY error that names the database and the statement,
+ * not as the driver's bare "database is locked".
+ */
+export function retryBusy<T>(fn: () => T, db = 'database', what = ''): T {
   for (let attempt = 1; ; attempt++) {
     try {
       return fn()
     } catch (e) {
-      if (!isBusy(e) || attempt >= ATTEMPTS) throw e
-      log('warning', 'database busy; retrying', { attempt })
+      if (!isBusy(e)) throw e
+      if (attempt >= ATTEMPTS) throw new ProofmeshError('BUSY', `${db} stayed busy after ${ATTEMPTS} tries${what ? `: ${what.replace(/\s+/g, ' ').slice(0, 160)}` : ''}`, { database: db, statement: what.slice(0, 160) })
+      log('warning', 'database busy; retrying', { attempt, db, statement: what.slice(0, 80) })
     }
   }
 }
@@ -33,19 +38,26 @@ export function retryBusy<T>(fn: () => T): T {
  * Transactions begin immediate, so a lock that cannot be had fails at BEGIN, where a retry is safe, not half way through.
  */
 export function hardenDatabase(db: Database.Database): void {
-  db.pragma('journal_mode = WAL')
+  const name = path.basename(db.name)
+  type Stmt = { run: (...a: unknown[]) => unknown; get: (...a: unknown[]) => unknown; all: (...a: unknown[]) => unknown }
+  const any = db as unknown as { exec: (sql: string) => unknown; pragma: (s: string, o?: unknown) => unknown; prepare: (sql: string) => Stmt; transaction: (fn: (...a: unknown[]) => unknown) => { immediate: (...a: unknown[]) => unknown } }
+  const prepare = any.prepare.bind(db), exec = any.exec.bind(db), pragma = any.pragma.bind(db), transaction = any.transaction.bind(db)
+  // The busy timeout comes first: setting WAL or anything else before it meets a lock held by another run with no wait at all.
   db.pragma(`busy_timeout = ${busyTimeoutMs()}`)
-  const any = db as unknown as { exec: (sql: string) => unknown; prepare: (sql: string) => { run: (...a: unknown[]) => unknown }; transaction: (fn: (...a: unknown[]) => unknown) => { immediate: (...a: unknown[]) => unknown } }
-  const prepare = any.prepare.bind(db), exec = any.exec.bind(db), transaction = any.transaction.bind(db)
-  any.exec = (sql) => retryBusy(() => exec(sql))
+  any.pragma = (s, o) => retryBusy(() => pragma(s, o), name, `pragma ${s}`)
+  db.pragma('journal_mode = WAL')
+  any.exec = (sql) => retryBusy(() => exec(sql), name, sql)
   any.prepare = (sql) => {
-    const statement = prepare(sql), run = statement.run.bind(statement)
-    statement.run = (...a) => retryBusy(() => run(...a))
+    const statement = prepare(sql)
+    for (const m of ['run', 'get', 'all'] as const) {
+      const f = statement[m].bind(statement)
+      statement[m] = (...a) => retryBusy(() => f(...a), name, sql)
+    }
     return statement
   }
   any.transaction = (fn) => {
     const tx = transaction(fn)
-    const run = (...a: unknown[]) => retryBusy(() => tx.immediate(...a))
+    const run = (...a: unknown[]) => retryBusy(() => tx.immediate(...a), name, 'BEGIN IMMEDIATE (transaction)')
     // Callers that name a mode get the same immediate, retried run.
     return Object.assign(run, { immediate: run, deferred: run, exclusive: run }) as never
   }

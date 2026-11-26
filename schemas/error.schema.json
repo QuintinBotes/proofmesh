@@ -35,6 +35,7 @@
             "APPROVAL_INVALID",
             "CANCELLED",
             "INDEX_IN_PROGRESS",
+            "BUSY",
             "INTERNAL_ERROR"
           ]
         },
