@@ -85,8 +85,8 @@ importers:
         specifier: 0.24.2
         version: 0.24.2
       tree-sitter-prisma:
-        specifier: 1.6.0
-        version: 1.6.0
+        specifier: file:vendor/tree-sitter-prisma-1.6.0.tgz
+        version: file:adapters/syntax/vendor/tree-sitter-prisma-1.6.0.tgz
       tree-sitter-python:
         specifier: 0.25.0
         version: 0.25.0
@@ -1346,8 +1346,9 @@ packages:
       tree-sitter:
         optional: true
 
-  tree-sitter-prisma@1.6.0:
-    resolution: {integrity: sha512-w3rnsmW+XVVvLeIykMCU0Tevbg23s6xa8wiSrLw+WUTbIBBS47Ds4W9rX0yzPXXFRaOwFPAFooqdv8BQUQxTBA==}
+  tree-sitter-prisma@file:adapters/syntax/vendor/tree-sitter-prisma-1.6.0.tgz:
+    resolution: {integrity: sha512-2dGLq5PrHl4QsTJb432ssy8XMx79fjLCOxFB+FxEMbD+M5G9diHNHdPi2K8JtyCz4SLAnVX3ZS0K0+PNOxsdow==, tarball: file:adapters/syntax/vendor/tree-sitter-prisma-1.6.0.tgz}
+    version: 1.6.0
     peerDependencies:
       tree-sitter: ^0.25.0
     peerDependenciesMeta:
@@ -2554,7 +2555,7 @@ snapshots:
       node-addon-api: 8.9.2
       node-gyp-build: 4.8.4
 
-  tree-sitter-prisma@1.6.0:
+  tree-sitter-prisma@file:adapters/syntax/vendor/tree-sitter-prisma-1.6.0.tgz:
     dependencies:
       node-addon-api: 8.9.2
       node-gyp-build: 4.8.4
