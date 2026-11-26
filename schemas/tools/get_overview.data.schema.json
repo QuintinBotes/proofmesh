@@ -107,6 +107,10 @@
     "omitted": {
       "type": "integer",
       "minimum": 0
+    },
+    "generated": {
+      "type": "boolean",
+      "description": "Present and true when the file is generated (FR292); absent otherwise."
     }
   }
 }

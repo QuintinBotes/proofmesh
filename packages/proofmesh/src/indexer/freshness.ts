@@ -8,6 +8,7 @@ import { CENSUS_VERSION } from './census.js'
 
 /** Files excluded for where they sit, under a path git ignores or a default excluded directory, are build output and local state (A21). */
 const LOCATION_RULES = new Set<string | null>(['gitignore', ...EXCLUDED_DIRS.map((d) => `**/${d}/**`)])
+const isLocationRule = (detail: string | null) => LOCATION_RULES.has(detail) || !!detail?.startsWith('build_output:')
 
 /**
  * The repository part of snapshot identity: every discovered path with its content hash when captured, or its disposition. Files
@@ -15,8 +16,9 @@ const LOCATION_RULES = new Set<string | null>(['gitignore', ...EXCLUDED_DIRS.map
  */
 /** A captured file's disposition detail stays out of the hash, except a revoked SCIP grant: the census names it, so the snapshot that does is a different one (A38). */
 export const manifestHash = (discovered: Discovered[], hashOf: (p: string) => string | undefined, censusVersion: string = CENSUS_VERSION): string =>
-  sha256(`census ${censusVersion}\n` + discovered.filter((d) => !(d.status === 'excluded' && LOCATION_RULES.has(d.detail)))
-    .map((d) => `${d.path}\t${hashOf(d.path) ?? '-'}\t${d.status === 'capture' ? (d.detail?.startsWith('scip_revoked:') ? `capture:${d.detail}` : 'capture') : `${d.status}:${d.detail}`}`).join('\n'))
+  sha256(`census ${censusVersion}\n` + discovered.filter((d) => !(d.status === 'excluded' && isLocationRule(d.detail)))
+    // A file flagged generated is a different snapshot from the same file unflagged: a .gitattributes edit changes no captured content (FR299).
+    .map((d) => `${d.path}\t${hashOf(d.path) ?? '-'}\t${d.status === 'capture' ? (d.detail?.startsWith('scip_revoked:') ? `capture:${d.detail}` : 'capture') + (d.generated ? ':generated' : '') : `${d.status}:${d.detail}`}`).join('\n'))
 
 export type Change = { path: string; change: 'added' | 'modified' | 'deleted' }
 

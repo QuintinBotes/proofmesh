@@ -110,7 +110,7 @@ export function detectLanguage(rel: string, probe: (bytes?: number) => string | 
 /** Everything detection decides by, for the census version: change a rule or a table entry and the census is rebuilt. */
 export const DETECTION_RULES = {
   // Bump when detectLanguage's logic changes without changing any of the data below.
-  revision: '2',
+  revision: '3',
   adapterNames: ADAPTER_LANGUAGE_NAMES, renamed: RENAMED, templates: [...TEMPLATES], markupCode: [...MARKUP_CODE],
   preferredExtension: PREFERRED_EXTENSION, preferredInterpreter: PREFERRED_INTERPRETER,
   patterns: [COMMENTS_AND_STRINGS.source, CPP.source, OBJC.source, PLAUSIBLE_EXTENSION.source], headerBytes: HEADER_BYTES,

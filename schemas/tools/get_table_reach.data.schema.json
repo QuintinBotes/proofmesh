@@ -60,6 +60,10 @@
                 "path": {
                   "type": "string"
                 },
+                "generated": {
+                  "type": "boolean",
+                  "description": "Present and true when the file is generated (FR292); absent otherwise."
+                },
                 "key": {
                   "type": "string",
                   "description": "The stable_key of the symbol (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file."
@@ -142,6 +146,10 @@
                     "inferred"
                   ],
                   "description": "inferred when a hop of the chain that reaches the endpoint or job is inferred, or the link from the table to that chain is."
+                },
+                "generated": {
+                  "type": "boolean",
+                  "description": "Present and true when the file is generated (FR292); absent otherwise."
                 },
                 "key": {
                   "type": "string",
@@ -313,6 +321,10 @@
                 }
               }
             }
+          },
+          "generated": {
+            "type": "boolean",
+            "description": "Present and true when the file is generated (FR292); absent otherwise."
           },
           "key": {
             "type": "string",

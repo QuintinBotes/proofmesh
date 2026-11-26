@@ -136,6 +136,10 @@
                 "type": "integer",
                 "minimum": 1
               },
+              "generated": {
+                "type": "boolean",
+                "description": "Present and true when the file is generated (FR292); absent otherwise."
+              },
               "key": {
                 "type": "string",
                 "description": "The stable_key of the symbol on the far side (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file."
@@ -159,6 +163,10 @@
               },
               "end_line": {
                 "type": "integer"
+              },
+              "generated": {
+                "type": "boolean",
+                "description": "Present and true when the file is generated (FR292); absent otherwise."
               }
             }
           },
@@ -257,6 +265,10 @@
           "calls_name": {
             "type": "boolean",
             "description": "True when the unresolved site calls the subject's name."
+          },
+          "generated": {
+            "type": "boolean",
+            "description": "Present and true when the file is generated (FR292); absent otherwise."
           },
           "from_key": {
             "type": "string",

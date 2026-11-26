@@ -393,6 +393,10 @@
               "line": {
                 "type": "integer",
                 "minimum": 1
+              },
+              "generated": {
+                "type": "boolean",
+                "description": "Present and true when the file is generated (FR292); absent otherwise."
               }
             }
           }

@@ -159,8 +159,16 @@
               "tier": {
                 "type": "string",
                 "description": "The tier that produced the file's facts: precise:<adapter>, scip:<index> or syntax. Absent on files no adapter analysed."
+              },
+              "generated": {
+                "const": "true",
+                "description": "Present on a generated file: indexed like any other and flagged (FR292)."
               }
             }
+          },
+          "generated": {
+            "type": "boolean",
+            "description": "Present and true when the file is generated (FR292); absent otherwise."
           }
         }
       },
@@ -204,6 +212,10 @@
           "key": {
             "type": "string",
             "description": "The stable_key of the hub (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file."
+          },
+          "generated": {
+            "type": "boolean",
+            "description": "Present and true when the file is generated (FR292); absent otherwise."
           }
         }
       }
@@ -266,6 +278,10 @@
                 },
                 "assertion_id": {
                   "type": "string"
+                },
+                "generated": {
+                  "type": "boolean",
+                  "description": "Present and true when the file is generated (FR292); absent otherwise."
                 }
               }
             }
@@ -799,6 +815,16 @@
               "null"
             ],
             "description": "Advice only: what a person can do to deepen the row. The census runs nothing and installs nothing."
+          },
+          "generated": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Files of this language flagged generated, already counted in files (FR297). Absent on a snapshot sealed before the policy."
+          },
+          "vendored": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Files of this language left out as vendored, already counted in files (FR297). Absent on a snapshot sealed before the policy."
           }
         }
       }
@@ -810,7 +836,8 @@
         "mode",
         "config",
         "generated_sources",
-        "dependencies"
+        "dependencies",
+        "generated_policy"
       ],
       "description": "How the snapshot was analysed (FR004): discovery's rules, what happens to generated source, and each adapter's external inputs.",
       "properties": {
@@ -871,6 +898,14 @@
               }
             }
           }
+        },
+        "generated_policy": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "The generated and vendored code policy (FR296): the markers, attributes and paths used, and what is done with each kind of file. The policy the snapshot was built with; null for a snapshot sealed before it was recorded.",
+          "additionalProperties": true
         }
       }
     }
