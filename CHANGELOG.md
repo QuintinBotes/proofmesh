@@ -14,6 +14,11 @@ A dying adapter fails the index with its name and exit status, instead of crashi
 - While an adapter runs, SIGINT, SIGTERM and SIGHUP stop every adapter's process group and exit 130, 143 or 129, because detached adapters no longer get the terminal's SIGINT and a killed index runs no cleanup. Every built-in adapter exits when its input ends (tested for each; the C# one in Docker).
 - Not done: partial or resumable snapshots after an adapter failure (a follow-up issue).
 
+Reproducible order (closes #70):
+
+- Rows that tie on rank are now ordered by repository-relative path, then position, then name, then kind, instead of by ids that depend on where the repository is checked out, so the same repository in two directories gives the same rows in the same order from every tool. Rosetta now asserts row order for every call (FR234).
+- A page of `get_relationships` is read from an index on the site order, which snapshot format 0.10 records for each assertion and candidate (the next index rebuilds; an older snapshot still answers, in the same order, more slowly on a hub) (FR235). A member reached through its class and by its `overrides` edge is labelled `overrides` in impact (FR236); partial declarations on one line in `compare_snapshots` and tests on one line in `find_tests` are ordered by byte position (FR237, FR238).
+
 HTTP seams in one repository (closes #12; FR250 to FR259):
 
 - The TypeScript adapter records `fetch` and `axios` calls (`axios.<verb>`, `axios(...)`, `axios.request`, `axios.create` clients) with a literal, template, concatenated or constant path as outbound `dispatches_to` endpoints, rules `fetch_client` and `axios_client`, named `VERB path` as the Python client rule names them. A path on a base the code does not state keeps its literal suffix with `detail.prefix_unknown`.

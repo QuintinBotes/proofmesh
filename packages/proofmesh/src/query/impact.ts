@@ -1,4 +1,5 @@
 import type Database from 'better-sqlite3'
+import { assertionKey, byKey, cmp, nodeKey } from '../meshstore/order.js'
 import { type Basis, inferredSql } from './basis.js'
 import { areaOf } from './galaxy.js'
 import { candidatesTo, sitesNaming } from './inferred.js'
@@ -20,7 +21,7 @@ export type Impact = {
 const NODE_BUDGET = 50000
 
 /** The first line of an assertion's evidence: for an import, the statement. */
-const siteOf = (db: Database.Database, assertion: string) => db.prepare('select f.path, e.start_line from assertion_evidence ae join evidence e on e.id = ae.evidence_id join file f on f.id = e.file_id where ae.assertion_id = ? order by e.start_byte limit 1').get(assertion) as { path: string; start_line: number }
+const siteOf = (db: Database.Database, assertion: string) => db.prepare('select f.path, e.start_line from assertion_evidence ae join evidence e on e.id = ae.evidence_id join file f on f.id = e.file_id where ae.assertion_id = ? order by f.path, e.start_byte limit 1').get(assertion) as { path: string; start_line: number }
 export const TYPE_KINDS = new Set(['class', 'interface', 'struct', 'enum', 'type_alias'])
 
 const memo = new Map<string, { membersOf: Map<string, string[]>; kindOf: Map<string, string> }>()
@@ -78,7 +79,8 @@ export function analyzeImpact(db: Database.Database, snapshotId: string, subject
     /** The assertion that first reached each node. */
     const via = new Map<string, string>()
     const reach = (id: string, depth: number, into: string[], assertion?: string) => {
-      if (assertion && !depthOf.has(id)) via.set(id, assertion)
+      // A node already reached at this depth by dispatch alone takes the edge's label, so overrides is not hidden by which came first.
+      if (assertion && (!depthOf.has(id) || (depthOf.get(id) === depth && !via.has(id)))) via.set(id, assertion)
       const queue = [id]
       while (queue.length) {
         const n = queue.pop()!
@@ -95,12 +97,15 @@ export function analyzeImpact(db: Database.Database, snapshotId: string, subject
     for (let depth = 1; frontier.length; depth++) {
       if (depth > maxDepth) { stopped = 'max_depth'; break }
       const next: string[] = []
+      // Taken in the order of where the nodes sit, so which edge reaches a node first does not depend on ids.
+      frontier.sort(byKey((n) => nodeKey(db, n)))
       for (let i = 0; i < frontier.length; i += 500) {
         const chunk = frontier.slice(i, i + 500)
         // An external subject is reached only through calls that resolved to it; nothing else points at an external.
         const rows = db.prepare(`select e.src, e.dst, e.type, e.assertion_id, ${inferredSql()} as inferred from edge e join assertion a on a.id = e.assertion_id where e.dst in (${chunk.map(() => '?').join(',')}) and e.type in (${types.map(() => '?').join(',')}) and e.resolution in ('resolved', 'resolved_external')`).all(...chunk, ...types) as Array<{ src: string; dst?: string; type?: string; assertion_id: string; inferred: number }>
         // A candidate site names its callers through assertion_candidate; it is an edge only while following (FR202).
         if (candidates) rows.push(...candidatesTo(db, chunk, types).map((c) => ({ src: c.src, assertion_id: c.assertion_id, inferred: 1 })))
+        rows.sort((x, y) => cmp(assertionKey(db, x.assertion_id), assertionKey(db, y.assertion_id)) || cmp(nodeKey(db, x.src), nodeKey(db, y.src)) || cmp(x.assertion_id, y.assertion_id))
         for (const r of rows) {
           if (r.dst && upward.has(r.dst) && (r.type === 'implements' || r.type === 'overrides')) continue
           if (r.inferred) sawInferred = true
@@ -151,7 +156,7 @@ export function analyzeImpact(db: Database.Database, snapshotId: string, subject
   const projects = found.map((id) => projectOf(id) ?? '(no project)')
   const byDepth: Record<string, number> = {}
   for (const id of found) byDepth[String(depthOf.get(id))] = (byDepth[String(depthOf.get(id))] ?? 0) + 1
-  const ordered = found.sort((a, b) => depthOf.get(a)! - depthOf.get(b)! || (info.get(a)!.qualified_name < info.get(b)!.qualified_name ? -1 : 1))
+  const ordered = found.sort((a, b) => depthOf.get(a)! - depthOf.get(b)! || cmp(info.get(a)!.qualified_name, info.get(b)!.qualified_name) || cmp(nodeKey(db, a), nodeKey(db, b)) || cmp(a, b))
   return {
     dependents: ordered.slice(0, maxRows).map((id) => { const s = info.get(id)!; return { id, kind: s.kind, name: s.name, qualified_name: s.qualified_name, path: s.path, project: projectOf(id), depth: depthOf.get(id)!, basis: basisOf(id), ...(s.kind === 'file' && via.has(id) ? { site: siteOf(db, via.get(id)!) } : {}) } }),
     totals: {

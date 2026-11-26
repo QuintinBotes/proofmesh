@@ -74,12 +74,12 @@
         "calls_circle_area": {
           "rows": [
             {
-              "role": "circleArea",
-              "row": "circle_area shapes.py:30"
-            },
-            {
               "role": "total",
               "row": "total shapes.py:25 dispatch"
+            },
+            {
+              "role": "circleArea",
+              "row": "circle_area shapes.py:30"
             }
           ]
         },
