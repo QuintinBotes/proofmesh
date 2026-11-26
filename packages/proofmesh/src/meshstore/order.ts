@@ -45,6 +45,10 @@ export const evidenceKey = (db: Database.Database, id: string): string => cached
 
 /** Where an assertion is made (its first evidence), then its type, then the node on its far side. */
 export const assertionKey = (db: Database.Database, id: string): string => cached(db, of(db).assertion, id, () => {
+  if (hasSites(db)) {
+    const r = db.prepare('select site_path, site_byte, type from assertion where id = ?').get(id) as { site_path: string; site_byte: number; type: string } | undefined
+    return r ? [r.site_path, pad(r.site_byte), r.type].join(SEP) : ''
+  }
   const e = db.prepare('select f.path, e.start_byte, a.type from assertion a left join assertion_evidence ae on ae.assertion_id = a.id left join evidence e on e.id = ae.evidence_id left join file f on f.id = e.file_id where a.id = ? order by f.path, e.start_byte limit 1').get(id) as { path: string | null; start_byte: number | null; type: string } | undefined
   return e ? [e.path ?? '', pad(e.start_byte), e.type].join(SEP) : ''
 })
@@ -52,11 +56,17 @@ export const assertionKey = (db: Database.Database, id: string): string => cache
 /** Order ids by key, an id deciding only between two keys that are equal. */
 export const byKey = (key: (id: string) => string) => (a: string, b: string): number => cmp(key(a), key(b)) || cmp(a, b)
 
-/** Select columns that give an assertion row its location key; the far side is the target for an outgoing row and the source for an incoming one. */
-export const siteColumns = (a: string, far: 'target_id' | 'source_id'): string =>
-  `(select f.path from assertion_evidence ae join evidence e on e.id = ae.evidence_id join file f on f.id = e.file_id where ae.assertion_id = ${a}.id order by f.path, e.start_byte limit 1) as _path,
-   (select e.start_byte from assertion_evidence ae join evidence e on e.id = ae.evidence_id join file f on f.id = e.file_id where ae.assertion_id = ${a}.id order by f.path, e.start_byte limit 1) as _byte,
-   coalesce((select s.qualified_name from symbol s where s.id = ${a}.${far}), (select x.module || ':' || x.name from external_symbol x where x.id = ${a}.${far}), (select p.path from file p where p.id = ${a}.${far}), '') as _far`
-export const SITE_ORDER = '_path, _byte, type, _far, id'
-export type Sited = { id: string; type: string; _path: string | null; _byte: number | null; _far: string }
-export const bySite = (x: Sited, y: Sited): number => cmp(x._path ?? '', y._path ?? '') || (x._byte ?? 0) - (y._byte ?? 0) || cmp(x.type, y.type) || cmp(x._far, y._far) || cmp(x.id, y.id)
+/** Whether the snapshot holds the site of each assertion (format 0.10); an older one works it out per row. */
+const sited = new WeakMap<Database.Database, boolean>()
+export const hasSites = (db: Database.Database): boolean => {
+  let v = sited.get(db)
+  if (v === undefined) sited.set(db, (v = db.prepare("select 1 from pragma_table_info('assertion') where name = 'site_path'").get() !== undefined))
+  return v
+}
+const FIRST = (a: string, col: string) => `(select ${col} from assertion_evidence ae join evidence e on e.id = ae.evidence_id join file f on f.id = e.file_id where ae.assertion_id = ${a}.id order by f.path, e.start_byte limit 1)`
+/** Select columns giving an assertion row its site; `by` is the alias whose columns hold it (an assertion, or its candidate row). */
+export const siteCols = (db: Database.Database, a = 'a', by = a): string => hasSites(db) ? `${by}.site_path as _path, ${by}.site_byte as _byte` : `${FIRST(a, 'f.path')} as _path, ${FIRST(a, 'e.start_byte')} as _byte`
+/** The order of rows by site, then type, then id, written so an index leading with the filtered column serves it. */
+export const siteOrder = (db: Database.Database, a = 'a', by = a, id = `${by}.id`): string => hasSites(db) ? `${by}.site_path, ${by}.site_byte, ${by}.type, ${id}` : '_path, _byte, type, id'
+export type Sited = { id: string; type: string; _path: string | null; _byte: number | null }
+export const bySite = (x: Sited, y: Sited): number => cmp(x._path ?? '', y._path ?? '') || (x._byte ?? 0) - (y._byte ?? 0) || cmp(x.type, y.type) || cmp(x.id, y.id)

@@ -171,7 +171,7 @@ export function testReach(db: Database.Database, snapshotId: string, subjects: s
     listed.add(r.file)
     rows.push({ id: r.file, kind: 'file', name: r.path.slice(r.path.lastIndexOf('/') + 1), qualified_name: r.path, path: r.path, project: projectOfFile.get(r.file) ?? null, line: r.line, depth: 1, evidence: 'import_only', basis: basisOf(r)! })
   }
-  rows.sort((a, b) => EVIDENCE.indexOf(a.evidence) - EVIDENCE.indexOf(b.evidence) || a.depth - b.depth || cmp(a.path, b.path) || a.line - b.line || cmp(a.qualified_name, b.qualified_name) || cmp(a.kind, b.kind) || cmp(nodeKey(db, a.id), nodeKey(db, b.id)) || cmp(a.id, b.id))
+  rows.sort((a, b) => EVIDENCE.indexOf(a.evidence) - EVIDENCE.indexOf(b.evidence) || a.depth - b.depth || cmp(a.path, b.path) || a.line - b.line || cmp(nodeKey(db, a.id), nodeKey(db, b.id)) || cmp(a.id, b.id))
 
   // Each hop names a symbol and the line of its call toward the subject; the last names the subject at its declaration (FR103).
   const site = db.prepare('select f.path, e.start_line as line from assertion_evidence ae join evidence e on e.id = ae.evidence_id join file f on f.id = e.file_id where ae.assertion_id = ? order by f.path, e.start_byte limit 1')

@@ -7,6 +7,7 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 Reproducible order (closes #70):
 
 - Rows that tie on rank are now ordered by repository-relative path, then position, then name, then kind, instead of by ids that depend on where the repository is checked out, so the same repository in two directories gives the same rows in the same order from every tool. Rosetta now asserts row order for every call (FR234).
+- A page of `get_relationships` is read from an index on the site order, which snapshot format 0.10 records for each assertion and candidate (the next index rebuilds; an older snapshot still answers, in the same order, more slowly on a hub) (FR235). A member reached through its class and by its `overrides` edge is labelled `overrides` in impact (FR236); partial declarations on one line in `compare_snapshots` and tests on one line in `find_tests` are ordered by byte position (FR237, FR238).
 
 Pinned SCIP indexers for a trusted repository (closes #23, option B; amends A24 as A38; FR227 to FR230):
 

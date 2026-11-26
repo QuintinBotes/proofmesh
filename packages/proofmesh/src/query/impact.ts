@@ -79,7 +79,8 @@ export function analyzeImpact(db: Database.Database, snapshotId: string, subject
     /** The assertion that first reached each node. */
     const via = new Map<string, string>()
     const reach = (id: string, depth: number, into: string[], assertion?: string) => {
-      if (assertion && !depthOf.has(id)) via.set(id, assertion)
+      // A node already reached at this depth by dispatch alone takes the edge's label, so overrides is not hidden by which came first.
+      if (assertion && (!depthOf.has(id) || (depthOf.get(id) === depth && !via.has(id)))) via.set(id, assertion)
       const queue = [id]
       while (queue.length) {
         const n = queue.pop()!

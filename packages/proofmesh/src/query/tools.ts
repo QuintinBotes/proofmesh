@@ -9,7 +9,7 @@ import { FORMAT_VERSION, openSnapshot } from '../meshstore/snapshot.js'
 import { PROTOCOL_VERSION } from '../indexer/adapter-host.js'
 import { LINK_FORMAT_VERSION } from '../links/index.js'
 import { DISPATCH_TYPES, SqliteEdges, trace } from '../meshstore/traversal.js'
-import { assertionKey, bySite, byKey, evidenceKey, nodeKey, siteColumns, SITE_ORDER, type Sited } from '../meshstore/order.js'
+import { assertionKey, bySite, byKey, evidenceKey, hasSites, nodeKey, siteCols, siteOrder, type Sited } from '../meshstore/order.js'
 import { staticPropertyReads } from './static-reads.js'
 import { externalUsage, type UsageGroup } from './external-usage.js'
 import { findQuerySource, WEIGHED } from './query-source.js'
@@ -518,7 +518,7 @@ function incomingBoundaries(ctx: Ctx, subject: string, via: Map<string, string>)
   const arity = parameterCount(subj.signature)
   const byName = `from assertion a where a.type = 'calls' and a.resolution = 'unresolved' and json_extract(a.detail, '$.callee') = ?`
   const nameMatched = (db.prepare(`select count(*) as n ${byName}`).get(subj.name) as { n: number }).n
-  const matched = db.prepare(`select a.id, a.type, a.resolution, a.reason, a.source_id, (json_extract(a.detail, '$.arity') = ?) as _arity, ${siteColumns('a', 'source_id')} ${byName} order by _arity desc, ${SITE_ORDER} limit ?`).all(arity === null ? null : String(arity), subj.name, limit) as Row[]
+  const matched = db.prepare(`select a.id, a.type, a.resolution, a.reason, a.source_id, (json_extract(a.detail, '$.arity') = ?) as _arity, ${siteCols(db)} ${byName} order by _arity desc, ${siteOrder(db)} limit ?`).all(arity === null ? null : String(arity), subj.name, limit) as Row[]
   const dir = subj.path.slice(0, subj.path.lastIndexOf('/') + 1)
   const nearest = (prefix: string, n: number, exclude: string[]): Row[] => n <= 0 ? [] : db.prepare(`select a.id, a.type, a.resolution, a.reason, a.source_id from assertion a join assertion_evidence ae on ae.assertion_id = a.id join evidence e on e.id = ae.evidence_id join file f on f.id = e.file_id
     where a.resolution = 'unresolved' and a.type = 'calls' and a.source_id <> ? and coalesce(json_extract(a.detail, '$.callee'), '') <> ? and f.path like ? escape '\\'${exclude.length ? ` and a.id not in (${exclude.map(() => '?').join(',')})` : ''} group by a.id order by min(f.path), min(e.start_byte), (select s.qualified_name from symbol s where s.id = a.source_id), a.id limit ?`).all(subject, subj.name, `${prefix.replace(/[\\%_]/g, (c) => `\\${c}`)}%`, ...exclude, n) as Row[]
@@ -526,7 +526,7 @@ function incomingBoundaries(ctx: Ctx, subject: string, via: Map<string, string>)
   const others = Math.min(UNRESOLVED_SHOWN, limit - matched.length)
   const near = nearest(dir, others, [])
   const rows = [
-    ...(db.prepare(`select distinct a.id, a.type, a.resolution, a.reason, a.source_id, ${siteColumns('a', 'source_id')} ${candidates} order by ${SITE_ORDER} limit ?`).all(...named, limit) as Row[]),
+    ...(db.prepare(`select distinct a.id, a.type, a.resolution, a.reason, a.source_id, ${siteCols(db)} ${candidates} order by ${siteOrder(db)} limit ?`).all(...named, limit) as Row[]),
     ...matched,
     ...near,
     ...nearest('', others - near.length, near.map((r) => r.id)),
@@ -547,7 +547,7 @@ function incomingBoundaries(ctx: Ctx, subject: string, via: Map<string, string>)
 function boundariesFrom(db: Database.Database, types: string[], where: string, limit: number, ...params: unknown[]): Boundaries {
   const from = `from assertion a where a.type in (${types.map(() => '?').join(',')}) and a.resolution in ('unresolved','candidate','ambiguous') and ${where}`
   const groups = db.prepare(`select a.resolution, a.reason, count(*) as n ${from} group by a.resolution, a.reason`).all(...types, ...params) as Array<{ resolution: string; reason: string | null; n: number }>
-  const rows = db.prepare(`select a.id, a.type, a.resolution, a.reason, a.source_id, ${siteColumns('a', 'source_id')} ${from} order by ${SITE_ORDER} limit ?`).all(...types, ...params, limit) as Array<{ id: string; type: string; resolution: string; reason: string; source_id: string }>
+  const rows = db.prepare(`select a.id, a.type, a.resolution, a.reason, a.source_id, ${siteCols(db)} ${from} order by ${siteOrder(db)} limit ?`).all(...types, ...params, limit) as Array<{ id: string; type: string; resolution: string; reason: string; source_id: string }>
   return {
     count: groups.reduce((n, g) => n + g.n, 0),
     by_reason: Object.fromEntries(groups.filter((g) => g.resolution === 'unresolved' && g.reason).map((g) => [g.reason!, g.n])),
@@ -1106,13 +1106,20 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     const notTest = (side: string) => input.include_tests === false ? ` and coalesce((select pm_is_test(f.path, ${rolesSql(ctx.db)}) from symbol s join file f on f.id = s.file_id where s.id = ${side}), (select pm_is_test(f.path) from file f where f.id = ${side}), 0) = 0` : ''
     type A = Sited & { origin: string; resolution: string; source_kind: string; source_id: string; target_kind: string | null; target_id: string | null; reason: string | null; detail: string | null }
     const all: Array<A & { direction: 'in' | 'out' }> = []
-    // Outgoing then incoming, each by assertion ID: fetching offset + cap of each keeps every page a slice of one total order.
+    // Outgoing then incoming, each by site (path, then position), then type, then id: fetching offset + cap of each keeps every page a slice of one total order.
     const offset = ctx.page.offset, cap = offset + ctx.limits.max_rows + 1
     // Ownership is recorded on the file module (FR016); every symbol in the file inherits its owners.
     const inherited = !isFile && !isExternal && direction !== 'in' && types.includes('owned_by')
-      ? ctx.db.prepare(`select a.*, ${siteColumns('a', 'target_id')} from assertion a join symbol m on m.id = a.source_id where m.kind = 'module' and m.id <> ? and m.file_id = (select file_id from symbol where id = ?) and a.type = 'owned_by' and a.resolution in (${rp})`).all(subject, subject, ...resolutions) as A[]
+      ? ctx.db.prepare(`select a.*, ${siteCols(ctx.db)} from assertion a join symbol m on m.id = a.source_id where m.kind = 'module' and m.id <> ? and m.file_id = (select file_id from symbol where id = ?) and a.type = 'owned_by' and a.resolution in (${rp})`).all(subject, subject, ...resolutions) as A[]
       : []
-    if (direction !== 'in') all.push(...[...(ctx.db.prepare(`select a.*, ${siteColumns('a', 'target_id')} from (select * from assertion where source_id in (${sp}) and type in (${tp}) and resolution in (${rp})${outFilter}${notTest('assertion.target_id')}) a order by ${SITE_ORDER} limit ?`).all(...ids, ...types, ...resolutions, cap) as A[]), ...inherited].sort(bySite).slice(0, cap).map((a) => ({ ...a, direction: 'out' as const })))
+    // The unary plus keeps type and resolution out of the index lookup, so the index order of the site is what the query returns.
+    // One index-ordered read for each id the subject answers to, so no read sorts more than the rows it returns.
+    const indexed = (idx: string) => (hasSites(ctx.db) ? ` indexed by ${idx}` : '')
+    const mergeInto = (rows: A[][], dir: 'in' | 'out') => {
+      const seen = new Set<string>()
+      return rows.flat().filter((a) => !seen.has(a.id) && seen.add(a.id)).sort(bySite).slice(0, cap).map((a) => ({ ...a, direction: dir }))
+    }
+    if (direction !== 'in') all.push(...mergeInto([...ids.map((id) => ctx.db.prepare(`select a.*, ${siteCols(ctx.db)} from assertion a${indexed('assertion_by_source_site')} where a.source_id = ? and +a.type in (${tp}) and +a.resolution in (${rp})${outFilter}${notTest('a.target_id')} order by ${siteOrder(ctx.db)} limit ?`).all(id, ...types, ...resolutions, cap) as A[]), inherited], 'out'))
     // Inbound: assertions that target the subject, and candidate or ambiguous calls whose candidates name it (A18). A call or reference
     // to a member the subject implements or overrides may dispatch to it, so those come too, each saying which member it named.
     const via = !isFile && !isExternal && direction !== 'out' ? dispatchedFrom(ctx.db, subject) : new Map<string, string>()
@@ -1120,7 +1127,11 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     const vp = [...via.keys()].map(() => '?').join(','), dp = dispatched.map(() => '?').join(','), np = named.map(() => '?').join(',')
     const inbound = `select * from assertion where (target_id in (${sp}) and type in (${tp})${via.size && dispatched.length ? ` or target_id in (${vp}) and type in (${dp})` : ''}) and resolution in (${rp})${notTest('assertion.source_id')} union select a.* from assertion_candidate c join assertion a on a.id = c.assertion_id where c.symbol_id in (${np}) and a.type in (${tp}) and a.resolution in (${rp})${notTest('a.source_id')}`
     const inboundParams = [...ids, ...types, ...(via.size && dispatched.length ? [...via.keys(), ...dispatched] : []), ...resolutions, ...named, ...types, ...resolutions]
-    if (direction !== 'out') all.push(...(ctx.db.prepare(`select a.*, ${siteColumns('a', 'source_id')} from (${inbound}) a order by ${SITE_ORDER} limit ?`).all(...inboundParams, cap) as A[]).map((a) => ({ ...a, direction: 'in' as const })))
+    if (direction !== 'out') {
+      const byTarget = (id: string, tys: string[]) => ctx.db.prepare(`select a.*, ${siteCols(ctx.db)} from assertion a${indexed('assertion_by_target_site')} where a.target_id = ? and +a.type in (${tys.map(() => '?').join(',')}) and +a.resolution in (${rp})${notTest('a.source_id')} order by ${siteOrder(ctx.db)} limit ?`).all(id, ...tys, ...resolutions, cap) as A[]
+      const byCandidate = (id: string) => ctx.db.prepare(`select a.*, ${siteCols(ctx.db, 'a', 'c')} from assertion_candidate c${indexed('candidate_by_site')} join assertion a on a.id = c.assertion_id where c.symbol_id = ? and +a.type in (${tp}) and +a.resolution in (${rp})${notTest('a.source_id')} order by ${siteOrder(ctx.db, 'a', 'c', 'c.assertion_id')} limit ?`).all(id, ...types, ...resolutions, cap) as A[]
+      all.push(...mergeInto([...ids.map((id) => byTarget(id, types)), ...(via.size && dispatched.length ? [...via.keys()].map((id) => byTarget(id, dispatched)) : []), ...named.map(byCandidate)], 'in'))
+    }
     const viaOf = (a: A & { direction: 'in' | 'out' }): string | undefined => {
       if (a.direction !== 'in' || !via.size) return undefined
       if (a.target_id) return via.has(a.target_id) ? a.target_id : undefined

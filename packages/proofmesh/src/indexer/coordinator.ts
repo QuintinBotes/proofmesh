@@ -305,6 +305,7 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
         }
       })()
       // Hashing needs each file's captured text and the declared spans, so it follows the last write and costs adapters nothing (FR130).
+      fillSites(db)
       const unreadable = fillBodyHashes(db, store)
       if (unreadable.length) db.prepare("insert into meta (key, value) values ('body_hash_missing', ?)").run(canonicalJson({ count: unreadable.length, paths: unreadable.slice(0, 20) }))
       // A key the core had to disambiguate means an adapter named two declarations alike: recorded, never silent (FR147).
@@ -558,6 +559,13 @@ class FactWriter {
 }
 
 /** Publication contract: every check must pass before a snapshot can be sealed. */
+/** The site rows are ordered by, from each assertion's first evidence by path then position, so a page of rows is read in that order without sorting them all (FR234). */
+function fillSites(db: Database.Database): void {
+  const first = (col: string) => `(select ${col} from assertion_evidence ae join evidence e on e.id = ae.evidence_id join file f on f.id = e.file_id where ae.assertion_id = assertion.id order by f.path, e.start_byte limit 1)`
+  db.exec(`update assertion set site_path = coalesce(${first('f.path')}, ''), site_byte = coalesce(${first('e.start_byte')}, 0)`)
+  db.exec('update assertion_candidate set type = a.type, site_path = a.site_path, site_byte = a.site_byte from assertion a where a.id = assertion_candidate.assertion_id')
+}
+
 function validate(db: Database.Database, store: EvidenceStore): void {
   const fail = (what: string) => { throw new ProofmeshError('INTERNAL_ERROR', `snapshot validation failed: ${what}`) }
   const one = <T>(sql: string) => db.prepare(sql).get() as T
