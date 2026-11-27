@@ -1,4 +1,4 @@
-// What a Go or Java call site says about its callee beyond the name (FR171 to FR176): the qualifier written before it, whether that
+// What a Go, Java or Rust call site says about its callee beyond the name (FR171 to FR176): the qualifier written before it, whether that
 // qualifier is a variable declared in scope (which then hides a package or type of the same name), and whether the call is `new`.
 // The core binds the name from these facts and the module graph; this file only reads syntax.
 import type { Node } from 'web-tree-sitter'
@@ -69,6 +69,12 @@ function chain(n: Node | null): string | null {
 
 /** The facts of one call: `callee` is the name node, `call` the call expression (a Go call_expression, a Java method_invocation or object_creation_expression). */
 export function callFacts(lang: string, call: Node, callee: Node): CallFacts {
+  // A Rust path call names its qualifier as written before the last `::` (FR501).
+  if (lang === 'rust') {
+    const fn = call.childForFieldName('function'), path = fn?.type === 'scoped_identifier' ? fn.childForFieldName('path') : null
+    // Spaces matter inside `<T as Trait>`, so only those around `::` go.
+    return path ? { qualifier: path.text.replace(/\s*::\s*/g, '::').replace(/\s+/g, ' ') } : {}
+  }
   if (lang !== 'go' && lang !== 'java') return {}
   if (call.type === 'object_creation_expression') {
     let type = call.childForFieldName('type')

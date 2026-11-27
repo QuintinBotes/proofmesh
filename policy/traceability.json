@@ -1483,6 +1483,12 @@
     ],
     "FR441": [
       "packages/proofmesh/test/stable-keys.test.ts"
+    ],
+    "FR500": [
+      "packages/proofmesh/test/syntax-rust-path-calls.test.ts"
+    ],
+    "FR501": [
+      "packages/proofmesh/test/syntax-rust-path-calls.test.ts"
     ]
   },
   "manual": {
