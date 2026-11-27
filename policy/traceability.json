@@ -1934,6 +1934,9 @@
     ],
     "FR1085": [
       "packages/proofmesh/test/snapshot-transfer.test.ts"
+    ],
+    "FR1010": [
+      "packages/proofmesh/test/typescript-references.test.ts"
     ]
   },
   "manual": {

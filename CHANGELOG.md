@@ -9,6 +9,11 @@ A Composer `require-dev` package is for tests only (closes #180; FR1040):
 - A `require-dev` entry was recorded like a `require` one, with no scope, so a main source (`src/`) bound names of a package it may only use in development. Its `depends_on` or `depends_on_package` row now carries `detail.scope` `test`, as Cargo's `dev-dependencies` do. A main source's call or `use` into such a package keeps its row (`outside_capability`); a file under the project's `autoload-dev` directories (or `src/test` and the like) still binds it.
 - Upgrade note: `RESOLUTION_VERSION` is 6, so no snapshot bound by the earlier rules is reused.
 
+A type query of a function or variable is a reference (closes #175; FR1010):
+
+- `typeof f`, where `f` is a repository function, method or variable, recorded no `references` row: the TypeScript adapter kept a type query only of a class, interface, enum or type alias. It is now a `references` relationship from the symbol that holds it, `detail.use` `typeof`. So a function used only in a type has an inbound use, and `find_unused` no longer lists it: on the parity fixture, `EJSONserialize`, `EJSONdeserialize`, `parse` and `stringify` of `bson.typings.ts` (used only in the type of `EJSON`) left Q10, whose precision went from 95% to 100%.
+- The TypeScript adapter is 0.2.3, so facts cached by 0.2.2 are not replayed.
+
 A task context map: the code around a focus, ranked, within a byte budget (issue #33; FR920 to FR924):
 
 - `get_context_map`, in the `data` tool profile and lean by default, takes a focus (`paths`, `symbols`, or a diff from `base`), a `budget_bytes` (default 4,096) and a `max_depth` (default 2). It answers one row per declaration around the focus, in both directions, `<name> <path>:<line> <relation> depth=<n>`: what calls, implements, imports, references or tests the focus, and what the focus calls, implements, imports and references, with dispatch followed and candidate edges marked ` inferred`. A diff's changed declarations are rows marked `changed`. The answer never exceeds the budget, and a cursor pages the rest.
