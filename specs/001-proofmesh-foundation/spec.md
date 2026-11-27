@@ -494,6 +494,17 @@ The Claude Code plugin's hooks module (a mod, Claude Code 2.1.287 and later) is 
 - FR486: MUST reach ProofMesh only through `$.process.run` (the CLI) and `$.mcp.call` on the plugin's own `proofmesh` MCP server, calling only tools that the server `.mcp.json` starts lists, and asking `workspace_status` for a compact envelope so it does not use up the full envelope the agent's first answer from a snapshot gets on the same connection; it reads no source text and makes no network request.
 - FR487: MUST run at most one `proofmesh` process at a time, none after 10 minutes without a tool call, prompt or `/pm-status`, and in a session with no surface (`claude -p`, the Agent SDK) MUST draw nothing and call ProofMesh only when `/pm-status` asks.
 
+### FFI seams between languages
+
+- FR460: MUST link each Java `native` and Kotlin `external` method to the C functions whose JNI name decodes to it (`Java_<class>_<method>`, a `__<signature>` suffix ignored, `_1` `_2` `_3` and `_0xxxx` escapes decoded), as a `calls` row from the method at its declaration, rule `jni`.
+- FR461: MUST link each C# method that a `[DllImport]` or `[LibraryImport]` attribute marks to the C functions of the name its `EntryPoint` gives, else of its own name, anywhere in the repository (the library is matched to no build target), as a `calls` row from the method at its declaration, rule `pinvoke`.
+- FR462: MUST link cgo both ways: a call `C.f(...)` in a Go file that imports `"C"` to the C functions named `f` (rule `cgo`; cgo's own `C.CString`-style helpers and C scalar conversions are left as they were), and a C call of `f` to the Go function a `//export f` comment marks (rule `cgo_export`).
+- FR463: MUST link a Rust call of a function an `extern "C"` block of the same file declares to the C functions of its `link_name` else its name (rule `rust_extern_c`), and a C call of `f` to the Rust function `#[no_mangle]` marks (rule `rust_no_mangle`).
+- FR464: MUST link a Python call `m.f(...)` where `m` is an imported module, or `f(...)` imported from it, to the C function that a `PyMethodDef` entry `{"f", fn, ...}` of extension module `m` (named by `PyInit_m`) registers (rule `python_c_extension`).
+- FR465: MUST make every FFI link a `candidate` (one target) or `ambiguous` (several, at most five listed) `calls` row, origin `contract_match`, never `resolved` (FR023), with the rule in `detail.rule`, so it reads as inferred (FR181) and `analyze_impact` follows it with `include_inferred`; a C target is a definition where the repository has one, else the prototypes that declare it; a call row it binds replaces the unresolved row the adapter wrote at that site.
+- FR466: MUST record an FFI declaration or call whose counterpart is not in the repository as `resolved_external`, named by the C function and by the library where the code writes it (`DllImport` argument, `System.loadLibrary`, `#cgo LDFLAGS: -l`, `#[link(name)]`) in the external's module and `detail.library`, never by a guess.
+- FR467: MUST report in `workspace_status` `data.ffi_seams` the count of FFI rows by mechanism (rule), linked or external, empty when there are none.
+
 ### Impact completeness
 
 - FR108: MUST provide `impact_completeness` with `base`, a commit-ish, optional `head` (omitted, the working tree), `depth` (default 1, at most 5), `include_tests` and the usual limits, and the CLI `proofmesh completeness <repository> <base>[..<head>] [--depth N] [--json]`.

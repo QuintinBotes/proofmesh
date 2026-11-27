@@ -1114,6 +1114,30 @@
     "FR259": [
       "packages/proofmesh/test/seams-http.test.ts"
     ],
+    "FR460": [
+      "packages/proofmesh/test/seams-ffi.test.ts"
+    ],
+    "FR461": [
+      "packages/proofmesh/test/seams-ffi.test.ts"
+    ],
+    "FR462": [
+      "packages/proofmesh/test/seams-ffi.test.ts"
+    ],
+    "FR463": [
+      "packages/proofmesh/test/seams-ffi.test.ts"
+    ],
+    "FR464": [
+      "packages/proofmesh/test/seams-ffi.test.ts"
+    ],
+    "FR465": [
+      "packages/proofmesh/test/seams-ffi.test.ts"
+    ],
+    "FR466": [
+      "packages/proofmesh/test/seams-ffi.test.ts"
+    ],
+    "FR467": [
+      "packages/proofmesh/test/seams-ffi.test.ts"
+    ],
     "FR280": [
       "packages/proofmesh/test/stable-keys-rows.test.ts"
     ],

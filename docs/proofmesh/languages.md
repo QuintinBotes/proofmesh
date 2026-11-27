@@ -210,6 +210,25 @@ A protobuf RPC or a GraphQL root field is where services in different languages 
 - Boundaries, never guesses: a declared RPC or field nothing implements is an unresolved `exposes` (`declared_without_handler`); an operation of a field no contract declares is an unresolved `dispatches_to` with `detail.field`; a field several contracts declare makes its callers `ambiguous`. Generated stubs (`*.pb.go`, `*_pb2_grpc.py`) stay flagged generated and are never taken for implementations.
 - Limitations: code-first GraphQL schemas (decorators, builder APIs such as TypeGraphQL, Nexus or graphene) are not read, so their fields are neither declared nor linked; a resolver given as a shorthand property or a `{ resolve }` object is not read; a gRPC stub of a service the repository does not declare is not recognised, so its calls are neither linked nor listed; proto2 groups are not read. The fixture is `fixtures/seams-schema`.
 
+## FFI seams between languages (FR460 to FR467)
+
+A call across a foreign-function interface is linked to the function on the other side by that mechanism's naming rule. The rule is a convention, so every link is a `candidate` (one target) or `ambiguous` (several) `calls` row, origin `contract_match`, never `resolved`, and reads as inferred; `analyze_impact` with `include_inferred` follows it.
+
+The rules, each from the calling side to the called one:
+
+- `jni`: a Java `native` or Kotlin `external` method, at its declaration, to the C function `Java_<class>_<method>` (a `__<signature>` suffix and the `_1`, `_2`, `_3`, `_0xxxx` escapes are decoded).
+- `pinvoke`: a C# method `[DllImport]` or `[LibraryImport]` marks, at its declaration, to the C functions of its `EntryPoint`, else of its own name, anywhere in the repository.
+- `cgo`: `C.f(...)` in a Go file that imports `"C"`, to the C function `f`.
+- `cgo_export`: a C call of `f`, to the Go function a `//export f` comment marks.
+- `rust_extern_c`: a Rust call of a function an `extern "C"` block of the same file declares, to the C function of its `link_name`, else its name.
+- `rust_no_mangle`: a C call of `f`, to the Rust function `#[no_mangle]` marks.
+- `python_c_extension`: `m.f(...)` with `m` imported, or `f(...)` imported from `m`, to the C function a `PyMethodDef` entry `{"f", fn, ...}` of extension module `m` (`PyInit_m`) registers.
+
+- A C target is a definition where the repository has one, else the prototypes that declare it, so a header and its source file do not make a call ambiguous. A call row the rule binds replaces the unresolved row the adapter wrote at that site.
+- A declaration or call whose other side is not in the repository (a system library) is `resolved_external`, named by the C function and by the library where the code writes it (the `DllImport` argument, `System.loadLibrary`, `#cgo LDFLAGS: -l`, `#[link(name)]`) in `detail.library`. Where the code names no library, the external's module is empty: the library is never guessed.
+- `workspace_status` `data.ffi_seams` counts the rows by rule, linked or external.
+- Not done: a P/Invoke library is not matched to a build target; JNI overloads are not told apart by their signature (two overloads of one method are each ambiguous between both C functions); a Rust call through a path (`ffi::f()`) is not linked, because the syntax tier records no row for it (#116); a C function defined in a cgo preamble is taken for an external one; `RegisterNatives` and `ctypes`/`cffi` are not read. The fixture is `fixtures/seams-ffi`.
+
 ## SCIP indexes a person produces
 
 A person who runs a SCIP indexer can name its output: `proofmesh scip add <repository> <index.scip>`. Proofmesh reads the file and, for a repository that is not trusted for build evaluation, never runs an indexer (A24).

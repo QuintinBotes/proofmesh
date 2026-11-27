@@ -3231,6 +3231,12 @@ generated?: number
 vendored?: number
 }[]
 /**
+ * The FFI seams of the snapshot by mechanism (FR467): the count of calls the FFI rules linked or named external, under each rule (`jni`, `pinvoke`, `cgo`, `cgo_export`, `rust_extern_c`, `rust_no_mangle`, `python_c_extension`). A mechanism with none is absent; empty for a snapshot sealed before the FFI rules.
+ */
+ffi_seams?: {
+[k: string]: number
+}
+/**
  * How the snapshot was analysed (FR004): discovery's rules, what happens to generated source, and each adapter's external inputs.
  */
 analysis: {

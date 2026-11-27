@@ -11,6 +11,13 @@ A parity benchmark scores ProofMesh and every local alternative on one truth (pa
 - The scoring and the Graphify and ProofMesh adapters of `bench/graph-bench/run.mjs` moved to `bench/graph-bench/lib.mjs`, shared by both benchmarks; `run.mjs` behaves as before.
 - On the latest run (bench/parity/README.md), ProofMesh's `tools/list` is 18,338 bytes against Serena's 25,188 (#26 scenario 5). ProofMesh scores 100% / 100% on Q1 to Q6 and Q9 now that getters are symbols (#127). Not done: the study's Q1 to Q9 figures for the comparators (scenario 3) are not all reproduced within one point, as the study's targets were not kept.
 
+FFI seams between languages, as inferred links (#22; FR460 to FR467):
+
+- A call across a foreign-function interface is now linked to the function on the other side: a Java or Kotlin `native` method to its JNI C function (`jni`), a C# `[DllImport]`/`[LibraryImport]` method to the C function it names (`pinvoke`), `C.f(...)` in Go to the C function (`cgo`) and a C call to a Go `//export` function (`cgo_export`), a Rust call of an `extern "C"` function to the C function (`rust_extern_c`) and a C call to a `#[no_mangle]` Rust function (`rust_no_mangle`), and a Python call of a C extension module's function to the C function its `PyMethodDef` table registers (`python_c_extension`).
+- Every link is a `candidate` or `ambiguous` `calls` row, origin `contract_match`, read as inferred, and `analyze_impact` follows it with `include_inferred`. A declaration whose other side is outside the repository is `resolved_external`, named by the library where the code writes it.
+- `workspace_status` reports `ffi_seams`, the count of FFI rows by mechanism.
+- Upgrade note: the pass's version is part of snapshot identity, so the first index after upgrading builds a new snapshot. A call row the FFI rules bind replaces the unresolved row the syntax tier or the Python adapter wrote at that site, so `calls.unresolved` in `workspace_status` drops by those calls.
+
 The syntax tier records a Rust call through a path (closes #116; FR500, FR501):
 
 - `ffi::cosine(0.0)`, `Foo::new()`, `crate::util::f()` and `<T as Tr>::f()` were neither a candidate nor an unresolved boundary: the tier wrote no `calls` row for them, so `get_relationships`, `analyze_impact` and the unresolved-call counts never saw them. Each is now one unresolved `calls` row, `outside_capability`, with the last name as `detail.callee` and the path before the last `::` in `detail.qualifier`, as Go and Java calls carry theirs.
