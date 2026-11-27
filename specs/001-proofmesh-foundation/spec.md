@@ -493,6 +493,8 @@ The Claude Code plugin's hooks module (a mod, Claude Code 2.1.287 and later) is 
 - FR485: MUST show `unknown (<reason>)` when a ProofMesh call fails or times out (the last line it printed, its error), try a failed repository lookup again at the next poll or `/pm-status`, never throw from a hook, and pass every observed tool call on unchanged before starting any process.
 - FR486: MUST reach ProofMesh only through `$.process.run` (the CLI) and `$.mcp.call` on the plugin's own `proofmesh` MCP server, calling only tools that the server `.mcp.json` starts lists, and asking `workspace_status` for a compact envelope so it does not use up the full envelope the agent's first answer from a snapshot gets on the same connection; it reads no source text and makes no network request.
 - FR487: MUST run at most one `proofmesh` process at a time, none after 10 minutes without a tool call, prompt or `/pm-status`, and in a session with no surface (`claude -p`, the Agent SDK) MUST draw nothing and call ProofMesh only when `/pm-status` asks.
+- FR660: MUST, when the `SessionStart` hook finds no `proofmesh` on PATH, exit 0 and print one line, as both `systemMessage` (shown to the person) and `additionalContext` (for Claude), that starts `proofmesh: not installed` as the status line does (FR483) and gives the command that installs the CLI; an edit with no CLI prints nothing.
+- FR661: MUST state that install command in the first paragraph of `packages/proofmesh-plugin/README.md`, with no spec id in its place.
 
 ### FFI seams between languages
 

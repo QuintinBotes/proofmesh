@@ -10,9 +10,12 @@ import { deepestRoot } from './repos.mjs'
 
 const QUIET_MS = Number(process.env.PROOFMESH_HOOK_QUIET_MS ?? 4000)
 const STATE = process.env.PROOFMESH_HOOK_STATE ?? path.join(os.tmpdir(), `proofmesh-hooks-${os.userInfo().uid}`)
-const proofmesh = (args) => spawnSync('proofmesh', args, { encoding: 'utf8' })
+const INSTALL = 'git clone https://github.com/QuintinBotes/proofmesh && cd proofmesh && pnpm install --frozen-lockfile && pnpm build && cd packages/proofmesh && npm link'
+let installed = true
+const proofmesh = (args) => { const r = spawnSync('proofmesh', args, { encoding: 'utf8' }); if (r.error?.code === 'ENOENT') installed = false; return r }
 const file = (id, kind) => path.join(STATE, `${id}.${kind}`)
-const say = (event, text) => process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: event, additionalContext: text } }))
+// `toPerson` also shows the line to the person (systemMessage); additionalContext alone reaches only Claude.
+const say = (event, text, toPerson) => process.stdout.write(JSON.stringify({ ...(toPerson && { systemMessage: text }), hookSpecificOutput: { hookEventName: event, additionalContext: text } }))
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
 /** The registered repository whose root holds `target`, the deepest when roots nest; null when Proofmesh is absent or none does. */
@@ -73,7 +76,8 @@ else {
   } else if (mode === 'session') {
     const repo = repositoryOf(input.cwd ?? process.cwd())
     const r = repo && proofmesh(['status', repo.id, '--fresh', '--json'])
-    if (repo && r.status !== 0) say('SessionStart', `Proofmesh has ${repo.name} registered but no published snapshot of it; run /proofmesh:index before asking it anything.`)
+    if (!installed) say('SessionStart', `proofmesh: not installed. The Proofmesh plugin's MCP server and hooks need the proofmesh CLI on PATH; install it: ${INSTALL}`, true)
+    else if (repo && r.status !== 0) say('SessionStart', `Proofmesh has ${repo.name} registered but no published snapshot of it; run /proofmesh:index before asking it anything.`)
     else if (repo) {
       const f = JSON.parse(r.stdout)
       if (f.current) say('SessionStart', `Proofmesh's snapshot ${f.snapshot_id} of ${repo.name} matches the working tree.`)
