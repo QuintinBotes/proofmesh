@@ -2031,6 +2031,27 @@
     ],
     "FR585": [
       "packages/proofmesh/test/concepts.test.ts"
+    ],
+    "FR1120": [
+      "packages/proofmesh/test/fast-rebuild.test.ts"
+    ],
+    "FR1121": [
+      "packages/proofmesh/test/fast-rebuild.test.ts"
+    ],
+    "FR1122": [
+      "packages/proofmesh/test/fast-rebuild.test.ts"
+    ],
+    "FR1123": [
+      "packages/proofmesh/test/fast-rebuild.test.ts"
+    ],
+    "FR1124": [
+      "packages/proofmesh/test/fast-rebuild.test.ts"
+    ],
+    "FR1125": [
+      "packages/proofmesh/test/fast-rebuild.test.ts"
+    ],
+    "FR1126": [
+      "packages/proofmesh/test/fast-rebuild.test.ts"
     ]
   },
   "manual": {

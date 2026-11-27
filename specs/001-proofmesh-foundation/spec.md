@@ -501,6 +501,18 @@ Acceptance: CI runs my pull request without secrets or release credentials; lice
 - FR1110: MUST give aider file names relative to the fixture root and each tree-sitter capture's nodes in source order, so aider's tags, and with them its maps, are the same in every run and copy of one fixture; aider's ranking is not changed (#191).
 - FR1111: MUST refuse to run aider's step unless string hashing is fixed (`PYTHONHASHSEED=0`, which `run.mjs` sets in place of `-I`), naming the variable, as aider's ranking iterates sets of names.
 
+### A one-edit rebuild (#31)
+
+An agent indexes again after every edit. A body edit in one TypeScript file used to reanalyse every file of the program; these requirements make it reanalyse that file alone, with the snapshot unchanged from a clean index of the same tree.
+
+- FR1120: MUST make the TypeScript adapter declare one unit per source file whose id carries a digest of every program file's outline (its text with each body another file cannot observe left out, and the list of files it was given), so an edit inside such a body reanalyses only the edited file. A body another file cannot observe is a constructor's, unless its class has a property with neither a type nor an initializer; a setter's; or any other function's whose return type is written; and it holds no node a pass over every file reads or types (an Express or NestJS route, a GraphQL resolver map, any `new` where the program holds `@pulumi/pulumi`, any `a.b.c()` call where a program file imports `@prisma/client`) and no `import()`. No body left out is typed before every signature is printed, since the order types are made in orders a union's members.
+- FR1121: MUST give TypeScript declarations, Pulumi resources, inline route handlers and GraphQL resolvers local ids that name no byte position (two of one kind and name in a file are told apart by their order), so a body edit that moves later declarations leaves the cached facts of the files that use them valid.
+- FR1122: MUST reanalyse every TypeScript file when any file's outline changes: a signature, an export, an import, a body whose return type is inferred, a constructor body that can type a property, a body that adds an `import()`, any JavaScript file, or a file added or removed.
+- FR1123: MUST seal from a body-edit index exactly the rows a clean index of the same tree in a new data directory seals, with the same snapshot id, including after two edits in a row and an edit that moves a declaration another file calls.
+- FR1124: MUST answer `unchanged` with the earlier snapshot's id when the tree returns to content already sealed.
+- FR1125: MUST refuse, as an adapter protocol error, two units with the same id; the core keys units by id, so they would share one key and replay one file's facts for another.
+- FR1126: MUST hash a declaration's body (FR130) without building a regular expression per name, with the same result as the expression `(?<![.\p{L}\p{N}_$])<name>(?![\p{L}\p{N}_$])` under the `u` flag.
+
 ### Dead code, import cycles, entry points and hubs (#34)
 
 Four read tools answer from the resolved relationships a snapshot already holds, so an agent need not export the graph to find code nothing uses, import cycles, where execution enters, or what everything depends on. Tested in `packages/proofmesh/test/structure-tools.test.ts`; scored on the parity fixture and the graph benchmark (Orbit) as Q10 to Q13.

@@ -47,7 +47,7 @@ const transitions: Transition[] = [
   { name: 'analysis mode', fixture: 'cs-sentinel', reused: 0, change: (r, d) => expect(run(['--data-dir', d, 'repo', 'trust', r, '--build-evaluation']).status).toBe(0) },
   // A file linked into two projects is keyed by both, so an edit to either project reanalyses it.
   { name: 'edit beside a linked file', fixture: 'cs-linked', reused: 0, change: (r) => write(r, 'src/B/Use.cs', (t) => `${t}\n// changed\n`) },
-  // The TypeScript adapter declares no units: any change reanalyses every file.
+  // The TypeScript adapter keys every file by every file's outline: a change outside a body, as this comment is, reanalyses every file (#31).
   // The unchanged package.json is a build adapter source whose cached file result is replayed (FR129), so one file is reused (here and for the tsconfig.json of ts-prisma below).
   { name: 'edit', fixture: 'ts-invoicing', reused: 1, change: (r) => write(r, 'packages/format/src/currency.ts', (t) => `${t}\n// changed\n`) },
   // py-shop: app imports shop, whose __init__ and cart import each other, and cart imports pricing and discounts; legacy stands alone.
