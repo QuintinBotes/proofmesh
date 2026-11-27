@@ -638,13 +638,14 @@ function compute(): { symbols: Fact[]; relationships: Fact[] } {
   for (const { m, root, project } of composers) {
     const repos = member(root, 'repositories')?.value
     const local = (repos?.kind === 'array' ? repos.items! : repos?.kind === 'object' ? repos.members!.map((x) => x.value) : []).flatMap((r) => (strOf(member(r, 'type')?.value) === 'path' && strOf(member(r, 'url')?.value) !== undefined ? [globRegex(resolveFrom(m.dir, strOf(member(r, 'url')?.value)!))] : []))
-    for (const section of ['require', 'require-dev']) {
+    // A `require-dev` package is for the project's tests and tools only, as Cargo's dev-dependencies are.
+    for (const [section, scope] of [['require', {}], ['require-dev', { scope: 'test' }]] as const) {
       const deps = member(root, section)?.value
       for (const dep of deps?.kind === 'object' ? deps.members! : []) {
         if (dep.value.kind !== 'string' || PLATFORM.test(dep.key)) continue
         const site = rangeOf(m, dep.start, dep.value.end)
         const named = composers.filter((c) => c.project.name === dep.key && c.project !== project && local.some((re) => re.test(c.project.dir)))
-        relationships.push(named.length ? dependsOn(project, site, m, named.map((c) => c.project), { name: dep.key }) : external(project, site, m, 'composer', dep.key, dep.value.value!))
+        relationships.push(named.length ? dependsOn(project, site, m, named.map((c) => c.project), { name: dep.key }, scope) : external(project, site, m, 'composer', dep.key, dep.value.value!, scope))
       }
     }
     for (const key of ['autoload', 'autoload-dev']) for (const kind of ['psr-4', 'psr-0']) {

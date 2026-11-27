@@ -493,7 +493,7 @@ describe('FR242 FR243 composer.json', () => {
     withSnapshot(dataDir, (db) => {
       expect(rows(db, 'depends_on').map((r) => [r.from, r.to, r.resolution])).toEqual([['acme/root', 'acme/lib', 'resolved']])
       expect(rows(db, 'depends_on_package').map((r) => [r.to, r.detail])).toEqual([
-        ['composer:acme/hidden', { version: '^1.0' }], ['composer:phpunit/phpunit', { version: '^11' }], ['composer:vendor/ext', { version: '^2.0' }],
+        ['composer:acme/hidden', { version: '^1.0' }], ['composer:phpunit/phpunit', { version: '^11', scope: 'test' }], ['composer:vendor/ext', { version: '^2.0' }],
       ])
     })
   }, 240000)

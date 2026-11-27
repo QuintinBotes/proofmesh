@@ -19,7 +19,7 @@ import { resolveRust } from './rust.js'
 export type { Sym } from './common.js'
 
 /** Bump when a rule changes what is bound: it is part of a snapshot's identity, so an older snapshot is never reused. A test keeps the hash of this directory's sources in resolution.lock.json beside it. */
-export const RESOLUTION_VERSION = 5
+export const RESOLUTION_VERSION = 6
 /** The conventional place of test sources in a Maven or Gradle module. */
 const RECENT_FILES = 64
 const LANGUAGES = /\.(go|java|rs|c|h|cc|cpp|cxx|hpp|hh|hxx|kt|php|rb)$/
@@ -39,12 +39,15 @@ export function constrain<P extends { id: string }>(symbols: Sym[], items: Array
   // The names of every dependency a module declares, bound or not, so a name no rule finds is never called undeclared when it is declared.
   const named = new Map<string, Set<string>>()
   const autoload: Model['autoload'] = []
+  // Composer's `autoload-dev` directories of each project: its test sources, which see a `require-dev` package.
+  const devDirs = new Map<string, string[]>()
   for (const { rel, producer } of items) {
     if (producer.id !== 'build') continue
     const from = rel.source.symbol ? projects.get(rel.source.symbol) : undefined
     if (!from) continue
     if (rel.type === 'contains' && rel.target?.file) containing.set(rel.target.file, from)
     if (rel.type === 'reads_config' && rel.detail?.autoload === 'psr-4' && rel.detail.prefix !== undefined && rel.detail.path !== undefined) autoload.push({ project: from, prefix: rel.detail.prefix, dir: rel.detail.path })
+    if (rel.type === 'reads_config' && rel.detail?.dev === 'true' && rel.detail.path) devDirs.set(from.id, [...(devDirs.get(from.id) ?? []), rel.detail.path])
     if (rel.type === 'depends_on' || rel.type === 'depends_on_package') {
       const name = rel.target?.external?.name ?? rel.detail?.name ?? (rel.target?.symbol ? projects.get(rel.target.symbol)?.name : undefined)
       if (name) named.set(from.id, (named.get(from.id) ?? new Set()).add(name.replace(/-/g, '_')))
@@ -71,7 +74,7 @@ export function constrain<P extends { id: string }>(symbols: Sym[], items: Array
     sees: (from, to, file) => {
       if (from === to) return true
       const scopes = from && to ? deps.get(from.id)?.get(to.id) : undefined
-      return !!scopes && (scopes.has('') || (scopes.has('test') && TEST_SOURCES.test(file)))
+      return !!scopes && (scopes.has('') || (scopes.has('test') && (TEST_SOURCES.test(file) || !!devDirs.get(from!.id)?.some((d) => file.startsWith(d)))))
     },
     declares: (from, name) => !!from && !!named.get(from.id)?.has(name.replace(/-/g, '_')),
     read: cachedRead,
