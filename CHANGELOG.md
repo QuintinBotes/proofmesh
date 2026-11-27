@@ -4,6 +4,11 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 ## Unreleased
 
+A Composer `require-dev` package is for tests only (closes #180; FR1040):
+
+- A `require-dev` entry was recorded like a `require` one, with no scope, so a main source (`src/`) bound names of a package it may only use in development. Its `depends_on` or `depends_on_package` row now carries `detail.scope` `test`, as Cargo's `dev-dependencies` do. A main source's call or `use` into such a package keeps its row (`outside_capability`); a file under the project's `autoload-dev` directories (or `src/test` and the like) still binds it.
+- Upgrade note: `RESOLUTION_VERSION` is 6, so no snapshot bound by the earlier rules is reused.
+
 A task context map: the code around a focus, ranked, within a byte budget (issue #33; FR920 to FR924):
 
 - `get_context_map`, in the `data` tool profile and lean by default, takes a focus (`paths`, `symbols`, or a diff from `base`), a `budget_bytes` (default 4,096) and a `max_depth` (default 2). It answers one row per declaration around the focus, in both directions, `<name> <path>:<line> <relation> depth=<n>`: what calls, implements, imports, references or tests the focus, and what the focus calls, implements, imports and references, with dispatch followed and candidate edges marked ` inferred`. A diff's changed declarations are rows marked `changed`. The answer never exceeds the budget, and a cursor pages the rest.

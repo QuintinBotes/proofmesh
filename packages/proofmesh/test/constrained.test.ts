@@ -4,7 +4,7 @@ import path from 'node:path'
 import type Database from 'better-sqlite3'
 import { describe, expect, it } from 'vitest'
 import { RESOLUTION_VERSION } from '../src/indexer/constrained/index.js'
-import { cli, expectedFor, fixtureRepo, indexedRepo, ROOT, rows, symbolId, tmpDir, tool, withSnapshot } from './helpers.js'
+import { cli, expectedFor, fixtureRepo, indexedRepo, json, ROOT, rows, symbolId, tmpDir, tool, withSnapshot } from './helpers.js'
 
 const EXPECTED = expectedFor('constrained')
 let indexed: string | undefined
@@ -677,4 +677,24 @@ describe('FR890 languages.md names the Kotlin, PHP and Ruby rules, and the rules
     for (const rule of ['kotlin_same_class', 'kotlin_inherited', 'kotlin_import', 'kotlin_same_package', 'kotlin_star_import', 'kotlin_qualified_name', 'php_use', 'php_same_namespace', 'php_fully_qualified', 'php_global_function', 'php_same_class', 'php_inherited', 'ruby_require_relative', 'ruby_require', 'ruby_constant', 'ruby_same_class', 'ruby_inherited', 'ruby_top_level']) expect(doc, rule).toContain(`| \`${rule}\``)
     expect(RESOLUTION_VERSION).toBeGreaterThan(4)
   })
+})
+
+describe('FR1040 issue 180: a Composer require-dev dependency is of the test scope, so main sources do not bind it', () => {
+  it('FR1040 the require-dev depends_on carries detail.scope test; a call from a main source into the dev-only package keeps outside_capability, and one from an autoload-dev source binds it', async () => {
+    const { dataDir } = await indexedRepo({
+      'app/composer.json': json({ name: 'acme/app', 'require-dev': { 'acme/testkit': '*' }, repositories: [{ type: 'path', url: '../testkit' }], autoload: { 'psr-4': { 'App\\': 'src/' } }, 'autoload-dev': { 'psr-4': { 'App\\Tests\\': 'tests/' } } }),
+      'testkit/composer.json': json({ name: 'acme/testkit', autoload: { 'psr-4': { 'Testkit\\': 'src/' } } }),
+      'testkit/src/Fake.php': '<?php\nnamespace Testkit;\n\nclass Fake\n{\n    public static function make(): self\n    {\n        return new self();\n    }\n}\n',
+      'app/src/Service.php': '<?php\nnamespace App;\n\nuse Testkit\\Fake;\n\nclass Service\n{\n    public function run(): void\n    {\n        Fake::make();\n    }\n}\n',
+      'app/tests/ServiceTest.php': '<?php\nnamespace App\\Tests;\n\nuse Testkit\\Fake;\n\nclass ServiceTest\n{\n    public function testRun(): void\n    {\n        Fake::make();\n    }\n}\n',
+    })
+    withSnapshot(dataDir, (db) => {
+      expect(rows(db, 'depends_on').map((r) => [r.from, r.to, r.resolution, r.detail])).toEqual([['acme/app', 'acme/testkit', 'resolved', { scope: 'test' }]])
+      const make = rows(db, 'calls').filter((r) => r.detail?.callee === 'make').map((r) => [r.path, r.resolution, r.reason, r.detail?.rule, r.candidates])
+      expect(make).toEqual([
+        ['app/src/Service.php', 'unresolved', 'outside_capability', undefined, []],
+        ['app/tests/ServiceTest.php', 'candidate', 'candidate', 'php_use', ['Testkit.Fake.make@testkit/src/Fake.php']],
+      ])
+    })
+  }, 240000)
 })

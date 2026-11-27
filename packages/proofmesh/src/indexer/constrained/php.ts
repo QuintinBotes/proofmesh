@@ -141,7 +141,8 @@ export function resolvePhp(m: Model, rels: Rel[]): Map<Rel, Rel> {
   const settle = (rel: Rel, r: Found, keep: (s: Sym) => boolean = () => true) => {
     const found = r.found.filter(keep)
     if (found.length) { const b = bind(rel, ranked(found), r.rule); out.set(rel, r.psr4 ? { ...b, detail: { ...b.detail!, autoload: 'psr-4' } } : b) }
-    else if (!r.found.length && r.hidden.length) out.set(rel, undeclared(rel, r.hidden))
+    // A project required only for development (`require-dev`) is declared, so the row is kept rather than called undeclared.
+    else if (!r.found.length && r.hidden.length && !r.hidden.some((p) => m.declares(projectOf(rel.site.path), p.name))) out.set(rel, undeclared(rel, r.hidden))
   }
 
   for (const rel of mine) {

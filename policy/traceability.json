@@ -1913,6 +1913,9 @@
     ],
     "FR988": [
       "packages/proofmesh/test/rename-plan.test.ts"
+    ],
+    "FR1040": [
+      "packages/proofmesh/test/constrained.test.ts"
     ]
   },
   "manual": {
