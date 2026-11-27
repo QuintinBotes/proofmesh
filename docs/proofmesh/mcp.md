@@ -4,14 +4,14 @@ Proofmesh serves its tools over MCP on stdio (`proofmesh mcp`) and over Streamab
 
 ## Tool profiles (FR420 to FR423)
 
-A client that does not defer tool loading puts every listed tool's name, description and input schema into the model's context before the first question. So `proofmesh mcp` lists only the `core` profile, whose `tools/list` stays under 20,000 bytes (a test asserts it; 19,680 bytes for 14 tools since `search_concepts` joined it, against 124,960 for all 40):
+A client that does not defer tool loading puts every listed tool's name, description and input schema into the model's context before the first question. So `proofmesh mcp` lists only the `core` profile, whose `tools/list` stays under 20,000 bytes (a test asserts it; 19,758 bytes for 14 tools since `search_concepts` joined it, against 136,882 for all 43 with `query_graph`):
 
 | Profile | Tools |
 |---|---|
 | `core` (default) | `find_symbols`, `get_symbol`, `get_symbols_at`, `get_relationships`, `trace_paths`, `analyze_impact`, `find_tests`, `search_sources`, `search_concepts`, `read_evidence`, `workspace_status`, `list_repositories`, `get_overview`, `list_queries` |
 | `data` | `get_table_reach`, `get_property_reads`, `find_query_source`, `get_external_usage`, `get_session_trail`, `get_context_map` |
 | `claims` | `verify_claim`, `get_claims`, `prepare_verification`, `get_verification` |
-| `extra` | `list_snapshots`, `list_workspaces`, `get_ecosystem`, `compare_snapshots`, `impact_completeness`, `request_index`, `get_job`, `get_memory`, `save_memory`, `find_stale_mentions`, `find_unused`, `find_cycles`, `find_entry_points`, `find_hubs`, `plan_rename`, `plan_move`, `search_structure`, `get_symbol_card` |
+| `extra` | `list_snapshots`, `list_workspaces`, `get_ecosystem`, `compare_snapshots`, `impact_completeness`, `request_index`, `get_job`, `get_memory`, `save_memory`, `find_stale_mentions`, `find_unused`, `find_cycles`, `find_entry_points`, `find_hubs`, `plan_rename`, `plan_move`, `search_structure`, `get_symbol_card`, `query_graph` |
 
 - `proofmesh mcp --tools core,data` (or any comma-separated list) lists those profiles; `--tools all` lists every tool exactly as its schema file declares it. Both transports take it. In a client configuration, put the option after `mcp` in the arguments, for example `"args": ["mcp", "--tools", "all"]` in `.mcp.json`. A client restarts the server to change profile.
 - Outside `all`, a listed tool keeps its description and every field of its input schema, with types, enums, patterns, defaults and required fields, but not the per-field descriptions; `envelope` keeps its first sentence. The full schemas are `schemas/tools/<tool>.input.schema.json`, and the server validates every call against them whatever the profile.
@@ -171,3 +171,46 @@ search_structure { "pattern": "for (const $X of $Y) {\n  $$$\n  await $Z\n  $$$\
 
 - **Bounds.** A pattern is untrusted input that runs over captured source, so it is bounded and never run. The match runs in the syntax adapter's own process with a minimal environment and a 1 GiB heap. That process stops at `timeout_ms` and returns what it found, and it is killed one second later if it has not stopped. A pattern is at most 4,096 characters. A file over 1 MiB is not parsed, and one search reads at most 64 MiB of source; both are counted in a limitation. The matcher keeps only the rows of the page asked for, so `max_rows` pages with a cursor and `completion.total` counts every match. After a timeout, the total counts the matches found before it.
 - `bench/structure` compares every answer with the pinned ast-grep CLI. Every match set is the same. ast-grep is still several times faster on the parity fixture (SC-003 of #37, open).
+
+## Graph query: `query_graph` (FR960 to FR966)
+
+`query_graph` (profile `extra`) answers a question that no typed tool answers in one call with one bounded, read-only query in a subset of openCypher. Typed tools come first: they follow dispatch through interfaces, list candidate and unresolved sites, and page. `query_graph` reads only what the snapshot resolved. Examples:
+
+```
+MATCH (:function {name: 'main'})-[:calls*1..6]->(c)-[r:calls]->(:function {name: $target}) WHERE NOT c.test RETURN r
+MATCH (u:file)-[:imports]->(:file {path: 'src/api/handler.ts'}) WHERE u.path STARTS WITH 'src/api' RETURN DISTINCT u
+MATCH (f:function) WHERE f.path STARTS WITH 'src/' AND NOT EXISTS { (x)-->(f) WHERE x <> f } RETURN f
+```
+
+The grammar. Keywords are case-insensitive. A name in backticks is a name, never a keyword. `//` starts a comment.
+
+```
+query       = match { match | with } return [";"]
+match       = ["OPTIONAL"] "MATCH" pattern { "," pattern } ["WHERE" expr]
+with        = "WITH" projection ["WHERE" expr]          (an expression item needs AS)
+return      = "RETURN" projection
+projection  = ["DISTINCT"] ("*" | item { "," item }) ["ORDER BY" expr ["ASC"|"DESC"] {"," ...}] ["SKIP" n] ["LIMIT" n]
+item        = expr ["AS" name]                           (count and collect only as a whole item)
+pattern     = [name "="] node { rel node }
+node        = "(" [name] [":" label { "|" label }] [props] ")"
+rel         = ("-" | "<-") ["[" [name] [":" type { "|" type }] ["*" [min] ".." max | "*" n] [props] "]"] ("-" | "->")
+props       = "{" key ":" expr { "," key ":" expr } "}"
+expr        = OR, XOR, AND, NOT; = <> != < <= > >=; STARTS WITH, ENDS WITH, CONTAINS, IN, IS [NOT] NULL; + -;
+              literals (strings, numbers, true, false, null, [lists]), $params, name, name.key,
+              pattern predicates such as (a)-[:calls]->(), EXISTS { [MATCH] pattern [WHERE expr] },
+              count(*), count([DISTINCT] e), collect([DISTINCT] e), type(r), labels(n), size(e), toLower(e), toUpper(e)
+n, min, max = whole numbers, or a $param for SKIP and LIMIT
+```
+
+- **Nodes.** A label is a symbol kind of the snapshot format (`function`, `class`, `method`, `interface`, `module`, `endpoint`, `table`, ...), `file` or `external`. A file and its module symbol are one node, labelled both `file` and `module`, so imports, which run between files, and calls from top-level code meet at the same node. A symbol has `id`, `kind`, `name`, `qualified_name` (`src/store:Store.save`), `path`, `line`, `end_line`, `signature`, `key` (its stable key) and `test`. A file has `id`, `kind` (`file`), `name`, `path`, `line` (1), `language`, `disposition` and `test`. An external symbol has `id`, `name` and `module`. An unknown label is refused with the list of valid ones.
+- **Relationships.** A type is an assertion type of the snapshot format (`calls`, `imports`, `implements`, `references`, `inherits`, ...). A relationship is an assertion the snapshot resolved, in the repository or to an external symbol. Candidate, ambiguous and unresolved sites are not relationships here, and there is no dispatch from an interface or base member to its implementations: write it as a pattern, such as `(c)-[:calls]->(m)<-[:implements]-(impl)`. A relationship has `id`, `type`, `resolution`, `origin`, `basis`, `path` and `line`, its site.
+- **Variable-length paths** need an upper bound of at most 6, or `max_depth` when that is lower (`*1..3`, `*..4`, `*2`). `*` alone, `*1..` and a bound above 6 are refused before the query runs, and the refusal names the bound. A variable-length pattern reaches each node once, at its shortest distance, so it returns one row per node, not one per path. A node whose shortest distance is below the lower bound is not returned.
+- **Read only.** `CREATE`, `MERGE`, `SET`, `DELETE`, `DETACH`, `REMOVE`, `CALL`, `LOAD`, `FOREACH` and `DROP` are refused by name wherever they appear outside a string, before anything runs. So are `=~` (no regular expressions), any function not listed above, and `UNWIND`, `UNION`, `CASE` and `shortestPath`. A query is parsed into a plan and run by an interpreter over fixed prepared statements on the snapshot, which is opened read only. No SQL is built from the query. `$name` parameters are values in `params`, compared as values and never spliced into the text. A parameter the query uses but `params` lacks is refused.
+- **Bounds.** `timeout_ms`, `max_rows` and `max_bytes` bound a query as they bound other tools (defaults 10 s, 100 rows, 64 KiB; at most 30 s, 1,000 rows, 1 MiB). A query that would pass the time or row limit stops there. It returns the rows found so far, `completion.stop_reasons` names the limit, and a limitation says it in lean, for example `# Stopped at max_rows 100; the rows are those found before it.` Rows held for `count`, `collect`, `ORDER BY` or `DISTINCT` count against `max_rows` before aggregation, and a count cut that way says so. `query_graph` does not page.
+- **Rows.** Lean is the default over MCP. The header names the snapshot's commit: `# query_graph · commit <sha> · <n> rows · <snapshot> current`. Each result row is one line, built from its first node, relationship or path:
+  - a node is `<name> <path>:<line> <kind>`, and a file is `<path>:1 file`;
+  - a relationship is the source's name at the site's `path:line`, then its type, as `get_relationships` lists an inbound row;
+  - a path is one line per node, at its declaration, with `depth=<n>` from the second node on.
+
+  The other columns follow as `<column>=<value>` tags. A row ends with `inferred` when any relationship it was matched through is inferred (FR181). A row of scalars alone is its tags. `envelope: "compact"` or `"full"` gives `data.columns` and `data.rows` (each `{ values, inferred? }`, a node as `{ id, kind, name, path, line, key }`, a relationship as `{ id, type, from, to, from_name, to_name, path, line, basis }`), and `evidence_ids` covers every returned node's declaration and relationship's site.
+- `bench/parity` asks its twelve questions through `query_graph` too, one query each (`queryGraphQuery` in `bench/graph-bench/lib.mjs`). It scores each answer beside the typed tools' answer, says whether their items are the same, and reports the p95 time.
