@@ -26,6 +26,8 @@ export const LEGEND: Array<{ label: string; color: string; dashed?: boolean }> =
 
 /** Layout is derived, never evidence (FR068): every view and every export says so. */
 export const NO_MEANING = 'Position carries no meaning; only drawn lines are relationships.'
+/** The Galaxy's positions come from the path tree (FR1224): they show containment, and nearness is still no relationship. */
+export const CONTAINMENT = 'Position shows containment: directory, then file, then name. Nearness is not a relationship; only drawn lines are relationships.'
 
 const ESCAPES: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }
 /** Repository text is untrusted: escaped for markup, with bidirectional and invisible characters made visible (FR065). */

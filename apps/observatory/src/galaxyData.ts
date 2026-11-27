@@ -7,6 +7,8 @@ export type GalaxyArea = {
 }
 export type GalaxyData = {
   snapshotId: string; n: number; links: Uint32Array; degree: Uint32Array; area: Uint16Array; kind: Uint8Array
+  /** x, y per symbol, 0 to 65535 within the map's square frame, computed with the snapshot (FR1220). */
+  positions: Uint16Array
   kinds: string[]; areas: GalaxyArea[]; names: string[]; files: string[]
 }
 
@@ -35,6 +37,7 @@ export function parseGalaxy(buf: ArrayBuffer): GalaxyData {
     degree: new Uint32Array(buf, base + h.offsets.degree, h.nodes),
     area: new Uint16Array(buf, base + h.offsets.area, h.nodes),
     kind: new Uint8Array(buf, base + h.offsets.kind, h.nodes),
+    positions: new Uint16Array(buf, base + h.offsets.positions, h.nodes * 2),
     names: h.nodes ? new TextDecoder().decode(new Uint8Array(buf, base + h.offsets.names, h.names_bytes)).split('\n') : [],
   }
 }
@@ -93,56 +96,6 @@ export function ghostAreas(areas: GalaxyArea[], max: number): { shown: GalaxyAre
   return { shown: ghosts.slice(0, max), rest: { areas: rest.length, files: rest.reduce((n, a) => n + files(a), 0) } }
 }
 
-/** How far from its area's centre a new symbol may start. */
-export const JITTER = 6
-/** Bump when the seeding changes, so layouts settled from the old seeds are not reused (B18). */
-const LAYOUT_VERSION = 1
-const fnv = (h: number, x: number) => Math.imul(h ^ x, 16777619) >>> 0
-const hashText = (h: number, s: string) => { for (let i = 0; i < s.length; i++) h = fnv(h, s.charCodeAt(i)); return h }
-
-/** A settled layout's cache key: the snapshot, and a hash of everything the seed positions are made from (A11, B18). */
-export function layoutKey(d: GalaxyData): string {
-  let h = hashText(2166136261, `${LAYOUT_VERSION}|${d.n}|${d.areas.map((a) => `${a.name}:${a.count}`).join(',')}`)
-  for (let i = 0; i < d.n; i++) h = fnv(h, d.area[i]!)
-  return `${d.snapshotId}:${h.toString(16).padStart(8, '0')}`
-}
-
-/** One hash per symbol name, kept beside a settled layout so the next snapshot can find its symbols in it. */
-export function nameHashes(d: GalaxyData): Uint32Array {
-  return Uint32Array.from(d.names, (name) => hashText(2166136261, name))
-}
-
-/**
- * Seeds a new snapshot's layout from the last settled one: a symbol whose name is in it keeps its place, a new symbol starts
- * at the centre of its area's kept symbols, and only an area with none kept falls back to the seed. The picture stays put
- * across snapshots, and positions carry no meaning either way (FR068), so a rare hash collision costs nothing but a place.
- */
-export function warmStart(d: GalaxyData, previous: { names: Uint32Array; positions: Float32Array } | null, seed: Float32Array): { positions: Float32Array; reused: number } {
-  if (!previous) return { positions: seed, reused: 0 }
-  const at = new Map<number, number>()
-  previous.names.forEach((h, i) => at.set(h, i))
-  const names = nameHashes(d), positions = new Float32Array(d.n * 2), kept = new Uint8Array(d.n)
-  const sum = new Float64Array(d.areas.length * 3)
-  let reused = 0
-  for (let i = 0; i < d.n; i++) {
-    const j = at.get(names[i]!)
-    if (j === undefined) continue
-    const x = previous.positions[j * 2]!, y = previous.positions[j * 2 + 1]!, a = d.area[i]! * 3
-    positions[i * 2] = x; positions[i * 2 + 1] = y; kept[i] = 1; reused++
-    sum[a] = sum[a]! + x; sum[a + 1] = sum[a + 1]! + y; sum[a + 2] = sum[a + 2]! + 1
-  }
-  for (let i = 0; i < d.n; i++) {
-    if (kept[i]) continue
-    const a = d.area[i]! * 3, m = sum[a + 2]!
-    if (!m) { positions[i * 2] = seed[i * 2]!; positions[i * 2 + 1] = seed[i * 2 + 1]!; continue }
-    // A small deterministic offset, so new symbols of one area never share a point the simulation cannot push apart (B13).
-    const t = ((Math.imul(i + 1, 2654435761) >>> 0) % 6283) / 1000, r = JITTER * (((Math.imul(i + 7, 40503) >>> 0) % 1000) / 1000)
-    positions[i * 2] = sum[a]! / m + r * Math.cos(t)
-    positions[i * 2 + 1] = sum[a + 1]! / m + r * Math.sin(t)
-  }
-  return { positions, reused }
-}
-
 /** The legend's areas: by size, or while searching by matches, at most limit of them; total counts every area it could list (FR058). */
 export function legendAreas(d: GalaxyData, matches: number[], limit: number): { shown: Array<{ index: number; name: string; count: number }>; total: number } {
   const counts = matches.length ? new Map<number, number>() : null
@@ -163,23 +116,12 @@ export function areaLabel(area: string): string {
 
 const SPACE = 4096
 
-/** Deterministic seed (B13): areas on a sunflower spiral, sized by their counts; points scattered inside their area. */
-export function seeds(d: GalaxyData): Float32Array {
+/** The snapshot's positions in the graph's space, where the map's frame is SPACE wide. */
+export function graphPositions(d: GalaxyData): Float32Array {
   const pos = new Float32Array(d.n * 2)
-  const centres = d.areas.map((a, i) => {
-    const r = 140 * Math.sqrt(i + 0.5), t = i * 2.39996
-    return { x: SPACE / 2 + r * Math.cos(t), y: SPACE / 2 + r * Math.sin(t), spread: 18 + 6 * Math.sqrt(a.count) }
-  })
-  for (let i = 0; i < d.n; i++) {
-    const c = centres[d.area[i]!]!
-    const h1 = Math.imul(i + 1, 2654435761) >>> 0, h2 = Math.imul(i + 7, 40503) >>> 0
-    const r = c.spread * Math.sqrt((h1 % 10007) / 10007), t = ((h2 % 10009) / 10009) * Math.PI * 2
-    pos[i * 2] = c.x + r * Math.cos(t)
-    pos[i * 2 + 1] = c.y + r * Math.sin(t)
-  }
+  for (let i = 0; i < d.n * 2; i++) pos[i] = (d.positions[i]! / 65535) * SPACE
   return pos
 }
-
 
 /** Label boxes as drawn: centred on their point, about 7.2 px per character plus padding, one line high. */
 const box = (l: { name: string; x: number; y: number }) => ({ half: l.name.length * 3.6 + 8, x: l.x, y: l.y })

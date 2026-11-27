@@ -1,8 +1,10 @@
 // A synthetic Galaxy of any size (#41 scenario 2), project-authored (Apache-2.0). Deterministic for a seed: the same seed, size,
 // snapshot id and ids give byte-identical files. It is written in the server's own galaxy format (packages/proofmesh/src/query/galaxy.ts)
 // into its cache, so the real `proofmesh view` serves it and the transfer path is measured. Each point's id is one of the indexed
-// fixture's real symbol ids, in turn, so opening a point shows real evidence.
+// fixture's real symbol ids, in turn, so opening a point shows real evidence. Positions come from the server's own layout (#44),
+// built by `pnpm build` as packages/proofmesh/dist/layout.mjs, from each point's file and name.
 import zlib from 'node:zlib'
+import { layoutPositions } from '../../packages/proofmesh/dist/layout.mjs'
 
 const WORDS = ['order', 'user', 'repository', 'query', 'entity', 'column', 'metadata', 'driver', 'schema', 'relation', 'connection', 'migration', 'builder', 'cache', 'index', 'table', 'event', 'subscriber', 'transaction', 'listener']
 const KINDS = [['method', 40], ['property', 25], ['function', 10], ['class', 10], ['constructor', 5], ['interface', 5], ['variable', 5]]
@@ -53,14 +55,18 @@ export function generateGalaxy({ nodes: n, seed, snapshotId, ids: real }) {
   }))
   // The analysed files the palette lists: each area's, named in order.
   const files = areas.flatMap((a) => Array.from({ length: a.files.indexed }, (_, k) => `${a.name}/file${k}.ts`)).sort()
+  // Each area's points fill its files eight at a time, in order, so the layout sees a path tree as the server would.
+  const items = new Array(n)
+  members.forEach((m, a) => m.forEach((i, r) => { items[i] = { path: `${areas[a].name}/file${Math.floor(r / 8)}.ts`, name: names[i], line: r + 1, byte: 0 } }))
+  const positions = layoutPositions(items)
   const nameBytes = Buffer.from(names.join('\n'), 'utf8')
-  const sections = [Buffer.from(pairs.buffer, 0, made * 8), Buffer.from(degree.buffer), Buffer.from(area.buffer), Buffer.from(kind.buffer), nameBytes]
+  const sections = [Buffer.from(pairs.buffer, 0, made * 8), Buffer.from(degree.buffer), Buffer.from(area.buffer), Buffer.from(kind.buffer), Buffer.from(positions.buffer), nameBytes]
   const offsets = []
   let at = 0
   for (const s of sections) { offsets.push(at); at += s.length; at += (4 - (at % 4)) % 4 }
   const header = Buffer.from(JSON.stringify({
-    snapshot_id: snapshotId, nodes: n, links: made, areas, kinds, files, names_bytes: nameBytes.length,
-    offsets: { links: offsets[0], degree: offsets[1], area: offsets[2], kind: offsets[3], names: offsets[4] },
+    format: 4, snapshot_id: snapshotId, nodes: n, links: made, areas, kinds, files, names_bytes: nameBytes.length,
+    offsets: { links: offsets[0], degree: offsets[1], area: offsets[2], kind: offsets[3], positions: offsets[4], names: offsets[5] },
   }), 'utf8')
   const parts = [Buffer.from(new Uint32Array([header.length]).buffer), header, Buffer.alloc((4 - ((4 + header.length) % 4)) % 4)]
   sections.forEach((s, i) => { parts.push(s); const end = offsets[i] + s.length; parts.push(Buffer.alloc((i + 1 < sections.length ? offsets[i + 1] : end) - end)) })

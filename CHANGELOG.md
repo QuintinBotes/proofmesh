@@ -4,6 +4,15 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 ## Unreleased
 
+The Galaxy's layout is computed with the snapshot, and every symbol keeps its place (part of #44; FR1220 to FR1225):
+
+- Positions are a pure function of the snapshot's path tree and symbol names: ordered strips of directories, then files, then symbols, each in name order, every symbol the same area, overloads ordered by declaration line. Edges never move a node. The server computes them when it builds the Galaxy payload, in 0.1 s at 250,000 symbols, and the same snapshot gives byte-identical positions in every browser, on every machine and on every run.
+- The payload carries each position as 16 bits per axis within the map's square frame. Its header names `format` 4, and the cache file is `galaxy-v4-<snapshot>`, so a `galaxy-v3` payload is rebuilt once and not read.
+- The browser runs no simulation: the first frame is final. The pause or resume layout control, the IndexedDB layout cache (`proofmesh-galaxy`), the warm start from the previous layout and point dragging are removed. A search or an area filter keeps every point where the whole map has it.
+- A commit moves only what it touches. The number of strips need not be whole and each item takes the strip its weight's midpoint falls in, so one more file or symbol moves at most a boundary item rather than reflowing the rest. On TypeORM (7,033 symbols), a commit that adds a three-function file, changes a body, adds a method and deletes a function moved 0.20% of the shared symbols more than 2% of the map's width (all in the directory it touched), and the median symbol 0.02%.
+- The Galaxy's legend says that position shows containment (directory, then file, then name) and that only drawn lines are relationships (FR068). The other views still say position carries no meaning.
+- The Observatory benchmark (#41) marks final positions when the Galaxy marks itself ready (`.galaxy[data-ready]`), measures stability from the positions in the payload each page receives (the IndexedDB layout is gone), and writes synthetic galaxies in format 4, laid out by the server's own layout code (`packages/proofmesh/dist/layout.mjs`, built by `pnpm build`).
+
 A reproducible Observatory benchmark with published budgets (part of #41; FR1160 to FR1169):
 
 - `pnpm bench:observatory --fixture typeorm` builds the TypeORM sample at the parity benchmark's commit (`bench/parity/fixture.sh`, now shared by both benchmarks; never committed here), indexes a copy into a fresh data directory and measures the Observatory in Playwright's pinned Chromium at 1400×900: first contentful paint, first drawn map, final positions, time to interactive, total blocking time and the longest main-thread task, cold and warm; frames at rest and while panning and zooming; JS heap and the memory of every browser process; raw, gzip and transferred bytes of each script, style sheet and API response; each API call's latency; search, symbol to evidence and edge to evidence with the requests between, and the Map switch; and layout stability across two fresh profiles and across a commit touching four files.

@@ -16,7 +16,7 @@ import { FRAMEWORK_TYPES, glyph, toScene, type TraceEnvelope } from './scene'
 import { visible } from './visible'
 import { share } from './share'
 import { plural } from './plural'
-import { areasSvg, caveatLines, NO_MEANING, offlineHtml, pngWithText, sceneSvg, sceneTable, type Caveats, type Source } from './exporting'
+import { areasSvg, caveatLines, CONTAINMENT, NO_MEANING, offlineHtml, pngWithText, sceneSvg, sceneTable, type Caveats, type Source } from './exporting'
 
 type Sym = { id: string; kind: string; name: string; qualified_name: string; path: string; start_line: number; signature: string | null }
 type Hub = { id: string; kind: string; name: string; qualified_name: string; inbound: number }
@@ -810,7 +810,7 @@ export function App() {
           <div>{(Object.keys(RELATION_COLOURS) as Relation[]).map((r) => <span key={r}><span className="sw" style={{ background: RELATION_COLOURS[r] }} /> {RELATION_WORDS[r]} </span>)}</div></div>}
         {mode === 'map' && <div className="dim">Each node is an area, file or symbol, sized by its symbols, or by its matches while searching. Lines are resolved relationships between them, thicker for more. Click a node to open it.</div>}
         {mode === 'explore' && <div className="dim">Callers on the left, callees on the right, each at its call site and marked observed, inferred or unresolved in words. Click a row to read its call site; double-click it, or press f, to explore from it. Back returns to the previous symbol. Path to traces a path from the focus: each hop at its call site, the path labelled by its weakest hop, or where the search stopped.</div>}
-        {mode !== 'claims' && mode !== 'diff' && <div className="dim">{NO_MEANING}</div>}
+        {mode !== 'claims' && mode !== 'diff' && <div className="dim">{mode === 'galaxy' ? CONTAINMENT : NO_MEANING}</div>}
         {exportable && (
           <div className="export" role="group" aria-label="Export this view">
             <button type="button" onClick={exportPage}>Export page</button>

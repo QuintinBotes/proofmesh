@@ -42,7 +42,7 @@ missing pinned build stops the run with the install command above.
   the measured runs, with its range and spread; a time over 100 ms whose runs differ by more than 10% is listed.
 - **Warm:** the Galaxy opened again in the same tab after the cold run, with its cached layout and HTTP cache.
 - **Load**, timed inside the page from navigation: first contentful paint; the first drawn map (the status bar names the
-  galaxy); final positions (the layout settles and the Pause button turns to Resume); long tasks from a `PerformanceObserver`
+  galaxy); final positions (the Galaxy has drawn the positions the snapshot carries, #44, and marks itself `data-ready`); long tasks from a `PerformanceObserver`
   from the first script on; time to interactive, the end of the last long task before a quiet second after the first draw;
   total blocking time, each long task's time over 50 ms between first contentful paint and time to interactive; the longest
   task.
@@ -62,7 +62,7 @@ missing pinned build stops the run with the install command above.
   same open over more runs against #45's budgets.
 - **Stability**, for symbols present in both layouts, as shares of the map's width after fitting each to view: one snapshot
   in two fresh profiles, and snapshot A followed by B, where B is A plus a commit that adds a function to each of the first
-  four `.ts` files under `src/`. The layouts are the ones the Galaxy keeps in IndexedDB once it settles.
+  four `.ts` files under `src/`. The layouts are the positions in the Galaxy payload each page receives.
 - **Software renderer:** when the WebGL renderer is SwiftShader, llvmpipe or another software rasteriser, the result says
   so and budgets are read from the software column. Such a run measures the CPU, not a GPU; do not compare it with a GPU run.
 
@@ -127,6 +127,22 @@ What the tables say against the targets of the Observatory specs:
   sheets transferred on a cold load, before data (#47 asks 150 KB and 250 KB); browser memory 558 MB at 50,000 and 819 MB
   at 250,000 (#47 asks 300 and 600 MB); the A-to-B commit moves 62% of the TypeORM sample's shared symbols more than 2% of
   the map's width, and one snapshot in two fresh profiles is not identical (#44).
+
+### After the path-tree layout (#44)
+
+Measured on 2026-11-27 with the layout of #44 merged with this benchmark: the same machine and browser as below (ANGLE on
+Metal, Apple M5 Max, one-minute load average 14 to 17), ProofMesh commit 24023db with the merge uncommitted. Positions now
+arrive with the snapshot, so final positions follow the first draw within a frame or two. The tables below were measured
+before #44 and keep its 84 s for comparison.
+
+| Fixture | Final positions, cold (median) | First drawn map, cold | Longest task, cold | Stability, same snapshot | Stability, A then B: moved > 2% (max) |
+|---|---|---|---|---|---|
+| TypeORM sample (7,033 symbols), 3 runs | 277 ms (275–290 ms) | 212 ms | 0 ms | 0.00% | 0.00% (1.93%) |
+| Synthetic, 50,000 symbols, 3 runs | 318 ms (312–324 ms) | 225 ms | 57 ms | 0.00% | no commit to change |
+| Synthetic, 250,000 symbols, 1 run | 464 ms | 262 ms | 115 ms, over the 100 ms budget (#208) | 0.00% | no commit to change |
+
+`--check` exits 0 on the TypeORM sample and at 50,000 symbols. At 250,000 it exits 1 on the longest task alone, which was
+280 ms before #44.
 
 ### TypeORM sample
 

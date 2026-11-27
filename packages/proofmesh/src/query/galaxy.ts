@@ -4,10 +4,11 @@ import zlib from 'node:zlib'
 import { ProofmeshError } from '../core/errors.js'
 import { Catalog, noSnapshot } from '../meshstore/catalog.js'
 import { openSnapshot } from '../meshstore/snapshot.js'
+import { layoutPositions } from './layout.js'
 
 /**
  * The whole snapshot as one compact binary for the Galaxy view: every symbol except file modules, its area (the first
- * three directories of its file), kind and number of resolved relationships, the distinct resolved links between
+ * three directories of its file), kind, number of resolved relationships and position, the distinct resolved links between
  * symbols as index pairs, and the qualified names. Layout: u32 header length, the JSON header, padding to four bytes,
  * then the sections at the header's offsets. Built once per snapshot and gzipped.
  */
@@ -15,12 +16,16 @@ export type FileCounts = { indexed: number; unsupported: number; excluded: numbe
 /** An area with its coverage (FR059): files by disposition, call sites and unresolved calls, and the commonest reasons files were not analysed. */
 export type GalaxyArea = { name: string; count: number; files: FileCounts; calls: { sites: number; unresolved: number }; gaps: Array<[string, number]> }
 export type GalaxyHeader = {
+  /** The payload's layout; it changes when a section does, and the cache name with it. */
+  format: number
   snapshot_id: string; nodes: number; links: number; areas: GalaxyArea[]; kinds: string[]
   /** The analysed files, sorted, for the Observatory's command palette. */
   files: string[]
-  offsets: { links: number; degree: number; area: number; kind: number; names: number }; names_bytes: number
+  offsets: { links: number; degree: number; area: number; kind: number; positions: number; names: number }; names_bytes: number
 }
 
+/** Format 4 added each symbol's position (FR1221). Bump it when a section or the layout changes, so cached payloads are rebuilt. */
+export const GALAXY_FORMAT = 4
 const memo = new Map<string, { gz: Buffer; ids: string[] }>()
 
 export function areaOf(path: string): string {
@@ -40,7 +45,7 @@ export function galaxyFor(dataDir: string, opts: { snapshotId?: string; reposito
     if (hit) return hit
     // A sealed snapshot never changes, so its galaxy is built once and kept beside it in the data directory.
     // The version in the name retires galaxies built in an older layout.
-    const cache = path.join(dataDir, 'cache'), gzFile = path.join(cache, `galaxy-v3-${snapshot.id}.bin.gz`), idsFile = path.join(cache, `galaxy-v3-${snapshot.id}.ids.json`)
+    const cache = path.join(dataDir, 'cache'), gzFile = path.join(cache, `galaxy-v${GALAXY_FORMAT}-${snapshot.id}.bin.gz`), idsFile = path.join(cache, `galaxy-v${GALAXY_FORMAT}-${snapshot.id}.ids.json`)
     if (fs.existsSync(gzFile) && fs.existsSync(idsFile)) {
       const stored = { gz: fs.readFileSync(gzFile), ids: JSON.parse(fs.readFileSync(idsFile, 'utf8')) as string[] }
       memo.set(snapshot.id, stored)
@@ -48,7 +53,7 @@ export function galaxyFor(dataDir: string, opts: { snapshotId?: string; reposito
     }
     const db = openSnapshot(catalog, snapshot)
     try {
-      const rows = db.prepare("select s.id, s.kind, s.qualified_name, f.path from symbol s join file f on f.id = s.file_id where s.kind <> 'module' order by s.id").all() as Array<{ id: string; kind: string; qualified_name: string; path: string }>
+      const rows = db.prepare("select s.id, s.kind, s.qualified_name, s.start_line, s.start_byte, f.path from symbol s join file f on f.id = s.file_id where s.kind <> 'module' order by s.id").all() as Array<{ id: string; kind: string; qualified_name: string; start_line: number; start_byte: number; path: string }>
       const n = rows.length
       const index = new Map(rows.map((r, i) => [r.id, i]))
       const byArea = new Map<string, GalaxyArea & { gapCounts: Map<string, number> }>()
@@ -91,14 +96,16 @@ export function galaxyFor(dataDir: string, opts: { snapshotId?: string; reposito
         degree[a] = degree[a]! + 1; degree[b] = degree[b]! + 1
       }
       const names = Buffer.from(rows.map((r) => r.qualified_name.replace(/\n/g, ' ')).join('\n'), 'utf8')
-      const sections = [Buffer.from(new Uint32Array(pairs).buffer), Buffer.from(degree.buffer), Buffer.from(area.buffer), Buffer.from(kind.buffer), names]
+      // Positions come from the path tree and names alone, so every machine draws the same map (FR1220).
+      const positions = layoutPositions(rows.map((r) => ({ path: r.path, name: r.qualified_name, line: r.start_line, byte: r.start_byte })))
+      const sections = [Buffer.from(new Uint32Array(pairs).buffer), Buffer.from(degree.buffer), Buffer.from(area.buffer), Buffer.from(kind.buffer), Buffer.from(positions.buffer), names]
       const offsets: number[] = []
       let at = 0
       for (const s of sections) { offsets.push(at); at += s.length; at += (4 - (at % 4)) % 4 }
       const header: GalaxyHeader = {
-        snapshot_id: snapshot.id, nodes: n, links: pairs.length / 2, areas, kinds, names_bytes: names.length,
+        format: GALAXY_FORMAT, snapshot_id: snapshot.id, nodes: n, links: pairs.length / 2, areas, kinds, names_bytes: names.length,
         files: db.prepare("select path from file where disposition = 'indexed' order by path").pluck().all() as string[],
-        offsets: { links: offsets[0]!, degree: offsets[1]!, area: offsets[2]!, kind: offsets[3]!, names: offsets[4]! },
+        offsets: { links: offsets[0]!, degree: offsets[1]!, area: offsets[2]!, kind: offsets[3]!, positions: offsets[4]!, names: offsets[5]! },
       }
       const headerBytes = Buffer.from(JSON.stringify(header), 'utf8')
       const parts: Buffer[] = [Buffer.from(new Uint32Array([headerBytes.length]).buffer), headerBytes, Buffer.alloc((4 - ((4 + headerBytes.length) % 4)) % 4)]

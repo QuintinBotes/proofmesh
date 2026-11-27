@@ -1,8 +1,9 @@
+import crypto from 'node:crypto'
 import zlib from 'node:zlib'
 import fc from 'fast-check'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { buildIndex, LIMIT, searchIndex } from '../src/paletteIndex'
-import { JITTER, areaFog, areaLabel, ghostAreas, legendAreas, placeLabels, seeds, layoutKey, matchIndices, nameHashes, parseGalaxy, rankMatches, shortName, warmStart, type GalaxyData } from '../src/galaxyData'
+import { areaFog, areaLabel, ghostAreas, graphPositions, legendAreas, placeLabels, matchIndices, parseGalaxy, rankMatches, shortName, type GalaxyData } from '../src/galaxyData'
 import { galaxyFor } from '../../../packages/proofmesh/src/query/galaxy.js'
 import { indexedDataDir } from '../../../packages/proofmesh/test/helpers.js'
 
@@ -66,31 +67,28 @@ describe('A11 the Galaxy payload: every symbol of the snapshot in one compact bi
   })
 })
 
-describe('A11 B18 settle-once layouts are cached by snapshot and seed, and a new snapshot starts from the last layout', () => {
-  const none = { indexed: 1, unsupported: 0, excluded: 0, failed: 0, pending: 0 }
-  const galaxy = (snapshotId: string, names: string[], area: number[], areas: Array<[string, number]>) => ({
-    snapshotId, n: names.length, names, area: Uint16Array.from(area), areas: areas.map(([name, count]) => ({ name, count, files: none, calls: { sites: 0, unresolved: 0 }, gaps: [] })),
-  }) as unknown as GalaxyData
-
-  it('the cache key names the snapshot and changes when the seed inputs change', () => {
-    const a = galaxy('snap_a', ['x', 'y'], [0, 0], [['src', 2]])
-    expect(layoutKey(a)).toMatch(/^snap_a:[0-9a-f]{8}$/)
-    expect(layoutKey(galaxy('snap_a', ['x', 'y'], [0, 0], [['src', 2]]))).toBe(layoutKey(a))
-    expect(layoutKey(galaxy('snap_a', ['x', 'y'], [0, 1], [['src', 1], ['lib', 1]]))).not.toBe(layoutKey(a))
-    expect(layoutKey(galaxy('snap_b', ['x', 'y'], [0, 0], [['src', 2]])).split(':')[1]).toBe(layoutKey(a).split(':')[1])
+describe('FR1220 FR1221 the payload carries every symbol\'s position, computed with the snapshot', () => {
+  it('B13 positions are 16 bits per axis in the map\'s frame, one place for each symbol, in format 4', () => {
+    const raw = zlib.gunzipSync(galaxyFor(d).gz)
+    expect(JSON.parse(raw.subarray(4, 4 + raw.readUInt32LE(0)).toString('utf8')).format).toBe(4)
+    const g = load()
+    expect(g.positions).toHaveLength(g.n * 2)
+    expect(new Set(Array.from({ length: g.n }, (_, i) => `${g.positions[i * 2]},${g.positions[i * 2 + 1]}`)).size).toBe(g.n)
+    const p = graphPositions(g)
+    expect(Math.min(...p)).toBeGreaterThanOrEqual(0)
+    expect(Math.max(...p)).toBeLessThanOrEqual(4096)
+    // Containment: a symbol sits nearer another of its file than any symbol of another package.
+    const at = (name: string) => g.names.indexOf(name)
+    const gap = (a: number, b: number) => Math.hypot(p[a * 2]! - p[b * 2]!, p[a * 2 + 1]! - p[b * 2 + 1]!)
+    const line = at('packages/billing/src/invoice:Line'), total = at('packages/billing/src/invoice:invoiceTotal')
+    const others = g.names.flatMap((n, i) => (n.startsWith('packages/billing/') ? [] : [i]))
+    expect(gap(line, total)).toBeLessThan(Math.min(...others.map((o) => gap(line, o))))
   })
 
-  it('a symbol kept between snapshots keeps its place, and a new one starts at the centre of its area', () => {
-    const before = galaxy('snap_a', ['src:a', 'src:b', 'lib:c'], [0, 0, 1], [['src', 2], ['lib', 1]])
-    const after = galaxy('snap_b', ['src:a', 'src:new', 'lib:d', 'docs:e'], [0, 0, 1, 2], [['src', 2], ['lib', 1], ['docs', 1]])
-    const previous = { names: nameHashes(before), positions: Float32Array.from([10, 20, 30, 40, 500, 600]) }
-    const seed = Float32Array.from([1, 1, 2, 2, 3, 3, 4, 4])
-    const { positions, reused } = warmStart(after, previous, seed)
-    expect(reused).toBe(1)
-    // src:a kept; src:new near the centre of src's kept points; lib and docs kept no points, so their new symbols use the seed.
-    expect([positions[0], positions[1], positions[4], positions[5], positions[6], positions[7]]).toEqual([10, 20, 3, 3, 4, 4])
-    expect(Math.hypot(positions[2]! - 10, positions[3]! - 20)).toBeLessThanOrEqual(JITTER)
-    expect(warmStart(after, null, seed)).toEqual({ positions: seed, reused: 0 })
+  it('two indexes of the same repository, in two data directories, send byte-identical payloads', async () => {
+    const other = (await indexedDataDir()).dataDir
+    const digest = (dir: string) => crypto.createHash('sha256').update(zlib.gunzipSync(galaxyFor(dir).gz)).digest('hex')
+    expect(digest(other)).toBe(digest(d))
   })
 })
 
@@ -110,15 +108,7 @@ describe('B20 area labels say which area they are', () => {
   })
 })
 
-describe('B13 B14 points never collapse onto one place, and labels never pile up', () => {
-  it('B13 seeds every point of an area at its own place, even with no links', () => {
-    const none = { indexed: 1, unsupported: 0, excluded: 0, failed: 0, pending: 0 }
-    const n = 344
-    const g = { n, area: new Uint16Array(n), areas: [{ name: 'Gears/Cogs', count: n, files: none, calls: { sites: 0, unresolved: 0 }, gaps: [] }] } as unknown as GalaxyData
-    const p = seeds(g)
-    expect(new Set(Array.from({ length: n }, (_, i) => `${p[i * 2]!.toFixed(3)},${p[i * 2 + 1]!.toFixed(3)}`)).size).toBe(n)
-  })
-
+describe('B14 labels never pile up', () => {
   it('B14 keeps labels in order and drops one that would overlap a label already placed', () => {
     const labels = [{ name: 'Demo.Garden.App', x: 100, y: 100 }, { name: 'Shed', x: 130, y: 105 }, { name: 'Orchard', x: 100, y: 140 }, { name: 'Meadows', x: 400, y: 100 }]
     expect(placeLabels(labels).map((l) => l.name)).toEqual(['Demo.Garden.App', 'Orchard', 'Meadows'])

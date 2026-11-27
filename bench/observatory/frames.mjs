@@ -81,7 +81,7 @@ async function startView() {
 }
 
 // A synthetic galaxy replaces the indexed fixture's in the server's cache; its points map to the fixture's real symbol ids.
-// The cache's file names (galaxy-v3-<snapshot>) follow packages/proofmesh/src/query/galaxy.ts, whose version retires older layouts.
+// The cache's file names (galaxy-v4-<snapshot>) follow packages/proofmesh/src/query/galaxy.ts, whose format retires older payloads.
 let evidenceNames = null
 if (fixtureName === 'synthetic') {
   const v = await startView()
@@ -90,14 +90,14 @@ if (fixtureName === 'synthetic') {
   const g = cookie && await fetch(`${v.origin}/api/v1/galaxy`, { method: 'POST', headers: { Origin: v.origin, Cookie: cookie, 'Content-Type': 'application/json' }, body: '{}' })
   v.stop()
   if (!g?.ok) fail(`could not build the fixture's galaxy (${g?.status ?? session.status})`)
-  const cache = path.join(dataDir, 'cache'), idsFile = fs.readdirSync(cache).find((f) => /^galaxy-v3-.*\.ids\.json$/.test(f))
-  const snapshotId = /^galaxy-v3-(.*)\.ids\.json$/.exec(idsFile)[1]
+  const cache = path.join(dataDir, 'cache'), idsFile = fs.readdirSync(cache).find((f) => /^galaxy-v4-.*\.ids\.json$/.test(f))
+  const snapshotId = /^galaxy-v4-(.*)\.ids\.json$/.exec(idsFile)[1]
   // Evidence opens the synthetic point that maps to the fixture's best method, so its Explore view has edges.
   const real = evidencePoints(cachedGalaxy())
   const t0 = performance.now()
   const syn = generateGalaxy({ nodes: NODES, seed: SEED, snapshotId, ids: JSON.parse(fs.readFileSync(path.join(cache, idsFile), 'utf8')) })
   fs.writeFileSync(path.join(cache, idsFile), JSON.stringify(syn.ids))
-  fs.writeFileSync(path.join(cache, `galaxy-v3-${snapshotId}.bin.gz`), syn.gz)
+  fs.writeFileSync(path.join(cache, `galaxy-v4-${snapshotId}.bin.gz`), syn.gz)
   Object.assign(fixture, { nodes: NODES, seed: SEED, links: syn.links, galaxy_sha256: crypto.createHash('sha256').update(syn.gz).digest('hex'), generated_ms: Math.round(performance.now() - t0) })
   const names = cachedGalaxy().names
   const mapped = real.filter((i) => i < NODES && alone(names, i))
@@ -117,7 +117,8 @@ const INIT = `(() => {
       // --inject-task-ms: a main-thread task of that length right after the first draw, standing in for a slowed build.
       if (${INJECT}) setTimeout(() => { const end = performance.now() + ${INJECT}; while (performance.now() < end) {} }, 0)
     }
-    if (o.marks.first_draw && !o.marks.settled && document.querySelector('button[aria-label="Resume layout"]')) o.marks.settled = performance.now()
+    // Positions come with the snapshot (#44): they are final once the Galaxy has drawn them and marks itself ready.
+    if (o.marks.first_draw && !o.marks.settled && document.querySelector('.galaxy[data-ready]')) o.marks.settled = performance.now()
   }
   new MutationObserver(check).observe(document, { subtree: true, childList: true, characterData: true, attributes: true })
 })()`
@@ -145,22 +146,23 @@ async function loadMetrics(page, cdp, pid) {
   }
 }
 
-/** The settled layout the Galaxy kept in IndexedDB: its key, positions and name hashes. */
-async function storedLayout(page, notKey) {
+/**
+ * The layout the page receives: the Galaxy payload fetched again in the page, with the request body the Galaxy itself sent, so it
+ * names the same repository and snapshot. Its key is the snapshot id; positions are x, y pairs and names the symbols' names (#44).
+ */
+async function shownLayout(page, body, notKey) {
   for (let i = 0; i < 100; i++) {
-    const l = await page.evaluate(() => new Promise((ok) => {
-      const r = indexedDB.open('proofmesh-galaxy', 2)
-      r.onerror = () => ok(null)
-      r.onsuccess = () => {
-        const s = r.result.transaction('layouts').objectStore('layouts'), g = s.get('latest')
-        g.onsuccess = () => { if (typeof g.result !== 'string') return ok(null); const h = s.get(g.result); h.onsuccess = () => ok(h.result ? { key: g.result, positions: Array.from(new Float32Array(h.result.positions)), names: Array.from(new Uint32Array(h.result.names)) } : null) }
-        g.onerror = () => ok(null)
-      }
-    }))
+    const l = await page.evaluate(async (body) => {
+      const r = await fetch('/api/v1/galaxy', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body })
+      if (!r.ok) return null
+      const buf = await r.arrayBuffer(), hl = new DataView(buf).getUint32(0, true), h = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, 4, hl)))
+      const base = 4 + hl + ((4 - ((4 + hl) % 4)) % 4)
+      return { key: h.snapshot_id, positions: Array.from(new Uint16Array(buf, base + h.offsets.positions, h.nodes * 2)), names: new TextDecoder().decode(new Uint8Array(buf, base + h.offsets.names, h.names_bytes)).split('\n') }
+    }, body)
     if (l && l.key !== notKey) return l
     await page.waitForTimeout(100)
   }
-  throw new Error('the Galaxy kept no settled layout')
+  throw new Error('the Galaxy sent no layout')
 }
 
 // Frame times: every requestAnimationFrame interval for a while.
@@ -182,7 +184,7 @@ const timedClick = (page, find, ready, arg) => page.evaluate(async ({ find, read
 }, { find: find.toString(), ready: ready.toString(), arg })
 /** The galaxy of a snapshot (or the only one) in the server's cache: the name, degree and kind of each point. */
 function cachedGalaxy(snapshotId) {
-  const file = snapshotId ? `galaxy-v3-${snapshotId}.bin.gz` : fs.readdirSync(path.join(dataDir, 'cache')).find((f) => /^galaxy-v3-.*\.bin\.gz$/.test(f))
+  const file = snapshotId ? `galaxy-v4-${snapshotId}.bin.gz` : fs.readdirSync(path.join(dataDir, 'cache')).find((f) => /^galaxy-v4-.*\.bin\.gz$/.test(f))
   const buf = zlib.gunzipSync(fs.readFileSync(path.join(dataDir, 'cache', file)))
   const hl = buf.readUInt32LE(0), h = JSON.parse(buf.subarray(4, 4 + hl).toString('utf8')), base = 4 + hl + ((4 - ((4 + hl) % 4)) % 4)
   return {
@@ -225,6 +227,7 @@ async function coldRun(i, { keepFor } = {}) {
   const context = await browser.newContext({ viewport: VIEWPORT, deviceScaleFactor: 1 })
   await context.addInitScript(INIT)
   const page = await context.newPage()
+  const galaxyRequest = page.waitForRequest((r) => new URL(r.url()).pathname === '/api/v1/galaxy', { timeout: 900000 })
   // A page error means the view is broken; stop at once rather than wait out a timeout.
   page.on('pageerror', (e) => { console.error(`page error: ${e.message}`); server.close().finally(() => process.exit(1)) })
   const cdp = await context.newCDPSession(page)
@@ -235,7 +238,8 @@ async function coldRun(i, { keepFor } = {}) {
   const run = await loadMetrics(page, cdp, server.process().pid)
   const loadBytes = [...bytes]
   const summary = (await page.getByTestId('conclusion').textContent()).trim()
-  const layout = await storedLayout(page)
+  const galaxyBody = (await galaxyRequest).postData() ?? '{}'
+  const layout = await shownLayout(page, galaxyBody)
   const renderer = await page.evaluate(() => {
     const gl = document.createElement('canvas').getContext('webgl2') ?? document.createElement('canvas').getContext('webgl')
     const ext = gl?.getExtension('WEBGL_debug_renderer_info')
@@ -305,7 +309,7 @@ async function coldRun(i, { keepFor } = {}) {
   // second symbol, once the lens has drawn, so it still needs its own request. Then an edge: a caller or callee row of the lens to
   // its call site shown.
   // The galaxy shown is the one of the snapshot its layout key names; a data directory's cache may hold others.
-  if (!evidenceNames) { const g = cachedGalaxy(layout.key.slice(0, layout.key.lastIndexOf(':'))); evidenceNames = evidencePoints(g).map((i) => g.names[i]) }
+  if (!evidenceNames) { const g = cachedGalaxy(layout.key); evidenceNames = evidencePoints(g).map((i) => g.names[i]) }
   if (evidenceNames.length < 2) throw new Error('no two symbols with names no other name contains')
   const openSymbol = async (symbol) => {
     await page.getByRole('tab', { name: 'Galaxy' }).click()
@@ -337,11 +341,11 @@ async function coldRun(i, { keepFor } = {}) {
     transferred_kb: Math.round(loadBytes.filter((b) => b.type !== 'api').reduce((s, b) => s + b.transferred, 0) / 1024),
   })
   for (const k of Object.keys(run)) if (typeof run[k] === 'number') run[k] = Math.round(run[k] * 10) / 10
-  // Warm: the Galaxy loaded again in the same page, its layout and HTTP cache kept (a reload would reopen the symbol Explore shows).
+  // Warm: the Galaxy loaded again in the same page, its HTTP cache kept (a reload would reopen the symbol Explore shows).
   const galaxyUrl = v.origin + (workspace && repository ? new URL(v.url).search : '/')
   await page.goto(galaxyUrl)
   const warm = await loadMetrics(page, cdp, server.process().pid)
-  const result = { run, warm, layout, renderer, summary, bytes: loadBytes, calls, browserVersion: browser.version(), symbol: evidenceNames.join(', '), galaxyUrl }
+  const result = { run, warm, layout, galaxyBody, renderer, summary, bytes: loadBytes, calls, browserVersion: browser.version(), symbol: evidenceNames.join(', '), galaxyUrl }
   if (keepFor) { result.keep = { page, close: async () => { await server.close(); v.stop() } }; return result }
   await server.close()
   v.stop()
@@ -366,7 +370,7 @@ if (last.keep) {
   const page = last.keep.page
   await page.goto(last.galaxyUrl)
   await page.waitForFunction(() => window.__obs?.marks.settled, null, { timeout: 900000, polling: 100 })
-  const b = await storedLayout(page, last.layout.key)
+  const b = await shownLayout(page, last.galaxyBody, last.layout.key)
   stability.a_to_b = { ...displacement(last.layout, b), files }
   await last.keep.close()
 } else stability.a_to_b = { reason: fixtureName === 'synthetic' ? 'a synthetic galaxy has no commit to change' : 'needs a fixture (--fixture typeorm)' }
