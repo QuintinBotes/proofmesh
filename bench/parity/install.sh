@@ -4,6 +4,7 @@
 #   Graphify 0.9.108, Serena 2.1.0, aider-chat 0.86.2: uv tool install, with their own tool and bin directories,
 #     so a graphify, serena or aider already on PATH is left as it is;
 #   scip-typescript 0.3.15: npm, under $PARITY_TOOLS/npm;
+#   ast-grep 0.51.1 (MIT), for bench/structure: npm, under $PARITY_TOOLS/npm;
 #   the scip CLI 0.10.0: the release binary, checked against its published sha256, into $PARITY_TOOLS/bin.
 # Network is needed here only; run.sh runs offline.
 set -eu
@@ -13,7 +14,7 @@ export UV_TOOL_DIR="$TOOLS/uv" UV_TOOL_BIN_DIR="$TOOLS/bin"
 uv tool install graphifyy==0.9.108
 uv tool install --python 3.11 serena-agent==2.1.0
 uv tool install --python 3.11 aider-chat==0.86.2
-npm install --prefix "$TOOLS/npm" --no-audit --no-fund @sourcegraph/scip-typescript@0.3.15
+npm install --prefix "$TOOLS/npm" --no-audit --no-fund @sourcegraph/scip-typescript@0.3.15 @ast-grep/cli@0.51.1
 # Serena fetches its TypeScript language server once, into its own home, not ~/.serena.
 SERENA_HOME="$TOOLS/serena-home" SERENA_USAGE_REPORTING=false "$TOOLS/bin/serena" download-ls-dependencies typescript
 

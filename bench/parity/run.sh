@@ -60,4 +60,6 @@ EOF
   FIXTURE="$FIXTURE_FINAL"
   rm -rf "$BUILD"
 fi
+# --fixture-only builds the fixture and stops, for bench/structure.
+[ "${1:-}" = "--fixture-only" ] && exit 0
 node "$HERE/run.mjs" --fixture "$FIXTURE"

@@ -64,6 +64,7 @@ They are benchmark-only tools: no package of this repository depends on one, and
 | scip-typescript 0.3.15 (Apache-2.0), read with the scip CLI 0.10.0 (Apache-2.0) | `scip-typescript index`, decoded with `scip print --json` |
 | Serena v2.1.0 (GPL-3.0-or-later), run only as an external process | `start-mcp-server --context claude-code --agent-interface tools` over MCP: `find_referencing_symbols`, `find_implementations` |
 | aider-chat 0.86.2 (Apache-2.0) | `RepoMap.get_repo_map`, the target file in the chat and its file and name mentioned |
+| ast-grep 0.51.1 (MIT), for `bench/structure` only | `ast-grep run -p <pattern> -l <language> --json=stream <files>` (`../structure/README.md`) |
 | TypeORM (MIT), the fixture | copied at run time, never committed |
 
 A newer version of a comparator is added as a second column, never by replacing the pinned one.

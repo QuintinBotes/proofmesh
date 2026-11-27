@@ -4,14 +4,14 @@ Proofmesh serves its tools over MCP on stdio (`proofmesh mcp`) and over Streamab
 
 ## Tool profiles (FR420 to FR423)
 
-A client that does not defer tool loading puts every listed tool's name, description and input schema into the model's context before the first question. So `proofmesh mcp` lists only the `core` profile, whose `tools/list` stays under 20,000 bytes (a test asserts it; 18,427 bytes for 13 tools at this change, against 116,263 for all 38):
+A client that does not defer tool loading puts every listed tool's name, description and input schema into the model's context before the first question. So `proofmesh mcp` lists only the `core` profile, whose `tools/list` stays under 20,000 bytes (a test asserts it; 18,427 bytes for 13 tools at this change, against 122,630 for all 39):
 
 | Profile | Tools |
 |---|---|
 | `core` (default) | `find_symbols`, `get_symbol`, `get_symbols_at`, `get_relationships`, `trace_paths`, `analyze_impact`, `find_tests`, `search_sources`, `read_evidence`, `workspace_status`, `list_repositories`, `get_overview`, `list_queries` |
 | `data` | `get_table_reach`, `get_property_reads`, `find_query_source`, `get_external_usage`, `get_session_trail`, `get_context_map` |
 | `claims` | `verify_claim`, `get_claims`, `prepare_verification`, `get_verification` |
-| `extra` | `list_snapshots`, `list_workspaces`, `get_ecosystem`, `compare_snapshots`, `impact_completeness`, `request_index`, `get_job`, `get_memory`, `save_memory`, `find_stale_mentions`, `find_unused`, `find_cycles`, `find_entry_points`, `find_hubs`, `plan_rename` |
+| `extra` | `list_snapshots`, `list_workspaces`, `get_ecosystem`, `compare_snapshots`, `impact_completeness`, `request_index`, `get_job`, `get_memory`, `save_memory`, `find_stale_mentions`, `find_unused`, `find_cycles`, `find_entry_points`, `find_hubs`, `plan_rename`, `search_structure` |
 
 - `proofmesh mcp --tools core,data` (or any comma-separated list) lists those profiles; `--tools all` lists every tool exactly as its schema file declares it. Both transports take it. In a client configuration, put the option after `mcp` in the arguments, for example `"args": ["mcp", "--tools", "all"]` in `.mcp.json`. A client restarts the server to change profile.
 - Outside `all`, a listed tool keeps its description and every field of its input schema, with types, enums, patterns, defaults and required fields, but not the per-field descriptions; `envelope` keeps its first sentence. The full schemas are `schemas/tools/<tool>.input.schema.json`, and the server validates every call against them whatever the profile.
@@ -114,3 +114,30 @@ A library and the applications that use it are often separate repositories. When
 - `data.workspace` names each workspace, its link file and each member's side of it: the snapshot and commit the link file was built from, and `current`. A side re-indexed since is named in a limitation, with the `workspace link` command that seals a current file. This repository's symbols are matched to an older link file by stable key.
 - A version mismatch is the limitation `version mismatch: app uses 1.1.0, lib is 1.2.0`, and its rows are `inferred`.
 - Not yet: `trace_paths` and `find_tests` across repositories, other ecosystems than npm, and chains that cross into a third member.
+
+## Structural search: `search_structure` (FR1060 to FR1067)
+
+`search_structure` (profile `extra`) finds code by its shape, where `search_sources` finds text. A pattern is code in its language with ast-grep's metavariables, matched over the Tree-sitter grammars the syntax tier ships, with ast-grep's default (smart) matching: comments and punctuation the pattern leaves out are skipped. It reads the content the snapshot captured, never the working tree, and a limitation names that snapshot and its commit.
+
+```
+search_structure { "pattern": "$D.escape($A)", "language": "typescript", "scope": { "reachable_from": ["DataSource.initialize"] } }
+search_structure { "pattern": "try { $$$ } catch ($E) {}", "language": "typescript", "path_prefix": "src/" }
+search_structure { "pattern": "for (const $X of $Y) {\n  $$$\n  await $Z\n  $$$\n}", "language": "typescript" }
+```
+
+- **Metavariables.** `$X` matches one named node, `$$X` one node named or not, `$_` one node without capturing, `$$$X` and `$$$` any number of nodes (taken until the next pattern node matches, never backtracking). A metavariable used twice matches only equal code. In Python, Go, Rust, C# and the other languages where `$` is not an identifier character, the pattern is rewritten as ast-grep rewrites it, so the same pattern text works.
+- **Languages.** `typescript` (`.ts`, `.cts`, `.mts`), `tsx`, `javascript` (read with the TSX grammar), `python`, `go`, `rust`, `java`, `c`, `cpp`, `csharp`, `ruby`, `kotlin`, `scala`, `swift`, `bash` and `hcl`, each over the extensions ast-grep gives it. With no `language`, each file is searched in the language of its extension, a language the pattern does not parse in is skipped and named, and files with no grammar are counted by extension.
+- **Scope.** `reachable_from` and `reaching` take symbols (an id, `{ name, path }`, or a name the snapshot holds once, such as `DataSource.initialize`). A match is kept when its enclosing symbol, the innermost symbol that holds it whole, is one `trace_paths` reaches from them (or that reaches them), within `max_depth`. Reaching a class does not put its methods in scope. `importing` takes file paths and keeps the matches in the files that import one. Keys intersect.
+- **Rows.** Lean: `<enclosing name> <path>:<line> <first line of the match>`, the text cut at 120 characters and quoted as JSON when it holds a space. JSON (`compact`, `full`): `data.matches[]` with `path`, `line`, `end_line`, `text` and `symbol` (`id`, `key`, `kind`, `name`, `qualified_name`), and `data.totals`. A match inside another match is listed too, as ast-grep lists it.
+- **Refusals.** A pattern that does not parse in its language, one that is more than one node, and a lone `$$$` are `INVALID_ARGUMENT` before any file is searched. The message names each syntax error with its line and column, and `details.syntax_tree` is the pattern as ast-grep's `--debug-query=pattern` prints it:
+
+  ```
+  the pattern does not parse as typescript: syntax error at 1:1 in "foo($A"
+  ERROR
+    identifier foo
+    (
+    MetaVar $A
+  ```
+
+- **Bounds.** A pattern is untrusted input that runs over captured source, so it is bounded and never run. The match runs in the syntax adapter's own process with a minimal environment and a 1 GiB heap. That process stops at `timeout_ms` and returns what it found, and it is killed one second later if it has not stopped. A pattern is at most 4,096 characters. A file over 1 MiB is not parsed, and one search reads at most 64 MiB of source; both are counted in a limitation. The matcher keeps only the rows of the page asked for, so `max_rows` pages with a cursor and `completion.total` counts every match. After a timeout, the total counts the matches found before it.
+- `bench/structure` compares every answer with the pinned ast-grep CLI. Every match set is the same. ast-grep is still several times faster on the parity fixture (SC-003 of #37, open).

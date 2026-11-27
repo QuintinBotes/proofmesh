@@ -40,6 +40,7 @@ import { innermost } from './symbol-at.js'
 import { findCycles, findEntryPoints, findHubs, findUnused, type CycleEdge, type EntryPoint, type Hub, type UnusedRow } from './structure.js'
 import { contextMap } from './context-map.js'
 import { compare, hasBodyHash, unreadableFiles } from './compare.js'
+import { importersOf, MAX_FILE_BYTES, MAX_SOURCE_BYTES, reachSet, searchStructure, type StructureMatch } from './structure-search.js'
 import { loadSchema } from '../core/schemas.js'
 import { changes, workingTree } from '../indexer/freshness.js'
 import { registryFor } from '../indexer/languages.js'
@@ -49,10 +50,10 @@ import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 
-export const TOOLS = ['workspace_status', 'list_repositories', 'list_snapshots', 'list_workspaces', 'find_symbols', 'get_symbol', 'get_relationships', 'trace_paths', 'read_evidence', 'get_overview', 'analyze_impact', 'find_tests', 'search_sources', 'get_memory', 'verify_claim', 'request_index', 'get_job', 'get_claims', 'save_memory', 'get_table_reach', 'get_property_reads', 'get_external_usage', 'find_query_source', 'compare_snapshots', 'list_queries', 'get_ecosystem', 'prepare_verification', 'get_verification', 'impact_completeness', 'get_symbols_at', 'get_session_trail', 'find_stale_mentions', 'find_unused', 'find_cycles', 'find_entry_points', 'find_hubs', 'get_context_map', 'plan_rename'] as const
+export const TOOLS = ['workspace_status', 'list_repositories', 'list_snapshots', 'list_workspaces', 'find_symbols', 'get_symbol', 'get_relationships', 'trace_paths', 'read_evidence', 'get_overview', 'analyze_impact', 'find_tests', 'search_sources', 'get_memory', 'verify_claim', 'request_index', 'get_job', 'get_claims', 'save_memory', 'get_table_reach', 'get_property_reads', 'get_external_usage', 'find_query_source', 'compare_snapshots', 'list_queries', 'get_ecosystem', 'prepare_verification', 'get_verification', 'impact_completeness', 'get_symbols_at', 'get_session_trail', 'find_stale_mentions', 'find_unused', 'find_cycles', 'find_entry_points', 'find_hubs', 'get_context_map', 'plan_rename', 'search_structure'] as const
 export type ToolName = (typeof TOOLS)[number]
 /** The query tools whose results are code locations: they answer in the lean envelope on request, and by default over MCP (FR099). */
-export const LEAN = new Set<string>(['find_symbols', 'get_symbol', 'get_symbols_at', 'get_relationships', 'trace_paths', 'analyze_impact', 'find_tests', 'get_session_trail', 'find_unused', 'find_cycles', 'find_entry_points', 'find_hubs', 'get_context_map'])
+export const LEAN = new Set<string>(['find_symbols', 'get_symbol', 'get_symbols_at', 'get_relationships', 'trace_paths', 'analyze_impact', 'find_tests', 'get_session_trail', 'find_unused', 'find_cycles', 'find_entry_points', 'find_hubs', 'get_context_map', 'search_structure'])
 /** A lean answer is its text; the envelope beside it is what the text was rendered from, for in-process callers. */
 export type Answer = Envelope & { text?: string }
 
@@ -67,7 +68,7 @@ export const CAPABILITY: Record<ToolName, ListQueriesData['tools'][number]['capa
   verify_claim: 'read', request_index: 'management', get_job: 'read', get_claims: 'read', save_memory: 'management', get_table_reach: 'read',
   get_property_reads: 'read', get_external_usage: 'read', find_query_source: 'read', compare_snapshots: 'read', list_queries: 'read',
   get_ecosystem: 'read', prepare_verification: 'management', get_verification: 'read', impact_completeness: 'management', get_symbols_at: 'read', get_session_trail: 'read', find_stale_mentions: 'read',
-  find_unused: 'read', find_cycles: 'read', find_entry_points: 'read', find_hubs: 'read', get_context_map: 'read', plan_rename: 'read',
+  find_unused: 'read', find_cycles: 'read', find_entry_points: 'read', find_hubs: 'read', get_context_map: 'read', plan_rename: 'read', search_structure: 'read',
 }
 
 /**
@@ -85,6 +86,8 @@ export const PROFILE: Record<ToolName, ListQueriesData['tools'][number]['profile
   find_unused: 'extra', find_cycles: 'extra', find_entry_points: 'extra', find_hubs: 'extra',
   // Asked before a rename, not for most questions: core's tools/list has little room left, and analyze_impact (core) covers what a change reaches.
   plan_rename: 'extra',
+  // Structural search runs a matcher process over captured source: a question for a pattern, not most questions (#37).
+  search_structure: 'extra',
 }
 /** How a client loads the tools of another profile, said by list_queries, which lists them all (FR422). */
 const PROFILES_NOTE = 'Over MCP, proofmesh mcp lists the core profile; start it with --tools <profile[,profile]> (core, data, claims, extra) or --tools all to list the others. A tool outside the profiles it was started with answers INVALID_ARGUMENT naming its profile.'
@@ -135,7 +138,7 @@ type Partial = {
 }
 
 /** Tools whose shrink list has a total order and honours ctx.page.offset, so a cursor continues it with no omission or duplicate. */
-const PAGED = new Set<ToolName>(['get_symbols_at', 'find_symbols', 'get_relationships', 'search_sources', 'workspace_status', 'find_tests', 'impact_completeness', 'find_unused', 'find_cycles', 'find_entry_points', 'get_context_map'])
+const PAGED = new Set<ToolName>(['get_symbols_at', 'find_symbols', 'get_relationships', 'search_sources', 'workspace_status', 'find_tests', 'impact_completeness', 'find_unused', 'find_cycles', 'find_entry_points', 'get_context_map', 'search_structure'])
 /** Tools that answer over a workspace's link file rather than one repository snapshot (A28). None yet in this file; get_ecosystem joins at integration. */
 const WORKSPACE_SCOPED = new Set<ToolName>([])
 
@@ -474,6 +477,19 @@ function symbolNamed(db: Database.Database, named: { name: string; path: string 
   if (!hits.length) throw new ProofmeshError('NOT_FOUND', `no symbol named ${named.name} in ${named.path}${inFile.length ? '' : ' (no symbols in that file)'}`)
   const candidates = hits.map((s) => symbolRow(s, true))
   throw new ProofmeshError('INVALID_ARGUMENT', `${named.name} names ${hits.length} symbols in ${named.path}; pass one by id:\n${candidates.join('\n')}`, { detail: 'ambiguous_name', candidates })
+}
+
+/** Source text in a lean row, control and bidirectional characters escaped, so the code cannot reorder or hide what the row shows. */
+const visible = (t: string) => t.replace(/[\u0000-\u001f\u007f-\u009f\u200E\u200F\u202A-\u202E\u2066-\u2069]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`)
+/** The one symbol a name names in the whole snapshot: its lean name (`DataSource.initialize`), else its plain name. */
+function symbolByName(db: Database.Database, name: string): string {
+  const rows = db.prepare(`${SYMBOL_SQL} where s.name = ? and s.kind <> 'module' order by f.path, s.start_line, s.id`).all(name.slice(name.lastIndexOf('.') + 1)) as SymbolRow[]
+  const exact = rows.filter((s) => leanName(s) === name)
+  const hits = exact.length ? exact : rows.filter((s) => s.name === name)
+  if (hits.length === 1) return hits[0]!.id
+  if (!hits.length) throw new ProofmeshError('NOT_FOUND', `no symbol named ${name} in this snapshot`)
+  const candidates = hits.slice(0, 10).map((s) => symbolRow(s, true))
+  throw new ProofmeshError('INVALID_ARGUMENT', `${name} names ${hits.length} symbols; pass one by id or as { name, path }:\n${candidates.join('\n')}`, { detail: 'ambiguous_name', candidates })
 }
 
 /** The input with every `{ name, path }` given in place of a symbol id replaced by that id. */
@@ -1313,6 +1329,49 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     return {
       data: { hubs: r.hubs, by, sampled_sources: r.sampled }, stop_reasons: [...(Number(input.top ?? 10) > ctx.limits.max_rows && r.hubs.length === ctx.limits.max_rows ? ['max_rows' as const] : []), ...(r.timedOut ? ['timeout' as const] : [])], limitations, shrink: 'hubs',
       lean: (data) => (data.hubs as Hub[]).map((h) => leanRow(leanName(h), h.path, h.line, [h.kind, `fan_in=${h.fan_in}`, `fan_out=${h.fan_out}`, ...(h.betweenness !== undefined ? [`betweenness=${h.betweenness}`] : [])])),
+    }
+  },
+
+  search_structure(ctx, input) {
+    const scope = (input.scope ?? {}) as { reachable_from?: unknown[]; reaching?: unknown[]; importing?: string[] }
+    const deadline = ctx.started + ctx.limits.timeout_ms
+    const symbolRef = (r: unknown): string => {
+      if (r !== null && typeof r === 'object') return symbolNamed(ctx.db, r as { name: string; path: string })
+      const s = String(r)
+      if (!/^sym_[0-9a-z]+$/.test(s)) return symbolByName(ctx.db, s)
+      if (!ctx.db.prepare('select 1 from symbol where id = ?').get(s)) throw new ProofmeshError('NOT_FOUND', `symbol ${s} is not in snapshot ${ctx.snapshot.id}`)
+      return s
+    }
+    // Each scope given narrows the search; together they intersect (FR1062).
+    let symbols = null as Set<string> | null
+    const walkNotes: string[] = []
+    for (const [key, direction] of [['reachable_from', 'out'], ['reaching', 'in']] as const) {
+      if (!scope[key]) continue
+      const r = reachSet(ctx.db, scope[key].map(symbolRef), direction, ctx.limits.max_depth, deadline)
+      symbols = symbols ? new Set([...symbols].filter((id) => r.ids.has(id))) : r.ids
+      if (r.stopped) walkNotes.push(`The ${key} walk stopped at ${r.stopped === 'max_depth' ? `max_depth ${ctx.limits.max_depth}` : 'the time limit'}; symbols further away are outside the scope.`)
+    }
+    const files = scope.importing ? importersOf(ctx.db, scope.importing.map((p) => fileAt(ctx, p).id)) : null
+    const r = searchStructure(ctx.db, ctx.store, { pattern: String(input.pattern), language: input.language as string | undefined, pathPrefix: input.path_prefix as string | undefined, symbols, files, offset: ctx.page.offset, maxRows: ctx.limits.max_rows, deadline })
+    const git = JSON.parse((ctx.db.prepare("select value from meta where key = 'git'").get() as { value: string } | undefined)?.value ?? '{}') as { commit?: string }
+    const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
+    const noGrammar = Object.entries(r.skipped.no_grammar).sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))
+    const skippedFiles = noGrammar.reduce((n, [, c]) => n + c, 0)
+    const limitations = [
+      // The snapshot's captured content, never the working tree: a stale snapshot answers for what it captured (FR1065).
+      `Matched against the content snapshot ${ctx.snapshot.id} captured${git.commit ? ` at commit ${git.commit.slice(0, 12)}` : ''}, not the working tree.`,
+      ...walkNotes,
+      ...(skippedFiles ? [`${plural(skippedFiles, 'file')} in a language with no grammar here ${skippedFiles === 1 ? 'was' : 'were'} not searched: ${noGrammar.slice(0, 5).map(([e, n]) => `${e} ${n}`).join(', ')}${noGrammar.length > 5 ? ', ...' : ''}.`] : []),
+      ...Object.entries(r.failed_languages).map(([lang, why]) => `The pattern does not parse as ${lang} (${why.split('\n')[0]}), so ${lang} files were not searched.`),
+      ...(r.skipped.too_large ? [`${plural(r.skipped.too_large, 'file')} over ${MAX_FILE_BYTES / 1024 / 1024} MiB ${r.skipped.too_large === 1 ? 'was' : 'were'} not parsed.`] : []),
+      ...(r.skipped.over_budget ? [`${plural(r.skipped.over_budget, 'file')} past the ${MAX_SOURCE_BYTES / 1024 / 1024} MiB one search reads ${r.skipped.over_budget === 1 ? 'was' : 'were'} not searched; narrow path_prefix or the scope.`] : []),
+      ...(r.stopped ? [`The search stopped at timeout_ms ${ctx.limits.timeout_ms}; total counts the matches found before it.`] : []),
+    ]
+    const end = ctx.page.offset + r.matches.length
+    return {
+      data: { matches: r.matches, totals: { matches: r.total, files_searched: r.files_searched, ...(symbols ? { scope_symbols: symbols.size } : {}), ...(files ? { scope_files: files.size } : {}) } },
+      total: r.total, more: r.total > end, stop_reasons: [...(r.total > end ? ['max_rows' as const] : []), ...(r.stopped ? ['timeout' as const] : [])], limitations, shrink: 'matches',
+      lean: (data) => (data.matches as StructureMatch[]).map((m) => leanRow(m.symbol ? leanName({ ...m.symbol, path: m.path }) : null, m.path, m.line, [quote(visible(m.text))])),
     }
   },
 
