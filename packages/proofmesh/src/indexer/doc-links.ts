@@ -95,14 +95,15 @@ export function resolveMentions(db: Database.Database, raws: Raw[]): { recorded:
  * removed and one added symbol of a kind share a body hash (FR133), a file moved when one added file has its content, deleted otherwise.
  * A mention already stale there and still unmatched keeps its change at its line now, so it stays listed until the doc is fixed.
  */
-export function staleMentions(prev: Database.Database | undefined, head: Database.Database, unmatched: Raw[]): Stale[] {
+export function staleMentions(prev: Database.Database | undefined, head: Database.Database, unmatched: Raw[], headDocs: Record<string, string>): Stale[] {
   if (!prev || !unmatched.length) return []
   const key = (doc: string, text: string) => `${doc}\u0000${text}`
   type Was = { target_kind: string; target_id: string }
   const was = new Map((prev.prepare(`select f.path as doc, json_extract(a.detail, '$.text') as text, a.target_kind, a.target_id from assertion a join file f on f.id = a.source_id
     where a.type = 'mentions' and a.resolution = 'resolved'`).all() as Array<Was & { doc: string; text: string }>).map((r) => [key(r.doc, r.text), r]))
   const meta = prev.prepare("select value from meta where key = 'doc_links'").get() as { value: string } | undefined
-  const carried = new Map((meta ? (JSON.parse(meta.value) as { stale: Stale[] }).stale : []).map((s) => [key(s.path, s.mention), s]))
+  const kept = meta ? (JSON.parse(meta.value) as { docs: Record<string, string>; stale: Stale[] }) : { docs: {} as Record<string, string>, stale: [] }
+  const carried = new Map(kept.stale.map((s) => [key(s.path, s.mention), s]))
   let pairs: { head: Map<string, Sym>; to: Map<string, { change: Stale['change']; head: Sym }> } | undefined
   const paired = () => {
     if (pairs) return pairs
@@ -118,13 +119,18 @@ export function staleMentions(prev: Database.Database | undefined, head: Databas
     if (w.target_kind === 'file') {
       const gone = prev.prepare('select path, content_hash from file where id = ?').get(w.target_id) as { path: string; content_hash: string | null }
       if (head.prepare('select 1 from file where path = ?').get(gone.path)) continue
-      const moved = gone.content_hash ? (head.prepare('select path from file where content_hash = ?').all(gone.content_hash) as Array<{ path: string }>).filter((f) => !prev.prepare('select 1 from file where path = ?').get(f.path)) : []
-      out.push({ ...at, ...(moved.length === 1 ? { change: 'moved' as const, to: { name: moved[0]!.path, path: moved[0]!.path } } : { change: 'deleted' as const, to: null }) })
+      // A doc keeps no content hash in its file row; its text's hash is in the doc_links meta of each side.
+      const hash = gone.content_hash ?? kept.docs[gone.path]
+      const now = hash ? [...(head.prepare('select path from file where content_hash = ?').all(hash) as Array<{ path: string }>).map((f) => f.path), ...Object.keys(headDocs).filter((p) => headDocs[p] === hash)] : []
+      const moved = now.filter((p) => !prev.prepare('select 1 from file where path = ?').get(p))
+      out.push({ ...at, ...(moved.length === 1 ? { change: 'moved' as const, to: { name: moved[0]!, path: moved[0]! } } : { change: 'deleted' as const, to: null }) })
       continue
     }
     const { head: now, to } = paired()
-    const sym = prev.prepare('select kind, qualified_name from symbol where id = ?').get(w.target_id) as { kind: string; qualified_name: string }
+    const sym = prev.prepare('select s.kind, s.qualified_name, f.path from symbol s join file f on f.id = s.file_id where s.id = ?').get(w.target_id) as { kind: string; qualified_name: string; path: string }
     if (now.has(`${sym.kind}\u0000${sym.qualified_name}`)) continue
+    // A file that failed this time declared nothing: its code is unknown, not gone.
+    if (head.prepare("select 1 from file where path = ? and disposition = 'failed'").get(sym.path)) continue
     const p = to.get(w.target_id)
     if (!p) { out.push({ ...at, change: 'deleted', to: null }); continue }
     // The new name as the doc would write it: as many trailing segments as the mention had, joined as it joined them.

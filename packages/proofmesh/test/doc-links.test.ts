@@ -102,3 +102,36 @@ describe('FR823 FR824 scenarios 3 and 4: a rename and a delete make the doc ment
     expect(stale()).toHaveLength(3)
   })
 })
+
+describe('FR823 a moved doc, a failed file and an accepted note, each on their own repository', () => {
+  let d2: string, repo2: string
+  const index2 = () => { const r = cli(['--data-dir', d2, 'index', repo2]); expect(r.status, r.stderr).toBe(0) }
+  const stale2 = () => (tool(d2, 'find_stale_mentions', {}).data.mentions as Array<{ path: string; line: number; mention: string; change: string; to: { name: string } | null }>)
+    .map((m) => `${m.path}:${m.line} ${m.mention} ${m.change}${m.to ? `→${m.to.name}` : ''}`)
+  const note = () => (tool(d2, 'get_memory', { symbol_id: symbolId(d2, 'src/wallet:Wallet.open') }).data as { notes: Array<{ id: string; staleness: string }> }).notes.map((n) => [n.id, n.staleness])
+
+  beforeAll(() => {
+    repo2 = fs.realpathSync(tmpDir('pm-doc-links-2-'))
+    fs.cpSync(path.join(FIXTURE, 'repo'), repo2, { recursive: true })
+    d2 = tmpDir()
+    const notes = tmpDir('pm-doc-notes-')
+    fs.writeFileSync(path.join(notes, 'open.md'), '---\nid: wallet-open\ntitle: "Wallet.open makes a wallet"\nkind: invariant\nnodes:\n  - method:src/wallet:Wallet.open\n---\n\nA wallet is only made through Wallet.open.\n')
+    for (const args of [['init'], ['repo', 'add', repo2], ['index', repo2], ['notes', 'add', notes], ['notes', 'sync'], ['notes', 'accept', 'wallet-open']]) { const r = cli(['--data-dir', d2, ...args]); expect(r.status, r.stderr).toBe(0) }
+  }, 180000)
+
+  it('a doc moved unchanged is moved to its new path, and a note on code a doc names stays current across snapshots', () => {
+    expect(note()).toEqual([['wallet-open', 'current']])
+    fs.mkdirSync(path.join(repo2, 'docs', 'arch'))
+    fs.renameSync(path.join(repo2, 'docs', 'design.md'), path.join(repo2, 'docs', 'arch', 'design.md'))
+    index2()
+    expect(stale2()).toEqual(['README.md:5 docs/design.md moved→docs/arch/design.md'])
+    expect(note()).toEqual([['wallet-open', 'current']])
+  }, 120000)
+
+  it('the symbols of a file that failed this time are not reported deleted', () => {
+    fs.appendFileSync(path.join(repo2, 'src', 'wallet.ts'), Buffer.from([0x2f, 0x2f, 0x20, 0xe9, 0x0a]))
+    index2()
+    expect(withSnapshot(d2, (db) => db.prepare("select disposition_detail from file where path = 'src/wallet.ts'").get())).toEqual({ disposition_detail: 'not_utf8' })
+    expect(stale2()).toEqual(['README.md:5 docs/design.md moved→docs/arch/design.md'])
+  }, 120000)
+})

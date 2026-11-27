@@ -540,7 +540,7 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
       if (previous) {
         let prev: Database.Database | undefined
         try { prev = openSnapshot(catalog, previous) } catch (e) { log('warning', 'previous snapshot unreadable; no stale doc mentions reported', { snapshot: previous.id, error: String(e) }) }
-        try { stale = staleMentions(prev, db, mentions.unmatched) } finally { prev?.close() }
+        try { stale = staleMentions(prev, db, mentions.unmatched, Object.fromEntries(docs.map((d) => [d.path, d.hash]))) } finally { prev?.close() }
       }
       db.prepare("insert into meta (key, value) values ('doc_links', ?)").run(canonicalJson({ docs: Object.fromEntries(docs.map((d) => [d.path, d.hash])), stale }))
       if (unreadable.length) db.prepare("insert into meta (key, value) values ('body_hash_missing', ?)").run(canonicalJson({ count: unreadable.length, paths: unreadable.slice(0, 20) }))
