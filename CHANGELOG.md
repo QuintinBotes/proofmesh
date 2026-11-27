@@ -9,6 +9,10 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 - On a machine whose NuGet global packages folder is not `~/.nuget/packages`, the C# adapter looked for restored packages in the wrong place: it reads `NUGET_PACKAGES`, but the core starts every adapter with an allowlisted environment that did not carry it. A restored package read as missing, so calls into it were unresolved and it was not listed as an external input. The allowlist now carries `NUGET_PACKAGES` when it is set, the standard NuGet variable that `dotnet` itself reads; it is still an allowlist.
 - No upgrade step: snapshot identity already holds each package's id, version and hash, not the folder it was read from, so an index that now finds the package builds a new snapshot because its inputs changed.
 
+The root README installs the CLI onto PATH (closes #141; FR690, FR691):
+
+- Its Install section made `proofmesh` an alias, which exists only in the shell that defined it, so Claude Code, `claude mcp add -s project proofmesh -- proofmesh mcp` and the plugin's MCP server and hooks never found it. It now gives the command the plugin README gives (#133): clone, `pnpm install --frozen-lockfile`, `pnpm build`, then `npm link` from `packages/proofmesh`, which links the checkout into npm's global bin folder.
+
 `PROOFMESH_PYRIGHT_UNANNOTATED=off` reaches the Python adapter (closes #135; FR670, FR671):
 
 - The setting had no effect: the core starts every adapter with an allowlisted environment that did not carry it, so the adapter always analysed unannotated bodies. The core now reads it and passes it as `pyright_unannotated` in the configuration of initialize; the adapter's environment is still an allowlist.

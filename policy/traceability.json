@@ -1577,6 +1577,12 @@
       "packages/proofmesh-plugin/tests/trail.test.ts",
       "packages/proofmesh/test/session-trail.test.ts"
     ],
+    "FR690": [
+      "packages/proofmesh/test/plugin.test.ts"
+    ],
+    "FR691": [
+      "packages/proofmesh/test/plugin.test.ts"
+    ],
     "FR550": [
       "packages/proofmesh/test/ts-accessors.test.ts"
     ],

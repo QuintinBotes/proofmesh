@@ -115,6 +115,31 @@ describe('#133 a plugin installed without the proofmesh CLI says so and how to i
   })
 })
 
+describe('#141 the root README installs the CLI onto PATH, where Claude Code and the plugin can run it', () => {
+  const ROOT_DIR = path.join(import.meta.dirname, '..', '..', '..')
+  const install = fs.readFileSync(path.join(ROOT_DIR, 'README.md'), 'utf8').split('\n## Install\n')[1]!.split('\n## ')[0]!
+
+  it('FR690 the Install section links the CLI with npm link from packages/proofmesh, after pnpm install and pnpm build, and defines no alias', () => {
+    expect(install).not.toMatch(/\balias proofmesh\b/)
+    const at = (s: string) => install.indexOf(s)
+    expect(at('pnpm install --frozen-lockfile')).toBeGreaterThan(-1)
+    expect(at('pnpm build')).toBeGreaterThan(at('pnpm install --frozen-lockfile'))
+    expect(at('cd packages/proofmesh && npm link')).toBeGreaterThan(at('pnpm build'))
+  })
+
+  it("FR691 after the Install section's npm link line, a shell that never saw an alias finds proofmesh on PATH and runs it", () => {
+    const line = install.split('\n').find((l) => l.includes('npm link'))!.replace(/\s+#.*$/, '')
+    const prefix = tmpDir('pm-npm-prefix-')
+    // A private npm prefix, offline: the test links into a temporary folder, never the machine's global one, and fetches nothing.
+    const link = spawnSync('sh', ['-c', line], { cwd: ROOT_DIR, encoding: 'utf8', env: { ...process.env, npm_config_prefix: prefix, npm_config_offline: 'true', npm_config_audit: 'false', npm_config_fund: 'false' } })
+    expect(link.status, link.stderr).toBe(0)
+    const clean = { PATH: `${path.join(prefix, 'bin')}:${path.dirname(process.execPath)}:/usr/bin:/bin`, HOME: tmpDir('pm-home-') }
+    const found = spawnSync('/bin/sh', ['-c', 'command -v proofmesh && proofmesh --version'], { encoding: 'utf8', env: clean })
+    expect(found.status, found.stderr).toBe(0)
+    expect(found.stdout.trim().split('\n')).toEqual([path.join(prefix, 'bin', 'proofmesh'), JSON.parse(fs.readFileSync(path.join(ROOT_DIR, 'packages', 'proofmesh', 'package.json'), 'utf8')).version])
+  }, 120000)
+})
+
 describe("#113 the plugin's hooks module: the snapshot state under the prompt and /pm-status (its scenarios run under claude plugin test)", () => {
   const MODULE = path.join(PLUGIN, 'hooks', 'register.mjs')
 
