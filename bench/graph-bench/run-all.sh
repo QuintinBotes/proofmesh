@@ -7,7 +7,7 @@
 # Prerequisites: ProofMesh built in this clone (pnpm install --frozen-lockfile && pnpm build), graphify on PATH
 # (uv tool install graphifyy), sqlite3 and git. Results: out/results.md (table), out/results.json (per-question
 # misses and extras), out/raw/ (every tool answer), out/build.txt and out/incremental.txt (build and rebuild costs).
-# Files: truth.mjs (TypeScript-checker ground truth), questions.json (the 12 questions), run.mjs (asks both tools and
+# Files: truth.mjs (TypeScript-checker ground truth), questions.json (the 13 questions), run.mjs (asks both tools and
 # scores them), incremental.sh (no-change, edit and revert rebuilds), mcp-client.mjs, pm (ProofMesh CLI with the
 # benchmark's own data directory, .bench-data/ at the root of this clone; never the default one).
 set -eu

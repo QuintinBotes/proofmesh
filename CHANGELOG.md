@@ -39,7 +39,7 @@ Dead code, import cycles, entry points and hubs as tools (part of #34; FR940 to 
 - `find_entry_points`: modules nothing under the prefix imports (static, dynamic or re-export), the endpoints and jobs the snapshot records, and the entries `package.json` names (`main`, `exports`, `bin`), mapped to the indexed file or shown at the manifest as `not_indexed`.
 - `find_hubs`: the top symbols by `fan_in` (distinct users), `fan_out` or `betweenness` (sampled from at most 1,000 sources on a larger graph), with both counts.
 - `bench/graph-bench` and `bench/parity` ask Q10 to Q12 through these tools instead of SQL, and a new Q13 scores `find_hubs` against the truth's top ten by distinct callers and referrers. On the parity fixture: Q10 99 / 95 (Graphify 93 / 94), Q11 and Q12 100 / 100, Q13 7 of 10. On Orbit: Q10 100 / 100, Q11 100 / 100, Q12 100 / 80, Q13 7 of 10.
-- Not done: `find_hubs` misses the bar of 9 of 10. The truth ranks properties (`QueryBuilder.expressionMap`, `BaseQueryRunner.connection`, Orbit's `run-store` `id` and `state`) among the top ten by their reads, and the TypeScript adapter records no property reads as references.
+- Not done: `find_hubs` misses the bar of 9 of 10. The truth ranks properties (`QueryBuilder.expressionMap`, `BaseQueryRunner.connection`, Orbit's `run-store` `id` and `state`) among the top ten by their reads, and the TypeScript adapter records no property reads as references. Q10 on the parity fixture keeps four functions used only as `typeof f` in a type, which the adapter does not record (#175).
 
 The session trail records reads and searches made through Bash (closes #149; FR800 to FR803):
 

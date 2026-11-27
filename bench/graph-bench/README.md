@@ -1,7 +1,7 @@
 # Graph benchmark: ProofMesh vs Graphify
 
-Twelve code-graph questions an agent asks (callers, implementers, importers, dependents, call paths, type users,
-dead code, cycles, entry points), asked of both tools on a copy of the Orbit repository at commit `5bd5dffa`
+Thirteen code-graph questions an agent asks (callers, implementers, importers, dependents, call paths, type users,
+dead code, cycles, entry points, hubs), asked of both tools on a copy of the Orbit repository at commit `5bd5dffa`
 (874 TypeScript files in its tsconfig program). Ground truth comes from the TypeScript compiler's own checker, not
 from either tool. Both tools run offline: Graphify code-only (`graphify update`, no model call), ProofMesh with no model.
 
@@ -28,7 +28,7 @@ sh bench/graph-bench/run-all.sh [<orbit-clone-or-url> [<copy-dir>]]
 |---|---|
 | `run-all.sh` | Clones and pins the copy, times both full builds, then runs the three steps below |
 | `truth.mjs` | Ground truth from the TypeScript checker: symbols, calls with call-site lines, references, resolved imports (static and `import()`), heritage clauses. `node truth.mjs <repo> <out.json>` |
-| `questions.json` | The 12 questions and their targets |
+| `questions.json` | The 13 questions and their targets |
 | `run.mjs` | Asks each question of Graphify (CLI over `graphify-out/graph.json`) and ProofMesh (MCP in its default lean envelope, paging to the end), scores recall and precision against the truth, reports each answer's bytes (the symbol lookup apart) and bytes per correct row, and writes `out/results.md`, `out/results.json` and every raw answer under `out/raw/` |
 | `incremental.sh` | Rebuild cost: no change, a one-function edit to a widely imported file and a leaf file, and each revert |
 | `mcp-client.mjs` | A minimal MCP stdio client that times each call |
