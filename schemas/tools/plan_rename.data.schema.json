@@ -64,7 +64,7 @@
     },
     "sites": {
       "type": "array",
-      "description": "One row per file and line, in path then line order.",
+      "description": "One row per file and line, in path then line order; with include_workspace, the sites in other repositories follow.",
       "items": {
         "type": "object",
         "additionalProperties": false,
@@ -119,6 +119,30 @@
           "resolution": {
             "type": "string",
             "description": "Present when the seam's link is not resolved to this symbol alone (candidate or ambiguous)."
+          },
+          "repository": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "name",
+              "commit"
+            ],
+            "description": "With include_workspace, the other repository a site is in, and the commit its snapshot was built from; absent for a site in this repository.",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "commit": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
           }
         }
       }

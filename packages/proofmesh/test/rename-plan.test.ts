@@ -1,13 +1,14 @@
-// A read-only rename plan, every site to change, seams included (#38): fixtures/rename-parity, fixtures/rename-seams, FR980 to FR987.
+// A read-only rename plan, every site to change, seams included (#38): fixtures/rename-parity, fixtures/rename-seams, FR980 to FR988.
+import { execFileSync } from 'node:child_process'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import ts from 'typescript'
 import { beforeAll, describe, expect, it } from 'vitest'
-import { fixtureRepo, indexedDataDir, ROOT, tmpDir, tool } from './helpers.js'
+import { cli, fixtureRepo, indexedDataDir, ROOT, tmpDir, tool } from './helpers.js'
 import { CAPABILITY, PROFILE } from '../src/query/tools.js'
 
-type Site = { path: string; line: number; kind: string; basis: 'observed' | 'inferred'; key: string; seam?: string; rule?: string; text?: string }
+type Site = { path: string; line: number; kind: string; basis: 'observed' | 'inferred'; key: string; seam?: string; rule?: string; text?: string; repository?: { id: string } }
 type Member = { id: string; key: string; name: string; kind: string; path: string; line: number; relationship?: string }
 type Plan = { subject: Member; new_name: string; sites: Site[]; must_rename_together: Member[]; possibly_affected: Array<{ path: string; line: number; callee: string; resolution: string }>; counts: Record<string, number> }
 
@@ -163,6 +164,39 @@ describe('FR984 scenario 3: the seams of fixtures/rename-seams are inferred rows
       expect(observed(p), e.name).toEqual(truth(p.subject.path, p.subject.line, e.name))
     }
   })
+})
+
+describe('FR985 scenario 4 with cross-repository symbols on: a linked workspace lists the consumers in its other repositories', () => {
+  it('distance, exported by the library @fx/geo, lists the application\'s two calls with their repository, and no longer says consumers are not listed', () => {
+    const git = (cwd: string, ...args: string[]) => execFileSync('git', ['-c', 'user.name=Test', '-c', 'user.email=test@example.com', '-c', 'commit.gpgsign=false', ...args], { cwd, encoding: 'utf8' }).trim()
+    const d = tmpDir(), run = (...args: string[]) => { const r = cli(['--data-dir', d, ...args]); expect(r.status, r.stderr).toBe(0); return r.stdout.trim() }
+    const dirs = (['lib', 'app'] as const).map((name) => {
+      const dir = tmpDir(`pm-rename-${name}-`)
+      fs.cpSync(path.join(ROOT, 'fixtures', 'xrepo', name), dir, { recursive: true })
+      git(dir, 'init', '-q'); git(dir, 'add', '-A'); git(dir, 'commit', '-q', '-m', name)
+      return dir
+    })
+    // The library's declarations as npm installs them, at the version the library builds (fixtures/xrepo/PROVENANCE.md).
+    const pkg = path.join(dirs[1]!, 'node_modules', '@fx', 'geo')
+    fs.mkdirSync(pkg, { recursive: true })
+    fs.copyFileSync(path.join(ROOT, 'fixtures', 'xrepo', 'installed', 'geo', 'index.d.ts'), path.join(pkg, 'index.d.ts'))
+    fs.writeFileSync(path.join(pkg, 'package.json'), JSON.stringify({ name: '@fx/geo', version: '1.2.0', types: 'index.d.ts' }))
+    fs.writeFileSync(path.join(dirs[1]!, '.git', 'info', 'exclude'), 'node_modules/\n')
+    run('init')
+    const lib = run('repo', 'add', dirs[0]!, '--name', 'lib'), app = run('repo', 'add', dirs[1]!, '--name', 'app')
+    for (const dir of dirs) run('index', dir)
+    run('workspace', 'add', 'geo', ...dirs)
+    run('workspace', 'link', 'geo')
+    const ask = (more: Record<string, unknown>) => tool(d, 'plan_rename', { repository_id: lib, subject_id: { name: 'distance', path: 'src/index.ts' }, new_name: 'gap', ...more })
+    const LIMIT = 'public export: consumers outside this repository are not listed'
+    expect(ask({}).limitations).toContain(LIMIT)
+    const across = ask({ include_workspace: true })
+    expect(across.limitations).not.toContain(LIMIT)
+    expect((across.data.sites as Site[]).filter((s) => s.repository).map((s) => [`${s.path}:${s.line}`, s.kind, s.basis, (s.repository as { id: string }).id])).toEqual([
+      ['src/route.ts:5', 'call', 'observed', app],
+      ['src/route.ts:10', 'call', 'observed', app],
+    ])
+  }, 180000)
 })
 
 describe('FR984 the seams of the schema and FFI rules', () => {

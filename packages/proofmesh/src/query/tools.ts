@@ -969,12 +969,18 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     const p = planRename(ctx.db, ctx.store, id, ctx.started + ctx.limits.timeout_ms)
     const s = p.subject, newName = String(input.new_name)
     const row = (x: typeof s) => ({ id: x.id, key: x.key, name: x.name, kind: x.kind, path: x.path, line: p.declared.get(x.id) ?? x.start_line })
-    const observed = p.sites.filter((x) => x.basis === 'observed').length
     // A name the new one would collide with: a symbol of that name in the container of the subject or of a member renamed with it,
     // or at the top of the same file.
     const named = ctx.db.prepare('select f.path, s.start_line as line, s.kind from symbol s join file f on f.id = s.file_id where s.qualified_name = ? order by f.path, s.start_line')
     const clash = [s, ...p.group].flatMap((m) => named.all(`${m.qualified_name.slice(0, (m.qualified_name.includes('.') ? m.qualified_name.lastIndexOf('.') : m.qualified_name.indexOf(':')) + 1)}${newName}`) as Array<{ path: string; line: number; kind: string }>)
     const entry = publicEntry(ctx.db, ctx.store, [...(p.exported ? [s.path] : []), ...p.carriers])
+    // FR985: with include_workspace, the sites in the other repositories of this repository's workspaces that reach it through a package
+    // it builds, from the sealed link file (FR902), each with its repository; observed when the installed version is the built one.
+    const across = input.include_workspace === true
+      ? withWorkspace(ctx.catalog, ctx.repo, ctx.snapshot, ctx.db, (w) => ({ linked: w.header.some((h) => h.link_file_id), limitations: w.limitations, rows: w.inbound([s.id, ...p.group.map((g) => g.id)], ['calls', 'references', 'inherits', 'implements']) }))
+      : null
+    for (const r of across?.rows ?? []) p.sites.push({ path: r.site.path, line: r.site.start_line, kind: r.type === 'calls' ? 'call' : 'reference', basis: r.basis === 'observed' ? 'observed' : 'inferred', key: r.target === s.id ? s.key : p.group.find((g) => g.id === r.target)?.key ?? s.key, repository: r.repository })
+    const observed = p.sites.filter((x) => x.basis === 'observed').length
     const sites = p.sites.slice(0, ctx.limits.max_rows)
     return {
       data: {
@@ -987,7 +993,9 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
       limitations: [
         'A plan only: no file is changed. An observed site is one the compiler or the syntax bound to the symbol; an inferred site is a seam a rule or a string binds by name (route, rpc, graphql, ffi, di_key, serialised_key, doc_mention) and needs review before it is changed.',
         ...(p.possibly.length ? [`${p.possibly.length} call${p.possibly.length === 1 ? '' : 's'} that did not resolve, or resolved to several candidates, might reach ${s.name}; they are listed under possibly_affected, not as sites.`] : []),
-        ...(entry ? ['public export: consumers outside this repository are not listed', `${s.name} is exported from ${entry}, a public entry of its package; no repository's imports of it are resolved across repositories.`] : []),
+        ...(entry && !across?.linked ? ['public export: consumers outside this repository are not listed', `${s.name} is exported from ${entry}, a public entry of its package; with include_workspace, a linked workspace's other repositories that call or name it are listed too.`] : []),
+        ...(entry && across?.linked ? [`${s.name} is exported from ${entry}; the sites listed with a repository are its calls and references in this repository's workspaces, from their sealed link file. Their import specifiers are not listed, nor any consumer outside the workspaces.`] : []),
+        ...(across?.limitations ?? []),
         ...(clash.length ? [`${newName} already names ${clash.map((c) => `a ${c.kind} at ${c.path}:${c.line}`).join(', ')} in the same scope.`] : []),
         ...(p.stopped ? ['The scan of string literals stopped at the time limit; string seams in later files are not listed.'] : []),
       ],

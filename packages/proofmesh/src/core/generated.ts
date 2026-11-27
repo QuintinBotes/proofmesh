@@ -2941,7 +2941,7 @@ export interface PlanRenameData {
 subject: Member
 new_name: string
 /**
- * One row per file and line, in path then line order.
+ * One row per file and line, in path then line order; with include_workspace, the sites in other repositories follow.
  */
 sites: {
 path: string
@@ -2971,6 +2971,14 @@ text?: string
  * Present when the seam's link is not resolved to this symbol alone (candidate or ambiguous).
  */
 resolution?: string
+/**
+ * With include_workspace, the other repository a site is in, and the commit its snapshot was built from; absent for a site in this repository.
+ */
+repository?: {
+id: string
+name: string
+commit: (string | null)
+}
 }[]
 /**
  * Members that implement or override the subject, or that it implements or overrides, at any distance: renaming one alone breaks dispatch.
@@ -3041,6 +3049,10 @@ key?: string
  * The name it is to have; the plan says when a symbol of the same scope already has it.
  */
 new_name: string
+/**
+ * true adds the calls and references in the other repositories of this repository's workspaces that reach the symbol, or a member renamed with it, through a package it builds, read from the workspace's sealed link file; each site carries its repository. A public export then lists those consumers instead of saying none outside the repository are listed.
+ */
+include_workspace?: boolean
 limits?: {
 timeout_ms?: number
 max_rows?: number

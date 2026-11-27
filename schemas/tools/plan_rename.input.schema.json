@@ -57,6 +57,10 @@
       "minLength": 1,
       "description": "The name it is to have; the plan says when a symbol of the same scope already has it."
     },
+    "include_workspace": {
+      "type": "boolean",
+      "description": "true adds the calls and references in the other repositories of this repository's workspaces that reach the symbol, or a member renamed with it, through a package it builds, read from the workspace's sealed link file; each site carries its repository. A public export then lists those consumers instead of saying none outside the repository are listed."
+    },
     "limits": {
       "type": "object",
       "additionalProperties": false,

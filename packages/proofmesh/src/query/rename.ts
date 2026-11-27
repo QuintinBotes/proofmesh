@@ -5,7 +5,7 @@ import type { EvidenceStore } from '../evidence/store.js'
 // them and seams as inferred, for an agent or an editor to apply. Nothing here writes a file.
 
 type Sym = { id: string; key: string; name: string; kind: string; qualified_name: string; path: string; file_id: string; start_byte: number; end_byte: number; start_line: number; hash: string | null }
-export type Site = { path: string; line: number; kind: string; basis: 'observed' | 'inferred'; key: string; seam?: string; rule?: string; text?: string; resolution?: string }
+export type Site = { path: string; line: number; kind: string; basis: 'observed' | 'inferred'; key: string; seam?: string; rule?: string; text?: string; resolution?: string; repository?: { id: string; name: string; commit: string | null } }
 export type Possible = { path: string; line: number; callee: string; resolution: string }
 export type Plan = { subject: Sym; group: Array<Sym & { relationship: string }>; declared: Map<string, number>; sites: Site[]; possibly: Possible[]; carriers: string[]; exported: boolean; stopped: boolean }
 
