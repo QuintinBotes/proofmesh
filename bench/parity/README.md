@@ -243,25 +243,25 @@ of `src/globals.ts`, is `possibly_used`: an unresolved call by that name could r
 
 ### ProofMesh through `query_graph` (#36)
 
-Run on 2026-11-27 at ProofMesh 58a2752 (`PARITY_RUNS=3`), on the same machine with a load average about 50, so times are high. Q10 to Q13's typed answers are from the structure tools (#34):
+Run on 2026-11-27 at ProofMesh 969d78d (`PARITY_RUNS=3`), on the same machine with a load average between 9 and 44. Every comparator ran at its pinned version. Q10 to Q13's typed answers are from the structure tools (#34):
 
 | Q | class | ProofMesh (typed tools) | ProofMesh query_graph | same items as typed | ms (median) |
 |---|---|---|---|---|---|
-| Q1 | callers | 100 / 100 | 100 / 100 | yes | 44 |
-| Q2 | callers | 100 / 100 | 100 / 100 | yes | 27 |
-| Q3 | callers | 100 / 100 | 100 / 100 | yes | 11 |
-| Q4 | implementations | 100 / 100 | 100 / 100 | yes | 14 |
-| Q5 | importers | 100 / 100 | 100 / 100 | yes | 29 |
-| Q6 | dependents | 100 / 100 | 100 / 100 | no (+0 −1) | 168 |
-| Q7 | transitive_callers | 100 / 50 | 100 / 100 | no (+0 −11) | 19 |
-| Q8 | path | valid 3 hops (shortest 3) | valid 3 hops (shortest 3) | yes | 82 |
-| Q9 | type_users | 100 / 100 | 100 / 100 | yes | 173 |
-| Q10 | dead_code | 99 / 95 | 100 / 95 | no (+1 −0) | 60 |
-| Q11 | cycles | 100 / 100 | 98 / 100 | no (+0 −5) | 279 |
-| Q12 | roots | 100 / 100 | 100 / 100 | yes | 202 |
-| Q13 | hubs | 70 / 70 | 10 / 10 (cut) | no (+9 −9) | 279 |
+| Q1 | callers | 100 / 100 | 100 / 100 | yes | 8 |
+| Q2 | callers | 100 / 100 | 100 / 100 | yes | 8 |
+| Q3 | callers | 100 / 100 | 100 / 100 | yes | 6 |
+| Q4 | implementations | 100 / 100 | 100 / 100 | yes | 4 |
+| Q5 | importers | 100 / 100 | 100 / 100 | yes | 8 |
+| Q6 | dependents | 100 / 100 | 100 / 100 | no (+0 −1) | 21 |
+| Q7 | transitive_callers | 100 / 50 | 100 / 100 | no (+0 −11) | 4 |
+| Q8 | path | valid 3 hops (shortest 3) | valid 3 hops (shortest 3) | yes | 16 |
+| Q9 | type_users | 100 / 100 | 100 / 100 | yes | 26 |
+| Q10 | dead_code | 99 / 100 | 100 / 100 | no (+1 −0) | 9 |
+| Q11 | cycles | 100 / 100 | 98 / 100 | no (+0 −5) | 43 |
+| Q12 | roots | 100 / 100 | 100 / 100 | yes | 30 |
+| Q13 | hubs | 80 / 80 | 10 / 10 (cut) | no (+9 −9) | 42 |
 
-query_graph p95 over Q1–Q12, 3 runs each: 279 ms (target 500 ms).
+query_graph p95 over Q1–Q12, 3 runs each: 43 ms (target 500 ms).
 
 - Q6 and Q11 differ because a variable-length pattern follows at most 6 hops (FR962). On Q6, one dependent of `StringUtils.ts` is more than 6 imports away: 315 of 316, which rounds to 100% recall. On Q11, five files are only in import cycles longer than 6.
 - Q7 differs on purpose. `analyze_impact` follows calls through the interface method that `DefaultNamingStrategy.columnName` implements; `query_graph` follows only the calls the snapshot resolved. So it equals the truth, which counts direct calls only.
