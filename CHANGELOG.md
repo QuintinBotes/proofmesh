@@ -4,6 +4,8 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 ## Unreleased
 
+A TypeScript property's declared type and decorators are used by its class again, not by the property (#182; FR1860). Since #196 made each property a symbol, a field typed `Document` counted as one user of `Document`, so an interface of twenty such fields was twenty users. Now the class or interface that declares the property is the user, as it was before the property was a symbol; a constructor parameter property's type is the class's, as any constructor parameter's; the property's initializer stays the property's, as a method's body is the method's; and its reads and writes are unchanged (FR1021). On the parity fixture `find_hubs` ranks 9 of the truth's top 10 hubs (Q13 90 / 90, was 80 / 80): `QueryBuilder.expressionMap` and `BaseQueryRunner.executeQueries` are in, `EntityMetadata` is out, and `Document` drops from 252 users to 200. Upgrade note: the TypeScript adapter is 0.2.7, so the next index of a TypeScript repository reanalyses every file once.
+
 A Python file the Python adapter analysed reports `references: partial` even when it records no use, as it was read for them (#224; FR1640). A snapshot of Python alone now gives the partial references note instead of `References other than calls and imports are not analysed for this snapshot.`, and the language census counts those files as partial.
 
 A bounded, read-only graph query for composed questions (#36; FR960 to FR966):
