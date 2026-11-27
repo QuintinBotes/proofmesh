@@ -1556,6 +1556,27 @@
     "FR661": [
       "packages/proofmesh/test/plugin.test.ts"
     ],
+    "FR610": [
+      "packages/proofmesh-plugin/tests/trail.test.ts"
+    ],
+    "FR611": [
+      "packages/proofmesh-plugin/tests/trail.test.ts",
+      "packages/proofmesh/test/session-trail.test.ts"
+    ],
+    "FR612": [
+      "packages/proofmesh/test/session-trail.test.ts"
+    ],
+    "FR613": [
+      "packages/proofmesh/test/session-trail.test.ts"
+    ],
+    "FR614": [
+      "packages/proofmesh-plugin/tests/trail.test.ts",
+      "packages/proofmesh/test/plugin.test.ts"
+    ],
+    "FR615": [
+      "packages/proofmesh-plugin/tests/trail.test.ts",
+      "packages/proofmesh/test/session-trail.test.ts"
+    ],
     "FR550": [
       "packages/proofmesh/test/ts-accessors.test.ts"
     ],

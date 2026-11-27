@@ -125,13 +125,14 @@ describe("#113 the plugin's hooks module: the snapshot state under the prompt an
     expect(typeof (await import(MODULE)).register).toBe('function')
   })
 
-  it("FR486 the module reaches ProofMesh only through $.process.run and the plugin's own MCP server, and every tool it calls is listed by the server .mcp.json starts", async () => {
+  it("FR486 FR614 the module reaches ProofMesh only through $.process.run and the plugin's own MCP server, and every tool it calls is listed by the server .mcp.json starts", async () => {
     const source = fs.readFileSync(MODULE, 'utf8')
-    expect([...new Set(source.match(/\$\.\w+\.\w+/g))].sort()).toEqual(['$.clock.after', '$.clock.every', '$.clock.now', '$.command.register', '$.fs.stat', '$.mcp.call', '$.mcp.connect', '$.process.run', '$.ui.status'])
-    expect(source).toContain("$.process.run(['proofmesh', ...args])")
+    expect([...new Set(source.match(/\$\.\w+\.\w+/g))].sort()).toEqual(['$.clock.after', '$.clock.every', '$.clock.now', '$.command.register', '$.fs.stat', '$.mcp.call', '$.mcp.connect', '$.process.run', '$.session.id', '$.ui.status'])
+    expect(source).toContain("$.process.run(['proofmesh', ...args], stdin === undefined ? undefined : { stdin })")
     expect(source).toContain("$.mcp.connect('proofmesh')")
     const called = [...source.matchAll(/callTool\(\$, '(\w+)'/g)].map((m) => m[1])
-    expect(called).toEqual(['workspace_status'])
+    // FR614: /pm-trail asks get_session_trail, in the data profile the registration loads.
+    expect(called).toEqual(['workspace_status', 'get_session_trail'])
 
     const server = JSON.parse(fs.readFileSync(path.join(PLUGIN, '.mcp.json'), 'utf8')).mcpServers.proofmesh as { command: string; args: string[] }
     const dataDir = tmpDir('pm-plugin-mcp-')

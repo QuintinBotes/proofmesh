@@ -33,6 +33,11 @@ export type PropertyReadInput = { endpoint: string; entity: string; property: st
 export type Verification = { id: string; repository_id: string; snapshot_id: string; state: 'prepared' | 'approved' | 'consumed' | 'finished' | 'failed' | 'expired'; binding: Record<string, unknown>; binding_hash: string; prepared_by: string; prepared_at: string; expires_at: string; approved_by: string | null; approved_at: string | null; consumed_at: string | null; record: { record: Record<string, unknown>; mac: string } | null; error: string | null }
 export type IndexJob = { id: string; repository_id: string; state: 'queued' | 'running' | 'succeeded' | 'failed' | 'interrupted'; requested_by: string; requested_at: string; started_at: string | null; finished_at: string | null; phase: string | null; done: number | null; total: number | null; result: unknown; error: string | null; progress_at: string | null; phase_started_at: string | null; plan: Record<string, { mode: string; analyse: number; reuse: number }> | null; adapters: Record<string, { adapter: string; language: string; done: number; total: number; files_per_second: number; eta_seconds: number | null }> | null; elapsed_ms: number | null }
 export type InstalledAdapter = { id: string; entry: string; sha256: string; extensions: Record<string, string>; configNames: string[]; added_by: string; added_at: string; kit: { passed: boolean; checked_at: string; sha256: string; checks: number; failed: string[] } | null }
+/** One step of a session's trail (#114): a repository-relative path or a symbol id, never text from a file. */
+export type TrailInput = { session_id: string; repository_id: string; agent_id?: string; at: string; kind: 'searched' | 'opened' | 'changed' | 'claimed'; tool: string; path?: string; symbol_id?: string; outcome: 'ok' | 'failed' }
+export type TrailEntry = Omit<TrailInput, 'session_id' | 'repository_id'> & { seq: number }
+/** The most entries one session's trail keeps. */
+export const TRAIL_CAP = 10_000
 /** The note source of notes saved by agents rather than synced from a person's directory. */
 export const AGENT_NOTES = 'agent:'
 /** The index lock owner for this process: its pid and host, as a job row records it. */
@@ -314,6 +319,66 @@ export class Catalog {
     const rows = this.db.prepare('select * from query_record where (? is null or repository_id = ?) and (? is null or tool = ?) order by requested_at desc, rowid desc limit ?')
       .all(filter.repository_id ?? null, filter.repository_id ?? null, filter.tool ?? null, filter.tool ?? null, filter.limit) as Array<Record<string, string | number>>
     return rows.map((r) => ({ query_id: String(r.query_id), tool: String(r.tool), repository_id: String(r.repository_id), snapshot_id: String(r.snapshot_id), requested_at: String(r.requested_at), duration_ms: Number(r.duration_ms), truncated: r.truncated === 1, input_hash: String(r.input_hash) }))
+  }
+
+  /** Whether a person turned the session trail on for this repository (#114); off unless they did. */
+  trailRecording(repositoryId: string): boolean {
+    return (this.db.prepare('select recording from trail_setting where repository_id = ?').get(repositoryId) as { recording: number } | undefined)?.recording === 1
+  }
+
+  setTrailRecording(repositoryId: string, on: boolean): void {
+    this.db.prepare('insert into trail_setting (repository_id, recording, changed_at) values (?, ?, ?) on conflict(repository_id) do update set recording = excluded.recording, changed_at = excluded.changed_at').run(repositoryId, on ? 1 : 0, now())
+  }
+
+  /** Appends checked entries in order, numbering them per session; entries of a repository not recording and past the cap are not stored. */
+  recordTrail(entries: TrailInput[]): { recorded: number; refused: string[]; dropped: number } {
+    const result = { recorded: 0, refused: [] as string[], dropped: 0 }
+    const next = this.db.prepare('select count(*) n, coalesce(max(seq), 0) last from trail_entry where session_id = ?')
+    const insert = this.db.prepare('insert into trail_entry (session_id, seq, repository_id, agent_id, at, kind, tool, path, symbol_id, outcome, recorded_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+    this.db.transaction(() => {
+      const recording = new Map<string, boolean>(), sessions = new Map<string, { n: number; last: number }>()
+      for (const e of entries) {
+        if (!recording.has(e.repository_id)) recording.set(e.repository_id, this.trailRecording(e.repository_id))
+        if (!recording.get(e.repository_id)) { result.refused.push(e.repository_id); continue }
+        const s = sessions.get(e.session_id) ?? (next.get(e.session_id) as { n: number; last: number })
+        sessions.set(e.session_id, s)
+        if (s.n >= TRAIL_CAP) {
+          result.dropped++
+          this.db.prepare('insert into trail_cut (session_id, recorded_at) values (?, ?) on conflict(session_id) do nothing').run(e.session_id, now())
+          continue
+        }
+        insert.run(e.session_id, ++s.last, e.repository_id, e.agent_id ?? null, e.at, e.kind, e.tool, e.path ?? null, e.symbol_id ?? null, e.outcome, now())
+        s.n++
+        result.recorded++
+      }
+    })()
+    return result
+  }
+
+  trail(sessionId: string, repositoryId: string): { entries: TrailEntry[]; cut: boolean } {
+    const rows = this.db.prepare('select seq, agent_id, at, kind, tool, path, symbol_id, outcome from trail_entry where session_id = ? and repository_id = ? order by seq').all(sessionId, repositoryId) as Array<Record<string, string | number | null>>
+    const entries = rows.map((r) => Object.fromEntries(Object.entries(r).filter(([, v]) => v !== null)) as TrailEntry)
+    return { entries, cut: !!this.db.prepare('select 1 from trail_cut where session_id = ?').get(sessionId) }
+  }
+
+  /** Deletes one session's trail, or every trail. */
+  purgeTrail(sessionId?: string): number {
+    return this.db.transaction(() => {
+      this.db.prepare('delete from trail_cut where ? is null or session_id = ?').run(sessionId ?? null, sessionId ?? null)
+      return this.db.prepare('delete from trail_entry where ? is null or session_id = ?').run(sessionId ?? null, sessionId ?? null).changes
+    })()
+  }
+
+  /** Retention of what sessions asked and read: query records and trail entries recorded before `before` (an ISO time); counted only on a dry run. */
+  expireRecords(before: string, dryRun = false): { queries: number; trail: number } {
+    if (dryRun) {
+      const count = (sql: string) => (this.db.prepare(sql).get(before) as { n: number }).n
+      return { queries: count('select count(*) n from query_record where requested_at < ?'), trail: count('select count(*) n from trail_entry where recorded_at < ?') }
+    }
+    return this.db.transaction(() => {
+      this.db.prepare('delete from trail_cut where recorded_at < ?').run(before)
+      return { queries: this.db.prepare('delete from query_record where requested_at < ?').run(before).changes, trail: this.db.prepare('delete from trail_entry where recorded_at < ?').run(before).changes }
+    })()
   }
 
   recordLinkFile(f: Omit<LinkFileRecord, 'sealed_at'>): void {

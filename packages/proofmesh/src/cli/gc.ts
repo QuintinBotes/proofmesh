@@ -1,6 +1,6 @@
 // Retention and garbage collection (FR051): retire published snapshots beyond the newest N per repository, except the current one,
 // pinned ones and members of a recorded link file; then delete evidence objects no remaining snapshot references. Never while an
-// index lease is live.
+// index lease is live. Query records and session trails older than --records-days go too (#114).
 import fs from 'node:fs'
 import path from 'node:path'
 import Database from 'better-sqlite3'
@@ -53,8 +53,9 @@ export function apply(catalog: Catalog, p: GcPlan): void {
 
 export function runGc(dataDir: string, rest: string[], take: (args: string[], flag: string) => string | undefined, has: (args: string[], flag: string) => boolean): number {
   const opts = [...rest]
-  const keep = Number(take(opts, '--keep') ?? 3), dryRun = has(opts, '--dry-run')
+  const keep = Number(take(opts, '--keep') ?? 3), days = Number(take(opts, '--records-days') ?? 30), dryRun = has(opts, '--dry-run')
   if (!(keep >= 1)) throw new ProofmeshError('INVALID_ARGUMENT', '--keep takes the number of newest published snapshots to keep per repository, at least 1')
+  if (!(days >= 0)) throw new ProofmeshError('INVALID_ARGUMENT', '--records-days takes the number of days query records and session trails are kept, 0 or more')
   // Held until gc ends: an index that starts meanwhile waits for it, so it cannot create evidence gc then deletes.
   const gcLock = takeGcLock(dataDir)
   const catalog = Catalog.open(dataDir)
@@ -63,6 +64,10 @@ export function runGc(dataDir: string, rest: string[], take: (args: string[], fl
     for (const s of p.retire) console.log(`${dryRun ? 'would retire' : 'retire'} ${s.id} (${catalog.repository(s.repository_id).name}, published ${s.published_at})`)
     console.log(`${dryRun ? 'would delete' : 'delete'} ${p.objects.length} unreferenced evidence objects`)
     if (!dryRun) apply(catalog, p)
+    // Query records and session trails (#114) share one retention, counted from when they were recorded.
+    const before = new Date(Date.now() - days * 86_400_000).toISOString()
+    const n = catalog.expireRecords(before, dryRun)
+    console.log(`${dryRun ? 'would delete' : 'delete'} ${n.queries} query records and ${n.trail} trail entries recorded more than ${days} days ago`)
     console.log(`${dryRun ? 'dry run: ' : ''}keeping the newest ${keep} published snapshots per repository, plus current, pinned and linked ones`)
     return 0
   } finally {
