@@ -2144,6 +2144,21 @@
     ],
     "FR1302": [
       "e2e/diff.spec.ts"
+    ],
+    "FR1240": [
+      "packages/proofmesh/test/cold-build.test.ts"
+    ],
+    "FR1241": [
+      "packages/proofmesh/test/cold-build.test.ts"
+    ],
+    "FR1242": [
+      "packages/proofmesh/test/cold-build.test.ts"
+    ],
+    "FR1243": [
+      "packages/proofmesh/test/cold-build.test.ts"
+    ],
+    "FR1244": [
+      "packages/proofmesh/test/cold-build.test.ts"
     ]
   },
   "manual": {

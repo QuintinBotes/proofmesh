@@ -25,6 +25,7 @@ export function openStagingStore(file: string): Database.Database {
   db.pragma('journal_mode = WAL')
   db.pragma('synchronous = NORMAL')
   db.pragma('foreign_keys = OFF')
+  db.pragma('cache_size = -65536')
   return db
 }
 
