@@ -9,7 +9,7 @@ beforeAll(async () => { ({ dataDir: d } = await indexedDataDir()) })
 describe('FR056 the map: areas as a graph', () => {
   it('draws one node per area, labelled with its symbols, and one line per linked pair', () => {
     const scene = toMap(tool(d, 'get_overview', {}).data as Overview, null)
-    expect(scene.nodes.map((n) => n.label)).toEqual(['api/src · 3', 'billing/src · 2', 'format/src · 1', 'legacy/src · 1'])
+    expect(scene.nodes.map((n) => n.label)).toEqual(['api/src · 3', 'billing/src · 3', 'format/src · 1', 'legacy/src · 1'])
     expect(scene.edges.map((e) => [e.source, e.target])).toEqual([['packages/api/src', 'packages/billing/src'], ['packages/billing/src', 'packages/format/src']])
     expect(scene.conclusion).toBe('packages: 4 areas, 2 links between them. Click one to open it.')
   })

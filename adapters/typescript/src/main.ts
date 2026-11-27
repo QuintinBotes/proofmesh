@@ -7,7 +7,7 @@ import type * as TS from 'typescript'
 import { graphqlDocument } from '../../syntax/src/contracts.js'
 
 const ts = createRequire(import.meta.url)('typescript') as typeof TS
-const VERSION = '0.2.3'
+const VERSION = '0.2.4'
 type Range = { start_byte: number; end_byte: number; start_line: number; end_line: number }
 type Ref = { symbol: string } | { file: string } | { external: { module: string; name: string } }
 
@@ -44,7 +44,7 @@ const symbolsByFile = new Map<string, Array<Record<string, unknown>>>()
  */
 const refNames = new Set<string>()
 /** Symbol kinds a use can reference. */
-const REFERABLE = /^(class|interface|enum|type_alias|variable|function|method)$/
+const REFERABLE = /^(class|interface|enum|type_alias|variable|function|method|property)$/
 const byteMaps = new Map<TS.SourceFile, Int32Array>()
 
 const rel = (abs: string) => path.relative(workspace, abs).split(path.sep).join('/')
@@ -243,7 +243,8 @@ function indexDeclarations(sf: TS.SourceFile): void {
    * One method symbol per member name, static and instance apart: the implementation, else the first declaration, so an abstract
    * member, an overload set, a get/set accessor pair and an interface member each have one; every overload or accessor resolves to it.
    * Members are methods, method signatures, get and set accessors, and properties holding a function (by initializer, or by type when there is none), of a class, an interface, or the
-   * object literal a typed module-level constant holds.
+   * object literal a typed module-level constant holds. Any other property of a class or an interface, a constructor's parameter
+   * properties included, is a `property` symbol.
    */
   const members = (list: TS.NodeArray<TS.ClassElement | TS.TypeElement | TS.ObjectLiteralElementLike>, owner: string) => {
     const byName = new Map<string, Array<{ node: TS.Node; name: string; signature: () => string | null }>>()
@@ -256,6 +257,9 @@ function indexDeclarations(sf: TS.SourceFile): void {
           : callable ? () => `${name}${checker.signatureToString(callable)}` : undefined
       const key = `${hasModifier(m, ts.SyntaxKind.StaticKeyword) ? 'static ' : ''}${name}`
       if (name && signature) byName.set(key, [...(byName.get(key) ?? []), { node: m, name, signature }])
+      // A class or interface property holding no function is a property symbol, so its reads and writes have a target.
+      else if (name && (ts.isPropertyDeclaration(m) || ts.isPropertySignature(m))) add(m, 'property', name, `${owner}.${name}`, null)
+      if (ts.isConstructorDeclaration(m)) for (const p of m.parameters) if (ts.isParameterPropertyDeclaration(p, m) && ts.isIdentifier(p.name)) add(p, 'property', p.name.text, `${owner}.${p.name.text}`, null)
     }
     for (const decls of byName.values()) {
       const main = decls.find((d) => !ts.isMethodDeclaration(d.node) || d.node.body) ?? decls[0]!
@@ -518,9 +522,10 @@ function boundMember(decl: TS.Node | undefined): string | undefined {
  * A use of a repository class, interface, enum or type alias other than its declaration or an import or export specifier, and how
  * it is used: a heritage clause (`implements`, `extends`), `typeof`, a type (annotations, generics, `satisfies`, `as`), `new`, or a value.
  * Also a use of a repository variable, read or assigned, or a function or method used as a value without being called, as a `value` use,
- * or named in a type query, as a `typeof` use.
+ * or named in a type query, as a `typeof` use; and a read or write of a class or interface property, as a `value` use with its
+ * `access`.
  */
-function referenceOf(id: TS.Identifier): { target: string; use: string } | undefined {
+function referenceOf(id: TS.Identifier): { target: string; use: string; access?: string } | undefined {
   const p = id.parent
   // A shorthand destructuring (`const { escape } = driver`) names the member it reads, as a value use of that member.
   if (ts.isBindingElement(p) && p.name === id) {
@@ -549,9 +554,20 @@ function referenceOf(id: TS.Identifier): { target: string; use: string } | undef
   if ((use !== 'value' && use !== 'typeof') || ((ts.isJsxOpeningLikeElement(at) || ts.isJsxClosingElement(at)) && at.tagName === n)) return undefined
   for (const d of sym?.declarations ?? []) {
     const local = declLocal.get(keyOf(d))
-    if (local && /^(variable|function|method)#/.test(local.slice(rel(d.getSourceFile().fileName).length + 1))) return { target: local, use }
+    const kind = local && /^(variable|function|method|property)#/.exec(local.slice(rel(d.getSourceFile().fileName).length + 1))?.[1]
+    // A property is used through `x.name`; a parameter property's bare name in its constructor is the parameter.
+    if (kind === 'property') return ts.isPropertyAccessExpression(p) && p.name === id ? { target: local!, use, access: written(n) ? 'write' : 'read' } : undefined
+    if (kind) return { target: local!, use }
   }
   return undefined
+}
+
+/** Whether an expression is assigned (`=` or a compound assignment), incremented, decremented or deleted. */
+function written(n: TS.Node): boolean {
+  const at = n.parent
+  return (ts.isBinaryExpression(at) && at.left === n && at.operatorToken.kind >= ts.SyntaxKind.FirstAssignment && at.operatorToken.kind <= ts.SyntaxKind.LastAssignment)
+    || ((ts.isPrefixUnaryExpression(at) || ts.isPostfixUnaryExpression(at)) && (at.operator === ts.SyntaxKind.PlusPlusToken || at.operator === ts.SyntaxKind.MinusMinusToken))
+    || ts.isDeleteExpression(at)
 }
 
 /**
@@ -1042,8 +1058,8 @@ function analyze(paths: string[]) {
     symbols.push(...(symbolsByFile.get(p) ?? []))
     let unresolvedCalls = 0, unresolvedImports = 0, graphqlUnread = 0
     const endpoints = new Set<string>(), clientEndpoints: Array<Record<string, unknown>> = []
-    /** One reference per user and target, cited at its first site, with every way the user uses the target and every further site (protocol 1.3). */
-    const references = new Map<string, { from: string; target: string; site: TS.Node; more: TS.Node[]; uses: Set<string> }>()
+    /** One reference per user and target (and access, for a property), cited at its first site, with every way the user uses the target and every further site (protocol 1.3). */
+    const references = new Map<string, { from: string; target: string; site: TS.Node; more: TS.Node[]; uses: Set<string>; access?: string }>()
     const visit = (node: TS.Node) => {
       // Every import carries its kind (FR092): import, import type, export ... from, and import() with a literal specifier.
       const kind = ts.isImportDeclaration(node) ? (node.importClause?.isTypeOnly ? 'type_only' : 'static')
@@ -1098,8 +1114,9 @@ function analyze(paths: string[]) {
       const reference = ts.isIdentifier(node) ? referenceOf(node) : undefined
       const user = reference && (owner(node) ?? declLocal.get(keyOf(sf)))
       if (reference && user && user !== reference.target) {
-        const key = `${user}|${reference.target}`
-        if (!references.has(key)) references.set(key, { from: user, target: reference.target, site: node, more: [], uses: new Set() }); else references.get(key)!.more.push(node)
+        // A property's reads and writes are apart, each citing every site of its access.
+        const key = reference.access ? `${user}|${reference.target}|${reference.access}` : `${user}|${reference.target}`
+        if (!references.has(key)) references.set(key, { from: user, target: reference.target, site: node, more: [], uses: new Set(), access: reference.access }); else references.get(key)!.more.push(node)
         references.get(key)!.uses.add(reference.use)
       }
       const resource = ts.isNewExpression(node) ? resourceLocal.get(keyOf(node)) : undefined
@@ -1112,7 +1129,7 @@ function analyze(paths: string[]) {
       ts.forEachChild(node, visit)
     }
     visit(sf)
-    for (const r of references.values()) relationships.push({ type: 'references', origin: 'semantic_resolver', source: { symbol: r.from }, site: { path: p, range: range(sf, r.site.getStart(sf), r.site.getEnd()) }, ...(r.more.length ? { sites: r.more.map((n) => range(sf, n.getStart(sf), n.getEnd())) } : {}), resolution: 'resolved', target: { symbol: r.target }, detail: { use: [...r.uses].sort().join(',') } })
+    for (const r of references.values()) relationships.push({ type: 'references', origin: 'semantic_resolver', source: { symbol: r.from }, site: { path: p, range: range(sf, r.site.getStart(sf), r.site.getEnd()) }, ...(r.more.length ? { sites: r.more.map((n) => range(sf, n.getStart(sf), n.getEnd())) } : {}), resolution: 'resolved', target: { symbol: r.target }, detail: { use: [...r.uses].sort().join(','), ...(r.access ? { access: r.access } : {}) } })
     relationships.push(...(routeFacts.get(p) ?? []))
     symbols.push(...clientEndpoints)
     file_results.push({
