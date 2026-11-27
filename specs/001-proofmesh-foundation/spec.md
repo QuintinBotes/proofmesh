@@ -507,6 +507,7 @@ Acceptance: CI runs my pull request without secrets or release credentials; lice
 - FR1102: MUST make any network connection or name lookup in aider's step fail, and then fail the step with `aider-map.py: aider tried to reach the network (<host>); bench/parity runs offline` and no maps, so the aider column reads `not run` rather than scoring a run that reached the network.
 - FR1110: MUST give aider file names relative to the fixture root and each tree-sitter capture's nodes in source order, so aider's tags, and with them its maps, are the same in every run and copy of one fixture; aider's ranking is not changed (#191).
 - FR1111: MUST refuse to run aider's step unless string hashing is fixed (`PYTHONHASHSEED=0`, which `run.mjs` sets in place of `-I`), naming the variable, as aider's ranking iterates sets of names.
+- FR1660: MUST give a test the repository's vitest settings (git run with the person's hooks off, the 60 s test timeout and the build in the global setup) when vitest is started in `packages/proofmesh` (`npx vitest run test/<file>`), as `pnpm test` at the root does, so a test that commits a fixture does not time out on a busy machine (#225).
 
 ### A one-edit rebuild (#31)
 
