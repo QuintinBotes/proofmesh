@@ -30,6 +30,7 @@ import { gitInfo } from '../indexer/discovery.js'
 import { findTables, tableReach } from './table-reach.js'
 import { searchSources } from './sources.js'
 import { planRename, publicEntry } from './rename.js'
+import { MAX_TERMS, searchConcepts } from './concepts.js'
 import { NOTE_KINDS, notesMatching, resolveRef, resolveRefs, staleness } from './notes.js'
 import { verify, type Proposition } from './claims.js'
 import { openCursor, queryHash, sealCursor } from './cursor.js'
@@ -50,10 +51,10 @@ import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 
-export const TOOLS = ['workspace_status', 'list_repositories', 'list_snapshots', 'list_workspaces', 'find_symbols', 'get_symbol', 'get_relationships', 'trace_paths', 'read_evidence', 'get_overview', 'analyze_impact', 'find_tests', 'search_sources', 'get_memory', 'verify_claim', 'request_index', 'get_job', 'get_claims', 'save_memory', 'get_table_reach', 'get_property_reads', 'get_external_usage', 'find_query_source', 'compare_snapshots', 'list_queries', 'get_ecosystem', 'prepare_verification', 'get_verification', 'impact_completeness', 'get_symbols_at', 'get_session_trail', 'find_stale_mentions', 'find_unused', 'find_cycles', 'find_entry_points', 'find_hubs', 'get_context_map', 'plan_rename', 'search_structure'] as const
+export const TOOLS = ['workspace_status', 'list_repositories', 'list_snapshots', 'list_workspaces', 'find_symbols', 'get_symbol', 'get_relationships', 'trace_paths', 'read_evidence', 'get_overview', 'analyze_impact', 'find_tests', 'search_sources', 'get_memory', 'verify_claim', 'request_index', 'get_job', 'get_claims', 'save_memory', 'get_table_reach', 'get_property_reads', 'get_external_usage', 'find_query_source', 'compare_snapshots', 'list_queries', 'get_ecosystem', 'prepare_verification', 'get_verification', 'impact_completeness', 'get_symbols_at', 'get_session_trail', 'find_stale_mentions', 'find_unused', 'find_cycles', 'find_entry_points', 'find_hubs', 'get_context_map', 'plan_rename', 'search_structure', 'search_concepts'] as const
 export type ToolName = (typeof TOOLS)[number]
 /** The query tools whose results are code locations: they answer in the lean envelope on request, and by default over MCP (FR099). */
-export const LEAN = new Set<string>(['find_symbols', 'get_symbol', 'get_symbols_at', 'get_relationships', 'trace_paths', 'analyze_impact', 'find_tests', 'get_session_trail', 'find_unused', 'find_cycles', 'find_entry_points', 'find_hubs', 'get_context_map', 'search_structure'])
+export const LEAN = new Set<string>(['find_symbols', 'search_concepts', 'get_symbol', 'get_symbols_at', 'get_relationships', 'trace_paths', 'analyze_impact', 'find_tests', 'get_session_trail', 'find_unused', 'find_cycles', 'find_entry_points', 'find_hubs', 'get_context_map', 'search_structure'])
 /** A lean answer is its text; the envelope beside it is what the text was rendered from, for in-process callers. */
 export type Answer = Envelope & { text?: string }
 
@@ -68,7 +69,7 @@ export const CAPABILITY: Record<ToolName, ListQueriesData['tools'][number]['capa
   verify_claim: 'read', request_index: 'management', get_job: 'read', get_claims: 'read', save_memory: 'management', get_table_reach: 'read',
   get_property_reads: 'read', get_external_usage: 'read', find_query_source: 'read', compare_snapshots: 'read', list_queries: 'read',
   get_ecosystem: 'read', prepare_verification: 'management', get_verification: 'read', impact_completeness: 'management', get_symbols_at: 'read', get_session_trail: 'read', find_stale_mentions: 'read',
-  find_unused: 'read', find_cycles: 'read', find_entry_points: 'read', find_hubs: 'read', get_context_map: 'read', plan_rename: 'read', search_structure: 'read',
+  find_unused: 'read', find_cycles: 'read', find_entry_points: 'read', find_hubs: 'read', get_context_map: 'read', plan_rename: 'read', search_structure: 'read', search_concepts: 'read',
 }
 
 /**
@@ -77,7 +78,7 @@ export const CAPABILITY: Record<ToolName, ListQueriesData['tools'][number]['capa
  */
 export const PROFILE: Record<ToolName, ListQueriesData['tools'][number]['profile']> = {
   workspace_status: 'core', list_repositories: 'core', find_symbols: 'core', get_symbol: 'core', get_symbols_at: 'core', get_relationships: 'core', trace_paths: 'core',
-  read_evidence: 'core', get_overview: 'core', analyze_impact: 'core', find_tests: 'core', search_sources: 'core', list_queries: 'core',
+  read_evidence: 'core', get_overview: 'core', analyze_impact: 'core', find_tests: 'core', search_sources: 'core', search_concepts: 'core', list_queries: 'core',
   get_table_reach: 'data', get_property_reads: 'data', get_external_usage: 'data', find_query_source: 'data', get_session_trail: 'data', get_context_map: 'data',
   verify_claim: 'claims', get_claims: 'claims', prepare_verification: 'claims', get_verification: 'claims',
   list_snapshots: 'extra', list_workspaces: 'extra', get_ecosystem: 'extra', compare_snapshots: 'extra', impact_completeness: 'extra', request_index: 'extra',
@@ -1211,6 +1212,30 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
       d.files_scanned = result.next_offset = dropped
     }
     return result
+  },
+
+  search_concepts(ctx, input) {
+    // A snapshot sealed before format 0.13 has no term index: said, not answered as if nothing matched.
+    if (!ctx.db.prepare("select 1 from sqlite_master where name = 'term'").get()) {
+      return { data: { symbols: [], files: [], terms: [] }, limitations: [`Snapshot ${ctx.snapshot.id} was built before concept search had a term index (snapshot format 0.13); index the repository again.`], shrink: 'symbols', lean: () => [] }
+    }
+    // A ranking, not a listing: 20 rows of each unless max_rows asks for more or fewer.
+    const rows = (input.limits as Limits | undefined)?.max_rows ?? Math.min(20, ctx.limits.max_rows)
+    const prefix = input.path_prefix as string | undefined
+    const r = searchConcepts(ctx.db, { text: String(input.text), kinds: input.kinds as string[] | undefined, pathPrefix: prefix, includeTests: input.include_tests === true, rows: Math.min(rows, ctx.limits.max_rows), generated: generatedPaths(ctx.db) })
+    const limitations = [
+      ...(r.terms.length ? [] : ['no indexed term matched: no word of the text occurs in the indexed files of this snapshot, so nothing is ranked.']),
+      ...(r.terms.length && !r.matched ? [`No indexed file${prefix ? ` under path_prefix ${prefix}` : ''} holds a term of the text, so nothing is ranked.`] : []),
+      ...(r.dropped ? [`The text has ${r.terms.length + r.dropped} indexed terms; only the ${MAX_TERMS} heaviest were ranked by, and ${r.dropped} lighter ones were left out.`] : []),
+    ]
+    const tags = (x: { score: number; terms: string[]; via?: string }) => [`score=${x.score}`, ...(x.terms.length ? [`terms=${x.terms.join(',')}`] : []), ...(x.via ? [`via=${x.via}`] : [])]
+    return {
+      data: { symbols: r.symbols, files: r.files, terms: r.terms, ...(r.dropped ? { terms_dropped: r.dropped } : {}) }, limitations, shrink: ['files', 'symbols'], keep: 1,
+      lean: (data) => [
+        ...(data.symbols as typeof r.symbols).map((s) => leanRow(leanName(s), s.path, s.start_line, [s.kind, ...tags(s)])),
+        ...(data.files as typeof r.files).map((f) => leanRow(null, f.path, f.line, ['file', ...tags(f)])),
+      ],
+    }
   },
 
   find_tests(ctx, input) {

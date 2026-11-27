@@ -4,11 +4,11 @@ Proofmesh serves its tools over MCP on stdio (`proofmesh mcp`) and over Streamab
 
 ## Tool profiles (FR420 to FR423)
 
-A client that does not defer tool loading puts every listed tool's name, description and input schema into the model's context before the first question. So `proofmesh mcp` lists only the `core` profile, whose `tools/list` stays under 20,000 bytes (a test asserts it; 18,427 bytes for 13 tools at this change, against 122,630 for all 39):
+A client that does not defer tool loading puts every listed tool's name, description and input schema into the model's context before the first question. So `proofmesh mcp` lists only the `core` profile, whose `tools/list` stays under 20,000 bytes (a test asserts it; 19,680 bytes for 14 tools since `search_concepts` joined it, against 124,960 for all 40):
 
 | Profile | Tools |
 |---|---|
-| `core` (default) | `find_symbols`, `get_symbol`, `get_symbols_at`, `get_relationships`, `trace_paths`, `analyze_impact`, `find_tests`, `search_sources`, `read_evidence`, `workspace_status`, `list_repositories`, `get_overview`, `list_queries` |
+| `core` (default) | `find_symbols`, `get_symbol`, `get_symbols_at`, `get_relationships`, `trace_paths`, `analyze_impact`, `find_tests`, `search_sources`, `search_concepts`, `read_evidence`, `workspace_status`, `list_repositories`, `get_overview`, `list_queries` |
 | `data` | `get_table_reach`, `get_property_reads`, `find_query_source`, `get_external_usage`, `get_session_trail`, `get_context_map` |
 | `claims` | `verify_claim`, `get_claims`, `prepare_verification`, `get_verification` |
 | `extra` | `list_snapshots`, `list_workspaces`, `get_ecosystem`, `compare_snapshots`, `impact_completeness`, `request_index`, `get_job`, `get_memory`, `save_memory`, `find_stale_mentions`, `find_unused`, `find_cycles`, `find_entry_points`, `find_hubs`, `plan_rename`, `search_structure` |
@@ -17,6 +17,31 @@ A client that does not defer tool loading puts every listed tool's name, descrip
 - Outside `all`, a listed tool keeps its description and every field of its input schema, with types, enums, patterns, defaults and required fields, but not the per-field descriptions; `envelope` keeps its first sentence. The full schemas are `schemas/tools/<tool>.input.schema.json`, and the server validates every call against them whatever the profile.
 - `list_queries` lists every tool with its `profile`, loaded or not, and says how to load the others.
 - A call to a tool of a profile the server was not started with is `INVALID_ARGUMENT` with `details.profile` naming the profile, and the message says which `--tools` option loads it.
+
+## Concept search (FR580 to FR585)
+
+`search_concepts` takes a description, such as an issue or a task in prose, and ranks the symbols and files that match it, with no model and no network. It is in the `core` profile: finding where to start is the first step of most tasks, and without it an agent falls back to many `search_sources` calls.
+
+```
+# search_concepts · 6 rows · snap_3dc3206b273ef32924950c3d current
+RelationLoader.load src/query-builder/RelationLoader.ts:26 method score=24.048 terms=loader,relation,relationloader via=RelationLoader.enableLazyLoad
+RelationLoader.enableLazyLoad src/query-builder/RelationLoader.ts:386 method score=23.706 terms=lazy,relationloader,loader,relation
+RelationLoader src/query-builder/RelationLoader.ts:12 class score=21.592 terms=relationloader,relation,loader,lazy
+src/query-builder/RelationLoader.ts:26 file score=46.593 terms=relationloader,loader,relation,lazy
+src/metadata/RelationMetadata.ts:19 file score=29.295 terms=relation,lazy
+src/query-builder/RelationIdLoader.ts:12 file score=28.601 terms=relation,loader,relationloader
+```
+
+That is `lazy relation loader` asked of TypeORM 0.3.20's `src/` (the parity fixture of `bench/parity`), cut to three rows of each.
+
+- **The index (FR581).** Each snapshot (format 0.13) holds, for every indexed file, its terms and the lines each occurs on: the words of every identifier, split at camelCase, PascalCase and snake_case boundaries and lower-cased, plus a multi-word identifier whole, its words joined (`RelationLoader` and `relation_loader` are both `relation`, `loader` and `relationloader`); the words of comments, docstrings and string literals, which are words of the text alike; and the segments of the file's path, on line 0. Stop words of English prose, single letters and numbers are left out. It is filled when the snapshot is sealed, from the captured text, whatever adapter read the file. A snapshot sealed before format 0.13 has none, and the answer says to index again. The extraction has its own version in the snapshot identity, so changing it rebuilds the next index.
+- **Query terms (FR584).** The text is split the same way, and each run of two or three adjacent words is also a term joined, as the index holds a multi-word identifier (`lazy relation loader` asks for `relationloader` and `lazyrelationloader` too). A light stemmer, the same for every language, lets a term of at least four letters also match the index terms it differs from by an ending of up to three letters (`loader` matches `load`, `loads` and `loaded`); a term and its variants count as one. Each term the index holds is weighed `(1 + ln tf_q) × idf`, with `idf = ln(1 + (N − df + 0.5) / (df + 0.5))` over the `N` indexed files, so an identifier common in the repository (`get`, `data`, `value`) counts for little; `df` counts the files holding the term or a variant. The 32 heaviest are kept; when a text has more, `terms_dropped` and a limitation say how many were left out. A text none of whose words the index holds answers no rows and the limitation `no indexed term matched` (FR583).
+- **Files.** `file = Σ w_t × (bm25(tf, len) + path_t) + best symbol`, where `bm25(n, len) = n (k1 + 1) / (n + k1 (1 − b + b len / avg_len))` with `k1 = 1.2` and `b = 0.75`, `tf` counts the term's occurrences in the file, `len` the file's occurrences of all terms, and `path_t` is 1 when the term is a word of the path.
+- **Symbols.** For each symbol of the 200 best files: `symbol = Σ w_t × (bm25(n, len) + name_t)`, where `n` counts the term's occurrences inside the symbol's span, `len` is its declaration's token count (with an average of 120), and `name_t` is 2 when the term, or a variant, is a word of the symbol's own name and 0.5 when it is a word of its container's (`RelationLoader` in `RelationLoader.load`).
+- **Graph proximity (FR582).** From each of the five best symbols (the seeds, which gain nothing from each other), the walk follows resolved `calls`, `inherits`, `implements`, `overrides` and `references` either way: a symbol one relationship away gains half of that seed's score and one two away a quarter, the largest such gain once, and names the seed in `via`. The gain is bounded by its seed, so proximity orders the neighbours of strong matches and never outranks a lexical match on its own.
+- **Order.** Production code first, then test code (recognised as `find_symbols` recognises it), unless `include_tests` is true; then by score, then by path, line and id, so the same snapshot and text always answer the same rows. Files flagged generated are left out; vendored files are not indexed.
+- **Rows.** 20 symbols and 20 files unless `max_rows` says otherwise. A lean symbol row is `<name> <path>:<line> <kind> score=<n> terms=<a,b>` (at most five terms, the heaviest contribution first) and `via=<name>` when proximity raised it; a file row is `<path>:<line> file` with the same tags, its line the declaration of its best symbol. `kinds` and `path_prefix` narrow the rows.
+- **How well it does.** `bench/localise` asks it the problem statement of 50 pinned SWE-bench Lite instances and scores file Acc@5 and function Acc@10 against a BM25 baseline computed by the same harness (its README states the latest results and how to run it).
 
 ## Read, management and execution (FR036)
 
@@ -69,7 +94,7 @@ Where no compiler or index analysed a subject (Go and Java without a SCIP index)
 
 ## Envelopes: lean, compact and full (FR095 to FR100)
 
-The query tools whose results are code locations (`find_symbols`, `get_symbol`, `get_relationships`, `trace_paths`, `analyze_impact` and `find_tests`) answer in the lean envelope by default over MCP. A lean answer is plain text, with no JSON and no `structuredContent`:
+The query tools whose results are code locations (`find_symbols`, `search_concepts`, `get_symbol`, `get_relationships`, `trace_paths`, `analyze_impact` and `find_tests`) answer in the lean envelope by default over MCP. A lean answer is plain text, with no JSON and no `structuredContent`:
 
 ```
 # get_relationships · 1 row · snap_4f0c2a9b1d3e5f7a current
