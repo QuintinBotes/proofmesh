@@ -507,6 +507,7 @@ Acceptance: CI runs my pull request without secrets or release credentials; lice
 - FR1102: MUST make any network connection or name lookup in aider's step fail, and then fail the step with `aider-map.py: aider tried to reach the network (<host>); bench/parity runs offline` and no maps, so the aider column reads `not run` rather than scoring a run that reached the network.
 - FR1110: MUST give aider file names relative to the fixture root and each tree-sitter capture's nodes in source order, so aider's tags, and with them its maps, are the same in every run and copy of one fixture; aider's ranking is not changed (#191).
 - FR1111: MUST refuse to run aider's step unless string hashing is fixed (`PYTHONHASHSEED=0`, which `run.mjs` sets in place of `-I`), naming the variable, as aider's ranking iterates sets of names.
+- FR1660: MUST give a test the repository's vitest settings (git run with the person's hooks off, the 60 s test timeout and the build in the global setup) when vitest is started in `packages/proofmesh` (`npx vitest run test/<file>`), as `pnpm test` at the root does, so a test that commits a fixture does not time out on a busy machine (#225).
 
 ### A one-edit rebuild (#31)
 
@@ -677,6 +678,7 @@ From #38 (FR-002). Read-only like the rename plan. The tests are in `packages/pr
 - FR1288: MUST give the public export limitation of FR985 when the entry imports the symbol under an alias and exports the alias (`import { x as y }` then `export { y }`).
 - FR1289: MUST place a call of a member whose receiver is written with the member's name on an earlier line at the line of the member's name after the dot, as the language service places it.
 - FR1540: MUST, in the standing limitation of a snapshot whose references are partial, name each language adapter that records references other than calls and imports, Python included since FR1287: `References other than calls and imports are recorded only where an adapter supports them (C# uses of repository declarations, TypeScript uses of repository types, Python uses of repository classes and functions); elsewhere a missing reference is not evidence of no use.` (#217).
+- FR1640: MUST report `references` `partial` for every Python file the Python adapter analysed, whether or not it records a use, since it reads each file for uses of repository classes and functions (FR1287) and finding none is a result, not an analysis it did not do; so a snapshot of Python alone gives the partial note of FR1540 and the census counts such files as partial (#224). Before #224 a file with no recorded use said `unsupported`, and the census and answers counted it so; the one expectation that pinned it, `web.py` in `fixtures/py-pulumi/expected.json` (a file with a resource but no reference), now says `partial`.
 
 ### Concept search (#27)
 

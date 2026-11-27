@@ -13,6 +13,6 @@
   ],
   "references_capability": [
     { "path": "__main__.py", "refs": "partial" },
-    { "path": "web.py", "refs": "unsupported" }
+    { "path": "web.py", "refs": "partial" }
   ]
 }
