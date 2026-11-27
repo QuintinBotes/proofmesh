@@ -127,8 +127,9 @@ test('#46 S4 FR056 FR1404 zooming into src/data-source names its files, then its
   for (const k of shared) {
     const b = before.get(k)!, a = after.get(k)!
     expect(Math.abs(a.x - (cx + (b.x - cx) * 1.6)), k).toBeLessThan(1.5)
-    // The name hangs under the point by an eighth of the symbol's cell and 3 px; the cell scales with the zoom, the 3 px do not.
-    expect(Math.abs(a.y - (cy + (b.y - cy) * 1.6)), k).toBeLessThan(3)
+    // The name hangs under the point by an eighth of the symbol's cell and 3 px; the cell scales with the zoom, the 3 px do not
+    // (1.8 px), and each reading is rounded to a whole pixel (up to 1.6 px more).
+    expect(Math.abs(a.y - (cy + (b.y - cy) * 1.6)), k).toBeLessThan(4)
   }
   await page.getByRole('toolbar', { name: 'Terrain controls' }).getByRole('button', { name: 'Fit everything' }).click()
   await page.waitForTimeout(500)
