@@ -1502,6 +1502,9 @@
     "FR720": [
       "packages/proofmesh/test/mcp-stdio.test.ts"
     ],
+    "FR730": [
+      "packages/proofmesh/test/tool-profiles.test.ts"
+    ],
     "FR400": [
       "packages/proofmesh/test/seams-schema.test.ts"
     ],

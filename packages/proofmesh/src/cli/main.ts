@@ -38,6 +38,7 @@ import { weakestCapability, type CensusRow } from '../indexer/census.js'
 import { countLabel, duration, phaseLabel, progressReporter } from './progress.js'
 
 export const VERSION = '0.1.0'
+const MCP_USAGE = 'mcp [--http [--port P]]           MCP server on stdio, or Streamable HTTP on loopback with a bearer token; [--tools P[,P]] lists tool profiles other than core (data, claims, extra, all)'
 const USAGE = `proofmesh ${VERSION}: a code graph that shows its work
 
 Usage: proofmesh [--data-dir DIR] <command>
@@ -80,7 +81,7 @@ Usage: proofmesh [--data-dir DIR] <command>
   completeness <repository> <base>[..<head>] [--depth N] [--json]   every symbol the change made and what calls, implements, references or imports it, each changed, tested or neither; indexes a side with no snapshot and waits; exits 0 when no dependent is neither, 1 when one is, 2 on a usage error or unknown commit
   tests <repository> <path | path#name> [--json]   the tests that reach a file or symbol, how each is known and its chain; exits 0 when one executes it, 1 when none does, 2 on a usage error or unknown subject
   status [repository] [--json] [--fresh]   inventory and coverage of the current snapshot, and index jobs queued or running; --fresh compares the working tree with it and starts nothing
-  mcp [--http [--port P]]           MCP server on stdio, or Streamable HTTP on loopback with a bearer token; [--tools P[,P]] lists tool profiles other than core (data, claims, extra, all)
+  ${MCP_USAGE}
   view [--port P] [--no-open]       Observatory on loopback
   debug dump --normalized <snapshot-id>`
 
@@ -564,6 +565,8 @@ export async function main(argv: string[]): Promise<number> {
         return 0
       }
       case 'mcp': {
+        // A person looking up the flags must not start a server that waits on stdin (#152).
+        if (rest.includes('--help') || rest.includes('-h')) { console.log(`usage: proofmesh ${MCP_USAGE}`); return 0 }
         const opts = [...rest], profiles = toolProfiles(take(opts, '--tools'))
         Catalog.open(dataDir).close()
         if (opts.includes('--http')) {

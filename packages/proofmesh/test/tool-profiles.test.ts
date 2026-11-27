@@ -1,8 +1,9 @@
+import { spawn } from 'node:child_process'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { check, loadSchema } from '../src/core/schemas.js'
 import { TOOLS } from '../src/query/tools.js'
-import { cli, indexedDataDir } from './helpers.js'
+import { CLI, cli, indexedDataDir } from './helpers.js'
 import { mcpClient } from './mcp-client.js'
 
 let d: string
@@ -67,6 +68,25 @@ describe('FR421 named profiles are chosen with --tools', () => {
     expect(r.status).toBe(1)
     expect(r.stderr).toMatch(/INVALID_ARGUMENT: unknown tool profile nope; --tools takes core, data, claims, extra, all/)
   })
+})
+
+describe('FR730 proofmesh mcp --help prints usage and starts no server', () => {
+  for (const flag of ['--help', '-h']) {
+    it(`FR730 mcp ${flag} exits 0 within 5 s with stdin open, names --tools and every profile, and reads nothing from stdin`, async () => {
+      const child = spawn(process.execPath, [CLI, '--data-dir', d, 'mcp', flag], { stdio: ['pipe', 'pipe', 'pipe'] })
+      let stdout = '', stderr = ''
+      child.stdout.on('data', (c) => { stdout += c }); child.stderr.on('data', (c) => { stderr += c })
+      // A request a server would answer; stdin stays open, so only a CLI that never serves can exit.
+      child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'proofmesh-tests', version: '0' } } })}\n`)
+      const timer = setTimeout(() => child.kill(), 5000)
+      const code = await new Promise<number | null>((resolve) => child.on('close', resolve))
+      clearTimeout(timer)
+      expect(code).toBe(0)
+      for (const word of ['--tools', 'core', 'data', 'claims', 'extra', 'all', '--http', '--port']) expect(stdout).toContain(word)
+      expect(stdout).not.toContain('jsonrpc')
+      expect(stderr).not.toMatch(/mcp server ready/)
+    })
+  }
 })
 
 describe('FR422 list_queries lists every tool and its profile', () => {
