@@ -35,6 +35,8 @@ When to use it: call paths through interfaces and dependency injection, framewor
 
 In Observatory, `Control+K`, `⌘K` or `/` opens a command palette: type part of a symbol or file name and press Enter to open it with its evidence, or run a command (switch view, show or hide the Diff overlay, pin a snapshot, trace a path, export). `1` to `7` open the views and `?` lists every key.
 
+The Galaxy draws every symbol where the snapshot places it: directories, then files, then symbols, each in name order, as nested cells. Position shows containment and nothing else; lines are relationships. The layout is computed on the server from paths and names only, so the same snapshot draws the same map in every browser and on every machine, the map is final on its first frame, and a commit moves only the symbols near what it touched.
+
 Connect Claude Code from inside the repository: `claude mcp add -s project proofmesh -- proofmesh mcp`.
 
 ## Updating

@@ -1,8 +1,8 @@
 // NFR005: measures the Observatory's frame times and interaction latencies against the published budgets, on an indexed data directory.
 // Usage: node bench/observatory/frames.mjs --data-dir <dir> [--workspace W --repository R] [--query <text>] [--palette-query <text>] [--headed] [--out <file.json>]
 // With several repositories registered, --workspace and --repository open the Galaxy of one of them through a deep link.
-// It starts `proofmesh view` on the data directory, opens the Galaxy in Chromium, and records: time to the first drawn galaxy and to a
-// settled layout, frame times at rest and while panning and zooming, search latency, and the time to switch to the Map, one second
+// It starts `proofmesh view` on the data directory, opens the Galaxy in Chromium, and records: time to the first drawn galaxy and to its
+// final positions, frame times at rest and while panning and zooming, search latency, and the time to switch to the Map, one second
 // after the search is cleared. Then, over the Map, the command palette (#43): from a query set in its field to the count of matches
 // painted, twenty times, and the main-thread long tasks (over 50 ms) while a ten-character query is typed a key at a time. The browser's
 // WebGL renderer is recorded, because a software renderer (SwiftShader) measures the CPU, not the GPU a person's browser would use.
@@ -41,7 +41,8 @@ try {
   await conclusion.filter({ hasText: /symbols in \d/ }).waitFor({ timeout: 300000 })
   const firstDraw = Date.now() - t0
   const summary = (await conclusion.textContent()).trim()
-  await page.getByRole('button', { name: 'Resume layout' }).waitFor({ timeout: 600000 })
+  // Positions come with the snapshot (FR1223): the layout is final once the area labels are placed on the first drawn frame.
+  await page.locator('.galaxy-label').first().waitFor({ timeout: 600000 })
   const settled = Date.now() - t0
   const renderer = await page.evaluate(() => {
     const gl = document.createElement('canvas').getContext('webgl2') ?? document.createElement('canvas').getContext('webgl')

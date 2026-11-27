@@ -26,4 +26,6 @@ Added to the adapter protocol in 1.3 (#38): an optional `sites` array on a relat
 
 Added to the MCP envelope (#39): `snapshot.imported` (`origin`, `imported_at`, `stale_count`), present only on an answer from a snapshot imported with `proofmesh snapshot import`, and `snapshot_export` in `list_queries`' `contract`. The change is additive and envelope version 0.1 stays. Lean text from an imported snapshot has `imported` after `current` or `stale` in its first line.
 
+Changed between `proofmesh view` and its browser (#44): the Galaxy payload (`/api/v1/galaxy`) is format 4, which adds a positions section and names `format` in its header. It is not a public contract: the server and the Observatory it serves ship together. The snapshot file format does not change, because positions are derived from the snapshot's paths and names and are not stored in it; a data directory keeps its snapshots, rebuilds each Galaxy payload once as `cache/galaxy-v4-<snapshot>`, and no longer reads the `galaxy-v3` files, which can be deleted. A browser's old `proofmesh-galaxy` IndexedDB database is no longer read or written.
+
 Deprecations are listed in CHANGELOG.md under the release that announces them.

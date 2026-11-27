@@ -920,6 +920,12 @@ From #39: a fresh clone starts from the snapshot a teammate or CI built for the 
 - FR1146: MUST render repository text in the palette as text with the visible escaping of FR065, announce the highlighted option as the combobox's active descendant, and pass axe with no serious or critical violation in the light and the dark scheme.
 - FR1200: MUST attribute each Galaxy search and palette match to the name that holds the text, also after names whose lowercase is longer or shorter than the name (such as `İ`), so the Galaxy highlights, counts and lists, and Explore opens, exactly the symbols whose names contain the text case-insensitively (#200).
 - FR1210: MUST say a count of exactly one with the singular noun, and every other count with the plural, wherever the Observatory puts a count before a noun: the conclusion bar, captions, badges, fog labels, the filter chip and the text and `aria-label` of exports (for example `1 matching symbol`, `1 area`, `1 unresolved boundary`) (#202).
+- FR1220: MUST place every Galaxy symbol on the server, as a pure function of the snapshot's path tree and symbol names with declaration order for ties: ordered strips of directories, then files, then symbols, each in name order and each symbol the same area; edges never move a node, and the same snapshot gives byte-identical positions on every machine and run (#44).
+- FR1221: MUST send each symbol's position in the Galaxy payload, quantised to 16 bits per axis within the map's square frame, as payload format 4 (cached as `galaxy-v4`), so payloads of an earlier format are rebuilt rather than read.
+- FR1222: MUST keep a symbol's place across snapshots: on a commit that adds a file of three functions, changes a body, adds a method and deletes a function, at most 1% of the symbols present in both move more than 2% of the map's width once both are fitted to view; a deleted symbol's place is taken only by symbols of its file or directory, and an added file's symbols appear in their directory's cell.
+- FR1223: MUST run no layout simulation in the browser: the Galaxy's first frame shows every symbol at its final position, and it has no pause or resume control, no IndexedDB layout cache and no warm start.
+- FR1224: MUST say in the Galaxy's legend that position shows containment (directory, then file, then name), that nearness is not a relationship, and that only drawn lines are relationships (FR068).
+- FR1225: MUST lay out 250,000 symbols on the server in at most one second on the reference machine (#44 SC-002).
 
 ### Open source and extensibility
 

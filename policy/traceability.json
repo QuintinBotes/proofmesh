@@ -2018,6 +2018,26 @@
       "apps/observatory/test/plural.test.ts",
       "e2e/galaxy.spec.ts"
     ],
+    "FR1220": [
+      "packages/proofmesh/test/layout.test.ts",
+      "apps/observatory/test/galaxy.test.ts",
+      "e2e/galaxy.spec.ts"
+    ],
+    "FR1221": [
+      "apps/observatory/test/galaxy.test.ts"
+    ],
+    "FR1222": [
+      "packages/proofmesh/test/layout.test.ts"
+    ],
+    "FR1223": [
+      "e2e/galaxy.spec.ts"
+    ],
+    "FR1224": [
+      "e2e/legend.spec.ts"
+    ],
+    "FR1225": [
+      "packages/proofmesh/test/layout.test.ts"
+    ],
     "FR580": [
       "packages/proofmesh/test/concepts.test.ts"
     ],

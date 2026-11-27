@@ -16,7 +16,7 @@ import { FRAMEWORK_TYPES, glyph, toScene, type TraceEnvelope } from './scene'
 import { visible } from './visible'
 import { share } from './share'
 import { plural } from './plural'
-import { areasSvg, caveatLines, NO_MEANING, offlineHtml, pngWithText, sceneSvg, sceneTable, type Caveats, type Source } from './exporting'
+import { areasSvg, caveatLines, CONTAINMENT, NO_MEANING, offlineHtml, pngWithText, sceneSvg, sceneTable, type Caveats, type Source } from './exporting'
 
 type Sym = { id: string; kind: string; name: string; qualified_name: string; path: string; start_line: number; signature: string | null }
 type Hub = { id: string; kind: string; name: string; qualified_name: string; inbound: number }
@@ -815,7 +815,7 @@ export function App() {
         <span className="sw resolved" /> resolved call on the path <span className="sw framework" /> framework rule <span className="sw explored" /> explored by the search <span className="sw external" /> resolved outside the repository <span className="sw unresolved" /> unresolved boundary <span className="ring" /> horizon
         <div className="dim">A line names its type unless it is a call, its rule or any origin other than the semantic resolver, and any resolution short of resolved; an unresolved site ends in a stub naming why.</div></>}
         {mode === 'trace' && <div className="dim">Edges run left to right in search order.</div>}
-        {mode !== 'claims' && mode !== 'diff' && <div className="dim">{NO_MEANING}</div>}
+        {mode !== 'claims' && mode !== 'diff' && <div className="dim">{mode === 'galaxy' ? CONTAINMENT : NO_MEANING}</div>}
         {exportable && (
           <div className="export" role="group" aria-label="Export this view">
             <button type="button" onClick={exportPage}>Export page</button>
