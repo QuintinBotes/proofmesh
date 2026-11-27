@@ -41,7 +41,8 @@ test('A11 the ecosystem overview draws a workspace, shows a selected repository\
   await expect(repos.locator('tbody tr').first()).toHaveAttribute('data-current', 'false')
   await expect(repos.locator('tbody tr').first()).toContainText('a newer snapshot exists')
   const links = page.getByRole('table', { name: 'Links between repositories' })
-  await expect(links.locator('tbody tr')).toHaveText(['storefrontorders-apicalls endpoints of; sends messages to410.6–1', 'orders-apicontractsdepends on packages of020.9'])
+  // A11 names no row order, and pairs() orders by repository id, which hashes the clone's path: compare the rows as a set.
+  await expect.poll(async () => (await links.locator('tbody tr').allTextContents()).sort()).toEqual(['orders-apicontractsdepends on packages of020.9', 'storefrontorders-apicalls endpoints of; sends messages to410.6–1'])
   await expect(page.getByRole('list', { name: 'Unresolved boundaries' })).toContainText('storefront: 2 calls_endpoint matched nothing in the workspace, such as Storefront.Clients.IInventoryApi.GetStock (no_match)')
 
   // Evidence on selection: the member with the most partners is selected first; choosing another shows its links and samples.
