@@ -3,7 +3,7 @@ import zlib from 'node:zlib'
 import fc from 'fast-check'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { buildIndex, LIMIT, searchIndex } from '../src/paletteIndex'
-import { areaFog, areaLabel, ghostAreas, graphPositions, legendAreas, placeLabels, matchIndices, parseGalaxy, rankMatches, shortName, type GalaxyData } from '../src/galaxyData'
+import { areaFog, areaLabel, ghostAreas, legendAreas, matchIndices, parseGalaxy, rankMatches, shortName, type GalaxyData } from '../src/galaxyData'
 import { galaxyFor } from '../../../packages/proofmesh/src/query/galaxy.js'
 import { indexedDataDir } from '../../../packages/proofmesh/test/helpers.js'
 
@@ -24,20 +24,19 @@ describe('A11 the Galaxy payload: every symbol of the snapshot in one compact bi
     // invoiceTotal's use of the Line type is a TypeScript reference (FR086), its read of line.cents is one too (FR1021), and dispatch's
     // read of the handlers variable is one (FR102), so each is a resolved link.
     expect(links).toEqual(['packages/api/src/handler:dispatch -> packages/api/src/handler:handlers', 'packages/api/src/handler:handleInvoice -> packages/billing/src/invoice:invoiceTotal', 'packages/billing/src/invoice:invoiceTotal -> packages/billing/src/invoice:Line', 'packages/billing/src/invoice:invoiceTotal -> packages/billing/src/invoice:Line.cents', 'packages/billing/src/invoice:invoiceTotal -> packages/format/src/currency:formatAmount'])
-    expect(g.areas.map((a) => [a.name, a.count])).toEqual([['packages/billing/src', 3], ['packages/api/src', 3], ['packages/format/src', 1], ['packages/legacy/src', 1], ['(root)', 0], ['packages/api', 0], ['packages/billing/dist', 0]])
-    expect(g.names.map((n, i) => [n.split(':')[0]!.split('/').slice(0, 3).join('/'), g.areas[g.area[i]!]!.name]).every(([a, b]) => a === b)).toBe(true)
+    // An area is a file's first two directories (FR1400).
+    expect(g.areas.map((a) => [a.name, a.count])).toEqual([['packages/billing', 3], ['packages/api', 3], ['packages/format', 1], ['packages/legacy', 1], ['(root)', 0]])
+    expect(g.names.map((n, i) => [n.split(':')[0]!.split('/').slice(0, 2).join('/'), g.areas[g.area[i]!]!.name]).every(([a, b]) => a === b)).toBe(true)
   })
 
   it('FR059 each area carries its coverage: files by disposition, call sites, unresolved calls, and why files were not analysed', () => {
     const none = { indexed: 0, unsupported: 0, excluded: 0, failed: 0, pending: 0 }
     expect(load().areas).toEqual([
-      { name: 'packages/billing/src', count: 3, files: { ...none, indexed: 2 }, calls: { sites: 2, unresolved: 0 }, gaps: [] },
-      { name: 'packages/api/src', count: 3, files: { ...none, indexed: 1 }, calls: { sites: 2, unresolved: 1 }, gaps: [] },
-      { name: 'packages/format/src', count: 1, files: { ...none, indexed: 2 }, calls: { sites: 1, unresolved: 0 }, gaps: [] },
-      { name: 'packages/legacy/src', count: 1, files: { ...none, indexed: 1 }, calls: { sites: 1, unresolved: 0 }, gaps: [] },
+      { name: 'packages/billing', count: 3, files: { ...none, indexed: 2, excluded: 1 }, calls: { sites: 2, unresolved: 0 }, gaps: [['**/dist/**', 1]] },
+      { name: 'packages/api', count: 3, files: { ...none, indexed: 1, unsupported: 1 }, calls: { sites: 2, unresolved: 1 }, gaps: [['no_adapter:.avsc', 1]] },
+      { name: 'packages/format', count: 1, files: { ...none, indexed: 2 }, calls: { sites: 1, unresolved: 0 }, gaps: [] },
+      { name: 'packages/legacy', count: 1, files: { ...none, indexed: 1 }, calls: { sites: 1, unresolved: 0 }, gaps: [] },
       { name: '(root)', count: 0, files: { ...none, indexed: 1, unsupported: 1 }, calls: { sites: 0, unresolved: 0 }, gaps: [['no_adapter:.md', 1]] },
-      { name: 'packages/api', count: 0, files: { ...none, unsupported: 1 }, calls: { sites: 0, unresolved: 0 }, gaps: [['no_adapter:.avsc', 1]] },
-      { name: 'packages/billing/dist', count: 0, files: { ...none, excluded: 1 }, calls: { sites: 0, unresolved: 0 }, gaps: [['**/dist/**', 1]] },
     ])
   })
 
@@ -68,15 +67,13 @@ describe('A11 the Galaxy payload: every symbol of the snapshot in one compact bi
 })
 
 describe('FR1220 FR1221 the payload carries every symbol\'s position, computed with the snapshot', () => {
-  it('B13 positions are 16 bits per axis in the map\'s frame, one place for each symbol, in format 4', () => {
+  it('B13 positions are 16 bits per axis in the map\'s frame, one place for each symbol, in format 5', () => {
     const raw = zlib.gunzipSync(galaxyFor(d).gz)
-    expect(JSON.parse(raw.subarray(4, 4 + raw.readUInt32LE(0)).toString('utf8')).format).toBe(4)
+    expect(JSON.parse(raw.subarray(4, 4 + raw.readUInt32LE(0)).toString('utf8')).format).toBe(5)
     const g = load()
     expect(g.positions).toHaveLength(g.n * 2)
     expect(new Set(Array.from({ length: g.n }, (_, i) => `${g.positions[i * 2]},${g.positions[i * 2 + 1]}`)).size).toBe(g.n)
-    const p = graphPositions(g)
-    expect(Math.min(...p)).toBeGreaterThanOrEqual(0)
-    expect(Math.max(...p)).toBeLessThanOrEqual(4096)
+    const p = g.positions
     // Containment: a symbol sits nearer another of its file than any symbol of another package.
     const at = (name: string) => g.names.indexOf(name)
     const gap = (a: number, b: number) => Math.hypot(p[a * 2]! - p[b * 2]!, p[a * 2 + 1]! - p[b * 2 + 1]!)
@@ -108,12 +105,7 @@ describe('B20 area labels say which area they are', () => {
   })
 })
 
-describe('B14 labels never pile up', () => {
-  it('B14 keeps labels in order and drops one that would overlap a label already placed', () => {
-    const labels = [{ name: 'Demo.Garden.App', x: 100, y: 100 }, { name: 'Shed', x: 130, y: 105 }, { name: 'Orchard', x: 100, y: 140 }, { name: 'Meadows', x: 400, y: 100 }]
-    expect(placeLabels(labels).map((l) => l.name)).toEqual(['Demo.Garden.App', 'Orchard', 'Meadows'])
-  })
-
+describe('NFR005 search over the names', () => {
   it('NFR005 search over one joined text finds exactly what a plain filter finds, each name once, in index order', () => {
     const names = Array.from({ length: 5000 }, (_, i) => `src/area${i % 37}/File${i}:Order${i % 11}.place${i % 7 ? '' : 'OrderOrder'}`)
     names[0] = 'order:first'; names[4999] = 'last:ORDER'
