@@ -1963,6 +1963,10 @@
       "packages/proofmesh/test/catalog-tools.test.ts",
       "packages/proofmesh/test/limits.test.ts"
     ],
+    "FR1640": [
+      "packages/proofmesh/test/catalog-tools.test.ts",
+      "packages/proofmesh/test/python.frameworks.test.ts"
+    ],
     "FR1040": [
       "packages/proofmesh/test/constrained.test.ts"
     ],

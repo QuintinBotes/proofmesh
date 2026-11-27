@@ -4,6 +4,8 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 ## Unreleased
 
+A Python file the Python adapter analysed reports `references: partial` even when it records no use, as it was read for them (#224; FR1640). A snapshot of Python alone now gives the partial references note instead of `References other than calls and imports are not analysed for this snapshot.`, and the language census counts those files as partial.
+
 A bounded, read-only graph query for composed questions (#36; FR960 to FR966):
 
 - New tool `query_graph` (profile `extra`, lean over MCP) takes one query in a read-only subset of openCypher. The subset has `MATCH`, `OPTIONAL MATCH`, `WHERE` with pattern predicates and `EXISTS { ... }`, `WITH`, `RETURN`, `DISTINCT`, `ORDER BY`, `SKIP`, `LIMIT`, `count` and `collect`. Variable-length paths need an upper bound of at most 6. It is meant for a question no typed tool answers in one call, such as "callers of X reached from main that are not tests". Each row is a lean `name path:line` row with ` inferred` when any hop is. The header names the snapshot's commit. The grammar is in `docs/proofmesh/mcp.md`.
