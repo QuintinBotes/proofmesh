@@ -1730,6 +1730,27 @@
     ],
     "FR852": [
       "packages/proofmesh/test/syntax-structure.test.ts"
+    ],
+    "FR820": [
+      "packages/proofmesh/test/doc-links.test.ts"
+    ],
+    "FR821": [
+      "packages/proofmesh/test/doc-links.test.ts"
+    ],
+    "FR822": [
+      "packages/proofmesh/test/doc-links.test.ts"
+    ],
+    "FR823": [
+      "packages/proofmesh/test/doc-links.test.ts"
+    ],
+    "FR824": [
+      "packages/proofmesh/test/doc-links.test.ts"
+    ],
+    "FR825": [
+      "packages/proofmesh/test/doc-links.test.ts"
+    ],
+    "FR826": [
+      "packages/proofmesh/test/doc-links.test.ts"
     ]
   },
   "manual": {

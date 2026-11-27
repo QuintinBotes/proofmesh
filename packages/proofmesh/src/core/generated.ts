@@ -4,7 +4,7 @@
 export interface Envelope {
 schema_version: "0.1"
 query_id: string
-tool: ("workspace_status" | "list_repositories" | "list_snapshots" | "list_workspaces" | "find_symbols" | "get_symbol" | "get_relationships" | "trace_paths" | "read_evidence" | "get_overview" | "analyze_impact" | "find_tests" | "search_sources" | "get_memory" | "verify_claim" | "request_index" | "get_job" | "get_claims" | "save_memory" | "get_table_reach" | "get_property_reads" | "get_external_usage" | "find_query_source" | "compare_snapshots" | "list_queries" | "get_ecosystem" | "prepare_verification" | "get_verification" | "impact_completeness" | "get_symbols_at" | "get_session_trail")
+tool: ("workspace_status" | "list_repositories" | "list_snapshots" | "list_workspaces" | "find_symbols" | "get_symbol" | "get_relationships" | "trace_paths" | "read_evidence" | "get_overview" | "analyze_impact" | "find_tests" | "search_sources" | "get_memory" | "verify_claim" | "request_index" | "get_job" | "get_claims" | "save_memory" | "get_table_reach" | "get_property_reads" | "get_external_usage" | "find_query_source" | "compare_snapshots" | "list_queries" | "get_ecosystem" | "prepare_verification" | "get_verification" | "impact_completeness" | "get_symbols_at" | "get_session_trail" | "find_stale_mentions")
 /**
  * The sealed snapshot or link file that answered; null for a catalog tool, which answers from the list of registered repositories.
  */
@@ -502,6 +502,64 @@ max_depth?: number
  * snapshot (default) answers from the published snapshot. strict first checks that the working tree is exactly what the snapshot was built from; if not, it starts an index and refuses with STALE_INPUT naming the changed files.
  */
 freshness?: ("snapshot" | "strict")
+/**
+ * compact leaves out the snapshot-wide parts of the envelope (unresolved reasons, standing limitations) that an earlier answer from the same snapshot already gave; query-specific limits stay. Over MCP, answers after the first full one per snapshot are compact unless full is asked for.
+ */
+envelope?: ("full" | "compact")
+}
+
+/**
+ * Stale doc mentions by doc path and line (FR823).
+ */
+export interface FindStaleMentionsData {
+mentions: {
+/**
+ * The doc, repository-relative.
+ */
+path: string
+line: number
+/**
+ * The inline code or link target as the doc writes it.
+ */
+mention: string
+change: ("renamed" | "moved" | "moved_renamed" | "deleted")
+to: (null | {
+/**
+ * The new name, written as the mention wrote the old one, or the file's new path.
+ */
+name: string
+path: string
+/**
+ * Present and true when the new file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
+})
+}[]
+/**
+ * Stale mentions under the prefix, before max_rows.
+ */
+total: number
+}
+
+/**
+ * Doc mentions that no longer name real code: a Markdown doc's inline code or link that resolved in an earlier snapshot and names nothing now, each with its file and line, and renamed, moved or moved_renamed with the new name when the symbol was paired by body hash, else deleted.
+ */
+export interface FindStaleMentionsInput {
+repository_id?: string
+/**
+ * Default is the repository's current snapshot.
+ */
+snapshot_id?: string
+/**
+ * Only docs whose repository-relative path starts with this.
+ */
+path_prefix?: string
+limits?: {
+timeout_ms?: number
+max_rows?: number
+max_bytes?: number
+max_depth?: number
+}
 /**
  * compact leaves out the snapshot-wide parts of the envelope (unresolved reasons, standing limitations) that an earlier answer from the same snapshot already gave; query-specific limits stay. Over MCP, answers after the first full one per snapshot are compact unless full is asked for.
  */
@@ -1380,7 +1438,7 @@ envelope?: ("full" | "compact")
 export interface GetRelationshipsData {
 relationships: {
 assertion_id: string
-type: ("calls" | "imports" | "contains" | "inherits" | "implements" | "overrides" | "references" | "injects" | "registered_as" | "exposes" | "maps_to" | "runs" | "dispatches_to" | "handles" | "publishes" | "consumes" | "sends_to" | "listens_on" | "evaluates_flag" | "reads_config" | "depends_on" | "depends_on_package" | "owned_by" | "calls_service" | "renders" | "uses_hook" | "provides_context" | "uses_context")
+type: ("calls" | "imports" | "contains" | "inherits" | "implements" | "overrides" | "references" | "injects" | "registered_as" | "exposes" | "maps_to" | "runs" | "dispatches_to" | "handles" | "publishes" | "consumes" | "sends_to" | "listens_on" | "evaluates_flag" | "reads_config" | "depends_on" | "depends_on_package" | "owned_by" | "calls_service" | "renders" | "uses_hook" | "provides_context" | "uses_context" | "mentions")
 direction: ("in" | "out")
 resolution: ("resolved" | "resolved_external" | "candidate" | "ambiguous" | "unresolved")
 origin: ("syntax" | "semantic_resolver" | "configuration_adapter" | "framework_adapter" | "contract_match" | "runtime_observation" | "documentation" | "human_assertion" | "model_hypothesis")
@@ -1519,7 +1577,7 @@ direction?: ("in" | "out" | "both")
 /**
  * @minItems 1
  */
-types?: [("calls" | "imports" | "contains" | "inherits" | "implements" | "overrides" | "references" | "injects" | "registered_as" | "exposes" | "maps_to" | "runs" | "dispatches_to" | "handles" | "publishes" | "consumes" | "sends_to" | "listens_on" | "evaluates_flag" | "reads_config" | "depends_on" | "depends_on_package" | "owned_by" | "calls_service" | "renders" | "uses_hook" | "provides_context" | "uses_context"), ...(("calls" | "imports" | "contains" | "inherits" | "implements" | "overrides" | "references" | "injects" | "registered_as" | "exposes" | "maps_to" | "runs" | "dispatches_to" | "handles" | "publishes" | "consumes" | "sends_to" | "listens_on" | "evaluates_flag" | "reads_config" | "depends_on" | "depends_on_package" | "owned_by" | "calls_service" | "renders" | "uses_hook" | "provides_context" | "uses_context"))[]]
+types?: [("calls" | "imports" | "contains" | "inherits" | "implements" | "overrides" | "references" | "injects" | "registered_as" | "exposes" | "maps_to" | "runs" | "dispatches_to" | "handles" | "publishes" | "consumes" | "sends_to" | "listens_on" | "evaluates_flag" | "reads_config" | "depends_on" | "depends_on_package" | "owned_by" | "calls_service" | "renders" | "uses_hook" | "provides_context" | "uses_context" | "mentions"), ...(("calls" | "imports" | "contains" | "inherits" | "implements" | "overrides" | "references" | "injects" | "registered_as" | "exposes" | "maps_to" | "runs" | "dispatches_to" | "handles" | "publishes" | "consumes" | "sends_to" | "listens_on" | "evaluates_flag" | "reads_config" | "depends_on" | "depends_on_package" | "owned_by" | "calls_service" | "renders" | "uses_hook" | "provides_context" | "uses_context" | "mentions"))[]]
 /**
  * @minItems 1
  */
@@ -3368,6 +3426,14 @@ missing: string[]
 generated_policy: ({
 [k: string]: unknown
 } | null)
+}
+/**
+ * Markdown docs' mentions of code (FR820 to FR824): inline code and links resolved to one symbol or file, mentions of several symbols left ambiguous, and stale mentions whose code was renamed, moved or deleted since a snapshot that resolved them, which find_stale_mentions lists. All zero for a snapshot sealed before format 0.12.
+ */
+doc_mentions: {
+resolved: number
+ambiguous: number
+stale: number
 }
 }
 

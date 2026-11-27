@@ -4,6 +4,13 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 ## Unreleased
 
+Docs link to the code they name, and say when it changes (closes #29; FR820 to FR826):
+
+- A Markdown doc's inline code and links are matched by name, with no model, to the files and symbols they name: `Ledger.consume`, `total()`, `Ledger`, `src/ledger.ts`, `[the ledger](../src/ledger.ts)`. Each is a new `mentions` relationship from the doc at its line, origin `documentation`, so always `inferred`; a name of several symbols is `ambiguous` with its candidates, never guessed. Fenced code, bare member names such as `id`, words such as `true` and links with a scheme are not recorded. `get_relationships` with `types: ["mentions"]`, inbound, lists the docs that name a symbol or file.
+- New tool `find_stale_mentions` (profile `extra`, beside `compare_snapshots`) lists the mentions whose code is gone since the snapshot that resolved them, each with its doc `path:line`, `renamed`, `moved` or `moved_renamed` and the new name when the symbol pairs by body hash, else `deleted`. `workspace_status` counts them under `doc_mentions`. It is not in `core`: the count in `workspace_status` (core) says how to load it, and core's `tools/list` stays as it was but for the new `mentions` type.
+- Snapshot format 0.12 adds the `mentions` relationship type, so snapshot identity changes and the next index rebuilds; a snapshot sealed in 0.11 or earlier stays readable and answers no mentions. A Markdown file stays `unsupported` in dispositions and the census, but its content is now part of snapshot identity and of strict freshness, so editing only a doc indexes again.
+- Not done: other doc formats, `.gitattributes` `linguist-generated` on a doc, and stale mentions of a doc that was itself moved.
+
 The session trail records reads and searches made through Bash (closes #149; FR800 to FR803):
 
 - In configurations of Claude Code with no Grep or Glob tool, most searches and many reads go through Bash, and the trail ignored them, so `/pm-trail` and `get_session_trail` listed dependents as `never_seen` that the session had read. The plugin's hooks module now reads a Bash command that is one plain `cat`, `head`, `tail` or `sed -n` (recorded `opened`) or `grep`, `rg` or `find` (recorded `searched`), optionally piped into `head` or `tail`. It records each path the command names that exists inside the repository, resolved against the shell's directory after a `cd`, with tool `Bash`. It keeps no command, pattern, option value or output.

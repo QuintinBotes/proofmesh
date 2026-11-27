@@ -22,13 +22,14 @@ import { assemble, FactCache, fileKeys, splitByFile, type FileFacts } from './fa
 import { analysisConfig, checkoutCommit, discoverAsync, gitInfo, type Discovered } from './discovery.js'
 import { CONTRACT_NAME, registryFor, type AdapterSpec, type Registry } from './languages.js'
 import { buildCensus } from './census.js'
-import { GENERATED_POLICY } from './generated-vendored.js'
+import { GENERATED_POLICY, isGeneratedFile } from './generated-vendored.js'
 import { vendoredGoImports } from './vendored-imports.js'
 import { constrain, RESOLUTION_VERSION, type Sym } from './constrained/index.js'
 import { type EndpointSym, linkHttp, SEAMS_VERSION } from './seams-http.js'
 import { isContract, linkSchemas, SCHEMA_SEAMS_VERSION } from './seams-schema.js'
 import { ffiCensus, FFI_PRODUCER, FFI_SEAMS_VERSION, linkFfi } from './seams-ffi.js'
 import { moduleCycles } from './module-cycles.js'
+import { DOC_LINKS_VERSION, isDoc, resolveMentions, scanDoc, staleMentions, type Mention, type Stale } from './doc-links.js'
 
 export type IndexResult = {
   snapshotId: string
@@ -179,8 +180,11 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
     const captured: Captured[] = []
     // Adapters count bytes on decoded text, so a file that is not UTF-8 would get ranges off its bytes: it is captured but failed alone, unread (FR780).
     const notUtf8 = new Set<string>()
+    // Markdown docs no adapter reads stay unsupported, but their text is kept: their mentions are evidence, and an edit to one indexes again (FR826).
+    const docs: Array<{ path: string; hash: string }> = []
     for (const [i, d] of discovered.entries()) {
       if (i && i % 1000 === 0) progress({ phase: 'capture', done: i, total: discovered.length })
+      if (isDoc(d)) docs.push({ path: d.path, hash: store.put(fs.readFileSync(path.join(root, d.path))) })
       if (d.status !== 'capture') continue
       const bytes = fs.readFileSync(path.join(root, d.path))
       if (d.role !== 'registry' && !isUtf8(bytes)) notUtf8.add(d.path)
@@ -191,7 +195,7 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
     progress({ phase: 'capture', done: discovered.length, total: discovered.length })
     // What follows capture has its own stage line: a crash must show where it stopped, not only that capture had ended.
     progress({ phase: 'prepare', done: 0, total: 0 })
-    const hashOf = new Map(captured.map((c) => [c.path, c.hash]))
+    const hashOf = new Map([...captured, ...docs].map((c) => [c.path, c.hash]))
     // A build manifest is a source of the build adapter, and still configuration as evidence (FR129).
     const configPaths = new Set(captured.filter((c) => c.role === 'config' || (c.role === 'source' && registry!.manifestLanguage(path.posix.basename(c.path)) && !CONTRACT_NAME.test(c.path))).map((c) => c.path))
     const manifest = manifestHash(discovered, (p) => hashOf.get(p))
@@ -236,7 +240,7 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
     // Raising a budget must index again: a file the old budget failed is not the answer under the new one. Facts do not change with it.
     const budgets = Object.fromEntries(runs.map((r) => [r.spec.id, r.budgetMb!]))
     // site_key: an assertion is keyed by its site's span, not its start byte (#134), so a snapshot written the old way is not reused.
-    const identity = { repository_id: repo.id, manifest_hash: manifest, config_hash: sha256(canonicalJson({ ...analysisConfig(), generated_policy: GENERATED_POLICY, adapters: configs, adapter_memory_mb: budgets })), analysis_mode: analysisMode, adapters, format_version: FORMAT_VERSION, format_ddl: sha256(readSql(`snapshot-format/${FORMAT_VERSION}.sql`)), ownership: OWNERSHIP_VERSION, resolution: RESOLUTION_VERSION, seams: SEAMS_VERSION, schema_seams: SCHEMA_SEAMS_VERSION, ffi_seams: FFI_SEAMS_VERSION, site_key: 'span' }
+    const identity = { repository_id: repo.id, manifest_hash: manifest, config_hash: sha256(canonicalJson({ ...analysisConfig(), generated_policy: GENERATED_POLICY, adapters: configs, adapter_memory_mb: budgets })), analysis_mode: analysisMode, adapters, format_version: FORMAT_VERSION, format_ddl: sha256(readSql(`snapshot-format/${FORMAT_VERSION}.sql`)), ownership: OWNERSHIP_VERSION, resolution: RESOLUTION_VERSION, seams: SEAMS_VERSION, schema_seams: SCHEMA_SEAMS_VERSION, ffi_seams: FFI_SEAMS_VERSION, doc_links: DOC_LINKS_VERSION, site_key: 'span' }
     // The fallbacks a published snapshot recorded. One made while analysing (an adapter died) is not a function of the inputs, so it is never the answer to a later index:
     // the identity takes a `retry` number past each such snapshot, and the adapter is asked again.
     const recorded = (id: string): Array<{ adapter: string; files: number; reason: string; kind: string }> => {
@@ -480,7 +484,7 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
       }
       analysed = true
       // A file edited after capture would make the snapshot a mix of two trees, so it is not published (FR013).
-      const moved = unstable(root, captured)
+      const moved = unstable(root, [...captured, ...docs])
       if (moved.length) throw new ProofmeshError('UNSTABLE_WORKTREE', `${moved.length} file${moved.length === 1 ? '' : 's'} changed while indexing (${moved.slice(0, 3).join(', ')}); index again when the tree is quiet`, { detail: 'changed_during_capture', paths: moved.slice(0, 20) })
       progress({ phase: 'write', done: 0, total: pending.length })
       // The names the language's rules can bind are bound before anything is written, from the whole workspace's facts (FR171).
@@ -523,9 +527,22 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
           else updateFile.run('failed', fr.detail ?? 'adapter_failure', null, capabilities({ ...fr.capabilities, ...flagOf(c) }, 'failed'), c.path)
         }
       })()
+      // Each doc's inline code and links, matched by name to what the adapters declared (FR820); a generated doc names nothing (FR292).
+      const docText = docs.flatMap((d) => { const b = store.read(d.hash); return b && isUtf8(b) && !isGeneratedFile(path.posix.basename(d.path), b.toString('utf8')) ? [{ path: d.path, text: b.toString('utf8') }] : [] })
+      const mentions = resolveMentions(db, docText.flatMap((d) => scanDoc(d.path, d.text)))
+      db.transaction(() => writer.mentions(mentions.recorded, { id: 'doc-links', version: DOC_LINKS_VERSION, mode: 'no_execution' }))()
       // Hashing needs each file's captured text and the declared spans, so it follows the last write and costs adapters nothing (FR130).
       fillSites(db)
       const unreadable = fillBodyHashes(db, store)
+      // Stale mentions need both snapshots' body hashes to pair a rename (FR823). A previous snapshot that cannot be opened has none to report.
+      const previous = mentions.unmatched.length ? catalog.currentSnapshot(repo.id) : undefined
+      let stale: Stale[] = []
+      if (previous) {
+        let prev: Database.Database | undefined
+        try { prev = openSnapshot(catalog, previous) } catch (e) { log('warning', 'previous snapshot unreadable; no stale doc mentions reported', { snapshot: previous.id, error: String(e) }) }
+        try { stale = staleMentions(prev, db, mentions.unmatched) } finally { prev?.close() }
+      }
+      db.prepare("insert into meta (key, value) values ('doc_links', ?)").run(canonicalJson({ docs: Object.fromEntries(docs.map((d) => [d.path, d.hash])), stale }))
       if (unreadable.length) db.prepare("insert into meta (key, value) values ('body_hash_missing', ?)").run(canonicalJson({ count: unreadable.length, paths: unreadable.slice(0, 20) }))
       // A key the core had to disambiguate means an adapter named two declarations alike: recorded, never silent (FR147).
       if (writer.disambiguated.length) db.prepare("insert into meta (key, value) values ('key_disambiguated', ?)").run(canonicalJson({ count: writer.disambiguated.length, truncated: false, keys: writer.disambiguated }))
@@ -746,6 +763,20 @@ class FactWriter {
         this.stmt.edge!.run(s.id, 'owned_by', target, 'resolved', id)
         this.stmt.assertionEvidence!.run(id, ev)
       }
+    }
+  }
+
+  /** A doc's mention of a symbol or file: from the doc file, origin documentation and so inferred, or ambiguous with its candidates (FR821). */
+  mentions(rows: Mention[], p: Producer): void {
+    for (const m of rows) {
+      const ev = this.evidence(m.path, { start_byte: m.start_byte, end_byte: m.end_byte, start_line: m.line, end_line: m.line }, 'reference_site', p), source = this.fileId(m.path), target = m.target
+      const id = derivedId('as', 24, this.snapshotId, 'mentions', source, m.path, m.start_byte, m.end_byte, target?.id ?? '')
+      if (this.seenAssertion.has(id)) continue
+      this.seenAssertion.add(id)
+      this.stmt.assertion!.run(id, 'mentions', 'documentation', target ? 'resolved' : 'ambiguous', 'file', source, target?.kind ?? null, target?.id ?? null, target ? null : 'ambiguous', canonicalJson({ text: m.text, ...(m.more ? { more: m.more } : {}) }), p.id, p.version, p.mode)
+      if (target) this.stmt.edge!.run(source, 'mentions', target.id, 'resolved', id)
+      ;(m.candidates ?? []).forEach((c, rank) => this.stmt.candidate!.run(id, c, rank, 'ambiguous'))
+      this.stmt.assertionEvidence!.run(id, ev)
     }
   }
 

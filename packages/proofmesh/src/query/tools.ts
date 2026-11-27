@@ -45,7 +45,7 @@ import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 
-export const TOOLS = ['workspace_status', 'list_repositories', 'list_snapshots', 'list_workspaces', 'find_symbols', 'get_symbol', 'get_relationships', 'trace_paths', 'read_evidence', 'get_overview', 'analyze_impact', 'find_tests', 'search_sources', 'get_memory', 'verify_claim', 'request_index', 'get_job', 'get_claims', 'save_memory', 'get_table_reach', 'get_property_reads', 'get_external_usage', 'find_query_source', 'compare_snapshots', 'list_queries', 'get_ecosystem', 'prepare_verification', 'get_verification', 'impact_completeness', 'get_symbols_at', 'get_session_trail'] as const
+export const TOOLS = ['workspace_status', 'list_repositories', 'list_snapshots', 'list_workspaces', 'find_symbols', 'get_symbol', 'get_relationships', 'trace_paths', 'read_evidence', 'get_overview', 'analyze_impact', 'find_tests', 'search_sources', 'get_memory', 'verify_claim', 'request_index', 'get_job', 'get_claims', 'save_memory', 'get_table_reach', 'get_property_reads', 'get_external_usage', 'find_query_source', 'compare_snapshots', 'list_queries', 'get_ecosystem', 'prepare_verification', 'get_verification', 'impact_completeness', 'get_symbols_at', 'get_session_trail', 'find_stale_mentions'] as const
 export type ToolName = (typeof TOOLS)[number]
 /** The query tools whose results are code locations: they answer in the lean envelope on request, and by default over MCP (FR099). */
 export const LEAN = new Set<string>(['find_symbols', 'get_symbol', 'get_symbols_at', 'get_relationships', 'trace_paths', 'analyze_impact', 'find_tests', 'get_session_trail'])
@@ -62,7 +62,7 @@ export const CAPABILITY: Record<ToolName, ListQueriesData['tools'][number]['capa
   read_evidence: 'read', get_overview: 'read', analyze_impact: 'read', find_tests: 'read', search_sources: 'read', get_memory: 'read',
   verify_claim: 'read', request_index: 'management', get_job: 'read', get_claims: 'read', save_memory: 'management', get_table_reach: 'read',
   get_property_reads: 'read', get_external_usage: 'read', find_query_source: 'read', compare_snapshots: 'read', list_queries: 'read',
-  get_ecosystem: 'read', prepare_verification: 'management', get_verification: 'read', impact_completeness: 'management', get_symbols_at: 'read', get_session_trail: 'read',
+  get_ecosystem: 'read', prepare_verification: 'management', get_verification: 'read', impact_completeness: 'management', get_symbols_at: 'read', get_session_trail: 'read', find_stale_mentions: 'read',
 }
 
 /**
@@ -75,7 +75,8 @@ export const PROFILE: Record<ToolName, ListQueriesData['tools'][number]['profile
   get_table_reach: 'data', get_property_reads: 'data', get_external_usage: 'data', find_query_source: 'data', get_session_trail: 'data',
   verify_claim: 'claims', get_claims: 'claims', prepare_verification: 'claims', get_verification: 'claims',
   list_snapshots: 'extra', list_workspaces: 'extra', get_ecosystem: 'extra', compare_snapshots: 'extra', impact_completeness: 'extra', request_index: 'extra',
-  get_job: 'extra', get_memory: 'extra', save_memory: 'extra',
+  // A maintainer's question after a refactor, like compare_snapshots; workspace_status (core) counts the stale mentions and says how to list them.
+  get_job: 'extra', get_memory: 'extra', save_memory: 'extra', find_stale_mentions: 'extra',
 }
 /** How a client loads the tools of another profile, said by list_queries, which lists them all (FR422). */
 const PROFILES_NOTE = 'Over MCP, proofmesh mcp lists the core profile; start it with --tools <profile[,profile]> (core, data, claims, extra) or --tools all to list the others. A tool outside the profiles it was started with answers INVALID_ARGUMENT naming its profile.'
@@ -276,6 +277,13 @@ function runRepositoryTool(dataDir: string, tool: string, input: Record<string, 
 
 const SNAPSHOT_FRESHNESS: Envelope['freshness'] = { mode: 'snapshot', status: 'as_of_snapshot' }
 
+/** Doc mentions by resolution: one target, or several candidates (FR820). */
+const mentionCounts = (db: Database.Database): { resolved: number; ambiguous: number } => {
+  const c = { resolved: 0, ambiguous: 0 }
+  for (const r of db.prepare("select resolution, count(*) as n from assertion where type = 'mentions' group by resolution").all() as Array<{ resolution: 'resolved' | 'ambiguous'; n: number }>) c[r.resolution] = r.n
+  return c
+}
+
 /**
  * Strict freshness: the snapshot answers only if the working tree, read now, is exactly what it was built from. Otherwise an index
  * job starts (or the open one is reused) and the call is refused with the changed files, so no answer passes for current when it is not.
@@ -287,6 +295,9 @@ export function treeFreshness(db: Database.Database, dataDir: string, root: stri
   const identity = JSON.parse((db.prepare("select value from meta where key = 'identity'").get() as { value: string }).value) as { manifest_hash: string }
   if (tree.manifest === identity.manifest_hash) return { current: true, changed: [] }
   const captured = new Map((db.prepare("select path, content_hash from file where disposition in ('indexed', 'failed')").all() as Array<{ path: string; content_hash: string | null }>).map((f) => [f.path, f.content_hash]))
+  // The docs whose text the snapshot kept for their mentions (FR826) are files the tree is compared on too.
+  const docs = db.prepare("select value from meta where key = 'doc_links'").get() as { value: string } | undefined
+  for (const [p, h] of Object.entries(docs ? (JSON.parse(docs.value) as { docs: Record<string, string> }).docs : {})) captured.set(p, h)
   return { current: false, changed: changes(captured, tree.hashes) }
 }
 
@@ -652,6 +663,7 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     const censusRows = meta.census ? (JSON.parse(meta.census) as Array<{ kind: string; language: string; files: number }>) : []
     const languages = censusRows
     const cycles = (meta.module_cycles ? JSON.parse(meta.module_cycles) : []) as ModuleCycle[]
+    const docMentions = { ...mentionCounts(ctx.db), stale: meta.doc_links ? (JSON.parse(meta.doc_links) as { stale: unknown[] }).stale.length : 0 }
     const fileSummary = [...groups.values()].sort((a, b) => b.files - a.files || (a.extension < b.extension ? -1 : 1)).slice(0, 50)
     return {
       data: {
@@ -675,6 +687,7 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
         languages,
         // The FFI seams by mechanism (FR467); empty for a snapshot sealed before the FFI rules, or with none.
         ffi_seams: (meta.ffi_seams ? JSON.parse(meta.ffi_seams) : {}) as Record<string, number>,
+        doc_mentions: docMentions,
         hubs: input.include_generated === true ? hubsOf(ctx.db, true) : snapshotSummary(ctx.db, ctx.snapshot.id).hubs,
         module_cycles: cycles,
         jobs: ctx.catalog.openJobs(ctx.repo.id),
@@ -684,6 +697,7 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
       shrink: ['files', 'hubs'],
       more: all.length > ctx.limits.max_rows,
       limitations: [
+        ...(docMentions.stale ? [`${docMentions.stale} doc mention${docMentions.stale === 1 ? '' : 's'} name code that was renamed, moved or deleted; find_stale_mentions (profile extra) lists ${docMentions.stale === 1 ? 'it' : 'them'} with ${docMentions.stale === 1 ? 'its' : 'their'} file and line.`] : []),
         ...cycles.map((c) => `Warning: build modules ${c.modules.join(', ')} form a cycle through syntax-tier name matches, and ${c.ecosystem} forbids module cycles; the edges are ${c.edges.map((e) => `${e.from} to ${e.to} (${e.type}, ${e.sites} site${e.sites === 1 ? '' : 's'}, first ${e.path}:${e.line})`).join(', ')}.`),
         ...[generatedLeftOut('hubs', (ctx.db.prepare("select count(*) as n from file where json_extract(capabilities, '$.generated') = 'true'").get() as { n: number }).n, input.include_generated === true)].filter((n): n is string => !!n),
         ...(ask ? [] : ['No file rows were asked for: file_summary groups the files by disposition, reason and extension; pass files to list rows.']),
@@ -859,6 +873,19 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     const job = ctx.catalog.job(String(input.job_id))
     if (!job || job.repository_id !== ctx.repo.id) throw new ProofmeshError('NOT_FOUND', `no index job ${String(input.job_id)} for this repository`)
     return { data: { job }, limitations: job.state === 'interrupted' ? ['The process running this job stopped before finishing; request a new index.'] : [] }
+  },
+
+  find_stale_mentions(ctx, input) {
+    const prefix = String(input.path_prefix ?? '')
+    const meta = ctx.db.prepare("select value from meta where key = 'doc_links'").get() as { value: string } | undefined
+    const all = (meta ? (JSON.parse(meta.value) as { stale: Array<{ path: string }> }).stale : []).filter((m) => m.path.startsWith(prefix))
+    return {
+      data: { mentions: all.slice(0, ctx.limits.max_rows), total: all.length }, stop_reasons: all.length > ctx.limits.max_rows ? ['max_rows'] : [], shrink: 'mentions',
+      limitations: [
+        'A mention is a Markdown doc\'s inline code or link matched to code by name, never proved, so every one is inferred. It is stale when it resolved in an earlier snapshot and names nothing now: renamed, moved or moved_renamed when one removed and one added symbol share a body hash, as compare_snapshots pairs them, else deleted. It stays listed until the doc is changed to name real code.',
+        ...(meta ? [] : ['This snapshot was sealed before doc mentions were recorded (format 0.12); index again to find them.']),
+      ],
+    }
   },
 
   compare_snapshots(ctx, input) {

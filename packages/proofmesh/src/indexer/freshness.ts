@@ -5,6 +5,7 @@ import { ProofmeshError } from '../core/errors.js'
 import { EXCLUDED_DIRS, discover, type Discovered } from './discovery.js'
 import { BUILT_IN_REGISTRY, type Registry } from './languages.js'
 import { CENSUS_VERSION } from './census.js'
+import { isDoc } from './doc-links.js'
 
 /** Files excluded for where they sit, under a path git ignores or a default excluded directory, are build output and local state (A21). */
 const LOCATION_RULES = new Set<string | null>(['gitignore', ...EXCLUDED_DIRS.map((d) => `**/${d}/**`)])
@@ -27,7 +28,7 @@ export function workingTree(root: string, registry: Registry = BUILT_IN_REGISTRY
   const discovered = discover(root, registry)
   const hashes = new Map<string, string>()
   for (const d of discovered) {
-    if (d.status !== 'capture') continue
+    if (d.status !== 'capture' && !isDoc(d)) continue
     try {
       hashes.set(d.path, sha256(fs.readFileSync(path.join(root, d.path))))
     } catch {

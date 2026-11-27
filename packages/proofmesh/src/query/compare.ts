@@ -2,7 +2,7 @@
 import type Database from 'better-sqlite3'
 import { MIN_PAIR_TOKENS } from '../indexer/body-hash.js'
 
-type Sym = { id: string; name: string; qualified_name: string; kind: string; path: string; stable_key: string; body_hash: string | null; body_tokens: number | null; signature: string | null; start_line: number; end_line: number }
+export type Sym = { id: string; name: string; qualified_name: string; kind: string; path: string; stable_key: string; body_hash: string | null; body_tokens: number | null; signature: string | null; start_line: number; end_line: number }
 type Pair = { change: 'moved' | 'renamed' | 'moved_renamed'; kind: string; body_hash: string; base: Sym; head: Sym }
 type Ambiguous = { kind: string; body_hash: string; removed: Sym[]; added: Sym[] }
 type Side = { snapshot_id: string; published_at: string; symbols: number; relationships: number; unresolved: number }
@@ -30,7 +30,7 @@ export function unreadableFiles(db: Database.Database): { count: number; paths: 
 const unreadableNote = (u: { count: number; paths: string[] }, side: string) =>
   `The content of ${u.paths.join(', ')}${u.count > u.paths.length ? ` and ${u.count - u.paths.length} more` : ''} was unavailable when the ${side} snapshot was sealed, so its symbols there have no body hash and are never paired.`
 
-function symbols(db: Database.Database): Map<string, Sym> {
+export function symbols(db: Database.Database): Map<string, Sym> {
   const rows = db.prepare(`select s.id, s.name, s.qualified_name, s.kind, f.path, s.stable_key, ${hasBodyHash(db) ? 's.body_hash, s.body_tokens' : 'null as body_hash, null as body_tokens'}, s.signature, s.start_line, s.end_line from symbol s join file f on f.id = s.file_id order by s.qualified_name, s.kind, f.path, s.start_line, s.start_byte, s.id`).all() as Sym[]
   // shortcut: two declarations with one kind and qualified name (overloads, partial classes) collapse to the last; split by signature when that matters.
   return new Map(rows.map((s) => [symbolKey(s), s]))
@@ -63,7 +63,7 @@ const TOO_SMALL = (n: number) => `${n} match${n === 1 ? '' : 'es'} below ${MIN_P
 const container = (s: Sym) => (s.qualified_name.endsWith(s.name) ? s.qualified_name.slice(0, -s.name.length) : s.qualified_name)
 
 /** Removed and added symbols of one kind and hash: one on each side is a pair, any other count an ambiguous entry (FR133, FR134). */
-function pairUp(added: Sym[], removed: Sym[]): { paired: Pair[]; ambiguous: Ambiguous[]; tooSmall: number; left: { added: Set<Sym>; removed: Set<Sym> } } {
+export function pairUp(added: Sym[], removed: Sym[]): { paired: Pair[]; ambiguous: Ambiguous[]; tooSmall: number; left: { added: Set<Sym>; removed: Set<Sym> } } {
   const group = (xs: Sym[]) => { const m = new Map<string, Sym[]>(); for (const x of xs) if (x.body_hash) { const k = `${x.kind}\u0000${x.body_hash}`; m.set(k, [...(m.get(k) ?? []), x]) } return m }
   const gone = group(removed), came = group(added)
   const paired: Pair[] = [], ambiguous: Ambiguous[] = []

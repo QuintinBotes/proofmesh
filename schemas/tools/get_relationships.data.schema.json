@@ -61,7 +61,8 @@
               "renders",
               "uses_hook",
               "provides_context",
-              "uses_context"
+              "uses_context",
+              "mentions"
             ]
           },
           "direction": {
