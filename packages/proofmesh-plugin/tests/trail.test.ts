@@ -270,16 +270,21 @@ test('FR802: a Bash command the trail cannot read with confidence records nothin
     'grep -rn x src | sh', "sed -n -i 's/a/b/p' a.ts", 'sed s/a/b/ a.ts', 'find . -name x -delete', "find . -exec grep -l x '{}' +", 'rg x', 'grep -rn x', 'rg --unknown x src',
     // A short option it does not know may take a value, which would read as the pattern and push the pattern into the paths.
     'rg -Q 2 x src', 'tail -W 3 a.ts', 'cat sk_live_pattern',
+    // rg -h prints its help and searches nothing; a file named -n after -- is not sed's -n.
+    'rg -h x src', 'sed p -- -n a.ts',
     'FOO=1 cat a.ts', 'ls src', 'echo cat a.ts', 'cat "a.ts', 'cat ""', 'grep -rn x ""', 'cat /elsewhere/notes.md', 'grep -rn x ../../outside',
   ]) await $.tool.call({ tool: 'Bash', command })
   await endTurn($, w)
   expect(w.entries()).toEqual([])
 })
 
-test('FR803: a Bash path is resolved against the directory the shell is in after a cd, not the one the session started in', async ($, on) => {
+test('FR803: a Bash path is resolved against the directory the shell is in after a cd, not the one the session started in, and one with a `..` after a name is not guessed', async ($, on) => {
   const w = world(on, { recording: true, shell: '/work/app/packages' })
   await start($, w)
   await $.tool.call({ tool: 'Bash', command: 'cat format/src/currency.ts' })
+  // If vendor is a link out of the repository, cat reads that file's neighbour, not packages/notes.md, and $.fs.stat folds `..` first.
+  await $.tool.call({ tool: 'Bash', command: 'cat vendor/../notes.md' })
+  await $.tool.call({ tool: 'Bash', command: 'head ../README.md' })
   await endTurn($, w)
-  expect(w.entries().map((e) => e.path)).toEqual(['packages/format/src/currency.ts'])
+  expect(w.entries().map((e) => e.path)).toEqual(['packages/format/src/currency.ts', 'README.md'])
 })

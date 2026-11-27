@@ -3,7 +3,7 @@ const READS = new Set(['cat', 'head', 'tail', 'sed'])
 // Per command, the short options that take a value (the rest of the word, or the next word when it ends the word), and those that take
 // none, a count such as `head -20` included; any other letter makes the command record nothing, since its value would read as a path.
 const VALUED = { cat: '', head: 'nc', tail: 'ncbs', sed: 'e', grep: 'efmABCdD', rg: 'efmABCdgtTjMEr' }
-const FLAGS = { cat: 'beflnstuv', head: 'qv0123456789', tail: 'Ffqrv0123456789', sed: 'nEr', grep: 'abcEFGHhIiLlnoqRrsTUvwxyZz', rg: 'abcFHhIiLlNnoPpqSsUuvwxz0.' }
+const FLAGS = { cat: 'beflnstuv', head: 'qv0123456789', tail: 'Ffqrv0123456789', sed: 'nEr', grep: 'abcEFGHhIiLlnoqRrsTUvwxyZz', rg: 'abcFHIiLlNnoPpqSsUuvwxz0.' }
 // shortcut: a long option is known by these lists, and any other makes the command record nothing; add one when a real session needs it.
 const LONG_VALUED = new Set(['--regexp', '--file', '--max-count', '--after-context', '--before-context', '--context', '--include', '--exclude', '--exclude-dir', '--glob', '--iglob', '--type', '--type-not', '--max-depth', '--lines', '--bytes'])
 const LONG_FLAGS = new Set(['--line-number', '--recursive', '--ignore-case', '--files-with-matches', '--files-without-match', '--count', '--word-regexp', '--fixed-strings', '--extended-regexp', '--with-filename', '--no-filename', '--only-matching', '--invert-match', '--no-heading', '--heading', '--hidden', '--no-ignore', '--smart-case', '--case-sensitive', '--follow', '--files', '--number'])
@@ -36,10 +36,13 @@ function stages(command) {
   return out.some((s) => !s.length) ? null : out
 }
 
-/** The operands of `cmd`'s arguments, options and their values left out, and whether an option gave the pattern; null for an option it does not know. */
+/**
+ * The operands of `cmd`'s arguments, options and their values left out, whether an option gave the pattern, and the short flags given;
+ * null for an option it does not know.
+ */
 function operands(cmd, args) {
   const pos = []
-  let pattern = false
+  let pattern = false, flags = ''
   for (let i = 0; i < args.length; i++) {
     const a = args[i]
     if (a === '--') { pos.push(...args.slice(i + 1)); break }
@@ -52,7 +55,7 @@ function operands(cmd, args) {
     }
     if (a.length > 1 && a.startsWith('-')) {
       for (let j = 1; j < a.length; j++) {
-        if (FLAGS[cmd].includes(a[j])) continue
+        if (FLAGS[cmd].includes(a[j])) { flags += a[j]; continue }
         if (!VALUED[cmd].includes(a[j])) return null
         if (j === a.length - 1) i++
         if (a[j] === 'e' || a[j] === 'f') pattern = true
@@ -62,7 +65,7 @@ function operands(cmd, args) {
     }
     pos.push(a)
   }
-  return { pos, pattern }
+  return { pos, pattern, flags }
 }
 
 /** What a Bash command read: `{ kind, paths }` as the session wrote them, or null when it cannot be read with confidence. */
@@ -84,10 +87,11 @@ export function bashReads(command) {
   const o = operands(cmd, args)
   if (!o) return null
   // sed reads only with -n, its script first unless -e gave it; grep and rg take the pattern first unless an option gave it.
-  if (cmd === 'sed' && !args.some((a) => /^-[a-zA-Z]*n/.test(a) && !a.startsWith('--'))) return null
+  if (cmd === 'sed' && !o.flags.includes('n')) return null
   const paths = (cmd === 'sed' || cmd === 'grep' || cmd === 'rg') && !o.pattern ? o.pos.slice(1) : o.pos
   // A search that names no path searched what the shell gave it (stdin, or the directory), which the words do not say.
   const named = paths.filter((p) => p !== '-' && p !== '')
-  if (!named.length) return null
+  // `a/..` leaves `a` only when `a` is no link, which the shell knows and a stat that folds `..` first does not: nothing is guessed.
+  if (!named.length || named.some((p) => { const s = p.split('/').filter((x) => x && x !== '.'); return s.findIndex((x) => x !== '..') < s.lastIndexOf('..') })) return null
   return { kind: READS.has(cmd) ? 'opened' : 'searched', paths: named }
 }

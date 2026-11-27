@@ -7,7 +7,7 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 The session trail records reads and searches made through Bash (closes #149; FR800 to FR803):
 
 - In configurations of Claude Code with no Grep or Glob tool, most searches and many reads go through Bash, and the trail ignored them, so `/pm-trail` and `get_session_trail` listed dependents as `never_seen` that the session had read. The plugin's hooks module now reads a Bash command that is one plain `cat`, `head`, `tail` or `sed -n` (recorded `opened`) or `grep`, `rg` or `find` (recorded `searched`), optionally piped into `head` or `tail`. It records each path the command names that exists inside the repository, resolved against the shell's directory after a `cd`, with tool `Bash`. It keeps no command, pattern, option value or output.
-- A command it cannot read with confidence records nothing rather than a guess. That covers a variable, a glob, a redirect, `;` or `&&`, a pipe into anything else, a long or short option it does not know for that command, a path where nothing exists, a search that names no path, `sed` without `-n`, and `find` with `-exec` or `-delete`. `get_session_trail`'s limitation now says which Bash steps are recorded.
+- A command it cannot read with confidence records nothing rather than a guess. That covers a variable, a glob, a redirect, `;` or `&&`, a pipe into anything else, a long or short option it does not know for that command, a path where nothing exists, a path with `..` after a name, a search that names no path, `sed` without `-n`, and `find` with `-exec` or `-delete`. `get_session_trail`'s limitation now says which Bash steps are recorded.
 
 The TypeScript adapter counts a UTF-8 byte order mark (closes #156; FR810):
 
