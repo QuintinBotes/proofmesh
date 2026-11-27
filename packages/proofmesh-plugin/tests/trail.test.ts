@@ -14,17 +14,21 @@ type Dollar = Parameters<Parameters<typeof test>[1]>[0]
 
 const ok = (stdout: string): Run => ({ exitCode: 0, stdout, stderr: '' })
 
-/** Stubs what Claude Code and ProofMesh answer for a session in /work/app/src, with trail recording on or off for the repository. */
-function world(on: On, w: { recording?: boolean; list?: Run | string; trail?: object; tool?: (e: { tool: string }) => object } = {}) {
+/**
+ * Stubs what Claude Code and ProofMesh answer for a session in /work/app/src, with trail recording on or off for the repository; `shell`
+ * is the directory a Bash `cd` left the session in.
+ */
+function world(on: On, w: { recording?: boolean; list?: Run | string; trail?: object; tool?: (e: { tool: string }) => object; shell?: string; missing?: string[] } = {}) {
   const clock = mock.clock(on, { now: NOW })
   const runs: Array<{ argv: string[]; stdin?: string }> = [], mcp: Array<{ tool: string; args: Record<string, unknown> }> = []
   on('session.start', () => ({ cwd: '/work/app/src' }))
+  on('session.cwd', () => ({ value: w.shell ?? '/work/app/src' }))
   on('session.end', () => ({ sessionId: SESSION }))
   on('turn.complete', () => ({ text: '' }))
   on('session.id', () => ({ value: SESSION }))
   on('command.register', () => ({ value: undefined }))
   on('ui.status', () => ({ value: undefined }))
-  on('fs.stat', ($, e) => ({ value: { kind: 'file', size: 0, mtimeMs: 0, isLink: false, realPath: e.path } }))
+  on('fs.stat', ($, e) => (w.missing?.includes(e.path) ? { deny: 'ENOENT: no such file or directory' } : { value: { kind: 'file', size: 0, mtimeMs: 0, isLink: false, realPath: e.path } }))
   on('process.run', ($, e) => {
     runs.push({ argv: [...e.argv], ...(e.init?.stdin !== undefined ? { stdin: e.init.stdin } : {}) })
     const [, cmd, , flag] = e.argv
@@ -168,6 +172,8 @@ test('FR615: a path outside the repository is not recorded, a subagent\'s call k
     ['Read', 'src/lib.ts', 'a1b2c3', 'ok'],
     ['Write', 'src/new.ts', null, 'failed'],
     ['Edit', 'src/a.ts', null, 'failed'],
+    // A file read through Bash is recorded since #149 (FR800).
+    ['Bash', 'src/a.ts', null, 'ok'],
     [VERIFY, null, null, 'ok'],
     ['Read', 'x.ts', null, 'ok'],
     ['mcp__plugin_proofmesh_proofmesh__get_symbol', 'packages/billing/src/invoice.ts', null, 'ok'],
@@ -227,4 +233,58 @@ test('FR615: a repository not registered reads off (not registered here)', async
   await endTurn($, w)
   expect(w.recorded()).toEqual([])
   expect((await $.command.run({ command: 'pm-trail', args: '' })).text).toBe('session trail: off (not registered here)')
+})
+
+// Reads and searches made through Bash (#149): Claude Code has no Grep or Glob tool in some configurations, so a session reads with cat and searches with rg.
+const OUTPUT = 'export function formatAmount(cents: number) { return (cents / 100).toFixed(2) }'
+
+test('FR800 FR801: Bash cat, sed -n, head, rg, grep -rn and find record opened for the files read and searched for the paths searched, repository-relative, never the command, its pattern or its output', async ($, on) => {
+  const w = world(on, { recording: true, tool: () => ({ result: OUTPUT }) })
+  await start($, w)
+  await $.tool.call({ tool: 'Bash', command: 'cat /work/app/packages/format/src/currency.ts' })
+  await $.tool.call({ tool: 'Bash', command: "sed -n '1,20p' ../packages/billing/src/invoice.ts" })
+  await $.tool.call({ tool: 'Bash', command: 'head -n 40 lib.ts' })
+  await $.tool.call({ tool: 'Bash', command: 'rg -n -d 2 formatAmount /work/app/packages' })
+  await $.tool.call({ tool: 'Bash', command: 'grep -rn "formatAmount|invoiceTotal" ../packages/billing | head -20' })
+  await $.tool.call({ tool: 'Bash', command: "find /work/app/packages -name '*.test.ts'" })
+  await endTurn($, w)
+  expect(w.entries().map((e) => [e.kind, e.tool, e.path, e.outcome])).toEqual([
+    ['opened', 'Bash', 'packages/format/src/currency.ts', 'ok'],
+    ['opened', 'Bash', 'packages/billing/src/invoice.ts', 'ok'],
+    ['opened', 'Bash', 'src/lib.ts', 'ok'],
+    ['searched', 'Bash', 'packages', 'ok'],
+    ['searched', 'Bash', 'packages/billing', 'ok'],
+    ['searched', 'Bash', 'packages', 'ok'],
+  ])
+  const sent = w.recorded()[0]!.stdin!
+  for (const text of ['formatAmount', 'invoiceTotal', '1,20p', 'sed', 'grep', 'test.ts', 'toFixed', 'head']) expect(sent).not.toContain(text)
+})
+
+test('FR802: a Bash command the trail cannot read with confidence records nothing, nor one that reads outside the repository or a path where nothing is', async ($, on) => {
+  // A word taken for a path by mistake, a search pattern say, names nothing on disk, so it is never stored.
+  const w = world(on, { recording: true, missing: ['/work/app/src/sk_live_pattern'] })
+  await start($, w)
+  for (const command of [
+    'cat src/*.ts', 'cat $HOME/notes.md', 'cat a.ts; rm b.ts', 'cat a.ts && cat b.ts', 'cat a.ts > b.ts', 'cat a.ts\ncat b.ts', 'grep -rn x src 2>/dev/null',
+    // sed -n -i edits in place; find -exec with a quoted '{}' passes the word check and is refused for its action alone.
+    'grep -rn x src | sh', "sed -n -i 's/a/b/p' a.ts", 'sed s/a/b/ a.ts', 'find . -name x -delete', "find . -exec grep -l x '{}' +", 'rg x', 'grep -rn x', 'rg --unknown x src',
+    // A short option it does not know may take a value, which would read as the pattern and push the pattern into the paths.
+    'rg -Q 2 x src', 'tail -W 3 a.ts', 'cat sk_live_pattern',
+    // rg -h prints its help and searches nothing; a file named -n after -- is not sed's -n.
+    'rg -h x src', 'sed p -- -n a.ts',
+    'FOO=1 cat a.ts', 'ls src', 'echo cat a.ts', 'cat "a.ts', 'cat ""', 'grep -rn x ""', 'cat /elsewhere/notes.md', 'grep -rn x ../../outside',
+  ]) await $.tool.call({ tool: 'Bash', command })
+  await endTurn($, w)
+  expect(w.entries()).toEqual([])
+})
+
+test('FR803: a Bash path is resolved against the directory the shell is in after a cd, not the one the session started in, and one with a `..` after a name is not guessed', async ($, on) => {
+  const w = world(on, { recording: true, shell: '/work/app/packages' })
+  await start($, w)
+  await $.tool.call({ tool: 'Bash', command: 'cat format/src/currency.ts' })
+  // If vendor is a link out of the repository, cat reads that file's neighbour, not packages/notes.md, and $.fs.stat folds `..` first.
+  await $.tool.call({ tool: 'Bash', command: 'cat vendor/../notes.md' })
+  await $.tool.call({ tool: 'Bash', command: 'head ../README.md' })
+  await endTurn($, w)
+  expect(w.entries().map((e) => e.path)).toEqual(['packages/format/src/currency.ts', 'README.md'])
 })

@@ -5,6 +5,7 @@
 // tools searched, opened, changed and claimed, never their text, hands them to `proofmesh trail record` at each turn's end, and /pm-trail shows them.
 // The impact pane (#115, FR700 to FR706): the symbols the session's edits changed, their dependents and the tests that reach them, asked
 // once per published snapshot and drawn in a pane /pm-impact toggles, or printed by it where nothing draws.
+import { bashReads } from './bash.mjs'
 import { deepestRoot } from './repos.mjs'
 
 const EDITS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit'])
@@ -129,16 +130,21 @@ async function start($) {
   if (repo || kind === 'unknown') $.clock.every(POLL_MS, () => tick($))
 }
 
-/** `target` (absolute, or relative to the session's directory) relative to the repository root, `.` for the root; null outside it. */
-async function inRepository($, target) {
+/**
+ * `target` (absolute, or relative to `base`, the session's directory) relative to the repository root, `.` for the root; null outside it,
+ * or, with `exists`, when nothing is there.
+ */
+async function inRepository($, target, base = cwd, exists = false) {
   const sep = repo.root.includes('\\') ? '\\' : '/'
   // `.` and `..` are folded here, since a path that does not exist (a failed Read, a denied Write) comes back from stat as written.
   const parts = []
-  for (const s of (/^([/\\]|[A-Za-z]:)/.test(target) ? target : `${cwd}/${target}`).split(/[/\\]/)) {
+  for (const s of (/^([/\\]|[A-Za-z]:)/.test(target) ? target : `${base}/${target}`).split(/[/\\]/)) {
     if (s === '..') { if (parts.length > 1) parts.pop() } else if (s !== '.' && (s !== '' || !parts.length)) parts.push(s)
   }
   const absolute = parts.join(sep)
-  const real = (await $.fs.stat(absolute, { resolve: true }).catch(() => undefined))?.realPath ?? absolute
+  const found = await $.fs.stat(absolute, { resolve: true }).catch(() => undefined)
+  if (exists && !found) return null
+  const real = found?.realPath ?? absolute
   if (real === repo.root) return '.'
   return real.startsWith(repo.root) && /^[/\\]/.test(real.slice(repo.root.length)) ? real.slice(repo.root.length + 1) : null
 }
@@ -208,6 +214,18 @@ function subjectOf(tool, e) {
 
 /** Buffers one trail entry for a finished call: the kind, the tool and what it named, never its arguments' text or its result. */
 async function noteTrail($, e, result) {
+  if (e.tool === 'Bash' && repo) {
+    const read = bashReads(e.command)
+    if (!read) return
+    // Read inside the hook: the directory a shell `cd` left this session (or subagent) in, which a relative path names files under.
+    const base = await $.session.cwd()
+    for (const p of read.paths) {
+      // Only a path that exists: a word the parser took for a path by mistake (a pattern, an option's value) is then never stored.
+      const path = await inRepository($, p, base, true)
+      if (path !== null) await addTrail($, e, result, read.kind, { path })
+    }
+    return
+  }
   const mcp = PROOFMESH_TOOL.exec(e.tool)?.[1]
   const step = mcp ? (mcp === 'verify_claim' ? 'claimed' : mcp === 'get_symbol' ? 'opened' : 'searched') : TRAIL[e.tool]
   if (!step || !repo) return
@@ -223,6 +241,11 @@ async function noteTrail($, e, result) {
     if (path === null) return
     subject = { path }
   }
+  await addTrail($, e, result, step, subject)
+}
+
+/** Buffers the entry, and marks a successful open for the impact pane. */
+async function addTrail($, e, result, step, subject) {
   const ok = result.deny === undefined && result.isError !== true
   if (step === 'opened' && ok) {
     opened.add(subject.path ?? subject.symbol_id)
