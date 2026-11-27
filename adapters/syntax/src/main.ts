@@ -11,7 +11,7 @@ import { prismaFacts } from './prisma.js'
 import { callFacts } from './scope.js'
 import { gtestName, isRubySpec, rubyBlocks, scanRepository, testRoles, unitDependencies, withoutCycles } from './tests.js'
 
-const VERSION = '0.1.0'
+const VERSION = '0.2.0'
 const SYNTAX_LANGUAGES = Object.keys(manifest).filter((l) => l !== 'hcl')
 // Tags kinds this tier keeps; variables, fields and properties are mostly locals and parameters, so they are left out. Proofmesh's
 // own queries name a property declared in a type's body `member`, and a database table or view `table`.
@@ -217,12 +217,13 @@ async function analyse(file: string, callees = false) {
     s.qualified_name = !packages ? `${module}:${parts.join('.')}` : own ? [...packageParts(lang, packages.filter((p) => p !== own), own.node), own.name].join('.') : [...packageParts(lang, packages, d.node), ...parts].join('.')
     return { s, d, types: parameterTypes(d.node) }
   })
-  // The precise TypeScript tier keeps one method for an overload set, the first declaration.
+  // The precise TypeScript tier keeps one method for an overload set or a get/set pair, the first declaration; a later one's body is its.
   if (lang === 'typescript' || lang === 'javascript') {
-    const seen = new Set<string>()
+    const seen = new Map<string, string>()
     for (const n of members) {
       if (n.s.kind !== 'method') continue
-      if (seen.has(String(n.s.qualified_name))) { symbols.splice(symbols.indexOf(n.s), 1); defs.splice(defs.indexOf(n.d), 1) } else seen.add(String(n.s.qualified_name))
+      const first = seen.get(String(n.s.qualified_name))
+      if (first) { symbols.splice(symbols.indexOf(n.s), 1); n.d.id = first } else seen.set(String(n.s.qualified_name), n.d.id)
     }
   }
   const byName = new Map<string, typeof members>()

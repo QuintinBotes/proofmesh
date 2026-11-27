@@ -9,7 +9,7 @@
 (type_alias_declaration name: (type_identifier) @name) @definition.type
 ; A namespace is a scope, as for the precise tier: no symbol, but part of the name of what it holds.
 (internal_module name: [(identifier) (nested_identifier)] @name) @scope
-; A constructor and an accessor are no method of the precise tier.
+; A constructor is no method of the precise tier; a get or set accessor is one (a get/set pair is one method, as in the precise tier).
 (class_body (method_definition name: [(property_identifier) (private_property_identifier)] @name (#not-eq? @name "constructor")) @definition.method)
 (abstract_method_signature name: (property_identifier) @name) @definition.method
 (interface_body (method_signature name: (property_identifier) @name) @definition.method)

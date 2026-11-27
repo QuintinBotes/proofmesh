@@ -7,7 +7,7 @@ import type * as TS from 'typescript'
 import { graphqlDocument } from '../../syntax/src/contracts.js'
 
 const ts = createRequire(import.meta.url)('typescript') as typeof TS
-const VERSION = '0.1.0'
+const VERSION = '0.2.0'
 type Range = { start_byte: number; end_byte: number; start_line: number; end_line: number }
 type Ref = { symbol: string } | { file: string } | { external: { module: string; name: string } }
 
@@ -234,8 +234,8 @@ function indexDeclarations(sf: TS.SourceFile): void {
   }
   /**
    * One method symbol per member name, static and instance apart: the implementation, else the first declaration, so an abstract
-   * member, an overload set and an interface member each have one; every overload resolves to it. Members are methods, method
-   * signatures, and properties holding a function (by initializer, or by type when there is none), of a class, an interface, or the
+   * member, an overload set, a get/set accessor pair and an interface member each have one; every overload or accessor resolves to it.
+   * Members are methods, method signatures, get and set accessors, and properties holding a function (by initializer, or by type when there is none), of a class, an interface, or the
    * object literal a typed module-level constant holds.
    */
   const members = (list: TS.NodeArray<TS.ClassElement | TS.TypeElement | TS.ObjectLiteralElementLike>, owner: string) => {
@@ -244,7 +244,7 @@ function indexDeclarations(sf: TS.SourceFile): void {
       const name = m.name?.getText(sf)
       const typed = ts.isPropertySignature(m) || (ts.isPropertyDeclaration(m) && !m.initializer)
       const callable = typed && m.name ? checker.getNonNullableType(checker.getTypeAtLocation(m.name)).getCallSignatures()[0] : undefined
-      const signature = ts.isMethodDeclaration(m) || ts.isMethodSignature(m) ? () => signatureOf(name!, m)
+      const signature = ts.isMethodDeclaration(m) || ts.isMethodSignature(m) || ts.isAccessor(m) ? () => signatureOf(name!, m)
         : (ts.isPropertyDeclaration(m) || ts.isPropertyAssignment(m)) && isFunctionLike(m.initializer) ? () => signatureOf(name!, m.initializer as TS.ArrowFunction)
           : callable ? () => `${name}${checker.signatureToString(callable)}` : undefined
       const key = `${hasModifier(m, ts.SyntaxKind.StaticKeyword) ? 'static ' : ''}${name}`
@@ -467,10 +467,11 @@ function heritageFacts(d: Heritable, p: string, sf: TS.SourceFile): Array<Record
  */
 // shortcut: a member inherited from a class that does not itself implement the interface is not linked to it; link it when a repository relies on that.
 function dispatchFacts(list: readonly (TS.ClassElement | TS.ObjectLiteralElementLike)[], above: Set<Heritable>, p: string, sf: TS.SourceFile): Array<Record<string, unknown>> {
-  const out: Array<Record<string, unknown>> = []
+  const out: Array<Record<string, unknown>> = [], done = new Set<string>()
   for (const m of list) {
     const member = declLocal.get(keyOf(m))
-    if (!member || !m.name || (ts.isMethodDeclaration(m) && !m.body) || hasModifier(m, ts.SyntaxKind.AbstractKeyword) || hasModifier(m, ts.SyntaxKind.StaticKeyword)) continue
+    if (!member || !m.name || (ts.isMethodDeclaration(m) && !m.body) || hasModifier(m, ts.SyntaxKind.AbstractKeyword) || hasModifier(m, ts.SyntaxKind.StaticKeyword) || done.has(member)) continue
+    done.add(member) // a get/set pair is one member: link it once, at its first accessor
     const name = m.name.getText(sf), linked = new Set<string>()
     for (const s of above) {
       for (const x of s.members as TS.NodeArray<TS.ClassElement | TS.TypeElement>) {
