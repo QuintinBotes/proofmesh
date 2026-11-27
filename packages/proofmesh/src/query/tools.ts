@@ -2,9 +2,9 @@ import type Database from 'better-sqlite3'
 import { ProofmeshError } from '../core/errors.js'
 import { queryId } from '../core/hash.js'
 import { applyLimits, type AppliedLimits } from '../core/limits.js'
-import { BUNDLE_FORMAT_VERSION, check, ENVELOPE_VERSION } from '../core/schemas.js'
+import { BUNDLE_FORMAT_VERSION, check, ENVELOPE_VERSION, SNAPSHOT_EXPORT_VERSION } from '../core/schemas.js'
 import type { Envelope, Limits, ListQueriesData } from '../core/generated.js'
-import { CATALOG_VERSION, Catalog, LEASE_OWNER, lastIndexFailure, noSnapshot, type PropertyRead, type SnapshotRow } from '../meshstore/catalog.js'
+import { CATALOG_VERSION, Catalog, LEASE_OWNER, lastIndexFailure, noSnapshot, type ImportedSnapshot, type PropertyRead, type SnapshotRow } from '../meshstore/catalog.js'
 import { FORMAT_VERSION, openSnapshot } from '../meshstore/snapshot.js'
 import { PROTOCOL_VERSION } from '../indexer/adapter-host.js'
 import { LINK_FORMAT_VERSION } from '../links/index.js'
@@ -92,7 +92,7 @@ const PROFILES_NOTE = 'Over MCP, proofmesh mcp lists the core profile; start it 
 /** The version of every public contract this build speaks (FR037, FR076); COMPATIBILITY.md states the same versions and their policy. */
 export const CONTRACT: ListQueriesData['contract'] = {
   envelope: ENVELOPE_VERSION, snapshot_format: FORMAT_VERSION, link_format: LINK_FORMAT_VERSION, adapter_protocol: PROTOCOL_VERSION,
-  bundle_format: BUNDLE_FORMAT_VERSION, catalog_migration: CATALOG_VERSION,
+  bundle_format: BUNDLE_FORMAT_VERSION, snapshot_export: SNAPSHOT_EXPORT_VERSION, catalog_migration: CATALOG_VERSION,
 }
 
 /** What a snapshot's references capability means for an answer, said once per snapshot. */
@@ -283,6 +283,13 @@ function runRepositoryTool(dataDir: string, tool: string, input: Record<string, 
   }
 }
 
+/** What every answer from an imported snapshot says: where it came from, that it is only as honest as its producer, and which files were stale. */
+function importedLimitation(id: string, i: ImportedSnapshot): string {
+  const o = i.origin, shown = i.stale.slice(0, 10)
+  return `imported: snapshot ${id} was built elsewhere (${o.writer}, repository ${o.repository_name}, exported ${o.exported_at}) and imported ${i.imported_at}; its facts are only as honest as the data directory that built it. `
+    + (i.stale.length ? `${i.stale.length} file${i.stale.length === 1 ? '' : 's'} differed from the working tree on import, so answers about ${i.stale.length === 1 ? 'it' : 'them'} are stale: ${shown.join(', ')}${i.stale.length > shown.length ? `, and ${i.stale.length - shown.length} more` : ''}. Index the repository to replace it with a snapshot built here.` : 'Every file it read matched the working tree on import.')
+}
+
 const SNAPSHOT_FRESHNESS: Envelope['freshness'] = { mode: 'snapshot', status: 'as_of_snapshot' }
 
 /** Doc mentions by resolution: one target, or several candidates (FR820). */
@@ -297,8 +304,8 @@ const mentionCounts = (db: Database.Database): { resolved: number; ambiguous: nu
  * job starts (or the open one is reused) and the call is refused with the changed files, so no answer passes for current when it is not.
  */
 /** Whether the working tree, read now, is exactly what a snapshot was built from, and if not which files changed. Reads files; starts nothing. */
-export function treeFreshness(db: Database.Database, dataDir: string, root: string): { current: boolean; changed: ReturnType<typeof changes> } {
-  const repositoryId = (db.prepare("select value from meta where key = 'repository_id'").get() as { value: string }).value
+/** repositoryId: the catalog's, which for an imported snapshot is not the one its sealed meta names (FR1083). */
+export function treeFreshness(db: Database.Database, dataDir: string, root: string, repositoryId = (db.prepare("select value from meta where key = 'repository_id'").get() as { value: string }).value): { current: boolean; changed: ReturnType<typeof changes> } {
   const tree = workingTree(root, registryFor(dataDir, repositoryId))
   const identity = JSON.parse((db.prepare("select value from meta where key = 'identity'").get() as { value: string }).value) as { manifest_hash: string }
   if (tree.manifest === identity.manifest_hash) return { current: true, changed: [] }
@@ -310,7 +317,7 @@ export function treeFreshness(db: Database.Database, dataDir: string, root: stri
 }
 
 function strictFreshness(ctx: Ctx, root: string): Envelope['freshness'] {
-  const { current, changed } = treeFreshness(ctx.db, ctx.dataDir, root)
+  const { current, changed } = treeFreshness(ctx.db, ctx.dataDir, root, ctx.repo.id)
   if (current) {
     return { mode: 'strict', status: 'current', checked_at: new Date().toISOString(), boundary: 'Repository files as discovered now; packages and other external inputs as recorded when the snapshot was built.' }
   }
@@ -363,13 +370,16 @@ function envelope(ctx: Ctx, tool: ToolName, requested: Limits | undefined, r: Pa
   ].filter((x): x is string => !!x)
   // A snapshot published with files missing says so in every answer, compact and lean included (FR343).
   const partialNote = partialLimitations(db, ctx.snapshot.id)
-  const limitations = [...partialNote, ...clampNotes, ...(r.limitations ?? []), ...(ctx.compact ? [] : standing)]
+  // An imported snapshot says so in every answer, compact and lean included, with its origin and the files that were stale on import (FR1084).
+  const imported = ctx.catalog.imported(ctx.snapshot.id)
+  const importNote = imported ? [importedLimitation(ctx.snapshot.id, imported)] : []
+  const limitations = [...importNote, ...partialNote, ...clampNotes, ...(r.limitations ?? []), ...(ctx.compact ? [] : standing)]
   const order = ['max_rows', 'max_depth', 'max_bytes', 'timeout'] as const
   const env: Envelope = {
     schema_version: ENVELOPE_VERSION,
     query_id: queryId(),
     tool,
-    snapshot: { id: ctx.snapshot.id, repository_id: ctx.snapshot.repository_id, analysis_mode: ctx.snapshot.analysis_mode, published_at: ctx.snapshot.published_at!, commit: git.commit ?? null, ref: git.ref ?? null, behind_remote: git.behind_remote ?? null, behind_ref: git.behind_ref ?? null, fetched_at: git.fetched_at ?? null },
+    snapshot: { id: ctx.snapshot.id, repository_id: ctx.snapshot.repository_id, analysis_mode: ctx.snapshot.analysis_mode, published_at: ctx.snapshot.published_at!, commit: git.commit ?? null, ref: git.ref ?? null, behind_remote: git.behind_remote ?? null, behind_ref: git.behind_ref ?? null, fetched_at: git.fetched_at ?? null, ...(imported ? { imported: { origin: imported.origin, imported_at: imported.imported_at, stale_count: imported.stale.length } } : {}) },
     freshness,
     // Compact: coverage, like the standing limitations, came with the first answer from this snapshot.
     coverage: ctx.compact ? null : { inventory_complete: true, files_discovered: summary.files_discovered, dispositions: summary.dispositions, capabilities: summary.capabilities },
@@ -397,7 +407,7 @@ function envelope(ctx: Ctx, tool: ToolName, requested: Limits | undefined, r: Pa
     // A lean answer's last line carries the cursor, in place of the note pointing at completion.next_cursor.
     const notes = stop.size && !(ctx.lean && next_cursor) ? [...limitations, next_cursor ? CONTINUED : PAGED.has(tool) ? NARROW : TRUNCATED] : limitations
     const done: Envelope = { ...env, limitations: notes, completion: { truncated: stop.size > 0, stop_reasons: order.filter((o) => stop.has(o)), timed_out: stop.has('timeout'), next_cursor, ...(r.total === undefined ? {} : { total: r.total }) } }
-    return ctx.lean ? { ...done, envelope: 'lean', text: leanText(tool, ctx.snapshot.id, current === ctx.snapshot.id, r.lean!(r.data), notes, next_cursor) } : done
+    return ctx.lean ? { ...done, envelope: 'lean', text: leanText(tool, ctx.snapshot.id, current === ctx.snapshot.id, r.lean!(r.data), notes, next_cursor, !!imported) } : done
   }
   const size = (a: Answer) => Buffer.byteLength(ctx.lean ? a.text! : JSON.stringify(a))
   // A key `a[].b` is the list b of every item of a, shortened from the last item's: a nested list the answer holds per table or per row.
@@ -814,7 +824,7 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     const base = commit(String(input.base)), head = input.head === undefined ? null : commit(String(input.head))
     // Each side is the sealed snapshot of its commit, or for the working tree the current snapshot while it matches the tree (FR109).
     const baseRow = ctx.catalog.snapshotOfCommit(ctx.repo.id, base)
-    const headRow = head ? ctx.catalog.snapshotOfCommit(ctx.repo.id, head) : ctx.catalog.currentSnapshot(ctx.repo.id)?.id === ctx.snapshot.id && treeFreshness(ctx.db, ctx.dataDir, root).current ? ctx.snapshot : undefined
+    const headRow = head ? ctx.catalog.snapshotOfCommit(ctx.repo.id, head) : ctx.catalog.currentSnapshot(ctx.repo.id)?.id === ctx.snapshot.id && treeFreshness(ctx.db, ctx.dataDir, root, ctx.repo.id).current ? ctx.snapshot : undefined
     const sides = { base: { commit: base, snapshot_id: baseRow?.id ?? null }, head: { commit: head, snapshot_id: headRow?.id ?? null } }
     const zero = { changed_symbols: 0, dependents: 0, changed: 0, tested: 0, neither: 0, by_basis: { observed: 0, inferred: 0 } }
     const missing = [...(headRow ? [] : [head]), ...(baseRow ? [] : [base])]

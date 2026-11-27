@@ -28,7 +28,7 @@ export function openStagingStore(file: string): Database.Database {
   return db
 }
 
-function fsyncPath(p: string): void {
+export function fsyncPath(p: string): void {
   const fd = fs.openSync(p, 'r')
   try {
     fs.fsyncSync(fd)

@@ -1916,6 +1916,24 @@
     ],
     "FR1040": [
       "packages/proofmesh/test/constrained.test.ts"
+    ],
+    "FR1080": [
+      "packages/proofmesh/test/snapshot-transfer.test.ts"
+    ],
+    "FR1081": [
+      "packages/proofmesh/test/snapshot-transfer.test.ts"
+    ],
+    "FR1082": [
+      "packages/proofmesh/test/snapshot-transfer.test.ts"
+    ],
+    "FR1083": [
+      "packages/proofmesh/test/snapshot-transfer.test.ts"
+    ],
+    "FR1084": [
+      "packages/proofmesh/test/snapshot-transfer.test.ts"
+    ],
+    "FR1085": [
+      "packages/proofmesh/test/snapshot-transfer.test.ts"
     ]
   },
   "manual": {

@@ -59,6 +59,8 @@ export function exportSnapshot(catalog: Catalog, snapshotId: string, into: strin
       const bytes = store.read(f.content_hash)
       if (!bytes) throw new ProofmeshError('EVIDENCE_UNAVAILABLE', `the captured content of ${f.path} is missing from the evidence store`)
       const target = path.join(into, f.path)
+      // A snapshot's paths are relative and inside the repository; one that is not never leaves the copy.
+      if (!path.resolve(target).startsWith(path.resolve(into) + path.sep)) throw new ProofmeshError('INVALID_ARGUMENT', `snapshot ${snapshotId} names a file outside the repository: ${f.path}`)
       fs.mkdirSync(path.dirname(target), { recursive: true })
       fs.writeFileSync(target, bytes)
     }

@@ -56,6 +56,9 @@ function migrate(db: Database.Database): void {
   }
 }
 
+/** An imported snapshot (FR1083): the origin its export recorded, and the files whose content differed from the working tree on import. */
+export type ImportedSnapshot = { snapshot_id: string; origin: { repository_id: string; repository_name: string; writer: string; exported_at: string }; imported_by: string; imported_at: string; stale: string[] }
+
 export type Extension = { adapter_id: string; path: string; sha256: string; added_by: string; added_at: string }
 
 export type TrustGrant = { id: string; repository_id: string; mode: 'build_evaluation'; granted_by: string; granted_at: string; revoked_at: string | null }
@@ -193,6 +196,28 @@ export class Catalog {
       if (keepCurrent && this.currentSnapshot(repositoryId)) return
       this.db.prepare('insert into current_snapshot (repository_id, snapshot_id) values (?, ?) on conflict(repository_id) do update set snapshot_id = excluded.snapshot_id').run(repositoryId, id)
     })()
+  }
+
+  /**
+   * Publishes an imported snapshot (FR1083) in one transaction, and only into a repository with no current snapshot and a catalog that
+   * has never seen the id: an import never replaces a local snapshot.
+   */
+  publishImported(s: Pick<SnapshotRow, 'id' | 'repository_id' | 'identity_hash' | 'store_digest' | 'analysis_mode'>, imported: Omit<ImportedSnapshot, 'snapshot_id' | 'imported_at'>): void {
+    this.db.transaction(() => {
+      const current = this.currentSnapshot(s.repository_id)
+      if (current) throw new ProofmeshError('INVALID_ARGUMENT', `repository ${s.repository_id} already has snapshot ${current.id}; an import never replaces a local snapshot`, { detail: 'has_snapshot', snapshot_id: current.id })
+      if (this.snapshot(s.id)) throw new ProofmeshError('INVALID_ARGUMENT', `snapshot ${s.id} is already in this data directory`, { detail: 'already_present', snapshot_id: s.id })
+      const at = now()
+      this.db.prepare("insert into snapshot (id, repository_id, state, identity_hash, store_digest, analysis_mode, created_at, published_at) values (?, ?, 'published', ?, ?, ?, ?, ?)").run(s.id, s.repository_id, s.identity_hash, s.store_digest, s.analysis_mode, at, at)
+      this.db.prepare('insert into imported_snapshot (snapshot_id, origin, imported_by, imported_at, stale) values (?, ?, ?, ?, ?)').run(s.id, JSON.stringify(imported.origin), imported.imported_by, at, JSON.stringify(imported.stale))
+      this.db.prepare('insert into current_snapshot (repository_id, snapshot_id) values (?, ?)').run(s.repository_id, s.id)
+    })()
+  }
+
+  /** Where an imported snapshot came from and which of its files differed from the working tree; undefined for a snapshot built here. */
+  imported(snapshotId: string): ImportedSnapshot | undefined {
+    const r = this.db.prepare('select * from imported_snapshot where snapshot_id = ?').get(snapshotId) as (Omit<ImportedSnapshot, 'origin' | 'stale'> & { origin: string; stale: string }) | undefined
+    return r && { ...r, origin: JSON.parse(r.origin) as ImportedSnapshot['origin'], stale: JSON.parse(r.stale) as string[] }
   }
 
   /** Build-evaluation trust is granted only through the CLI (D14); MCP and HTTP have no operation for it. */

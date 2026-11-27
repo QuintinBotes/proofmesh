@@ -58,6 +58,9 @@ type Captured = Discovered & { hash: string }
 type Rel = AnalyzeResponse['relationships'][number]
 type AdapterRun = { spec: AdapterSpec; sources: Discovered[]; configs: Discovered[]; process?: AdapterProcess; manifest?: InitializeResponse['adapter']; inputs?: string[]; mode: Mode; units?: InitializeResponse['units']; keys?: Map<string, string>; entrySha256?: string; budgetMb?: number; budgetSource?: 'setting' | 'machine'; config?: Record<string, unknown>; unstartable?: AdapterBudgetError; /** The failure an adapter died with: files it has no cached facts for are not asked of it again. */ dead?: AdapterProtocolError; cap?: number; streak?: number; /** Why a fallback adapter could not start or answer workspace: it is not asked again, and its files go to the syntax tier. */ initFailure?: AdapterProtocolError }
 type Producer = { id: string; version: string; mode: Mode }
+/** The versions of this build's analysis that a snapshot's identity names; an imported snapshot must name the same (FR1082). */
+export const analysisVersions = () => ({ format_version: FORMAT_VERSION, format_ddl: sha256(readSql(`snapshot-format/${FORMAT_VERSION}.sql`)), ownership: OWNERSHIP_VERSION, resolution: RESOLUTION_VERSION, seams: SEAMS_VERSION, schema_seams: SCHEMA_SEAMS_VERSION, ffi_seams: FFI_SEAMS_VERSION, doc_links: DOC_LINKS_VERSION, site_key: 'span' })
+
 /** Import kinds, strongest first: a file that imports another both for its values and for its types depends on it at run time. */
 const IMPORT_KINDS = ['static', 're_export', 'type_only']
 
@@ -240,7 +243,7 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
     // Raising a budget must index again: a file the old budget failed is not the answer under the new one. Facts do not change with it.
     const budgets = Object.fromEntries(runs.map((r) => [r.spec.id, r.budgetMb!]))
     // site_key: an assertion is keyed by its site's span, not its start byte (#134), so a snapshot written the old way is not reused.
-    const identity = { repository_id: repo.id, manifest_hash: manifest, config_hash: sha256(canonicalJson({ ...analysisConfig(), generated_policy: GENERATED_POLICY, adapters: configs, adapter_memory_mb: budgets })), analysis_mode: analysisMode, adapters, format_version: FORMAT_VERSION, format_ddl: sha256(readSql(`snapshot-format/${FORMAT_VERSION}.sql`)), ownership: OWNERSHIP_VERSION, resolution: RESOLUTION_VERSION, seams: SEAMS_VERSION, schema_seams: SCHEMA_SEAMS_VERSION, ffi_seams: FFI_SEAMS_VERSION, doc_links: DOC_LINKS_VERSION, site_key: 'span' }
+    const identity = { repository_id: repo.id, manifest_hash: manifest, config_hash: sha256(canonicalJson({ ...analysisConfig(), generated_policy: GENERATED_POLICY, adapters: configs, adapter_memory_mb: budgets })), analysis_mode: analysisMode, adapters, ...analysisVersions() }
     // The fallbacks a published snapshot recorded. One made while analysing (an adapter died) is not a function of the inputs, so it is never the answer to a later index:
     // the identity takes a `retry` number past each such snapshot, and the adapter is asked again.
     const recorded = (id: string): Array<{ adapter: string; files: number; reason: string; kind: string }> => {

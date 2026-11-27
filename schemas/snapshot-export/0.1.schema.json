@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "snapshot-export/0.1.schema.json",
+  "title": "Proofmesh snapshot export manifest 0.1",
+  "description": "The manifest of a file `proofmesh snapshot export` writes (FR1080): the line `proofmesh-snapshot 0.1`, this manifest as one line of JSON, then the sealed snapshot's bytes. `proofmesh snapshot import` checks every field against the bytes and the working tree before it publishes anything (FR1081, FR1082).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "snapshot", "commit", "adapters", "files", "origin", "store", "manifest_sha256"],
+  "properties": {
+    "schema_version": { "const": "0.1" },
+    "snapshot": {
+      "type": "object", "additionalProperties": false, "required": ["id", "format_version", "analysis_mode", "identity_hash"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^snap_[0-9a-f]{24}$" },
+        "format_version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+$" },
+        "analysis_mode": { "enum": ["no_execution", "trusted_build"] },
+        "identity_hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "commit": { "type": "string", "pattern": "^[0-9a-f]{40,64}$", "description": "The git commit the snapshot was built from." },
+    "adapters": {
+      "type": "array",
+      "description": "Each adapter whose facts the snapshot holds, with the hash of its code (NFR004).",
+      "items": { "type": "object", "additionalProperties": false, "required": ["id", "version", "entry_sha256"],
+        "properties": { "id": { "type": "string" }, "version": { "type": "string" }, "entry_sha256": { "type": "string" } } }
+    },
+    "files": {
+      "type": "object",
+      "description": "Every file whose content the snapshot was built from, repository-relative path to sha256 of its bytes.",
+      "additionalProperties": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+    },
+    "origin": {
+      "type": "object", "additionalProperties": false, "required": ["repository_id", "repository_name", "writer", "exported_at"],
+      "properties": { "repository_id": { "type": "string" }, "repository_name": { "type": "string" }, "writer": { "type": "string" }, "exported_at": { "type": "string" } }
+    },
+    "store": {
+      "type": "object", "additionalProperties": false, "required": ["sha256", "bytes"],
+      "properties": { "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }, "bytes": { "type": "integer", "minimum": 1 } }
+    },
+    "manifest_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$", "description": "sha256 over the canonical JSON of every other field." }
+  }
+}

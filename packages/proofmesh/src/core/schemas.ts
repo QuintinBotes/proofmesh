@@ -12,6 +12,7 @@ const cache = new Map<string, ValidateFunction>(), tolerantCache = new Map<strin
 /** The schema_version the envelope and bundle manifest schemas fix. Kept here, not beside their writers, so the contract manifest can cite them without an import cycle. */
 export const ENVELOPE_VERSION = '0.1'
 export const BUNDLE_FORMAT_VERSION = '0.1'
+export const SNAPSHOT_EXPORT_VERSION = '0.1'
 
 export const loadSchema = (relative: string): Record<string, unknown> =>
   JSON.parse(fs.readFileSync(path.join(schemasDir(), relative), 'utf8')) as Record<string, unknown>

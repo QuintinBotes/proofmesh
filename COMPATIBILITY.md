@@ -7,7 +7,8 @@
 | Snapshot file format | 0.12 | `schemas/snapshot-format/`. A snapshot is sealed with the format it was built in; a new format changes snapshot identity, so the next index rebuilds. Older sealed files stay readable until the format they use is removed, which is announced one minor release ahead. |
 | Link file format | 0.3 | `schemas/link-format/`. As the snapshot format. |
 | Bundle format | 0.1 | `schemas/bundle-format/`. A bundle names its format in `manifest.json`. `proofmesh bundle check` verifies bundles of this format and refuses another format rather than guessing; a format change is announced one minor release ahead, so a bundle kept as a record can still be checked with the release that wrote it. |
-| Catalog | 0021 | `schemas/catalog/`. Forward-only migrations, 0001 to the version shown, applied on open; a catalog newer than the CLI refuses to open. Back it up before upgrading (`proofmesh backup`). |
+| Snapshot export format | 0.1 | `schemas/snapshot-export/`. A file `proofmesh snapshot export` writes starts with the line `proofmesh-snapshot 0.1` and carries a snapshot of the snapshot file format above. `proofmesh snapshot import` reads this format only and refuses another rather than guessing, and also refuses a snapshot of another snapshot file format; carry snapshots between data directories of the same release. |
+| Catalog | 0022 | `schemas/catalog/`. Forward-only migrations, 0001 to the version shown, applied on open; a catalog newer than the CLI refuses to open. Back it up before upgrading (`proofmesh backup`). |
 | Node.js | 22.13 or later | The active LTS line. |
 | .NET | 10 | Only the C# adapter needs it. |
 
@@ -22,5 +23,7 @@ Changed default of `proofmesh mcp` (#26): it lists the `core` tool profile, 13 o
 Added to the MCP envelope and the `analyze_impact` schema (#159), in every envelope, `compact` included: `line` and `relationship` on each `analyze_impact` dependent, `site` on a dependent whose relationship is recorded in another file (it was there only for files reached through imports), and `completion.total` on `analyze_impact` and `find_tests` answers. The change is additive. No field is removed or renamed, no value changes meaning, and envelope version 0.1 stays. A client that rejects unknown fields must accept the new ones before it upgrades. Lean text is unchanged.
 
 Added to the adapter protocol in 1.3 (#38): an optional `sites` array on a relationship, further ranges in the same file that are evidence of the same relationship. The core writes each as one more evidence row of the assertion; the assertion, its id, its edge and its first `site` stay as before. A 1.0 to 1.2 adapter sends none and is read as before. The TypeScript adapter (0.2.2) now speaks 1.3 and gives a `references` row every site of a use after the first, so `get_relationships` lists the same rows with more `site.evidence` ids, and a shorthand destructuring of a repository member (`const { escape } = driver`) and the uses of its local are a reference to that member. Snapshot identity changes with the adapter version, so the next index rebuilds.
+
+Added to the MCP envelope (#39): `snapshot.imported` (`origin`, `imported_at`, `stale_count`), present only on an answer from a snapshot imported with `proofmesh snapshot import`, and `snapshot_export` in `list_queries`' `contract`. The change is additive and envelope version 0.1 stays. Lean text from an imported snapshot has `imported` after `current` or `stale` in its first line.
 
 Deprecations are listed in CHANGELOG.md under the release that announces them.
