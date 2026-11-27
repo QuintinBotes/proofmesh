@@ -19,7 +19,7 @@ type Reach = { name: string; path: string; line: number; evidence: string; depth
 export async function loadReview(range: Range, depth: number, onPending: (text: string) => void): Promise<Review> {
   const input = { base: range.base, ...(range.head ? { head: range.head } : {}), depth, limits: { max_rows: 1000 } }
   let env = await callTool('impact_completeness', input)
-  for (let waited = 0; env.data.pending.length; waited++) {
+  while (env.data.pending.length) {
     const p = env.data.pending[0]
     onPending(`Indexing ${p.commit ? p.commit.slice(0, 12) : 'the working tree'} (job ${p.job_id}) so both sides have a snapshot…`)
     const job = (await callTool('get_job', { job_id: p.job_id })).data.job
