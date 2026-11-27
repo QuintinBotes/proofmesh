@@ -1,4 +1,4 @@
-// What a Go, Java or Rust call site says about its callee beyond the name (FR171 to FR176): the qualifier written before it, whether that
+// What a Go, Java, Rust or PHP call site says about its callee beyond the name (FR171 to FR176): the qualifier written before it, whether that
 // qualifier is a variable declared in scope (which then hides a package or type of the same name), and whether the call is `new`.
 // The core binds the name from these facts and the module graph; this file only reads syntax.
 import type { Node } from 'web-tree-sitter'
@@ -77,6 +77,13 @@ export function callFacts(lang: string, call: Node, callee: Node): CallFacts {
     const path = fn?.type === 'scoped_identifier' ? fn.childForFieldName('path') : null
     // Spaces matter inside `<T as Trait>`, so only those around `::` go.
     return path ? { qualifier: path.text.replace(/\s*::\s*/g, '::').replace(/\s+/g, ' ') } : {}
+  }
+  // A PHP call names the namespace before the last `\` (`\` alone for the global one) or the scope before `::`, as written (FR851).
+  if (lang === 'php') {
+    const target = call.type === 'object_creation_expression' ? call.namedChildren[0] : call.childForFieldName(call.type === 'scoped_call_expression' ? 'scope' : 'function')
+    const written = target?.text.replace(/\s/g, '') ?? ''
+    const qualifier = call.type === 'scoped_call_expression' ? written : target?.type === 'qualified_name' ? written.slice(0, written.lastIndexOf('\\')) || '\\' : ''
+    return { ...(call.type === 'object_creation_expression' ? { form: 'new' } : {}), ...(qualifier ? { qualifier } : {}) }
   }
   if (lang !== 'go' && lang !== 'java') return {}
   if (call.type === 'object_creation_expression') {

@@ -1721,6 +1721,15 @@
     ],
     "FR840": [
       "packages/proofmesh/test/jobs.test.ts"
+    ],
+    "FR850": [
+      "packages/proofmesh/test/syntax-structure.test.ts"
+    ],
+    "FR851": [
+      "packages/proofmesh/test/syntax-structure.test.ts"
+    ],
+    "FR852": [
+      "packages/proofmesh/test/syntax-structure.test.ts"
     ]
   },
   "manual": {

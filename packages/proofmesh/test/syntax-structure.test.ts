@@ -355,3 +355,29 @@ describe('FR231 FR232 FR233 the syntax tier records imports and heritage in Swif
     expect(row('Bash')).toEqual(['`source` and `.` of a literal path', 'no', 'yes'])
   })
 })
+
+describe('FR850 FR851 FR852 the syntax tier records a PHP call by a plain or qualified name and a new', () => {
+  it('FR850 FR851 helper(), \\App\\helper(), \\strlen(), new Mailer(), new \\App\\Mailer(), Mailer::make(), parent::boot() and $this->send() each give one unresolved calls row, with the qualifier as written and form new on a creation', async () => {
+    const { dataDir } = await indexedRepo({
+      'src/a.php': '<?php\nnamespace App;\n\nfunction helper() {}\n\nclass Mailer {\n    public function send() {\n        helper();\n        \\App\\helper();\n        new Mailer();\n        $this->send();\n        new \\App\\Mailer();\n        Mailer::make();\n        \\strlen(\'\');\n        parent::boot();\n    }\n}\n',
+    })
+    const php = withSnapshot(dataDir, (db) => rows(db, 'calls')).map((r) => [r.from, r.line, r.resolution, r.reason, r.detail?.callee, r.detail?.qualifier, r.detail?.form])
+    const call = (line: number, callee: string, qualifier?: string, form?: string) => ['App.Mailer.send', line, 'unresolved', 'outside_capability', callee, qualifier, form]
+    expect(php).toEqual([
+      call(8, 'helper'),
+      call(9, 'helper', '\\App'),
+      call(10, 'Mailer', undefined, 'new'),
+      call(11, 'send'),
+      call(12, 'Mailer', '\\App', 'new'),
+      call(13, 'make', 'Mailer'),
+      call(14, 'strlen', '\\'),
+      call(15, 'boot', 'parent'),
+    ])
+  }, 240000)
+
+  it('FR852 languages.md states the PHP plain call, new and qualifier', () => {
+    const doc = fs.readFileSync(path.join(ROOT, 'docs', 'proofmesh', 'languages.md'), 'utf8')
+    expect(doc).toContain('A PHP call by a plain name (`helper()`) or a `new C()` is a call like any other (FR850)')
+    expect(doc).toContain('a static call (`Mailer::make()`, `parent::boot()`) has its scope as written, and a `new` has `form` `new` (FR851)')
+  })
+})
