@@ -1950,6 +1950,36 @@
     "FR1085": [
       "packages/proofmesh/test/snapshot-transfer.test.ts"
     ],
+    "FR1160": [
+      "packages/proofmesh/test/observatory-bench.test.ts"
+    ],
+    "FR1161": [
+      "packages/proofmesh/test/observatory-bench.test.ts"
+    ],
+    "FR1162": [
+      "packages/proofmesh/test/observatory-bench.test.ts"
+    ],
+    "FR1163": [
+      "packages/proofmesh/test/observatory-bench.test.ts"
+    ],
+    "FR1164": [
+      "packages/proofmesh/test/observatory-bench.test.ts"
+    ],
+    "FR1165": [
+      "packages/proofmesh/test/observatory-bench.test.ts"
+    ],
+    "FR1166": [
+      "packages/proofmesh/test/observatory-bench.test.ts"
+    ],
+    "FR1167": [
+      "packages/proofmesh/test/observatory-bench.test.ts"
+    ],
+    "FR1168": [
+      "packages/proofmesh/test/observatory-bench.test.ts"
+    ],
+    "FR1169": [
+      "packages/proofmesh/test/observatory-bench.test.ts"
+    ],
     "FR1010": [
       "packages/proofmesh/test/typescript-references.test.ts"
     ],
