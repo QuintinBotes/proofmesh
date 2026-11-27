@@ -19,9 +19,12 @@ node bench/localise/run.mjs            # then read bench/localise/out/results.md
 - `--only <id,id>` runs some instances; `--baseline-only` skips ProofMesh. `$LOCALISE_OUT` moves `out/`.
 - The command exits 1 when the bar of #27 is missed: file Acc@5 at least 60% and 10 points above BM25, function Acc@10
   10 points above BM25.
-- Python call resolution is turned off for the run (`PROOFMESH_PYRIGHT_CALLS=off`, and
-  `PROOFMESH_PYRIGHT_UNANNOTATED=off`), so indexing time stays bounded; the ranking must not rely on it. Set either to
-  `on` to measure with it.
+- On a heavily loaded machine an index of a large tree (sympy) can stop with `analyze timed out: no message from the
+  adapter for 60000 ms`; it then scores a miss and the results name it. Run again, which reuses every snapshot already
+  built, or with fewer `--jobs`. With `--jobs 3` at a load average of 40 to 60, three to five sympy trees stopped so.
+- Python is indexed without Pyright (`PROOFMESH_PYRIGHT=off`, so no call is resolved), which keeps indexing time bounded:
+  with Pyright one Django tree took over 20 minutes for 600 of its 2,546 files here, without it about two minutes. The
+  ranking must not rely on call resolution. Set `PROOFMESH_PYRIGHT=on` to measure with it.
 
 | File | What it does |
 |---|---|
@@ -42,9 +45,9 @@ node bench/localise/run.mjs            # then read bench/localise/out/results.md
 
 ## Latest results
 
-Run on 2026-11-27 (`node bench/localise/run.mjs --jobs 3`, Python indexed with `PROOFMESH_PYRIGHT=off`), on an Apple
-M5 Max (18 cores, 64 GB), macOS, Node 26.13.1, while other jobs shared the machine. A query took 103 ms at the median
-(504 ms at most); 45 of the 46 problem statements asked had more than 32 indexed terms and were cut to their 32 heaviest.
+Run on 2026-11-27 (`node bench/localise/run.mjs --jobs 2`, Python indexed with `PROOFMESH_PYRIGHT=off`), on an Apple
+M5 Max (18 cores, 64 GB), macOS, Node 26.13.1, while other jobs shared the machine. A query took 231 ms at the median
+(589 ms at most); 45 of the 46 problem statements asked had more than 32 indexed terms and were cut to their 32 heaviest.
 
 | | file Acc@1 | @3 | @5 | @10 | function Acc@5 | @10 |
 |---|---|---|---|---|---|---|
