@@ -1,0 +1,3 @@
+# Provenance
+
+Project-authored for Proofmesh. Apache-2.0. No third-party code. A small TypeScript project and `findings.sarif`, a SARIF 2.1.0 file written by hand in the shape CodeQL and Opengrep write: no analyser was run, and the tool names and rule ids only label the two runs. It holds three findings at known lines of the project (`Store.find` at `src/db.ts:7`, `handle` at `src/api.ts:5`, the test `handlesAnId` at `test/api.test.ts:4`), a duplicate of the first, one result outside the repository and one in a file that is not in the snapshot. `packages/proofmesh/test/sarif.test.ts` imports it (#30).

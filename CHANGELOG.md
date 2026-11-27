@@ -4,6 +4,13 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 ## Unreleased
 
+Findings of data-flow and other analysers, imported as SARIF and shown on symbols (#30; FR1900 to FR1905). Owner decision: option A, no native data-flow analysis:
+
+- `proofmesh sarif add <repository> <file.sarif> [--name N]` imports the results CodeQL, Opengrep or another analyser wrote as SARIF 2.1.0, with `sarif list` and `sarif remove`. Proofmesh runs no analyser. Results are deduplicated by tool, rule and location. A result outside the repository or in a file the snapshot does not index is listed with its reason and not attached.
+- New tool `get_findings` (profile `extra`) lists findings by symbol or path, each on the innermost symbol at its line with its tool, rule, level, message, `path:line`, rank and precision. A finding whose file changed since import is `sarif_stale:<name>` until a new file is imported.
+- `analyze_impact` and `find_tests` rows that hold findings carry `findings` (lean `findings=<n>`). Answers for a repository with no import are unchanged.
+- Upgrade note: catalog migration 0023 (`sarif_import`). Back up the data directory before upgrading.
+
 A Python file the Python adapter analysed reports `references: partial` even when it records no use, as it was read for them (#224; FR1640). A snapshot of Python alone now gives the partial references note instead of `References other than calls and imports are not analysed for this snapshot.`, and the language census counts those files as partial.
 
 A bounded, read-only graph query for composed questions (#36; FR960 to FR966):

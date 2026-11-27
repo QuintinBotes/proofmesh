@@ -9,6 +9,7 @@ import { Catalog, initDataDir, lastIndexFailure, LEASE_OWNER, noSnapshot, type I
 import { runVerificationCommand } from './verification.js'
 import { indexCoverage } from '../scip/coverage.js'
 import { runScip } from '../scip/run.js'
+import { readSarif } from '../sarif/read.js'
 import { sameRepository } from '../indexer/discovery.js'
 import { runWorkspaceLink } from './workspace-link.js'
 import { sha256File } from '../core/hash.js'
@@ -60,6 +61,8 @@ Usage: proofmesh [--data-dir DIR] <command>
   scip add <repository> <index.scip> [--name N]   name a SCIP index you produced; Proofmesh reads it and never runs an indexer
   scip run <repository> [--language L] [--container IMAGE@sha256:...] [--module-cache DIR] [--timeout S] [--max-memory MB]   run a pinned indexer (scip-go, scip-java, rust-analyzer) in a disposable copy; only for a repository trusted for build evaluation
   scip list <repository> | scip remove <repository> <name>
+  sarif add <repository> <file.sarif> [--name N]   import the findings a data-flow analyser (CodeQL, Opengrep, ...) wrote as SARIF 2.1.0; Proofmesh runs no analyser
+  sarif list <repository> | sarif remove <repository> <name>
   workspace add <name> <repository>... [--registry <repository>:<path>]   group repositories into an ecosystem; links and the overview are per workspace; --registry names the file a member lists its service callers in
   workspace list | workspace remove <name> [<repository>...]
   workspace link <name>   seal the cross-repository link file of the workspace's current snapshots (A7, A28)
@@ -289,6 +292,44 @@ export async function main(argv: string[]): Promise<number> {
             return 0
           }
           throw new ProofmeshError('INVALID_ARGUMENT', 'usage: proofmesh scip add <repository> <index.scip> [--name N] | scip run <repository> [--language L] [--container IMAGE@sha256:...] [--module-cache DIR] [--timeout S] [--max-memory MB] | scip list <repository> | scip remove <repository> <name>')
+        } finally {
+          catalog.close()
+        }
+      }
+      case 'sarif': {
+        const opts = [...rest]
+        const catalog = Catalog.open(dataDir)
+        try {
+          if (opts[0] === 'add' && opts[1] && opts[2]) {
+            const repo = catalog.repository(opts[1]), file = path.resolve(opts[2])
+            const name = take(opts, '--name') ?? path.basename(file).replace(/\.sarif(\.json)?$/, '')
+            if (!/^[A-Za-z0-9._-]+$/.test(name)) throw new ProofmeshError('INVALID_ARGUMENT', `--name takes letters, digits, dots, dashes and underscores; got ${name}`)
+            if (!fs.existsSync(file) || !fs.statSync(file).isFile()) throw new ProofmeshError('INVALID_ARGUMENT', `${file} is not a file`)
+            const snapshot = catalog.currentSnapshot(repo.id)
+            if (!snapshot) throw noSnapshot(catalog, repo.id)
+            const db = openSnapshot(catalog, snapshot)
+            let read: ReturnType<typeof readSarif>
+            try { read = readSarif(file, repo.root, (rel) => !!db.prepare("select 1 from file where path = ? and disposition = 'indexed'").get(rel)) } finally { db.close() }
+            // As for a SCIP index (A27): each file's hash as the tree stands now, on the assumption that the analyser just read it.
+            const files = Object.fromEntries([...new Set(read.findings.map((f) => f.path))].map((p) => [p, sha256File(path.join(repo.root, p))]))
+            const s = catalog.addSarif(repo.id, { name, path: file, sha256: sha256File(file), ...read, files }, os.userInfo().username)
+            console.log(`SARIF file ${s.name} imported for ${repo.name}: ${s.findings.length} finding${s.findings.length === 1 ? '' : 's'} attached from ${s.tools.join(', ') || 'no run'}; by ${s.added_by} at ${s.added_at}`)
+            if (s.unattached.length) console.log(`${s.unattached.length} result${s.unattached.length === 1 ? '' : 's'} not attached:\n${s.unattached.map((u) => `  ${u.uri || '(no location)'}${u.line ? `:${u.line}` : ''} ${u.rule}: ${u.reason}`).join('\n')}`)
+            console.log('Proofmesh runs no analyser. Each finding is shown on the innermost symbol at its line; after an edit to its file it is stale until you import a new SARIF file.')
+            return 0
+          }
+          if (opts[0] === 'remove' && opts[1] && opts[2]) {
+            const repo = catalog.repository(opts[1])
+            console.log(catalog.removeSarif(repo.id, opts[2]) ? `SARIF file ${opts[2]} removed from ${repo.name}` : `${repo.name} has no SARIF file named ${opts[2]}`)
+            return 0
+          }
+          if (opts[0] === 'list' && opts[1]) {
+            const repo = catalog.repository(opts[1]), all = catalog.sarifImports(repo.id)
+            if (!all.length) console.log(`no SARIF files imported for ${repo.name}`)
+            for (const s of all) console.log(`${s.name}  ${s.path}  ${s.findings.length} findings, ${s.unattached.length} not attached  ${s.tools.join(', ')}  by ${s.added_by} at ${s.added_at}`)
+            return 0
+          }
+          throw new ProofmeshError('INVALID_ARGUMENT', 'usage: proofmesh sarif add <repository> <file.sarif> [--name N] | sarif list <repository> | sarif remove <repository> <name>')
         } finally {
           catalog.close()
         }

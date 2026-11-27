@@ -701,6 +701,17 @@ From #36. An escape hatch beside the typed tools for a question none of them ans
 - FR965: MUST list `query_graph` in the `extra` tool profile, never in `core`, with capability `read`.
 - FR966: MUST ask the twelve questions of `bench/parity` through `query_graph` as well, one query each, run as many times as the other measures, and report each answer's score on the truth beside the typed tools' answer, whether their items are the same, its median time, and the p95 over all of them.
 
+### Analyser findings: SARIF imported and attached to symbols
+
+From #30 (owner decision, option A): no native data-flow analysis. Proofmesh imports the findings other analysers wrote and runs none of them. The tests are in `packages/proofmesh/test/sarif.test.ts`, on `fixtures/sarif`.
+
+- FR1900: MUST provide `proofmesh sarif add <repository> <file> [--name N]`, which reads a SARIF 2.1.0 file (refusing one that is not, with nothing imported), records each run's tool and version, deduplicates results by tool, rule and location, keeps each result's level (warning when none), message, `rank` and its rule's `precision`, and records the hash of each file a finding is in as the tree stands; and `sarif list` and `sarif remove`.
+- FR1901: MUST attach each finding to the innermost symbol at its start line in the asked snapshot, chosen as `get_symbols_at` chooses it, or to the file's module.
+- FR1902: MUST provide `get_findings(subject_ids?, paths?)`, in the `extra` profile with capability `read`, listing the findings on those symbols or in those files (every finding with neither), each with its import, tool, rule, level, message, `path:line`, rank, precision and symbol; and give each `analyze_impact` dependent and `find_tests` row of this repository that holds findings a `findings` count, the lean tag `findings=<n>`.
+- FR1903: MUST leave unattached, and list with its reason at import and as a count in `get_findings`' limitations, a result outside the repository (`outside_repository`), in a file the current snapshot does not index (`not_in_snapshot`), or with no location (`no_location`).
+- FR1904: MUST mark a finding `stale: sarif_stale:<name>` while its file's content in the asked snapshot differs from the hash recorded at import, and say so in the limitations, until a new SARIF file is imported.
+- FR1905: MUST run no analyser and bundle none: importing a SARIF file reads it and nothing else.
+
 ### Impact completeness
 
 - FR108: MUST provide `impact_completeness` with `base`, a commit-ish, optional `head` (omitted, the working tree), `depth` (default 1, at most 5), `include_tests` and the usual limits, and the CLI `proofmesh completeness <repository> <base>[..<head>] [--depth N] [--json]`.

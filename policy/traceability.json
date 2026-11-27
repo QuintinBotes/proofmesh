@@ -2248,6 +2248,24 @@
     ],
     "FR966": [
       "packages/proofmesh/test/parity-bench.test.ts"
+    ],
+    "FR1900": [
+      "packages/proofmesh/test/sarif.test.ts"
+    ],
+    "FR1901": [
+      "packages/proofmesh/test/sarif.test.ts"
+    ],
+    "FR1902": [
+      "packages/proofmesh/test/sarif.test.ts"
+    ],
+    "FR1903": [
+      "packages/proofmesh/test/sarif.test.ts"
+    ],
+    "FR1904": [
+      "packages/proofmesh/test/sarif.test.ts"
+    ],
+    "FR1905": [
+      "packages/proofmesh/test/sarif.test.ts"
     ]
   },
   "manual": {
