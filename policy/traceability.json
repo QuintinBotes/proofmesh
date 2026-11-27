@@ -2145,6 +2145,9 @@
     "FR1126": [
       "packages/proofmesh/test/fast-rebuild.test.ts"
     ],
+    "FR1680": [
+      "packages/proofmesh/test/fast-rebuild.test.ts"
+    ],
     "FR1180": [
       "packages/proofmesh/test/symbol-card.test.ts",
       "apps/observatory/test/card.test.ts",
