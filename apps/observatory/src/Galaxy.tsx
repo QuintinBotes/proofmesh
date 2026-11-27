@@ -250,7 +250,7 @@ export function Galaxy({ data, query, focusArea, onOpen, onHover, onClear, overl
   const zoomBy = (factor: number) => { const g = graph.current; if (g) g.setZoomLevel(g.getZoomLevel() * factor, 250) }
   const filterLabel = focusArea !== null ? `Area ${data.areas[focusArea]!.name}` : `“${query.trim()}”`
   return (
-    <div className="galaxy" onMouseMove={(e) => { const r = e.currentTarget.getBoundingClientRect(); mouse.current = { x: e.clientX - r.left, y: e.clientY - r.top } }}>
+    <div className="galaxy" data-ready={ready || undefined} onMouseMove={(e) => { const r = e.currentTarget.getBoundingClientRect(); mouse.current = { x: e.clientX - r.left, y: e.clientY - r.top } }}>
       <div ref={box} className="galaxy-canvas" aria-hidden="true" />
       {fog.map((f) => (
         <div key={f.name} className={`galaxy-fog${f.empty ? ' empty' : ''}${f.ring ? ' ring' : ''}`} data-area={f.name} title={f.text} aria-hidden="true"

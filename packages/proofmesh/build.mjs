@@ -14,6 +14,8 @@ await build({
 })
 // The SCIP adapter runs as its own process, like every adapter (A24).
 await build({ entryPoints: [path.join(here, 'src/scip/adapter.ts')], outfile: path.join(dist, 'scip-adapter.mjs'), bundle: true, platform: 'node', format: 'esm', target: 'node22', logLevel: 'warning' })
+// The Galaxy layout on its own, so the Observatory benchmark lays out a synthetic galaxy exactly as the server does (#44).
+await build({ entryPoints: [path.join(here, 'src/query/layout.ts')], outfile: path.join(dist, 'layout.mjs'), bundle: true, platform: 'node', format: 'esm', target: 'node22', logLevel: 'warning' })
 fs.cpSync(path.resolve(here, '../../schemas'), path.join(dist, 'schemas'), { recursive: true })
 const observatory = path.resolve(here, '../../apps/observatory/dist')
 if (fs.existsSync(path.join(observatory, 'index.html'))) fs.cpSync(observatory, path.join(dist, 'observatory'), { recursive: true })

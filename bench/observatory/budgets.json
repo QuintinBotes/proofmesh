@@ -1,0 +1,23 @@
+{
+  "description": "Observatory budgets (#41, NFR005). Each is checked against the median of the measured cold or warm runs, from the gpu column, or the software column when the WebGL renderer is a software rasteriser. A budget is the bar today's build must meet; target is the bar an Observatory spec sets, which tightens the budget when that spec lands. null: measured and reported, not yet budgeted.",
+  "budgets": {
+    "cold.first_draw_ms": { "label": "First drawn map, cold", "gpu": 10000, "software": 10000, "target": "≤ 1.0 s at 50,000 symbols (#46 SC-001)" },
+    "cold.settled_ms": { "label": "Final positions (layout settled), cold", "gpu": null, "software": null, "target": "≤ 0.6 s TypeORM, ≤ 1.0 s at 50,000, ≤ 2.5 s at 250,000 (#44 SC-001)" },
+    "cold.tbt_ms": { "label": "Total blocking time, cold", "gpu": null, "software": null, "target": "≤ 200 ms at 50,000 symbols (#47 SC-002)" },
+    "cold.longest_task_ms": { "label": "Longest main-thread task, cold", "gpu": 100, "software": 100, "target": "≤ 50 ms after first paint at 50,000 symbols (#47 SC-002)" },
+    "cold.frame_idle_p95_ms": { "label": "Frame at rest, p95", "gpu": 17, "software": 17, "target": null },
+    "cold.frame_pan_zoom_p95_ms": { "label": "Pan and zoom frame, p95", "gpu": 33, "software": 33, "target": "≤ 16.7 ms at 50,000, ≤ 33 ms at 250,000 (#46 SC-001)" },
+    "cold.search_ms": { "label": "Search", "gpu": 200, "software": 200, "target": null },
+    "cold.symbol_to_evidence_ms": { "label": "Symbol to evidence", "gpu": null, "software": null, "target": "≤ 150 ms p95 warm (#45 SC-001)" },
+    "cold.symbol_to_evidence_first_ms": { "label": "Symbol to evidence, first open", "gpu": null, "software": null, "target": "≤ 400 ms (#45 SC-001)" },
+    "cold.symbol_to_evidence_requests": { "label": "Symbol to evidence, requests", "gpu": null, "software": null, "target": "1 (#45 SC-002)" },
+    "cold.edge_to_evidence_ms": { "label": "Edge to evidence", "gpu": null, "software": null, "target": "≤ 150 ms p95 warm (#45 SC-001)" },
+    "cold.palette_p95_ms": { "label": "Command palette, query to matches, p95", "gpu": 50, "software": 50, "target": null },
+    "cold.palette_typing_longest_task_ms": { "label": "Command palette, longest task while typing", "gpu": 50, "software": 50, "target": null },
+    "cold.map_switch_ms": { "label": "Map switch", "gpu": 2000, "software": 2000, "target": null },
+    "cold.script_gzip_kb": { "label": "Initial JavaScript, gzip", "gpu": null, "software": null, "target": "≤ 150 KB (#47 SC-001)" },
+    "cold.transferred_kb": { "label": "Transferred on a cold load, before data", "gpu": null, "software": null, "target": "≤ 250 KB before data (#47 SC-001)" },
+    "cold.browser_rss_mb": { "label": "Browser memory, all processes", "gpu": null, "software": null, "target": "≤ 300 MB at 50,000, ≤ 600 MB at 250,000 (#47 SC-005)" },
+    "warm.first_draw_ms": { "label": "First drawn map, warm", "gpu": null, "software": null, "target": "≤ 300 ms at 50,000 symbols (#47 SC-003)" }
+  }
+}
