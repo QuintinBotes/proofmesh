@@ -1,6 +1,6 @@
 import crypto from 'node:crypto'
 import { describe, expect, it } from 'vitest'
-import { LAYOUT_SCALE, layoutPositions, type Placed } from '../src/query/layout.js'
+import { LAYOUT_SCALE, type LayoutCell, layoutPositions, type Placed } from '../src/query/layout.js'
 
 /** A repository-shaped path tree: 500 files of 1 to 15 symbols in nested directories of uneven size, from a fixed seed. */
 function repository(): Placed[] {
@@ -77,12 +77,14 @@ describe('FR1220 positions are a pure function of the path tree and the names', 
     expect(new Set(Array.from({ length: items.length }, (_, i) => p[i * 2]! * LAYOUT_SCALE + p[i * 2 + 1]!)).size).toBe(items.length)
   })
 
-  it('FR1225 SC-002 lays out 250,000 symbols in under a second', () => {
+  it('FR1225 SC-002 lays out 250,000 symbols in under a second of CPU time (FR1620)', () => {
     const items: Placed[] = []
     for (let i = 0; i < 250000; i++) { const f = Math.floor(i / 10), path = `pkg${f % 7}/mod${f % 23}/sub${f % 41}/file${f}.ts`; items.push({ path, name: `${path.slice(0, -3)}:s${i % 10}`, line: i % 10, byte: (i % 10) * 40 }) }
-    const t0 = performance.now()
+    // The process's own CPU time, GC threads included: a busy machine stretches wall-clock time, not the work the layout does.
+    const t0 = process.cpuUsage()
     layoutPositions(items)
-    expect(performance.now() - t0).toBeLessThan(1000)
+    const t = process.cpuUsage(t0)
+    expect((t.user + t.system) / 1000).toBeLessThan(1000)
   })
 })
 
@@ -116,5 +118,27 @@ describe('FR1222 a commit moves only what it touches', () => {
     const family = dir(dir(added))
     const shifted = a.filter((x) => !x.path.startsWith(`${family}/`) && dist(before.get(key(x))!, next.get(key(x))!) > 0.02)
     expect(shifted).toEqual([])
+  })
+})
+
+describe('FR1401 the layout gives the cells it placed symbols in', () => {
+  it('every directory and file is a cell named by its segment, its parent first, holding its symbols, and every symbol sits in its file\'s cell', () => {
+    const items = repository()
+    const cells: LayoutCell[] = []
+    const p = layoutPositions(items, cells)
+    // Asking for the cells changes no position.
+    expect(Buffer.from(p.buffer).equals(Buffer.from(layoutPositions(items).buffer))).toBe(true)
+    expect(cells[0]).toMatchObject({ parent: -1, name: '', count: items.length, x: 0, y: 0, w: 1, h: 1 })
+    const pathOf = (i: number): string => { const c = cells[i]!; return c.parent < 0 ? '' : [pathOf(c.parent), c.name].filter(Boolean).join('/') }
+    cells.forEach((c, i) => { if (i) expect(c.parent).toBeLessThan(i) })
+    const leaves = cells.map((c, i) => [i, c] as const).filter(([i]) => !cells.some((d) => d.parent === i))
+    const files = new Map(leaves.map(([i, c]) => [pathOf(i), c]))
+    expect(new Set(files.keys())).toEqual(new Set(items.map((x) => x.path)))
+    items.forEach((it, i) => {
+      const c = files.get(it.path)!
+      const x = p[i * 2]! / LAYOUT_SCALE, y = p[i * 2 + 1]! / LAYOUT_SCALE
+      expect(x >= c.x && x <= c.x + c.w && y >= c.y && y <= c.y + c.h, it.name).toBe(true)
+    })
+    for (const [path, c] of files) expect(c.count).toBe(items.filter((x) => x.path === path).length)
   })
 })
