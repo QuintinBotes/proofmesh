@@ -6,6 +6,7 @@ import { spawn, spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { deepestRoot } from './repos.mjs'
 
 const QUIET_MS = Number(process.env.PROOFMESH_HOOK_QUIET_MS ?? 4000)
 const STATE = process.env.PROOFMESH_HOOK_STATE ?? path.join(os.tmpdir(), `proofmesh-hooks-${os.userInfo().uid}`)
@@ -20,8 +21,7 @@ function repositoryOf(target) {
   if (r.error || r.status !== 0) return null
   let real = target
   try { real = fs.realpathSync(target) } catch { try { real = path.join(fs.realpathSync(path.dirname(target)), path.basename(target)) } catch {} }
-  return r.stdout.split('\n').map((l) => l.split('  ')).filter((c) => c.length >= 3).map(([id, name, root]) => ({ id, name, root }))
-    .filter((x) => real === x.root || real.startsWith(x.root + path.sep)).sort((a, b) => b.root.length - a.root.length)[0] ?? null
+  return deepestRoot(r.stdout, real, path.sep)
 }
 
 function alive(id) {

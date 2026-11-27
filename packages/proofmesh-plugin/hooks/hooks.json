@@ -1,5 +1,6 @@
 {
-  "description": "Keeps the Proofmesh snapshot fresh: after an edit, and at session start when the working tree has moved on, a debounced background index publishes a new snapshot.",
+  "description": "Keeps the Proofmesh snapshot fresh: after an edit, and at session start when the working tree has moved on, a debounced background index publishes a new snapshot. The hooks module shows the snapshot's state under the prompt and adds /pm-status.",
+  "modules": ["./register.mjs"],
   "hooks": {
     "PostToolUse": [
       { "matcher": "Edit|Write|MultiEdit|NotebookEdit", "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/fresh.mjs\" edited", "timeout": 30 }] }

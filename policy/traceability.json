@@ -1489,6 +1489,30 @@
     ],
     "FR501": [
       "packages/proofmesh/test/syntax-rust-path-calls.test.ts"
+    ],
+    "FR480": [
+      "packages/proofmesh/test/plugin.test.ts"
+    ],
+    "FR481": [
+      "packages/proofmesh-plugin/tests/status.test.ts"
+    ],
+    "FR482": [
+      "packages/proofmesh-plugin/tests/status.test.ts"
+    ],
+    "FR483": [
+      "packages/proofmesh-plugin/tests/status.test.ts"
+    ],
+    "FR484": [
+      "packages/proofmesh-plugin/tests/status.test.ts"
+    ],
+    "FR485": [
+      "packages/proofmesh-plugin/tests/status.test.ts"
+    ],
+    "FR486": [
+      "packages/proofmesh/test/plugin.test.ts"
+    ],
+    "FR487": [
+      "packages/proofmesh-plugin/tests/status.test.ts"
     ]
   },
   "manual": {
