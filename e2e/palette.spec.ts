@@ -58,36 +58,40 @@ test.describe('the command palette on the TypeORM sample', () => {
     await page.keyboard.press('Escape')
   })
 
-  test('FR1140 a file is listed by its name, and Enter opens it in the Map', async () => {
+  test('FR1140 FR1404 a file is listed by its name, and Enter brings it into view in the Terrain, named', async () => {
+    const label = page.locator('.terrain-label.file', { hasText: 'service.ts' })
+    const before = (await label.boundingBox())!
     await page.keyboard.press('Control+K')
-    await page.keyboard.type('data-source')
-    await expect(options(page).first()).toHaveText('data-source.ts file · src/data-source.ts')
-    await answered(page, () => page.keyboard.press('Enter'))
-    await expect(page.getByRole('tab', { name: 'Map' })).toHaveAttribute('aria-selected', 'true')
-    await expect(page.getByRole('navigation', { name: 'Location' })).toContainText('data-source.ts')
+    await page.keyboard.type('service.ts')
+    await expect(options(page).first()).toHaveText('service.ts file · src/service.ts')
+    await page.keyboard.press('Enter')
+    await expect(page.getByRole('tab', { name: 'Terrain' })).toHaveAttribute('aria-selected', 'true')
+    // The file's cell now fills most of the view, its name at its top left.
+    await expect.poll(async () => (await label.boundingBox())?.y ?? before.y).toBeLessThan(before.y - 100)
+    await page.getByRole('toolbar', { name: 'Terrain controls' }).getByRole('button', { name: 'Fit everything' }).click()
     await blur(page)
   })
 
   test('FR1143 typing view or overlay lists the matching commands with their keys, and Enter runs the highlighted one', async () => {
     await page.keyboard.press('Control+K')
     await page.keyboard.type('view')
-    await expect(options(page)).toHaveText(['Galaxy view1', 'Map view2', 'Explore view3', 'Claims view4', 'Diff view5', 'Ecosystem view6', 'Table or graph viewt'])
+    await expect(options(page)).toHaveText(['Terrain view1', 'Explore view2', 'Claims view3', 'Diff view4', 'Ecosystem view5', 'Table or graph viewt'])
     await expect(options(page).first()).toHaveAttribute('aria-selected', 'true')
     await page.keyboard.press('ArrowDown')
     await expect(options(page).nth(1)).toHaveAttribute('aria-selected', 'true')
     await page.keyboard.press('Enter')
     await expect(palette(page)).toHaveCount(0)
-    await expect(page.getByRole('tab', { name: 'Map' })).toHaveAttribute('aria-selected', 'true')
+    await expect(page.getByRole('tab', { name: 'Explore' })).toHaveAttribute('aria-selected', 'true')
     await page.keyboard.press('Control+K')
     await page.keyboard.type('overlay')
-    await expect(options(page)).toHaveText(['Diff overlay on the Galaxy, shown or hiddend'])
+    await expect(options(page)).toHaveText(['Diff overlay on the Terrain, shown or hiddend'])
     await page.keyboard.press('Escape')
     await blur(page)
   })
 
   test('FR1144 with no input focused, the number keys open the views, each tab shows its key, and ? lists every key', async () => {
-    // Paths are traced in Explore's lens, so there is no Trace a path tab (FR1300).
-    const views = ['Galaxy', 'Map', 'Explore', 'Claims', 'Diff', 'Ecosystem']
+    // Paths are traced in Explore's lens, so there is no Trace a path tab (FR1300); the Terrain replaced the Galaxy and Map tabs (FR1400).
+    const views = ['Terrain', 'Explore', 'Claims', 'Diff', 'Ecosystem']
     for (const [i, name] of views.entries()) {
       const key = String(i + 1)
       await page.keyboard.press(key)
@@ -100,14 +104,14 @@ test.describe('the command palette on the TypeORM sample', () => {
     await page.keyboard.press('1')
     await page.locator('#search').focus()
     await page.keyboard.press('2')
-    await expect(page.getByRole('tab', { name: 'Galaxy' })).toHaveAttribute('aria-selected', 'true')
+    await expect(page.getByRole('tab', { name: 'Terrain' })).toHaveAttribute('aria-selected', 'true')
     await expect(page.locator('#search')).toHaveValue('2')
     await page.locator('#search').fill('')
     await blur(page)
     await page.keyboard.press('1')
     await page.keyboard.press('?')
     await expect(input(page)).toHaveValue('')
-    await expect(options(page).locator('kbd')).toHaveText(['1', '2', '3', '4', '5', '6', 't', 'd'])
+    await expect(options(page).locator('kbd')).toHaveText(['1', '2', '3', '4', '5', 't', 'd'])
     await expect(note(page)).toContainText('Control+K, ⌘K or / opens this palette, ? lists every key, Escape closes it')
     await page.keyboard.press('Escape')
   })

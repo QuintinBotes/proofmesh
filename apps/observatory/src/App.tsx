@@ -1,14 +1,14 @@
 import { createElement, useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from 'react'
-import { callTool, establishSession, fetchGalaxy, fetchWorkspaces, galaxySymbol, listSnapshots, loadGalaxy, replaying, setReplay, setRepository, ToolError, type SnapshotInfo, type Workspace } from './api'
-import { overlay as diffOverlay, type CompareData } from './diff'
+import { callTool, establishSession, fetchBundle, fetchGalaxy, fetchWorkspaces, galaxySymbol, listSnapshots, loadGalaxy, replaying, setReplay, setRepository, ToolError, type Bundle, type SnapshotInfo, type Workspace } from './api'
 import { DiffView } from './DiffView'
+import { overlay as diffOverlay, type CompareData } from './diff'
+import { coverageOf, drawnStrokes, pairText, terrainOf, terrainSummary, type Pair } from './terrainModel'
 import { ClaimsView } from './ClaimsView'
-import { areaFog, fogText, legendAreas, manyLinks, matchIndices, MOVING_LINK_LIMIT, rankMatches, shortName, type GalaxyData } from './galaxyData'
+import { areaFog, areaLabel, legendAreas, matchIndices, rankMatches, shortName, type GalaxyData } from './galaxyData'
 import { Palette, type Command } from './Palette'
 import { toNeighbourhood, type RelationshipsEnvelope } from './explore'
 import { appendSide, CARD_ROWS, cardHood, declarationEvidence, rowEvidence, type Card, type Evidence } from './card'
 import { ProofLens, type Chain } from './ProofLens'
-import { areaColor, toMap, type Overview } from './map'
 import { defaultSelection, evidenceFor, LINK_WORDS, pairs, RELATION_COLOURS, RELATION_WORDS, relations, toEcosystem, type Ecosystem, type Relation } from './ecosystem'
 import { FRAMEWORK_TYPES, glyph, toScene, type TraceEnvelope } from './scene'
 import { visible } from './visible'
@@ -31,7 +31,7 @@ function lazyView<P extends object>(load: () => Promise<ComponentType<P>>): Comp
   }
   return Object.assign(View, { preload })
 }
-const Galaxy = lazyView(() => import('./Galaxy').then((m) => m.Galaxy))
+const Terrain = lazyView(() => import('./Terrain').then((m) => m.Terrain))
 const GraphView = lazyView(() => import('./GraphView').then((m) => m.GraphView))
 
 type Sym = { id: string; kind: string; name: string; qualified_name: string; path: string; start_line: number; signature: string | null }
@@ -48,8 +48,9 @@ function hold<K, V>(map: Map<K, Promise<V>>, key: K, asked: Promise<V>): Promise
   return asked
 }
 const param = (name: string) => new URLSearchParams(window.location.search).get(name)
-// In tab order; a view's single key is its place here (FR1144). Paths are traced in Explore's lens, which replaced the Trace a path tab (FR1300).
-const VIEW_NAMES = { galaxy: 'Galaxy', map: 'Map', explore: 'Explore', claims: 'Claims', diff: 'Diff', ecosystem: 'Ecosystem' } as const
+// In tab order; a view's single key is its place here (FR1144). Paths are traced in Explore's lens, which replaced the Trace a path tab (FR1300);
+// the Terrain replaced the Galaxy and Map tabs (FR1400).
+const VIEW_NAMES = { terrain: 'Terrain', explore: 'Explore', claims: 'Claims', diff: 'Diff', ecosystem: 'Ecosystem' } as const
 type Mode = keyof typeof VIEW_NAMES
 const VIEWS = Object.entries(VIEW_NAMES) as Array<[Mode, string]>
 
@@ -108,12 +109,6 @@ function Picker({ label, value, onPick }: { label: string; value: Sym | null; on
   )
 }
 
-/** The Galaxy's one-line summary; areas holding only files the graph cannot see are counted apart, never as empty (FR059). */
-function galaxySummary(g: GalaxyData): string {
-  const seen = g.areas.filter((a) => a.count > 0).length, hidden = g.areas.length - seen
-  return `${plural(g.n, 'symbol')} in ${plural(seen, 'area')}, ${plural(g.links.length / 2, 'link')}${hidden ? `; ${hidden} more area${hidden === 1 ? ' holds' : 's hold'} files the graph cannot see` : ''}. Search, pick an area, or click a point.`
-}
-
 export function App() {
   const [error, setError] = useState<string | null>(null)
   const [status, setStatus] = useState<any>(null)
@@ -121,7 +116,7 @@ export function App() {
   const [target, setTarget] = useState<Sym | null>(null)
   const [depth, setDepth] = useState(6)
   const [followFramework, setFollowFramework] = useState(false)
-  const [mode, setMode] = useState<Mode>(() => (focusFromUrl() ? 'explore' : param('map') !== null ? 'map' : 'galaxy'))
+  const [mode, setMode] = useState<Mode>(() => (focusFromUrl() ? 'explore' : 'terrain'))
   // Replay (FR010): the published snapshots, and the one every query is pinned to when it is not the current one.
   const [snapshots, setSnapshots] = useState<SnapshotInfo[]>([])
   const [replay, setReplayState] = useState<string | null>(null)
@@ -139,6 +134,11 @@ export function App() {
   const [drilled, setDrilled] = useState<string | null>(null)
   const [galaxy, setGalaxy] = useState<GalaxyData | null>(null)
   const [galaxyArea, setGalaxyArea] = useState<number | null>(null)
+  // The area the pointer rests on, whose every bundle the Terrain draws; the bundle opened, with its relationships once they arrive (FR1403).
+  const [hoverArea, setHoverArea] = useState<number | null>(null)
+  const [bundle, setBundle] = useState<{ pair: Pair; data: Bundle | null } | null>(null)
+  // A cell the Terrain is asked to bring into view, such as a file the palette opened.
+  const [showCell, setShowCell] = useState<{ cell: number; key: number } | null>(null)
   const galaxyAsked = useRef(false)
   const [palette, setPalette] = useState(false)
   // The commands with a single key, as of the last render, for the key handler below.
@@ -155,9 +155,6 @@ export function App() {
     return () => window.removeEventListener('keydown', onKey)
   }, [])
   const [query, setQuery] = useState(() => param('q') ?? '')
-  const [map, setMap] = useState<{ overview: Overview; text: string; matches: Sym[] } | null>(null)
-  const mapTicket = useRef(0)
-  const searchTimer = useRef<number | undefined>(undefined)
   const [focus, setFocus] = useState<Sym | null>(null)
   const [hood, setHood] = useState<RelationshipsEnvelope | null>(null)
   // The focus's card (FR1180): everything the Proof lens shows, so opening a row inside it asks the server nothing.
@@ -220,10 +217,9 @@ export function App() {
   // Explore shows a path while one traced from its focus is held; otherwise the focus's neighbourhood.
   const tracing = mode === 'explore' && trace !== null && traced !== null && traced.source === focus?.id
   // Claims and Diff are tables of their own: they draw no scene, so Explore's neighbourhood never covers them (FR1302).
-  const scene = useMemo(() => mode === 'galaxy' || mode === 'claims' || mode === 'diff' ? null : mode === 'ecosystem' ? (ecosystem ? toEcosystem(ecosystem, selected) : null)
-    : mode === 'map' ? (map ? toMap(map.overview, map.text || null) : null)
+  const scene = useMemo(() => mode === 'terrain' || mode === 'claims' || mode === 'diff' ? null : mode === 'ecosystem' ? (ecosystem ? toEcosystem(ecosystem, selected) : null)
     : tracing ? toScene(trace!, traced!.source, traced!.target)
-    : (hood && focus ? toNeighbourhood(hood, focus) : null), [mode, tracing, trace, traced, hood, focus, map, ecosystem, selected])
+    : (hood && focus ? toNeighbourhood(hood, focus) : null), [mode, tracing, trace, traced, hood, focus, ecosystem, selected])
   /** The path as the lens draws it: the first path's hops, each with its call site, labelled by its weakest hop; or, with none, where the search stopped. */
   const chain = useMemo<Chain | null>(() => {
     if (!tracing || !scene) return null
@@ -253,10 +249,10 @@ export function App() {
     if (push) window.history.pushState(null, '', `?workspace=${encodeURIComponent(param('workspace') ?? '')}&repository=${encodeURIComponent(repositoryId)}`)
     setRepository(repositoryId)
     setDrilled(repositoryId)
-    setGalaxy(null); galaxyAsked.current = false
-    setMap(null); setFocus(null); setHood(null); setCard(null); cards.current.clear(); points.current.clear(); setTrace(null); setTraced(null); setTarget(null); setEvidence(null)
+    setGalaxy(null); galaxyAsked.current = false; setBundle(null)
+    setFocus(null); setHood(null); setCard(null); cards.current.clear(); points.current.clear(); setTrace(null); setTraced(null); setTarget(null); setEvidence(null)
     setLoading(true)
-    try { setStatus(await callTool('workspace_status', { limits: { max_rows: 1 } })); setError(null); setMode('galaxy') } catch (e) { report(e) } finally { setLoading(false); setAnswered((n) => n + 1) }
+    try { setStatus(await callTool('workspace_status', { limits: { max_rows: 1 } })); setError(null); setMode('terrain') } catch (e) { report(e) } finally { setLoading(false); setAnswered((n) => n + 1) }
   }, [report])
 
   const showCode = useCallback(async (sym: Sym & { evidence_id: string }) => {
@@ -334,36 +330,11 @@ export function App() {
   }, [card, focus, report])
   const clearPath = () => { setTrace(null); setTraced(null); setTarget(null) }
 
-  /** Shows the areas under a path, or with text only those holding a match, plus the matching symbols for the table. */
-  const loadMap = useCallback(async (path: string, text: string, push = true, show = true) => {
-    const ticket = ++mapTicket.current
-    setLoading(true)
-    try {
-      const [o, m] = await Promise.all([
-        callTool('get_overview', { ...(path ? { path } : {}), ...(text ? { text } : {}), limits: { max_rows: 150 } }),
-        text ? callTool('find_symbols', { text, limits: { max_rows: 100 } }) : Promise.resolve(null),
-      ])
-      // Typing fires several searches; only the newest one may change the screen.
-      if (ticket !== mapTicket.current) return
-      // Files appear as areas, so the symbol list leaves out their module symbols, as the match counts do.
-      setMap({ overview: o.data as Overview, text, matches: m ? (m.data.symbols as Sym[]).filter((x) => x.kind !== 'module') : [] })
-      // Only a load the person asked for switches view; the first one must not pull them off a tab they chose meanwhile.
-      if (show) setMode('map')
-      setError(null)
-      if (push) window.history.pushState(null, '', `?map=${encodeURIComponent((o.data as Overview).path)}${text ? `&q=${encodeURIComponent(text)}` : ''}`)
-    } catch (e) {
-      if (ticket === mapTicket.current) report(e)
-    } finally {
-      setLoading(false)
-      if (ticket === mapTicket.current) setAnswered((n) => n + 1)
-    }
-  }, [report])
-  const search = (text: string, now = false) => {
+  /** The Terrain holds every name already, so search filters it in the browser without asking the server; typed in another view, it shows the Terrain. */
+  const search = (text: string) => {
     setQuery(text)
-    // The galaxy holds every name already, so it filters in the browser without asking the server.
-    if (mode === 'galaxy') { setGalaxyArea(null); return }
-    window.clearTimeout(searchTimer.current)
-    searchTimer.current = window.setTimeout(() => loadMap('', text.trim()), now ? 0 : 250)
+    setGalaxyArea(null)
+    if (mode !== 'terrain' && text.trim()) setMode('terrain')
   }
 
   useEffect(() => {
@@ -374,7 +345,7 @@ export function App() {
       ? establishSession().then(() => { const { w, r } = deep()!; loadEcosystem(w, false); return drillInto(r, false) }).catch(report)
       : establishSession()
       .then(() => callTool('workspace_status', { limits: { max_rows: 1 } }))
-      .then((s) => { setStatus(s); setError(null); listSnapshots().then(setSnapshots).catch(report); const f = focusFromUrl(); if (f) loadFocus(f, false); else loadMap(param('map') ?? '', param('q') ?? '', false, false) })
+      .then((s) => { setStatus(s); setError(null); listSnapshots().then(setSnapshots).catch(report); const f = focusFromUrl(); if (f) loadFocus(f, false); else setAnswered((n) => n + 1) })
       // Several repositories registered: there is no single one to show until a person picks a workspace member.
       .catch((e) => { if (e instanceof ToolError && e.code === 'INVALID_ARGUMENT' && /repository_id is required/.test(e.message)) { setMode('ecosystem'); setError(null) } else report(e) })
     const onPop = () => {
@@ -382,25 +353,42 @@ export function App() {
       if (w !== null && r) { setWorkspace(w); drillInto(r, false) }
       else if (w !== null) { setMode('ecosystem'); if (ecosystemRef.current?.workspace.name !== w) loadEcosystem(w, false) }
       else if (f) loadFocus(f, false)
-      else { setQuery(param('q') ?? ''); loadMap(param('map') ?? '', param('q') ?? '', false) }
+      else { setQuery(param('q') ?? ''); setMode('terrain') }
     }
     connect()
     // A new launch link opened in this tab changes only the fragment, which does not reload the page.
     window.addEventListener('hashchange', connect)
     window.addEventListener('popstate', onPop)
     return () => { window.removeEventListener('hashchange', connect); window.removeEventListener('popstate', onPop) }
-  }, [reducedMotion, report, loadFocus, loadMap, drillInto, loadEcosystem])
+  }, [reducedMotion, report, loadFocus, drillInto, loadEcosystem])
   useEffect(() => {
-    // The palette searches the Galaxy's names, so opening it loads them in any view.
-    if ((mode !== 'galaxy' && !palette) || !status || galaxyAsked.current) return
+    // The palette searches the Terrain's names, so opening it loads them in any view.
+    if ((mode !== 'terrain' && !palette) || !status || galaxyAsked.current) return
     galaxyAsked.current = true
     setLoading(true)
-    // The Galaxy's code comes while its data does.
-    if (mode === 'galaxy') void Galaxy.preload()
+    // The Terrain's code comes while its data does.
+    if (mode === 'terrain') void Terrain.preload()
     fetchGalaxy(replaying() ?? status.snapshot.id).then(loadGalaxy).then((g) => { setGalaxy(g); setError(null) }).catch(report).finally(() => { setLoading(false); setAnswered((n) => n + 1) })
   }, [mode, palette, status, report])
-  const galaxyMatches = useMemo(() => (galaxy && mode === 'galaxy' ? matchIndices(galaxy, query) : []), [galaxy, mode, query])
+  const galaxyMatches = useMemo(() => (galaxy && mode === 'terrain' ? matchIndices(galaxy, query) : []), [galaxy, mode, query])
   const rankedMatches = useMemo(() => (galaxy && (tableView || noWebGl) ? rankMatches(galaxy, galaxyMatches, query) : []), [galaxy, galaxyMatches, query, tableView, noWebGl])
+  const terrain = useMemo(() => (galaxy ? terrainOf(galaxy) : null), [galaxy])
+  const strokes = useMemo(() => (terrain ? drawnStrokes(terrain.pairs, hoverArea) : []), [terrain, hoverArea])
+  // A pair drawn by either stroke, once, in the order drawn: the bundles the keyboard and assistive tech can open (FR067).
+  const drawnPairs = useMemo(() => [...new Set(strokes.map((x) => x.pair))], [strokes])
+  /** Lists the relationships a bundle stands for, every page of them, grouped by basis (FR1403). */
+  const openBundle = useCallback(async (pair: Pair) => {
+    if (!galaxy) return
+    setBundle({ pair, data: null })
+    setLoading(true)
+    try {
+      const from = galaxy.areas[pair.from]!.name, to = galaxy.areas[pair.to]!.name
+      let b = await fetchBundle(from, to, 0)
+      while (b.next_offset !== null) { const next = await fetchBundle(from, to, b.next_offset); b = { ...next, rows: [...b.rows, ...next.rows] } }
+      setBundle((now) => (now?.pair === pair ? { pair, data: b } : now))
+      setError(null)
+    } catch (e) { report(e) } finally { setLoading(false); setAnswered((n) => n + 1) }
+  }, [galaxy, report])
   const [overlayShown, setOverlayShown] = useState(true)
   const galaxyOverlay = useMemo(() => (overlayShown && galaxy && diff && diff.data.head.snapshot_id === galaxy.snapshotId ? diffOverlay(galaxy, diff.data) : null), [overlayShown, galaxy, diff])
 
@@ -408,14 +396,13 @@ export function App() {
   const pin = useCallback(async (id: string | null) => {
     const next = id && snapshots.find((s) => s.id === id && !s.current) ? id : null
     setReplay(next); setReplayState(next)
-    setGalaxy(null); galaxyAsked.current = false
-    setMap(null); setHood(null); setFocus(null); setCard(null); cards.current.clear(); points.current.clear(); setTrace(null); setTraced(null); setTarget(null); setEvidence(null)
+    setGalaxy(null); galaxyAsked.current = false; setBundle(null)
+    setHood(null); setFocus(null); setCard(null); cards.current.clear(); points.current.clear(); setTrace(null); setTraced(null); setTarget(null); setEvidence(null)
     try {
       setStatus(await callTool('workspace_status', { limits: { max_rows: 1 } }))
-      if (mode === 'map' || mode === 'explore') await loadMap('', query.trim(), false, false)
-      else setAnswered((n) => n + 1)
+      setAnswered((n) => n + 1)
     } catch (e) { report(e) }
-  }, [snapshots, mode, query, loadMap, report])
+  }, [snapshots, report])
   const current = snapshots.find((s) => s.current)
   const compare = async () => {
     if (!diffBase) return
@@ -430,7 +417,7 @@ export function App() {
 
   /** What an export of the current view draws and carries inside it (FR064); source only with consent (FR052). */
   const exportable = useMemo(() => {
-    if (!status || mode === 'claims' || (mode === 'galaxy' ? !galaxy : !scene)) return null
+    if (!status || mode === 'claims' || (mode === 'terrain' ? !galaxy : !scene)) return null
     const file = evidence?.facts.find(([k]) => k === 'file')?.[1]
     const at = file ? /^(.*):(\d+)/.exec(file) : null
     const source: Source = includeSource && evidence?.text && at ? { path: at[1]!, startLine: Number(at[2]), text: evidence.text } : null
@@ -438,28 +425,27 @@ export function App() {
     const searching = query.trim().length >= 2
     const caveats: Caveats = {
       view: VIEW_NAMES[mode]!, repository: status.data.repository.name, snapshotId: status.snapshot.id, analysisMode: status.snapshot.analysis_mode,
-      scope: mode === 'galaxy' ? (searching ? `names matching “${query.trim()}”` : 'the whole snapshot')
-        : mode === 'map' ? `${map?.overview.path || 'the repository root'}${map?.text ? `, matching “${map.text}”` : ''}`
+      scope: mode === 'terrain' ? (searching ? `names matching “${query.trim()}”` : 'the whole snapshot')
         : mode === 'explore' && !tracing ? `relationships of ${focus?.qualified_name ?? ''}`
         : `paths from ${scene!.nodes.find((n) => n.role === 'source')?.qualifiedName ?? ''} to ${scene!.nodes.find((n) => n.role === 'target' || n.role === 'unreached-target')?.qualifiedName ?? ''}`,
-      limits: mode === 'galaxy' ? ['symbols are summarised by area; individual symbols and links are not drawn'] : [
+      limits: mode === 'terrain' ? [`symbols are summarised by area; ${drawnPairs.length} of ${terrain?.pairs.length ?? 0} bundles between areas are drawn, and the table lists every one`] : [
         ...(scene!.badges.length ? [`${scene!.badges.length} node${scene!.badges.length === 1 ? '' : 's'} at the horizon where expansion stopped`] : []),
         ...(scene!.stubs.length ? [`${scene!.stubs.length} unresolved boundar${scene!.stubs.length === 1 ? 'y' : 'ies'} drawn`] : []),
         ...(tracing && scene!.conclusion ? [scene!.conclusion] : []),
       ],
       coverage: calls ? [`${share(calls.unresolved, calls.sites)} of ${plural(calls.sites, 'call site')} unresolved`] : [],
     }
-    if (mode === 'galaxy') {
+    if (mode === 'terrain') {
       const counts = new Map<number, number>()
       for (const i of galaxyMatches) counts.set(galaxy!.area[i]!, (counts.get(galaxy!.area[i]!) ?? 0) + 1)
       const areas = galaxy!.areas.map((a, i) => {
         const f = areaFog(a)
-        return { name: a.name, count: a.count, ...(searching ? { matches: counts.get(i) ?? 0 } : {}), ...(f.haze || f.ring || f.excluded ? { fog: fogText(a) } : {}) }
+        return { name: a.name, count: a.count, ...(searching ? { matches: counts.get(i) ?? 0 } : {}), ...(f.haze || f.excluded || coverageOf(a).hatched ? { fog: coverageOf(a).text } : {}) }
       })
       return { caveats, source, svg: areasSvg(areas, caveats, source), table: { head: ['area', 'symbols', 'matches', 'coverage'], rows: areas.map((a) => [a.name, String(a.count), a.matches === undefined ? '' : String(a.matches), a.fog ?? 'complete']) } }
     }
     return { caveats, source, svg: sceneSvg(scene!, caveats, source), table: sceneTable(scene!) }
-  }, [status, mode, galaxy, scene, tracing, evidence, includeSource, query, map, focus, galaxyMatches])
+  }, [status, mode, galaxy, scene, tracing, evidence, includeSource, query, focus, galaxyMatches, drawnPairs, terrain])
   const fileStem = exportable ? `proofmesh-${exportable.caveats.view.toLowerCase().replace(/\W+/g, '-')}-${exportable.caveats.snapshotId}` : ''
   const exportPage = () => { if (exportable) download(`${fileStem}.html`, new Blob([offlineHtml(exportable.svg, exportable.caveats, exportable.table, exportable.source)], { type: 'text/html' })) }
   const exportImage = async () => {
@@ -475,13 +461,22 @@ export function App() {
     setLoading(true)
     try { await loadFocus(await pointCard(index)) } catch (e) { report(e) } finally { setLoading(false) }
   }, [loadFocus, pointCard, report])
-  const openView = (m: Mode) => { setMode(m); if (m === 'map' && !map) loadMap('', query.trim()) }
+  const openView = (m: Mode) => setMode(m)
+  /** Brings a file's cell into view in the Terrain, or its nearest directory's when it holds no symbol and so has no cell (FR1404). */
+  const openFile = (path: string) => {
+    setMode('terrain')
+    const parts = path.split('/')
+    for (let k = parts.length; k > 0 && terrain; k--) {
+      const c = terrain.paths.indexOf(parts.slice(0, k).join('/'))
+      if (c >= 0) return setShowCell((x) => ({ cell: c, key: (x?.key ?? 0) + 1 }))
+    }
+  }
 
   // The palette's commands (FR1143): every view and overlay with its key (FR1144), then what the current state allows.
   const commands: Command[] = [
     ...VIEWS.map(([m, name], i) => ({ label: `${name} view`, key: String(i + 1), run: () => openView(m) })),
     { label: 'Table or graph view', key: 't', run: () => setTableView((t) => !t) },
-    { label: 'Diff overlay on the Galaxy, shown or hidden', key: 'd', run: () => setOverlayShown((o) => !o) },
+    { label: 'Diff overlay on the Terrain, shown or hidden', key: 'd', run: () => setOverlayShown((o) => !o) },
     ...snapshots.filter((s) => !s.current && s.id !== replay).map((s) => ({ label: `Pin snapshot ${s.id.slice(0, 13)}${s.published_at ? `, published ${new Date(s.published_at).toLocaleString()}` : ''}`, run: () => void pin(s.id) })),
     ...(replay ? [{ label: 'Back to the current snapshot', run: () => void pin(null) }] : []),
     ...(focus ? [{ label: `Trace a path from ${focus.qualified_name}`, run: () => { setMode('explore'); setTableView(false); focusPathTo.current = true } }] : []),
@@ -491,15 +486,9 @@ export function App() {
 
   const onNode = useCallback((id: string) => {
     if (mode === 'ecosystem') { if (!id.startsWith('stub:')) setSelected(id); return }
-    if (mode === 'map') {
-      const child = map?.overview.children.find((c) => c.key === id)
-      if (child?.kind === 'symbol') loadFocus(id)
-      else if (child) loadMap(id, map!.text)
-      return
-    }
     if (id === focus?.id) openSymbol(id)
     else if (!id.startsWith('stub:') && !id.startsWith('ext_')) loadFocus(id)
-  }, [mode, focus, map, openSymbol, loadFocus, loadMap])
+  }, [mode, focus, openSymbol, loadFocus])
 
   const openEdge = async (sourceId: string, assertionId: string) => {
     // The card already holds each row's evidence, so an edge of the focus opens with no request (FR1180); a path's edges open from the trace, as they always have.
@@ -525,7 +514,7 @@ export function App() {
           {VIEWS.map(([m, name], i) => <button key={m} type="button" role="tab" aria-selected={mode === m} aria-keyshortcuts={String(i + 1)} data-key={i + 1} onClick={() => openView(m)}>{name}</button>)}
         </div>
         <input id="search" className="search" type="search" aria-label="Search" value={query} placeholder="Search names, namespaces, areas…" autoComplete="off" spellCheck={false}
-          onChange={(e) => search(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') search(query, true) }} />
+          onChange={(e) => search(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') search(query) }} />
         {status && (
           <div className="crumbs">
             <b>{visible(status.data.repository.name)}</b> · {new Date(status.snapshot.published_at).toLocaleDateString()} · {status.snapshot.analysis_mode === 'no_execution' ? 'no execution' : 'trusted build'}
@@ -557,30 +546,37 @@ export function App() {
           </section>
         )}
         {drilled && mode !== 'ecosystem' && <p className="notice" role="status">Showing one repository of workspace {workspace}. <button type="button" onClick={() => { setMode('ecosystem'); window.history.pushState(null, '', `?workspace=${encodeURIComponent(workspace)}`) }}>Back to the ecosystem</button></p>}
-        {mode === 'galaxy' ? (
-          galaxy && (
-            <section aria-label="Areas">
-              <h2>Areas</h2>
-              <ul className="legend-areas">
-                {legend.shown.map(({ index: i, name, count }) => (
-                  <li key={name}>
-                    <button type="button" aria-pressed={galaxyArea === i} onClick={() => { setQuery(''); setGalaxyArea(galaxyArea === i ? null : i) }}>
-                      <span className="chip" style={{ background: areaColor(i), color: areaColor(i) }} /><span className="name" title={name}>{visible(name)}</span><span className="count">{count.toLocaleString('en')}</span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-              {legend.total > legend.shown.length && <p className="dim" role="note">The {legend.shown.length} largest of {legend.total} areas; the table lists them all.</p>}
-            </section>
-          )
-        ) : mode === 'map' ? (
-          map && (
-            <nav className="crumbs-nav" aria-label="Location">
-              <button type="button" onClick={() => loadMap('', map.text)}>repository</button>
-              {map.overview.path.split('/').filter(Boolean).map((seg, i, all) => (
-                <span key={i}> / <button type="button" onClick={() => loadMap(all.slice(0, i + 1).join('/'), map.text)}>{visible(seg)}</button></span>
-              ))}
-            </nav>
+        {mode === 'terrain' ? (
+          galaxy && terrain && (
+            <>
+              <section aria-label="Areas">
+                <h2>Areas</h2>
+                <ul className="legend-areas">
+                  {legend.shown.map(({ index: i, name, count }) => (
+                    <li key={name}>
+                      <button type="button" aria-pressed={galaxyArea === i} onClick={() => { setQuery(''); setGalaxyArea(galaxyArea === i ? null : i) }} onMouseEnter={() => setHoverArea(i)} onMouseLeave={() => setHoverArea(null)} onFocus={() => setHoverArea(i)} onBlur={() => setHoverArea(null)}>
+                        <span className="name" title={name}>{visible(name)}</span><span className="count">{count.toLocaleString('en')}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                {legend.total > legend.shown.length && <p className="dim" role="note">The {legend.shown.length} largest of {legend.total} areas; the table lists them all.</p>}
+              </section>
+              <section aria-label="Bundles">
+                <h2>Bundles</h2>
+                <ul className="legend-bundles">
+                  {drawnPairs.map((p) => (
+                    <li key={`${p.from}>${p.to}`}>
+                      <button type="button" aria-pressed={bundle?.pair === p} title={pairText(galaxy, p)} onClick={() => void openBundle(p)}>
+                        <span className="name">{visible(areaLabel(galaxy.areas[p.from]!.name))} → {visible(areaLabel(galaxy.areas[p.to]!.name))}</span>
+                        <span className="count">{p.observed ? <span className="basis observed">{p.observed.toLocaleString('en')} observed</span> : null}{p.inferred ? <span className="basis inferred">{p.inferred.toLocaleString('en')} inferred</span> : null}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                <p className="dim" role="note">{drawnPairs.length} of {plural(terrain.pairs.length, 'bundle')} drawn{hoverArea !== null ? `, with every bundle of ${galaxy.areas[hoverArea]!.name}` : ''}; the table lists every one.</p>
+              </section>
+            </>
           )
         ) : mode === 'explore' ? (
           <>
@@ -648,61 +644,44 @@ export function App() {
             {!diff && snapshots.length < 2 && <p className="dim" role="note">Only one snapshot is published; index again after a change to compare.</p>}
           </>
         )}
-        {mode === 'galaxy' && galaxy && !noWebGl && !tableView && <Galaxy data={galaxy} query={query} focusArea={galaxyArea} onOpen={openPoint} onHover={hoverPoint} onClear={() => { setQuery(''); setGalaxyArea(null) }} overlay={galaxyOverlay} />}
-        {mode === 'galaxy' && galaxyOverlay && <p className="dim diff-legend" role="note"><span><i className="sw added" />added since {diff!.data.base.snapshot_id.slice(0, 13)}</span><span><i className="sw changed" />changed</span><span>removed symbols are in the Diff table</span><span><kbd>d</kbd> hides this overlay</span></p>}
-        {mode === 'galaxy' && galaxy && (tableView || noWebGl) && (
-          <section className="table-view" aria-label="Galaxy table">
+        {mode === 'terrain' && galaxy && terrain && !noWebGl && !tableView && <Terrain data={galaxy} terrain={terrain} query={query} focusArea={galaxyArea} hoverArea={hoverArea} overlay={galaxyOverlay} show={showCell}
+          onOpen={openPoint} onHover={hoverPoint} onHoverArea={setHoverArea} onBundle={(p) => void openBundle(p)} onClear={() => { setQuery(''); setGalaxyArea(null) }} onWebGlFailure={() => setNoWebGl(true)} />}
+        {mode === 'terrain' && galaxyOverlay && <p className="dim diff-legend" role="note"><span><i className="sw added" />added since {diff!.data.base.snapshot_id.slice(0, 13)}</span><span><i className="sw changed" />changed</span><span>removed symbols are in the Diff table</span><span><kbd>d</kbd> hides this overlay</span></p>}
+        {mode === 'terrain' && galaxy && terrain && (tableView || noWebGl) && (
+          <section className="table-view" aria-label="Terrain table">
             {query.trim().length >= 2 ? (
               <VirtualTable count={rankedMatches.length} columns={4} caption={`Symbols matching “${query.trim()}”: ${plural(rankedMatches.length, 'symbol')}`}
                 head={<thead><tr><th>Name</th><th>Kind</th><th>Qualified name</th><th /></tr></thead>}
                 row={(k) => { const i = rankedMatches[k]!; return <tr key={i}><td>{visible(shortName(galaxy.names[i]!))}</td><td>{galaxy.kinds[galaxy.kind[i]!]}</td><td>{visible(galaxy.names[i]!)}</td><td><button type="button" onClick={() => openPoint(i)}>Explore</button></td></tr> }} />
             ) : (
-              <VirtualTable count={galaxy.areas.length} columns={8} caption="Areas"
-                head={<thead><tr><th>Area</th><th>Symbols</th><th>Files analysed</th><th>Not analysed</th><th>Excluded</th><th>Unresolved calls</th><th>Why not analysed</th><th /></tr></thead>}
+              <VirtualTable count={galaxy.areas.length} columns={9} caption="Areas"
+                head={<thead><tr><th>Area</th><th>Symbols</th><th>Files analysed</th><th>Not analysed</th><th>Excluded</th><th>Unresolved calls</th><th>Why not analysed</th><th>Coverage</th><th /></tr></thead>}
                 row={(i) => { const a = galaxy.areas[i]!; return (
                   <tr key={a.name}>
                     <td>{visible(a.name)}</td><td>{a.count.toLocaleString('en')}</td><td>{a.files.indexed.toLocaleString('en')}</td>
                     <td>{areaFog(a).unanalysed.toLocaleString('en')}</td><td>{a.files.excluded.toLocaleString('en')}</td>
                     <td>{a.calls.sites ? `${share(a.calls.unresolved, a.calls.sites)} of ${a.calls.sites.toLocaleString('en')}` : 'no call sites'}</td>
                     <td>{visible(a.gaps.map(([reason, n]) => `${reason} ${n.toLocaleString('en')}`).join(', '))}</td>
+                    <td>{[coverageOf(a).hatched ? 'hatched: calls unresolved' : '', coverageOf(a).ghost || !a.count ? 'ghost: files not analysed' : ''].filter(Boolean).join('; ') || 'complete'}</td>
                     <td>{a.count > 0 && <button type="button" onClick={() => { setGalaxyArea(i); setTableView(false) }}>Show</button>}</td>
+                  </tr>
+                ) }} />
+            )}
+            {query.trim().length < 2 && (
+              <VirtualTable count={terrain.pairs.length} columns={7} caption="Bundles between areas"
+                head={<thead><tr><th>From</th><th>To</th><th>Observed</th><th>Inferred</th><th>Types</th><th>Drawn</th><th /></tr></thead>}
+                row={(k) => { const p = terrain.pairs[k]!; return (
+                  <tr key={`${p.from}>${p.to}`}>
+                    <td>{visible(galaxy.areas[p.from]!.name)}</td><td>{visible(galaxy.areas[p.to]!.name)}</td><td>{p.observed.toLocaleString('en')}</td><td>{p.inferred.toLocaleString('en')}</td>
+                    <td>{p.types.map((x) => `${x.type} ${(x.observed + x.inferred).toLocaleString('en')}`).join(', ')}</td><td>{drawnPairs.includes(p) ? 'yes' : 'no'}</td>
+                    <td><button type="button" onClick={() => void openBundle(p)}>Open</button></td>
                   </tr>
                 ) }} />
             )}
           </section>
         )}
-        {mode !== 'galaxy' && mode !== 'explore' && scene && !noWebGl && !tableView && <GraphView scene={scene} reducedMotion={reducedMotion} onNode={onNode} onWebGlFailure={() => setNoWebGl(true)} />}
+        {mode !== 'terrain' && mode !== 'explore' && scene && !noWebGl && !tableView && <GraphView scene={scene} reducedMotion={reducedMotion} onNode={onNode} onWebGlFailure={() => setNoWebGl(true)} />}
         {mode === 'explore' && card && focus?.id === card.symbol.id && !tableView && <ProofLens card={card} chain={chain} onClear={clearPath} onOpen={setEvidence} onFocus={(id) => void loadFocus(id)} onMore={(side) => void loadMore(side)} hover={hover} />}
-        {scene && mode === 'map' && map && (tableView || noWebGl) && (
-          <section className="table-view" aria-label="Map table">
-            <table>
-              <caption>{map.text ? `Areas holding “${map.text}”` : 'Areas'}</caption>
-              <thead><tr><th>Name</th><th>Kind</th><th>{map.text ? 'Matches' : 'Symbols'}</th><th /></tr></thead>
-              <tbody>
-                {map.overview.children.map((c) => (
-                  <tr key={c.key}>
-                    <td>{visible(c.name)}</td><td>{c.kind === 'symbol' ? c.symbol_kind : c.kind}</td><td>{(map.text ? c.matches ?? 0 : c.symbols).toLocaleString('en')}</td>
-                    <td><button type="button" onClick={() => onNode(c.key)}>{c.kind === 'symbol' ? 'Explore' : 'Open'}</button></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {map.matches.length > 0 && (
-              <table>
-                <caption>Matching symbols{map.matches.length >= 100 ? ', first 100' : ''}</caption>
-                <thead><tr><th>Name</th><th>Kind</th><th>Qualified name</th><th>Location</th><th /></tr></thead>
-                <tbody>
-                  {map.matches.map((m) => (
-                    <tr key={m.id} {...hover(m.id)}>
-                      <td>{visible(m.name)}</td><td>{m.kind}</td><td>{visible(m.qualified_name)}</td><td>{visible(m.path)}:{m.start_line}</td>
-                      <td><button type="button" onClick={() => loadFocus(m.id)}>Explore</button></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </section>
-        )}
         {mode === 'ecosystem' && !ecosystem && !loading && <p className="hint">Pick a workspace to see its repositories and the links between them.</p>}
         {ecosystem && mode === 'ecosystem' && (tableView || noWebGl) && (
           <section className="table-view" aria-label="Ecosystem table">
@@ -736,7 +715,7 @@ export function App() {
             )}
           </section>
         )}
-        {scene && mode !== 'map' && mode !== 'ecosystem' && (tableView || (noWebGl && mode !== 'explore')) && (
+        {scene && mode !== 'ecosystem' && (tableView || (noWebGl && mode !== 'explore')) && (
           <section className="table-view" aria-label="Trace table">
             <table>
               <caption>{tracing ? 'Traced nodes in order' : 'Symbol and its neighbours'}</caption>
@@ -803,6 +782,30 @@ export function App() {
           </aside>
         )
       })()}
+      {mode === 'terrain' && bundle && galaxy && !evidence && (
+        <aside className="right" aria-label="Bundle">
+          <button type="button" className="close" aria-label="Close bundle" onClick={() => setBundle(null)}>×</button>
+          <h2 className="ev-title">{visible(galaxy.areas[bundle.pair.from]!.name)} → {visible(galaxy.areas[bundle.pair.to]!.name)}</h2>
+          <p className="dim">{visible(pairText(galaxy, bundle.pair))}</p>
+          {!bundle.data ? <p className="dim" role="status">Loading the relationships…</p> : (['observed', 'inferred'] as const).filter((basis) => bundle.data!.by_basis[basis]).map((basis) => (
+            <section key={basis} aria-label={`${basis === 'observed' ? 'Observed' : 'Inferred'} relationships`} className={`bundle-group ${basis}`}>
+              <h3>{basis === 'observed' ? 'Observed (compiler or runtime), solid' : 'Inferred (rules, syntax tier, models), dashed'}: {bundle.data!.by_basis[basis].toLocaleString('en')}</h3>
+              <table className="bundle-rows">
+                <thead><tr><th>Source</th><th>Target</th><th>Type</th><th>Site</th><th>Basis</th><th /></tr></thead>
+                <tbody>
+                  {bundle.data!.rows.filter((r) => r.basis === basis).map((r) => (
+                    <tr key={r.assertion_id}>
+                      <td>{visible(r.source.qualified_name)}</td><td>{visible(r.target.qualified_name)}</td><td>{r.type}</td>
+                      <td>{r.site ? `${visible(r.site.path)}:${r.site.start_line}` : 'no site'}</td><td>{r.basis}</td>
+                      <td><button type="button" onClick={() => void loadFocus(r.source.id)}>Explore</button></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </section>
+          ))}
+        </aside>
+      )}
       {evidence && (
         <aside className="right" aria-label="Evidence" tabIndex={-1} ref={evidencePanel}>
           <button type="button" className="close" aria-label="Close evidence" onClick={() => setEvidence(null)}>×</button>
@@ -816,12 +819,11 @@ export function App() {
         </aside>
       )}
       <section className="legend" aria-label="Legend">
-        {mode === 'galaxy' && <div className="dim">Every symbol is a point, coloured by its area and sized by its connections; lines are resolved relationships. Scroll to zoom, drag to pan.{galaxy && manyLinks(galaxy) ? ` With more than ${MOVING_LINK_LIMIT.toLocaleString('en')} links, they rest while the view moves.` : ''}</div>}
+        {mode === 'terrain' && <div className="dim">Each area is a grey cell sized by its symbols, nested by directory and file; areas carry no colour. Zoom in to name files, then symbols, once their cell is over 40 px; nothing moves as you zoom. Lines are bundles of relationships between areas, the arrowhead at the area called: solid is observed (compiler or runtime), dashed is inferred (rules, syntax tier, models). Twelve of the strongest are drawn, every inferred one, and every bundle of the area the pointer rests on. Hatching marks an area with more than 4% of its calls unresolved; a dashed ghost cell holds files the graph cannot analyse. Click a bundle to list its relationships.</div>}
         {mode === 'ecosystem' && <div className="dim">Each node is a repository, sized by its symbols; a label ending “newer snapshot exists” was linked from a snapshot that is no longer its current one. Lines are links between repositories, thicker for more; an amber line has candidates only. Short amber stubs are client facts that matched nothing in the workspace. Click a repository to see its links and colour the others by their relation to it; open it from there.
           <div>{(Object.keys(RELATION_COLOURS) as Relation[]).map((r) => <span key={r}><span className="sw" style={{ background: RELATION_COLOURS[r] }} /> {RELATION_WORDS[r]} </span>)}</div></div>}
-        {mode === 'map' && <div className="dim">Each node is an area, file or symbol, sized by its symbols, or by its matches while searching. Lines are resolved relationships between them, thicker for more. Click a node to open it.</div>}
         {mode === 'explore' && <div className="dim">Callers on the left, callees on the right, each at its call site and marked observed, inferred or unresolved in words. Click a row to read its call site; double-click it, or press f, to explore from it. Back returns to the previous symbol. Path to traces a path from the focus: each hop at its call site, the path labelled by its weakest hop, or where the search stopped.</div>}
-        {mode !== 'claims' && mode !== 'diff' && <div className="dim">{mode === 'galaxy' ? CONTAINMENT : NO_MEANING}</div>}
+        {mode !== 'claims' && mode !== 'diff' && <div className="dim">{mode === 'terrain' ? CONTAINMENT : NO_MEANING}</div>}
         {exportable && (
           <div className="export" role="group" aria-label="Export this view">
             <button type="button" onClick={exportPage}>Export page</button>
@@ -831,8 +833,8 @@ export function App() {
         )}
       </section>
       {palette && <Palette commands={commands} galaxy={galaxy} noRepository={!status} onClose={() => setPalette(false)}
-        onSymbol={(i) => { focusEvidence.current = true; void openPoint(i) }} onFile={(path) => void loadMap(path, '')} />}
-      <footer className="bottom" aria-live="polite" aria-busy={loading} data-answered={answered} data-testid="conclusion">{loading ? 'Loading…' : mode === 'galaxy' ? (galaxy ? (query.trim().length === 1 ? 'Type at least two characters to search.' : query.trim().length >= 2 ? `“${query.trim()}”: showing the ${plural(galaxyMatches.length, 'matching symbol')}; click one to explore it.` : galaxyArea !== null ? `${galaxy.areas[galaxyArea]!.name}: ${plural(galaxy.areas[galaxyArea]!.count, 'symbol')}. Click a point to explore it.` : galaxySummary(galaxy)) : '') : scene ? scene.conclusion : ''}</footer>
+        onSymbol={(i) => { focusEvidence.current = true; void openPoint(i) }} onFile={openFile} />}
+      <footer className="bottom" aria-live="polite" aria-busy={loading} data-answered={answered} data-testid="conclusion">{loading ? 'Loading…' : mode === 'terrain' ? (galaxy && terrain ? (query.trim().length === 1 ? 'Type at least two characters to search.' : query.trim().length >= 2 ? `“${query.trim()}”: showing the ${plural(galaxyMatches.length, 'matching symbol')}; click one to explore it.` : galaxyArea !== null ? `${galaxy.areas[galaxyArea]!.name}: ${plural(galaxy.areas[galaxyArea]!.count, 'symbol')}. Click a point to explore it.` : terrainSummary(galaxy, terrain.pairs, drawnPairs.length)) : '') : scene ? scene.conclusion : ''}</footer>
     </div>
   )
 }

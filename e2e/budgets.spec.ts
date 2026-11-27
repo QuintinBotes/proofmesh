@@ -32,17 +32,15 @@ test.describe('FR1452 the Galaxy payload is parsed off the page', () => {
     expect(workers.filter((u) => /\/assets\/galaxyWorker-[\w-]+\.js$/.test(u))).toHaveLength(1)
   })
 
-  test('FR1451 the first screen fetches the Galaxy view\'s code and no other view\'s; the Map\'s arrives when the Map is first shown', async ({ page }) => {
+  test('FR1451 the first screen fetches the Terrain view\'s code and not the graph renderer of the other views', async ({ page }) => {
     const again = await serveView(small.dataDir)
     try {
       const scripts: string[] = []
       page.on('request', (r) => { if (r.resourceType() === 'script') scripts.push(new URL(r.url()).pathname) })
       await page.goto(again.launchUrl)
-      await page.locator('.galaxy[data-ready]').waitFor({ timeout: 60000 })
-      expect(scripts.filter((u) => /^\/assets\/Galaxy-/.test(u))).toHaveLength(1)
+      await page.locator('.terrain[data-ready]').waitFor({ timeout: 60000 })
+      expect(scripts.filter((u) => /^\/assets\/Terrain-/.test(u))).toHaveLength(1)
       expect(scripts.filter((u) => /^\/assets\/GraphView-/.test(u))).toEqual([])
-      await page.getByRole('tab', { name: 'Map' }).click()
-      await expect.poll(() => scripts.filter((u) => /^\/assets\/GraphView-/.test(u)).length).toBe(1)
     } finally { again.stop() }
   })
 

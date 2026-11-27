@@ -4,6 +4,16 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 ## Unreleased
 
+The Terrain replaces the Galaxy and Map views: semantic zoom from areas to symbols, with bundles that open their evidence (part of #46; closes #42; FR1400 to FR1409):
+
+- The first view draws the snapshot's own layout as nested cells: areas, a file's first two directories such as `src/driver`, each named with its symbol count, then directories and files, then symbols. A label shows once its cell is 40 px on screen, never over another label; an area too small is named in its tooltip and the table. Symbols are drawn per area once the zoom reaches them, so a large snapshot's overview draws areas and bundles only. Nothing moves as you zoom.
+- Lines are bundles: the relationships between two areas, counted on the server per pair, type and basis and sent with the payload. At rest the twelve strongest observed bundles are drawn and every inferred one; resting the pointer on an area draws all of its bundles. A pair's observed relationships are one solid stroke and its inferred one dashed stroke, each with its count, the arrowhead at the area called. The status line says how many bundles there are in all.
+- Every bundle opens: a click on its stroke, its button in the Bundles list or its row in the table lists the relationships it stands for, each with source, target, type, call site and basis, grouped by basis. The rows come from `/api/v1/galaxy/bundle`, and each is a relationship `get_relationships` returns.
+- Coverage: an area with more than 4% of its calls unresolved is hatched, an area's files the graph could not analyse are a dashed ghost cell inside it, and an area with no symbols is a ghost cell beside the layout. Areas carry no colour; colour is kept for basis, change and coverage, and the legend says each in words.
+- The table view lists every area with its coverage and every bundle with its counts, each openable. The palette opens a file by bringing it into view. The views are Terrain, Explore, Claims, Diff and Ecosystem, keys `1` to `5`.
+- Observatory keeps one WebGL renderer, sigma (#42, option b): `@cosmos.gl/graph` and luma.gl are removed, 32 packages fewer in THIRD_PARTY_NOTICES.md, and the initial JavaScript is 213 KB gzipped (418 KB before).
+- The Galaxy payload is format 5 (`galaxy-v5`): two-directory areas, the layout's cells and the bundles. The Observatory benchmark writes synthetic galaxies in format 5 and times the Terrain switch (from Diff back to the Terrain) where it timed the Map switch. Playwright runs Chromium with the GPU, as the benchmark does.
+
 The Observatory is sent compressed and cached, split by renderer, parsed off the main thread, and its long tables are virtual (part of #47, closes #208; FR1450 to FR1455):
 
 - `proofmesh view` sends each asset Brotli- or gzip-compressed from copies the build writes beside it (`.br`, `.gz`), as `Accept-Encoding` allows. Hashed assets carry `Cache-Control: public, max-age=31536000, immutable` and the page `no-cache`; every API answer and refusal now carries `no-store`.

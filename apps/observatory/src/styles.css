@@ -99,21 +99,34 @@ body[data-motion=reduced] * { transition: none !important; animation: none !impo
 .table-view table + table { margin-top: 24px; }
 @media (prefers-color-scheme: light) { .crumbs-nav button { color: #0b4a85; } }
 
-.galaxy { position: absolute; inset: 0; background: #04060d; overflow: hidden; }
-.galaxy-canvas { position: absolute; inset: 0; }
+.terrain { position: absolute; inset: 0; background: #04060d; overflow: hidden; }
+.terrain-canvas { position: absolute; inset: 0; }
+/* Coverage over an area's cell (FR1405): hatching for unresolved calls, a dashed ghost for files not analysed, and ghost cells for areas with no symbols. */
+.terrain-fog { position: absolute; pointer-events: none; box-sizing: border-box; }
+.terrain-fog.hatched { background: repeating-linear-gradient(-45deg, rgba(242, 184, 75, 0.2) 0 1px, transparent 1px 10px); }
+.terrain-ghost { position: absolute; right: 6%; bottom: 6%; width: 22%; height: 22%; min-width: 8px; min-height: 8px; max-width: 36px; max-height: 36px; border: 1px dashed rgba(203, 213, 225, 0.75); background: repeating-linear-gradient(45deg, rgba(203, 213, 225, 0.16) 0 2px, transparent 2px 7px); box-sizing: border-box; }
+.terrain-fog.empty { border: 1px dashed rgba(203, 213, 225, 0.6); background: repeating-linear-gradient(45deg, rgba(203, 213, 225, 0.16) 0 2px, transparent 2px 7px); }
+.terrain-fog .fog-label { position: absolute; top: 100%; left: 0; margin-top: 4px; font-size: 11px; color: #cbd5e1; white-space: nowrap; text-shadow: 0 0 2px #000; }
+.terrain-label { position: absolute; font-size: 11px; color: #c9d3ea; white-space: nowrap; pointer-events: none; text-shadow: 0 0 2px #000, 0 0 4px #000; line-height: 14px; }
+.terrain-label.area { font-size: 12px; font-weight: 600; color: #e6eeff; letter-spacing: 0.02em; line-height: 16px; }
+.terrain-label.stacked span { display: block; }
+.terrain-label.area span + span { font-weight: 400; opacity: 0.85; }
+/* A symbol's name is centred under its point. */
+.terrain-label.symbol { color: #aab4c8; transform: translateX(-50%); }
+.legend-bundles { list-style: none; padding: 0; margin: 6px 0 8px; display: grid; gap: 2px; max-height: 260px; overflow: auto; }
+.legend-bundles button { display: grid; gap: 1px; width: 100%; background: none; border: 0; color: inherit; cursor: pointer; text-align: left; padding: 3px 4px; border-radius: 4px; font: inherit; font-size: 12px; }
+.legend-bundles button[aria-pressed="true"] { background: rgba(127, 212, 255, 0.14); }
+.legend-bundles .count { display: flex; gap: 8px; opacity: 0.8; }
+.basis.observed { border-bottom: 2px solid #7fd4ff; }
+.basis.inferred { border-bottom: 2px dashed #c79bff; }
+.bundle-group h3 { font-size: 12px; margin: 12px 0 4px; }
+.bundle-rows { width: 100%; border-collapse: collapse; font-size: 11px; }
+.bundle-rows td, .bundle-rows th { padding: 2px 4px; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
 /* Fog (FR059): hatched haze where files were not analysed, a dashed amber ring where most calls are unresolved, and a labelled ghost for an area with no symbols. Never mistaken for empty space. */
-.galaxy-fog { position: absolute; border-radius: 50%; pointer-events: none; box-sizing: border-box;
-  background: radial-gradient(circle, rgba(148, 163, 184, calc(0.08 + 0.32 * var(--haze))) 0%, rgba(148, 163, 184, calc(0.04 + 0.16 * var(--haze))) 60%, transparent 72%),
-    repeating-linear-gradient(45deg, rgba(203, 213, 225, calc(0.10 * var(--haze))) 0 2px, transparent 2px 7px); }
-.galaxy-fog.ring { border: 2px dashed rgba(242, 184, 75, 0.75); }
-.galaxy-fog.empty { border: 1px dashed rgba(203, 213, 225, 0.6); background: repeating-linear-gradient(45deg, rgba(203, 213, 225, 0.16) 0 2px, transparent 2px 7px); }
-.galaxy-fog .fog-label { position: absolute; top: 100%; left: 50%; transform: translateX(-50%); margin-top: 4px; font-size: 11px; color: #cbd5e1; white-space: nowrap; text-shadow: 0 0 2px #000; }
-.galaxy-label { position: absolute; transform: translate(-50%, -50%); font-size: 12px; font-weight: 600; letter-spacing: 0.04em; text-shadow: 0 0 10px currentColor, 0 0 2px #000; pointer-events: none; white-space: nowrap; opacity: 0.9; }
 .galaxy-tip { position: absolute; max-width: 420px; padding: 8px 10px; border-radius: 8px; background: rgba(10, 14, 26, 0.92); border: 1px solid rgba(127, 212, 255, 0.35); color: #e6eeff; font-size: 12px; pointer-events: none; overflow-wrap: anywhere; z-index: 3; }
 .legend-areas { list-style: none; padding: 0; margin: 6px 0 12px; display: grid; gap: 2px; max-height: 260px; overflow: auto; }
 .legend-areas button { display: flex; gap: 8px; align-items: center; width: 100%; background: none; border: 0; color: inherit; cursor: pointer; text-align: left; padding: 3px 4px; border-radius: 4px; font: inherit; font-size: 12px; }
 .legend-areas button[aria-pressed="true"] { background: rgba(127, 212, 255, 0.14); }
-.legend-areas .chip { width: 10px; height: 10px; border-radius: 50%; flex: none; box-shadow: 0 0 6px currentColor; }
 .legend-areas .count { margin-left: auto; opacity: 0.6; }
 
 /* Header: brand, views, search, snapshot. */
@@ -180,9 +193,8 @@ body[data-motion=reduced] * { transition: none !important; animation: none !impo
   :root { --dim: var(--text); --line: var(--text); }
   .table-view tr[data-current="false"] td { font-style: italic; }
   .legend-areas .count { opacity: 1; }
-  .galaxy-fog.empty { border: 2px dashed var(--text); }
-  .galaxy-fog.ring { border-width: 3px; }
-  .galaxy-fog .fog-label { color: var(--text); }
+  .terrain-fog.empty, .terrain-ghost { border: 2px dashed var(--text); }
+  .terrain-fog .fog-label, .terrain-label { color: var(--text); }
 }
 
 /* Replay and Diff (M6) */

@@ -24,14 +24,14 @@ test('AC30 repository content renders as text: no markup injection, bidi charact
   expect(dialogs).toBe(0)
 })
 
-test('FR1450 FR1453 a cold load gets every script compressed and immutable, the page revalidated, API answers unstored, and the Galaxy again from the HTTP cache on reload', async ({ page }) => {
+test('FR1450 FR1453 a cold load gets every script compressed and immutable, the page revalidated, API answers unstored, and the Galaxy payload again from the HTTP cache on reload', async ({ page }) => {
   const own = await serveView(view.dataDir)
   try {
     const responses: Array<{ url: string; type: string; headers: Record<string, string> }> = []
     page.on('response', (r) => responses.push({ url: new URL(r.url()).pathname, type: r.request().resourceType(), headers: r.headers() }))
     await page.goto(own.launchUrl)
-    // Drawn: every script the Galaxy loads has arrived, so the reload below finds it all in the cache.
-    await page.locator('.galaxy[data-ready]').waitFor({ timeout: 60000 })
+    // Drawn: every script the Terrain loads has arrived, so the reload below finds it all in the cache.
+    await page.locator('.terrain[data-ready]').waitFor({ timeout: 60000 })
     expect(responses.find((r) => r.type === 'document')!.headers['cache-control']).toBe('no-cache')
     const assets = responses.filter((r) => r.url.startsWith('/assets/'))
     expect(assets.filter((r) => r.type === 'script').length).toBeGreaterThan(0)
@@ -48,7 +48,7 @@ test('FR1450 FR1453 a cold load gets every script compressed and immutable, the 
     for (const r of responses) expect(r.headers['content-security-policy'], r.url).toMatch(/^default-src 'self'; script-src 'self';/)
 
     await page.reload()
-    await page.locator('.galaxy[data-ready]').waitFor({ timeout: 60000 })
+    await page.locator('.terrain[data-ready]').waitFor({ timeout: 60000 })
     const again = await page.evaluate(() => performance.getEntriesByType('resource').filter((e) => /\/api\/v1\/galaxy\/v\d+\//.test(e.name) || /\/assets\/.*\.js$/.test(e.name)).map((e) => [new URL(e.name).pathname, (e as PerformanceResourceTiming).transferSize] as const))
     expect(again.some(([u]) => u.startsWith('/api/v1/galaxy/'))).toBe(true)
     // Served from the HTTP cache: nothing crossed the wire.

@@ -5,7 +5,7 @@ import { asProofmeshError, ProofmeshError } from '../core/errors.js'
 import { randomToken } from '../core/hash.js'
 import { observatoryDir } from '../core/paths.js'
 import { runTool } from '../query/tools.js'
-import { GALAXY_FORMAT, galaxyFor } from '../query/galaxy.js'
+import { GALAXY_FORMAT, galaxyBundle, galaxyFor } from '../query/galaxy.js'
 import { Catalog } from '../meshstore/catalog.js'
 import { openSnapshot } from '../meshstore/snapshot.js'
 
@@ -58,7 +58,7 @@ export async function startViewServer(dataDir: string, port = 7317, assets = obs
           return send(204, '', 'text/plain', { 'Set-Cookie': `pm_session=${session}; HttpOnly; SameSite=Strict; Path=/` })
         }
         const m = /^\/api\/v1\/tools\/([a-z_]+)$/.exec(url.pathname)
-        const api = m || url.pathname === '/api/v1/galaxy' || url.pathname === '/api/v1/galaxy/symbol' || url.pathname === '/api/v1/snapshots'
+        const api = m || url.pathname === '/api/v1/galaxy' || url.pathname === '/api/v1/galaxy/symbol' || url.pathname === '/api/v1/galaxy/bundle' || url.pathname === '/api/v1/snapshots'
         if (api && !signedIn()) return fail(new ProofmeshError('UNAUTHORIZED', 'no valid session'))
         if (m) {
           // A lean answer is its text alone, as over MCP (FR095).
@@ -70,6 +70,12 @@ export async function startViewServer(dataDir: string, port = 7317, assets = obs
         // The Observatory reads what every client can: these routes are the MCP tools' data (FR055).
         if (url.pathname === '/api/v1/snapshots') return send(200, JSON.stringify({ snapshots: (runTool(dataDir, 'list_snapshots', scope.repositoryId ? { repository_id: scope.repositoryId } : {}).data as { snapshots: unknown[] }).snapshots }))
         if (url.pathname === '/api/v1/galaxy') return send(200, galaxyFor(dataDir, scope).gz, 'application/octet-stream', { 'Content-Encoding': 'gzip' })
+        // The relationships a Terrain bundle stands for (FR1403): one area to another, a page at a time.
+        if (url.pathname === '/api/v1/galaxy/bundle') {
+          const offset = body.offset ?? 0, limit = body.limit ?? 500
+          if (typeof body.from !== 'string' || typeof body.to !== 'string' || !Number.isInteger(offset) || (offset as number) < 0 || !Number.isInteger(limit) || (limit as number) < 1 || (limit as number) > 1000) return fail(new ProofmeshError('INVALID_ARGUMENT', 'from and to are area names; offset is a whole number from 0, limit from 1 to 1000'))
+          return send(200, JSON.stringify(galaxyBundle(dataDir, scope, body.from, body.to, { offset: offset as number, limit: limit as number })))
+        }
         if (url.pathname === '/api/v1/galaxy/symbol') {
           const id = galaxyFor(dataDir, scope).ids[Number(body.index)]
           if (!Number.isInteger(body.index) || !id) return fail(new ProofmeshError('INVALID_ARGUMENT', 'index is not a point of the current galaxy'))
