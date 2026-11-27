@@ -9,12 +9,14 @@ test('FR068 FR057 FR1224 every graph view says what position means and that only
   await page.goto(view.launchUrl)
   await expect(page.getByTestId('conclusion')).toContainText('symbols in', { timeout: 60000 })
   const legend = page.getByRole('region', { name: 'Legend' })
-  // The Galaxy's positions come from the path tree, so its legend says they show containment, and still that nearness is no relationship.
+  // The Terrain's positions come from the path tree, so its legend says they show containment, and still that nearness is no relationship (SC-003).
   await expect(legend).toContainText('Position shows containment: directory, then file, then name. Nearness is not a relationship; only drawn lines are relationships.')
   await expect(legend).not.toContainText('Position carries no meaning')
+  // Story 2: the legend says in words which stroke is which basis (FR1406).
+  await expect(legend).toContainText('solid is observed (compiler or runtime), dashed is inferred (rules, syntax tier, models)')
   await expect(page.locator('.crumbs')).toContainText('no execution')
   // A path is traced inside Explore's lens (FR1300); trace.spec.ts checks the legend beside it.
-  for (const tab of ['Map', 'Explore', 'Ecosystem']) {
+  for (const tab of ['Explore', 'Ecosystem']) {
     await page.getByRole('tab', { name: tab }).click()
     await expect(legend, tab).toContainText('Position carries no meaning; only drawn lines are relationships.')
     await expect(page.locator('.crumbs'), tab).toContainText('no execution')

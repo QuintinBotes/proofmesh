@@ -20,10 +20,11 @@ test.beforeAll(async ({ browser }) => {
 })
 test.afterAll(async () => { await context?.close(); view?.stop() })
 
-test('A11 the Galaxy opens first with every symbol, and search shows only the matches and lists them', async () => {
-  await expect(page.getByRole('tab', { name: 'Galaxy' })).toHaveAttribute('aria-selected', 'true')
-  await expect(page.getByTestId('conclusion')).toHaveText('8 symbols in 4 areas, 5 links; 3 more areas hold files the graph cannot see. Search, pick an area, or click a point.', { timeout: 60000 })
-  await expect(page.getByRole('region', { name: 'Areas' })).toContainText('packages/api/src')
+test('A11 FR1400 the Terrain opens first with every area, and search shows only the matches and lists them', async () => {
+  await expect(page.getByRole('tab', { name: 'Terrain' })).toHaveAttribute('aria-selected', 'true')
+  await expect(page.getByRole('tab')).toHaveText(['Terrain', 'Explore', 'Claims', 'Diff', 'Ecosystem'])
+  await expect(page.getByTestId('conclusion')).toHaveText('8 symbols in 4 areas; 2 of 2 bundles between areas drawn; 1 more area holds files the graph cannot see. Search, zoom into an area, or open a bundle.', { timeout: 60000 })
+  await expect(page.getByRole('region', { name: 'Areas' })).toContainText('packages/api')
   await page.getByLabel('Search').fill('format')
   await expect(page.getByTestId('conclusion')).toHaveText('“format”: showing the 2 matching symbols; click one to explore it.')
   await expect(page.getByRole('status').filter({ hasText: 'of 8 symbols' })).toContainText('“format”: 2 of 8 symbols')
@@ -31,22 +32,27 @@ test('A11 the Galaxy opens first with every symbol, and search shows only the ma
   await expect(page.getByRole('table', { name: 'Symbols matching “format”' }).locator('tbody tr td:nth-child(3)')).toHaveText(['packages/format/src/currency:formatAmount', 'packages/legacy/src/format:formatAmount'])
 })
 
-test('FR059 SC011 areas the graph cannot see are drawn as fog, and the table says why', async () => {
+test('FR059 FR1405 FR1407 SC011 files the graph cannot see are drawn as ghost cells, distinct from empty space, and the table says why', async () => {
   await page.getByLabel('Search').fill('')
   await page.getByRole('button', { name: 'Graph', exact: true }).click()
-  await expect(page.getByTestId('conclusion')).toContainText('3 more areas hold files the graph cannot see', { timeout: 60000 })
-  const ghosts = page.locator('.galaxy-fog.empty')
-  // Fog is placed once the simulation has positions, which a busy machine can delay past the default budget.
-  await expect(ghosts).toHaveCount(3, { timeout: 30000 })
-  await expect(ghosts.locator('.fog-label')).toHaveText([
-    '(root): 1 file not analysed', 'packages/api: 1 file not analysed', 'packages/billing/dist: 1 excluded',
-  ])
+  await expect(page.getByTestId('conclusion')).toContainText('1 more area holds files the graph cannot see', { timeout: 60000 })
+  // An area with no symbols has no cell in the layout: it is a ghost cell in the row below, never blank space.
+  const ghosts = page.locator('.terrain-fog.empty')
+  await expect(ghosts).toHaveCount(1)
+  await expect(ghosts).toHaveAttribute('title', '(root): 1 file not analysed (no_adapter:.md 1)')
+  // An area with symbols and a file it could not analyse carries a ghost inside its cell, its tooltip saying how many and why.
+  await expect(page.locator('.terrain-fog[data-area="packages/api"] .terrain-ghost')).toHaveAttribute('title', 'packages/api: 1 file not analysed (no_adapter:.avsc 1)')
+  // Excluded files are not a gap in what could be analysed, so they draw no ghost.
+  await expect(page.locator('.terrain-fog[data-area="packages/billing"]')).toHaveCount(0)
   await expect(page.getByRole('region', { name: 'Areas' }).getByRole('button')).toHaveCount(4)
   await page.getByRole('button', { name: 'Table', exact: true }).click()
-  const rows = page.getByRole('table', { name: 'Areas' }).locator('tbody tr')
-  await expect(rows).toHaveCount(7)
-  await expect(rows.filter({ hasText: 'packages/api/src' }).locator('td:nth-child(6)')).toHaveText('1 of 2')
-  await expect(rows.filter({ hasText: 'packages/billing/dist' }).locator('td')).toHaveText(['packages/billing/dist', '0', '0', '0', '1', 'no call sites', '**/dist/** 1', ''])
+  const rows = page.getByRole('table', { name: 'Areas', exact: true }).locator('tbody tr')
+  await expect(rows).toHaveCount(5)
+  await expect(rows.filter({ hasText: 'packages/api' }).locator('td:nth-child(6)')).toHaveText('1 of 2')
+  await expect(rows.filter({ hasText: 'packages/api' }).locator('td:nth-child(8)')).toHaveText('ghost: files not analysed')
+  await expect(rows.filter({ hasText: 'packages/billing' }).locator('td')).toHaveText(['packages/billing', '3', '2', '0', '1', '0 of 2', '**/dist/** 1', 'complete', 'Show'])
+  const bundles = page.getByRole('table', { name: 'Bundles between areas' }).locator('tbody tr')
+  await expect(bundles.locator('td:nth-child(-n+5)')).toHaveText(['packages/billing', 'packages/format', '1', '0', 'calls 1', 'packages/api', 'packages/billing', '1', '0', 'calls 1'])
 })
 
 test('FR1223 the map paints at its final positions: no simulation, no layout control and no layout cache in the browser', async ({ browser }) => {
@@ -56,10 +62,10 @@ test('FR1223 the map paints at its final positions: no simulation, no layout con
   const cold = await fresh.newPage()
   cold.on('pageerror', (e) => errors.push(e.message))
   await cold.goto(second.launchUrl)
-  const labels = cold.locator('.galaxy-label')
+  const labels = cold.locator('.terrain-label.area')
   await expect(labels).toHaveCount(4, { timeout: 60000 })
   const first = await labels.evaluateAll((ls) => ls.map((l) => l.getBoundingClientRect()).map((r) => `${Math.round(r.x)},${Math.round(r.y)}`))
-  await expect(cold.getByRole('toolbar', { name: 'Galaxy controls' }).getByRole('button')).toHaveText(['+', '−', '⤢'])
+  await expect(cold.getByRole('toolbar', { name: 'Terrain controls' }).getByRole('button')).toHaveText(['+', '−', '⤢'])
   await expect(cold.getByRole('button', { name: /layout/i })).toHaveCount(0)
   // Long enough for any simulation to have moved a point, and for a settled layout to have been stored.
   await cold.waitForTimeout(3000)
@@ -74,7 +80,8 @@ test('A11 B5 B20 a one-character search says why nothing shows, and every area i
   await page.getByLabel('Search').fill('f')
   await expect(page.getByTestId('conclusion')).toHaveText('Type at least two characters to search.')
   await page.getByLabel('Search').fill('')
-  await expect(page.locator('.galaxy-label')).toHaveText(['billing/src', 'api/src', 'format/src', 'legacy/src'])
+  // Every area is named with its count, largest first (FR1404).
+  await expect(page.locator('.terrain-label.area')).toHaveText(['billing 3', 'api 3', 'format 1', 'legacy 1'])
 })
 
 test.describe('FR1220 the TypeORM sample draws the same map everywhere', () => {
@@ -117,9 +124,9 @@ test('FR1210 a search with one match and an area of one symbol are said in the s
   await page.getByLabel('Search').fill('dispatch')
   await expect(page.getByTestId('conclusion')).toHaveText('“dispatch”: showing the 1 matching symbol; click one to explore it.')
   await page.getByLabel('Search').fill('')
-  await page.getByRole('region', { name: 'Areas' }).getByRole('button', { name: /legacy\/src/ }).click()
-  await expect(page.getByTestId('conclusion')).toHaveText('packages/legacy/src: 1 symbol. Click a point to explore it.')
-  await page.getByRole('region', { name: 'Areas' }).getByRole('button', { name: /legacy\/src/ }).click()
+  await page.getByRole('region', { name: 'Areas' }).getByRole('button', { name: /legacy/ }).click()
+  await expect(page.getByTestId('conclusion')).toHaveText('packages/legacy: 1 symbol. Click a point to explore it.')
+  await page.getByRole('region', { name: 'Areas' }).getByRole('button', { name: /legacy/ }).click()
 })
 
 test('A11 B10 no view raised a page error while these tests ran', async () => {

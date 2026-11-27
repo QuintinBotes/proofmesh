@@ -9,14 +9,16 @@ const byName = (a: Cell, b: Cell) => (a.name < b.name ? -1 : a.name > b.name ? 1
 const MARGIN = 0.04
 /** Positions are quantised to 16 bits per axis within the map's square frame. */
 export const LAYOUT_SCALE = 65536
+/** A directory's or file's cell as placed (FR1401): its parent's index (-1 for the root), its path segment, its symbols and its box in the unit square. A directory's own files, beside its subdirectories, are one more cell named ''. */
+export type LayoutCell = { parent: number; name: string; count: number; x: number; y: number; w: number; h: number }
 
 /**
  * Where each symbol sits (FR1220): an ordered strip treemap of the path tree, directories then files then symbols, each in
  * name order, a symbol's area the same as every other's. Edges play no part. It is a pure function of the paths, names and
  * declaration order, and uses only arithmetic that IEEE 754 rounds the same everywhere, so every machine gets the same
- * bytes. Returns x, y pairs in item order, each 0 to 65535.
+ * bytes. Returns x, y pairs in item order, each 0 to 65535. Given cells, it also lists every cell it placed, parents first.
  */
-export function layoutPositions(items: Placed[]): Uint16Array {
+export function layoutPositions(items: Placed[], cells?: LayoutCell[]): Uint16Array {
   const root = cell('')
   items.forEach((it, i) => {
     const parts = it.path.split('/')
@@ -33,7 +35,8 @@ export function layoutPositions(items: Placed[]): Uint16Array {
   const q = (v: number) => Math.min(LAYOUT_SCALE - 1, Math.floor(v * LAYOUT_SCALE))
   // Strips are rows at even depths and columns at odd ones, never chosen by a cell's shape: a cell that grows from a little
   // wide to a little tall would turn everything in it.
-  const place = (c: Cell, depth: number, x: number, y: number, w: number, h: number) => {
+  const place = (c: Cell, depth: number, x: number, y: number, w: number, h: number, parent: number) => {
+    const me = cells ? cells.push({ parent, name: c.name, count: c.weight, x, y, w, h }) - 1 : -1
     if (c.items.length) {
       // Overloads share a name, so declaration order breaks the tie, never an id or a hash.
       const order = c.items.slice().sort((a, b) => { const p = items[a]!, r = items[b]!; return p.name < r.name ? -1 : p.name > r.name ? 1 : p.line - r.line || p.byte - r.byte || a - b })
@@ -46,10 +49,10 @@ export function layoutPositions(items: Placed[]): Uint16Array {
     const kids = dirs.length && files.length ? [...dirs, own] : [...dirs, ...files]
     strips(kids.map((k) => k.weight), depth % 2 === 0, x, y, w, h, (k, cx, cy, cw, ch) => {
       const m = Math.min(cw, ch) * MARGIN
-      place(kids[k]!, depth + 1, cx + m, cy + m, cw - 2 * m, ch - 2 * m)
+      place(kids[k]!, depth + 1, cx + m, cy + m, cw - 2 * m, ch - 2 * m, me)
     })
   }
-  if (items.length) place(root, 0, 0, 0, 1, 1)
+  if (items.length) place(root, 0, 0, 0, 1, 1, -1)
   return out
 }
 
@@ -82,4 +85,12 @@ function strips(weights: number[], rows: boolean, x: number, y: number, w: numbe
     offset += t
     at = end
   }
+}
+
+/** The cells as payload sections: each box as x, y, width and height quantised to 16 bits like positions, the parent, the symbol count and the segment names joined by newlines. */
+export function packCells(cells: LayoutCell[]): { rects: Uint16Array; parent: Int32Array; count: Uint32Array; cellNames: Uint8Array } {
+  const q = (v: number) => Math.max(0, Math.min(65535, Math.round(v * 65536)))
+  const rects = new Uint16Array(cells.length * 4), parent = new Int32Array(cells.length), count = new Uint32Array(cells.length)
+  cells.forEach((c, i) => { rects.set([q(c.x), q(c.y), q(c.w), q(c.h)], i * 4); parent[i] = c.parent; count[i] = c.count })
+  return { rects, parent, count, cellNames: new TextEncoder().encode(cells.map((c) => c.name.replace(/\n/g, ' ')).join('\n')) }
 }

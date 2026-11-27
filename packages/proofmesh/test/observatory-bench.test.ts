@@ -53,7 +53,7 @@ describe('FR1160 to FR1169 the Observatory benchmark measures what a reader wait
     // FR1161: every field of FR-002, cold and warm, each the median of the measured runs with its spread.
     const LOAD = ['fcp_ms', 'first_draw_ms', 'settled_ms', 'tti_ms', 'tbt_ms', 'longest_task_ms', 'js_heap_mb', 'browser_rss_mb']
     const AFTER = ['frame_idle_p50_ms', 'frame_idle_p95_ms', 'frame_idle_max_ms', 'frame_pan_zoom_p50_ms', 'frame_pan_zoom_p95_ms', 'frame_pan_zoom_max_ms',
-      'search_ms', 'palette_p50_ms', 'palette_p95_ms', 'palette_max_ms', 'palette_typing_longest_task_ms', 'symbol_to_evidence_ms', 'symbol_to_evidence_requests', 'edge_to_evidence_ms', 'edge_to_evidence_requests', 'map_switch_ms', 'map_switch_cold_ms']
+      'search_ms', 'palette_p50_ms', 'palette_p95_ms', 'palette_max_ms', 'palette_typing_longest_task_ms', 'symbol_to_evidence_ms', 'symbol_to_evidence_requests', 'edge_to_evidence_ms', 'edge_to_evidence_requests', 'terrain_switch_ms', 'terrain_switch_cold_ms']
     for (const k of [...LOAD, ...AFTER]) {
       expect(res.cold[k], `cold.${k}`).toMatchObject({ median: expect.any(Number), min: expect.any(Number), max: expect.any(Number), values: [expect.any(Number)] })
       expect(res.first_run[k], `first_run.${k}`).toEqual(expect.any(Number))
