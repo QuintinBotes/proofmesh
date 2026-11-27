@@ -467,7 +467,7 @@
         "total": {
           "type": "integer",
           "minimum": 0,
-          "description": "How many rows the answer's list holds uncut, before max_rows, max_bytes or a page cut it: analyze_impact's dependents and find_tests' tests. Absent from the other tools."
+          "description": "How many rows the search found, before max_rows, max_bytes or a page cut the list: analyze_impact's dependents and find_tests' tests. A search stopped by max_depth or its node budget found only part of what may be affected, so total then counts that part. Absent from the other tools."
         }
       }
     },

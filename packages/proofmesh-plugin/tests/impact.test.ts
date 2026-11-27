@@ -407,6 +407,27 @@ test('FR864: an analyze_impact answer cut at max_rows shows the dependents it ho
   }
 })
 
+test('FR860 FR864: a dependent whose relationship is recorded in another file is shown and copied at that site, and a depth stop that left no row out prints no count', async ($, on) => {
+  const r = RECORDED.impact
+  const registered = { ...r.data.dependents[0]!, relationship: 'registered_as', site: { path: 'src/Program.cs', start_line: 13 } }
+  const stopped = { ...r, data: { ...r.data, dependents: [registered] }, completion: { ...r.completion, truncated: true, stop_reasons: ['max_depth'], total: 1 }, limitations: ['The search stopped at the depth limit; more code may be affected.'] }
+  const w = world(on, { impact: stopped })
+  await start($, w)
+  await editCurrency($)
+  await publish(w, HEAD)
+  const { ui, lines } = await pane($, w, 'terminal')
+  expect(lines).toEqual([
+    `impact as of ${HEAD} (current)`,
+    CURRENCY,
+    'changed formatAmount line 1',
+    'registered_as invoiceTotal src/Program.cs:13 resolved depth=1 open',
+    '# The search stopped at the depth limit; more code may be affected.',
+    'no test reaches it',
+  ])
+  await ui.press({ key: 'dep:0' })
+  expect(w.copied).toEqual([{ text: 'src/Program.cs:13', surface: 'terminal' }])
+})
+
 test('FR865 FR866: a get_symbol call by bare id is recorded as opened, and the pane leaves the dependent with that id unmarked', async ($, on) => {
   const w = world(on, { recording: true })
   await start($, w)

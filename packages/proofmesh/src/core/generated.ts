@@ -115,7 +115,7 @@ timed_out: boolean
  */
 next_cursor: (string | null)
 /**
- * How many rows the answer's list holds uncut, before max_rows, max_bytes or a page cut it: analyze_impact's dependents and find_tests' tests. Absent from the other tools.
+ * How many rows the search found, before max_rows, max_bytes or a page cut the list: analyze_impact's dependents and find_tests' tests. A search stopped by max_depth or its node budget found only part of what may be affected, so total then counts that part. Absent from the other tools.
  */
 total?: number
 }
@@ -167,7 +167,7 @@ name: string
 qualified_name: string
 path: string
 /**
- * The line in path of the relationship that first reached the dependent (for a call, its call site); its declaration line when dispatch alone reached it or that relationship is recorded in another file.
+ * The line in path of the relationship that first reached the dependent (for a call, its call site); its declaration line when dispatch alone reached it or that relationship is recorded in another file, which site then names.
  */
 line: number
 /**
@@ -181,7 +181,7 @@ depth: number
 basis: ("observed" | "inferred")
 project: (string | null)
 /**
- * For a file reached through imports (kind file): the import statement that reached it.
+ * Where the relationship that first reached the dependent is recorded, when that is not in path: a registration in another file, say (FR860). For a file reached through imports (kind file): the import statement that reached it.
  */
 site?: {
 path: string

@@ -505,19 +505,14 @@ function siteOf(db: Database.Database, assertionId: string): { path: string; sta
 
 /**
  * Each dependent at the site of the edge that first reached it, or at its declaration when dispatch reached it (FR097, FR860): the
- * row's line and relationship, and, in `at`, where its lean row points, which is that site even when it lies in another file.
+ * row's line in its own file and the relationship, and `site` when that edge is recorded in another file (a registration, say).
  */
-function impactSites(ctx: Ctx, dependents: Impact['dependents'], reached: Impact['reached_by']) {
-  const at = new Map<string, { path: string; line: number }>()
-  const rows = dependents.map((x) => {
-    const via = reached.get(x.id), site = via ? siteOf(ctx.db, via) : null
-    const line = site?.path === x.path ? site.start_line : (ctx.db.prepare('select start_line from symbol where id = ?').get(x.id) as { start_line: number }).start_line
-    at.set(x.id, site ? { path: site.path, line: site.start_line } : { path: x.path, line })
-    const relationship = via ? (ctx.db.prepare('select type from assertion where id = ?').get(via) as { type: string }).type : 'dispatch'
-    return { ...x, line, relationship }
-  })
-  return { rows, at }
-}
+const impactRows = (ctx: Ctx, dependents: Impact['dependents'], reached: Impact['reached_by']) => dependents.map((x) => {
+  const via = reached.get(x.id), site = via ? siteOf(ctx.db, via) : null
+  const line = site?.path === x.path ? site.start_line : (ctx.db.prepare('select start_line from symbol where id = ?').get(x.id) as { start_line: number }).start_line
+  const relationship = via ? (ctx.db.prepare('select type from assertion where id = ?').get(via) as { type: string }).type : 'dispatch'
+  return { ...x, line, relationship, ...(site && site.path !== x.path ? { site: { path: site.path, start_line: site.start_line } } : {}) }
+})
 
 type Boundaries = { items: Boundary[]; count: number; by_reason: Record<string, number> }
 const NO_BOUNDARIES: Boundaries & { name_matched: number } = { items: [], count: 0, by_reason: {}, name_matched: 0 }
@@ -749,10 +744,10 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
       ...leanReferencesNote(ctx, types),
     ]
     const stop: Array<'max_depth' | 'max_rows'> = [...(r.stopped_by === 'max_depth' ? ['max_depth' as const] : []), ...(r.stopped_by === 'node_budget' || r.totals.dependents > ctx.limits.max_rows ? ['max_rows' as const] : [])]
-    const { rows, at } = impactSites(ctx, r.dependents, reached_by)
+    const rows = impactRows(ctx, r.dependents, reached_by)
     return {
       data: { subjects, types, ...r, dependents: rows }, stop_reasons: stop, limitations, shrink: 'dependents', total: r.totals.dependents,
-      lean: (data) => (data.dependents as typeof rows).map((x) => leanRow(leanName(x), at.get(x.id)!.path, at.get(x.id)!.line, [`depth=${x.depth}`, ...(x.relationship === 'dispatch' ? ['dispatch'] : types.length > 1 ? [x.relationship] : []), ...(x.basis === 'inferred' ? ['inferred'] : [])])),
+      lean: (data) => (data.dependents as typeof rows).map((x) => leanRow(leanName(x), x.site?.path ?? x.path, x.site?.start_line ?? x.line, [`depth=${x.depth}`, ...(x.relationship === 'dispatch' ? ['dispatch'] : types.length > 1 ? [x.relationship] : []), ...(x.basis === 'inferred' ? ['inferred'] : [])])),
     }
   },
 

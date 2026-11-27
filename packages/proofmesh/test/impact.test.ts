@@ -76,4 +76,18 @@ describe('FR860 FR861 analyze_impact compact rows carry the id, the site line an
     expect((env.data as any).dependents.map((x: any) => x.name)).toEqual(['invoiceTotal'])
     expect(env.completion).toMatchObject({ truncated: true, stop_reasons: ['max_rows'], total: 2 })
   })
+
+  it('FR861 a depth stop is truncated too, and total counts only what the walk reached', () => {
+    expect(compact({ max_depth: 1 }).completion).toMatchObject({ truncated: true, stop_reasons: ['max_depth'], total: 1 })
+  })
+
+  it('FR860 a dependent reached by a relationship recorded in another file carries that site, which its lean row shows', async () => {
+    const { dataDir: f } = await indexedDataDir(fixtureRepo('cs-frameworks'))
+    const pricing = (tool(f, 'find_symbols', { text: 'IPricing', kinds: ['interface'] }).data.symbols as Array<{ id: string }>)[0]!.id
+    const row = ((tool(f, 'analyze_impact', { subject_ids: [pricing], types: ['registered_as'], envelope: 'compact' }).data as any).dependents as any[]).find((x) => x.name === 'Pricing')
+    expect(row).toMatchObject({ relationship: 'registered_as', site: { path: 'src/Shop.Api/Program.cs', start_line: 13 } })
+    expect(row.path).not.toBe(row.site.path)
+    const lean = runTool(f, 'analyze_impact', { subject_ids: [pricing], types: ['registered_as'], envelope: 'lean' }).text!.split('\n')
+    expect(lean).toContain('Shop.Application.Pricing src/Shop.Api/Program.cs:13 depth=1')
+  }, 120000)
 })

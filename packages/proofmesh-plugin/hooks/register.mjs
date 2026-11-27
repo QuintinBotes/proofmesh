@@ -335,10 +335,12 @@ async function analyse($) {
       const t = await callTool($, 'find_tests', { ...pin, key: s.stable_key, envelope: 'compact' })
       const row = {
         name: s.name, line: s.start_line,
-        // inferred when a hop of the dependent's chain is; every other row was reached along resolved relationships.
-        dependents: i.data.dependents.map((d) => ({ id: d.id, name: d.name, path: d.path, line: d.line, relationship: d.relationship, evidence: d.basis === 'inferred' ? 'inferred' : 'resolved', depth: `depth=${d.depth}` })),
+        // At the site that reaches the change, which a relationship recorded in another file (a registration) names apart; inferred
+        // when a hop of the dependent's chain is, and every other row was reached along resolved relationships.
+        dependents: i.data.dependents.map((d) => ({ id: d.id, name: d.name, path: d.path, loc: d.site ? `${d.site.path}:${d.site.start_line}` : `${d.path}:${d.line}`, relationship: d.relationship, evidence: d.basis === 'inferred' ? 'inferred' : 'resolved', depth: `depth=${d.depth}` })),
         notes: [
-          ...(i.completion.truncated ? [`# dependents: ${i.data.dependents.length} of ${i.completion.total} shown (${i.completion.stop_reasons.join(', ')})`] : []),
+          // A depth or node-budget stop leaves the rest unfound, so total counts only what was found; its own note says more may be affected.
+          ...(i.completion.total > i.data.dependents.length ? [`# dependents: ${i.data.dependents.length} of ${i.completion.total} shown (${i.completion.stop_reasons.join(', ')})`] : []),
           ...i.limitations.filter((l) => !l.startsWith(STANDING)).map((l) => `# ${l}`),
         ],
         tests: t.data.tests.map((x) => `test ${x.name} ${x.path}:${x.line} ${x.evidence}${x.basis === 'inferred' ? ' inferred' : ''}`),
@@ -377,7 +379,7 @@ function impactRows() {
     out.push({ depth: 0, text: path })
     for (const s of symbols) {
       out.push({ depth: 1, text: `changed ${s.name} line ${s.line}` })
-      for (const d of s.dependents) out.push({ depth: 2, dep: { head: `${d.relationship} ${d.name}`, loc: `${d.path}:${d.line}`, tail: [d.evidence, d.depth, ...(unopened(d) ? ['not opened'] : [])].filter(Boolean).join(' ') } })
+      for (const d of s.dependents) out.push({ depth: 2, dep: { head: `${d.relationship} ${d.name}`, loc: d.loc, tail: [d.evidence, d.depth, ...(unopened(d) ? ['not opened'] : [])].filter(Boolean).join(' ') } })
       out.push(...s.notes.map((n) => ({ depth: 2, text: n, dim: true })))
       out.push(...(s.tests.length ? s.tests : ['no test reaches it']).map((t) => ({ depth: 2, text: t })))
       if (s.cut) out.push({ depth: 2, text: s.cut, dim: true })
