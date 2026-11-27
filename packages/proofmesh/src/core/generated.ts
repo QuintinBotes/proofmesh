@@ -4,7 +4,7 @@
 export interface Envelope {
 schema_version: "0.1"
 query_id: string
-tool: ("workspace_status" | "list_repositories" | "list_snapshots" | "list_workspaces" | "find_symbols" | "get_symbol" | "get_relationships" | "trace_paths" | "read_evidence" | "get_overview" | "analyze_impact" | "find_tests" | "search_sources" | "get_memory" | "verify_claim" | "request_index" | "get_job" | "get_claims" | "save_memory" | "get_table_reach" | "get_property_reads" | "get_external_usage" | "find_query_source" | "compare_snapshots" | "list_queries" | "get_ecosystem" | "prepare_verification" | "get_verification" | "impact_completeness" | "get_symbols_at" | "get_session_trail")
+tool: ("workspace_status" | "list_repositories" | "list_snapshots" | "list_workspaces" | "find_symbols" | "get_symbol" | "get_relationships" | "trace_paths" | "read_evidence" | "get_overview" | "analyze_impact" | "find_tests" | "search_sources" | "get_memory" | "verify_claim" | "request_index" | "get_job" | "get_claims" | "save_memory" | "get_table_reach" | "get_property_reads" | "get_external_usage" | "find_query_source" | "compare_snapshots" | "list_queries" | "get_ecosystem" | "prepare_verification" | "get_verification" | "impact_completeness" | "get_symbols_at" | "get_session_trail" | "get_context_map")
 /**
  * The sealed snapshot or link file that answered; null for a catalog tool, which answers from the list of registered repositories.
  */
@@ -788,6 +788,83 @@ freshness?: ("snapshot" | "strict")
  * compact leaves out the snapshot-wide parts of the envelope (unresolved reasons, standing limitations) that an earlier answer from the same snapshot already gave; query-specific limits stay. Over MCP, answers after the first full one per snapshot are compact unless full is asked for.
  */
 envelope?: ("full" | "compact")
+}
+
+export interface GetContextMapData {
+rows: {
+/**
+ * The symbol id, or the file id for a file and its module.
+ */
+id: string
+name: string
+path: string
+line: number
+relation: ("changed" | "implements" | "implemented_by" | "calls" | "called_by" | "tests" | "references" | "referenced_by" | "imports" | "imported_by")
+depth: number
+basis?: "inferred"
+generated?: boolean
+}[]
+totals: {
+/**
+ * Rows in the whole map, on every page.
+ */
+rows: number
+}
+}
+
+/**
+ * The declarations around a focus, in both directions, ranked, in one answer of at most budget_bytes: what calls, implements, imports, references or tests the focus, and what the focus calls, implements, imports and references, to max_depth hops. One lean row per declaration, `<name> <path>:<line> <relation> depth=<n>`, at its least depth and there its strongest relation; a row reached only through a candidate edge ends inferred. Ranked by depth, observed rows before inferred ones at each depth; then a file's first row comes before any file's second, and rows the focus uses alternate with rows that use it, each side by relation strength (implements, calls, tests, references, imports), then weight, path and line. The rest of the map is a cursor away.
+ */
+export interface GetContextMapInput {
+/**
+ * Optional when exactly one repository is registered.
+ */
+repository_id?: string
+/**
+ * Null pins the current published snapshot.
+ */
+snapshot_id?: (string | null)
+/**
+ * What the task is about: files (repository-relative paths), symbols (a row name such as Driver.escape, a plain name, or a symbol id; a name may match several), or the declarations a diff changed (base, a commit, against head or, with no head, the working tree), which are rows of their own marked changed.
+ */
+focus: {
+/**
+ * @minItems 1
+ * @maxItems 100
+ */
+paths?: [string, ...(string)[]]
+/**
+ * @minItems 1
+ * @maxItems 100
+ */
+symbols?: [string, ...(string)[]]
+base?: string
+head?: string
+}
+/**
+ * The most bytes the answer may take, header, rows, limitations and cursor line included (default 4096).
+ */
+budget_bytes?: number
+/**
+ * Hops from the focus (default 2).
+ */
+max_depth?: number
+limits?: {
+timeout_ms?: number
+max_rows?: number
+}
+/**
+ * snapshot (default) answers from the published snapshot. strict first checks that the working tree is exactly what the snapshot was built from; if not, it starts an index and refuses with STALE_INPUT naming the changed files.
+ */
+freshness?: ("snapshot" | "strict")
+/**
+ * lean, the default over MCP: plain text with no JSON and no structuredContent. A header `# <tool> · <n> rows · <snapshot> current` (stale when the snapshot is older than the repository's current one), one `<name> <path>:<line>` row per result, then `# ` lines for the limitations of this answer and `# more: cursor <c>` when a next page exists. The line is the call, import or reference site for relationship, impact and path rows and the declaration for symbol rows; tags follow: in or out when both directions are asked, depth=<n>, dispatch, external, candidate, ambiguous, unresolved:<reason>, and the relationship type when the query mixes types. A name or path with a space, quote or # is quoted as JSON. compact: the JSON envelope without the snapshot-wide parts an earlier answer gave (coverage, unresolved reasons, standing limitations). full: the whole JSON envelope. Ask for compact or full for ids, evidence and totals.
+ */
+envelope?: ("full" | "compact" | "lean")
+/**
+ * The next_cursor of the previous page. It continues the same query on the same snapshot; it expires after an hour.
+ */
+cursor?: string
 }
 
 /**

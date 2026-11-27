@@ -58,7 +58,8 @@
         "get_verification",
         "impact_completeness",
         "get_symbols_at",
-        "get_session_trail"
+        "get_session_trail",
+        "get_context_map"
       ]
     },
     "snapshot": {

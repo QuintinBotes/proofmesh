@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "get_context_map.data.schema.json",
+  "title": "get_context_map data",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "rows",
+    "totals"
+  ],
+  "properties": {
+    "rows": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name",
+          "path",
+          "line",
+          "relation",
+          "depth"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The symbol id, or the file id for a file and its module."
+          },
+          "name": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "line": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "relation": {
+            "enum": [
+              "changed",
+              "implements",
+              "implemented_by",
+              "calls",
+              "called_by",
+              "tests",
+              "references",
+              "referenced_by",
+              "imports",
+              "imported_by"
+            ]
+          },
+          "depth": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "basis": {
+            "const": "inferred"
+          },
+          "generated": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    "totals": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rows"
+      ],
+      "properties": {
+        "rows": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Rows in the whole map, on every page."
+        }
+      }
+    }
+  }
+}

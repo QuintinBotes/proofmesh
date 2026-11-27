@@ -81,6 +81,9 @@ A newer version of a comparator is added as a second column, never by replacing 
   1,024 and 4,096 tokens, inbound (the files of the callers, importers, implementers, dependents or type users) and
   outbound (the target file's own imports). Its build time is the map's own time in a fresh tags cache, without
   Python's start-up.
+- **ProofMesh's context map** (`get_context_map`, #33) is scored as aider's map is: the question's target file as the focus, at
+  4,096 and 16,384 bytes (about aider's 1,024 and 4,096 tokens), asked over MCP in the `data` profile; its rows' paths are the
+  files it names. `parity.md` shows both beside aider's, per question and as a mean.
 - **ProofMesh** is asked over MCP in its default core profile, as `bench/graph-bench` asks it; Q10 to Q12 have no MCP
   tool yet (#34) and are computed from the sealed snapshot, marked `(data)`. Graphify's Q10 to Q12 are computed from
   `graph.json`, also `(data)`.
@@ -124,6 +127,24 @@ Versions: ProofMesh 0.1.0 @ f85a3cb; Graphify 0.9.108; scip-typescript 0.3.15 (s
 | Q1 | 100 / 100 · 100 / 100 · 100 / 100 | 100 / 100 · 89 / 100 · 100 / 100 | 100 / 51 · 100 / 53 · 100 / 100 | 100 / 51 · 100 / 53 · 100 / 100 |
 | Q2 | 100 / 100 · 100 / 100 · 100 / 100 | 99 / 100 · 93 / 100 · 92 / 100 | 97 / 97 · 99 / 99 · 100 / 100 | 100 / 100 · 99 / 99 · 100 / 100 |
 | Q3 | 100 / 100 · 100 / 100 · 100 / 100 | 0 / - · 0 / - · 0 / - | 100 / 100 · 100 / 100 · 100 / 100 | 100 / 50 · 100 / 50 · 100 / 40 |
+
+### Context map: the share of the truth's files named, inbound / outbound (%)
+
+| Q | focus | ProofMesh get_context_map 4096 bytes | ProofMesh get_context_map 16384 bytes | aider 1k tokens | aider 4k tokens |
+|---|---|---|---|---|---|
+| Q1 | `src/globals.ts` | in 72% out 100% | in 100% out 100% | in 2% out 44% | in 2% out 56% |
+| Q2 | `src/data-source/DataSource.ts` | in 62% out 57% | in 92% out 100% | in 8% out 22% | in 15% out 59% |
+| Q3 | `src/driver/Driver.ts` | in 50% out 83% | in 100% out 100% | in 0% out 61% | in 0% out 78% |
+| Q4 | `src/driver/Driver.ts` | in 100% out 83% | in 100% out 100% | in 0% out 61% | in 0% out 78% |
+| Q5 | `src/error/TypeORMError.ts` | in 53% out - | in 94% out - | in 0% out - | in 3% out - |
+| Q6 | `src/util/StringUtils.ts` | in 9% out - | in 27% out - | in 0% out - | in 0% out - |
+| Q7 | `src/util/StringUtils.ts` | in 100% out - | in 100% out - | in 0% out - | in 0% out - |
+| Q9 | `src/common/ObjectLiteral.ts` | in 47% out - | in 100% out - | in 0% out - | in 0% out - |
+| mean | | in 62% out 81% | in 89% out 100% | in 1% out 47% | in 3% out 68% |
+
+Each map is asked with the question's target file as its focus (aider: in the chat, its file and name mentioned). Inbound: the files of the truth's callers, importers, implementers, dependents or type users; outbound: the files the target file imports.
+
+Run on 2026-11-27 with this change (`sh bench/parity/run.sh`, ProofMesh at the branch of #33); the other tables above are from the earlier run. The 16,384-byte maps stop at 100 rows (`limits.max_rows`), 7 to 10 KB, and a cursor pages the rest.
 
 ### Cost (medians of 3 runs)
 

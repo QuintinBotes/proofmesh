@@ -4,6 +4,12 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 ## Unreleased
 
+A task context map: the code around a focus, ranked, within a byte budget (issue #33; FR920 to FR924):
+
+- `get_context_map`, in the `data` tool profile and lean by default, takes a focus (`paths`, `symbols`, or a diff from `base`), a `budget_bytes` (default 4,096) and a `max_depth` (default 2). It answers one row per declaration around the focus, in both directions, `<name> <path>:<line> <relation> depth=<n>`: what calls, implements, imports, references or tests the focus, and what the focus calls, implements, imports and references, with dispatch followed and candidate edges marked ` inferred`. A diff's changed declarations are rows marked `changed`. The answer never exceeds the budget, and a cursor pages the rest.
+- The rank is deterministic and stated in `docs/proofmesh/mcp.md`: by depth, observed rows before inferred ones, then a file's first row before any file's second, with what the focus uses alternating with what uses it, each by relation strength, then weight, path and line. A row is inferred when any hop of its chain is.
+- The parity benchmark reports the map's inbound and outbound shares at 4,096 and 16,384 bytes beside aider's repository map. On the TypeORM fixture at 4,096 bytes it names on average 62% of each target's inbound files and 81% of its imports; aider's 1,024-token map names 1% and 47%.
+
 The session trail records reads and searches made through Bash (closes #149; FR800 to FR803):
 
 - In configurations of Claude Code with no Grep or Glob tool, most searches and many reads go through Bash, and the trail ignored them, so `/pm-trail` and `get_session_trail` listed dependents as `never_seen` that the session had read. The plugin's hooks module now reads a Bash command that is one plain `cat`, `head`, `tail` or `sed -n` (recorded `opened`) or `grep`, `rg` or `find` (recorded `searched`), optionally piped into `head` or `tail`. It records each path the command names that exists inside the repository, resolved against the shell's directory after a `cd`, with tool `Bash`. It keeps no command, pattern, option value or output.

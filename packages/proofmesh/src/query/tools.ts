@@ -24,7 +24,7 @@ import { CANDIDATE_TYPES, candidatesFrom, inferredNotes, resolveFollow, sitesNam
 import { ADAPTER_LANGUAGE_NAMES } from '../indexer/language-detect.js'
 import { hasRoles, isTestCode, isTestPath, parseRoles, roleTest, rolesSql } from './tests.js'
 import { EXECUTING, testReach, type TestRow } from './test-reach.js'
-import { changedSymbols, complete, completenessRows, diffLines, inTestCode, summaryLine, type Changed } from './completeness.js'
+import { changedSymbols, complete, touched, completenessRows, diffLines, inTestCode, summaryLine, type Changed } from './completeness.js'
 import { gitInfo } from '../indexer/discovery.js'
 import { findTables, tableReach } from './table-reach.js'
 import { searchSources } from './sources.js'
@@ -35,6 +35,7 @@ import { addKeys } from './keys.js'
 import { leanName, leanRow, leanText, quote } from './lean.js'
 import { generatedLeftOut, generatedPaths, markGenerated, withGeneratedPaths } from './generated-policy.js'
 import { innermost } from './symbol-at.js'
+import { contextMap } from './context-map.js'
 import { compare, hasBodyHash, unreadableFiles } from './compare.js'
 import { loadSchema } from '../core/schemas.js'
 import { changes, workingTree } from '../indexer/freshness.js'
@@ -45,10 +46,10 @@ import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 
-export const TOOLS = ['workspace_status', 'list_repositories', 'list_snapshots', 'list_workspaces', 'find_symbols', 'get_symbol', 'get_relationships', 'trace_paths', 'read_evidence', 'get_overview', 'analyze_impact', 'find_tests', 'search_sources', 'get_memory', 'verify_claim', 'request_index', 'get_job', 'get_claims', 'save_memory', 'get_table_reach', 'get_property_reads', 'get_external_usage', 'find_query_source', 'compare_snapshots', 'list_queries', 'get_ecosystem', 'prepare_verification', 'get_verification', 'impact_completeness', 'get_symbols_at', 'get_session_trail'] as const
+export const TOOLS = ['workspace_status', 'list_repositories', 'list_snapshots', 'list_workspaces', 'find_symbols', 'get_symbol', 'get_relationships', 'trace_paths', 'read_evidence', 'get_overview', 'analyze_impact', 'find_tests', 'search_sources', 'get_memory', 'verify_claim', 'request_index', 'get_job', 'get_claims', 'save_memory', 'get_table_reach', 'get_property_reads', 'get_external_usage', 'find_query_source', 'compare_snapshots', 'list_queries', 'get_ecosystem', 'prepare_verification', 'get_verification', 'impact_completeness', 'get_symbols_at', 'get_session_trail', 'get_context_map'] as const
 export type ToolName = (typeof TOOLS)[number]
 /** The query tools whose results are code locations: they answer in the lean envelope on request, and by default over MCP (FR099). */
-export const LEAN = new Set<string>(['find_symbols', 'get_symbol', 'get_symbols_at', 'get_relationships', 'trace_paths', 'analyze_impact', 'find_tests', 'get_session_trail'])
+export const LEAN = new Set<string>(['find_symbols', 'get_symbol', 'get_symbols_at', 'get_relationships', 'trace_paths', 'analyze_impact', 'find_tests', 'get_session_trail', 'get_context_map'])
 /** A lean answer is its text; the envelope beside it is what the text was rendered from, for in-process callers. */
 export type Answer = Envelope & { text?: string }
 
@@ -62,7 +63,7 @@ export const CAPABILITY: Record<ToolName, ListQueriesData['tools'][number]['capa
   read_evidence: 'read', get_overview: 'read', analyze_impact: 'read', find_tests: 'read', search_sources: 'read', get_memory: 'read',
   verify_claim: 'read', request_index: 'management', get_job: 'read', get_claims: 'read', save_memory: 'management', get_table_reach: 'read',
   get_property_reads: 'read', get_external_usage: 'read', find_query_source: 'read', compare_snapshots: 'read', list_queries: 'read',
-  get_ecosystem: 'read', prepare_verification: 'management', get_verification: 'read', impact_completeness: 'management', get_symbols_at: 'read', get_session_trail: 'read',
+  get_ecosystem: 'read', prepare_verification: 'management', get_verification: 'read', impact_completeness: 'management', get_symbols_at: 'read', get_session_trail: 'read', get_context_map: 'read',
 }
 
 /**
@@ -72,7 +73,7 @@ export const CAPABILITY: Record<ToolName, ListQueriesData['tools'][number]['capa
 export const PROFILE: Record<ToolName, ListQueriesData['tools'][number]['profile']> = {
   workspace_status: 'core', list_repositories: 'core', find_symbols: 'core', get_symbol: 'core', get_symbols_at: 'core', get_relationships: 'core', trace_paths: 'core',
   read_evidence: 'core', get_overview: 'core', analyze_impact: 'core', find_tests: 'core', search_sources: 'core', list_queries: 'core',
-  get_table_reach: 'data', get_property_reads: 'data', get_external_usage: 'data', find_query_source: 'data', get_session_trail: 'data',
+  get_table_reach: 'data', get_property_reads: 'data', get_external_usage: 'data', find_query_source: 'data', get_session_trail: 'data', get_context_map: 'data',
   verify_claim: 'claims', get_claims: 'claims', prepare_verification: 'claims', get_verification: 'claims',
   list_snapshots: 'extra', list_workspaces: 'extra', get_ecosystem: 'extra', compare_snapshots: 'extra', impact_completeness: 'extra', request_index: 'extra',
   get_job: 'extra', get_memory: 'extra', save_memory: 'extra',
@@ -124,7 +125,7 @@ type Partial = {
 }
 
 /** Tools whose shrink list has a total order and honours ctx.page.offset, so a cursor continues it with no omission or duplicate. */
-const PAGED = new Set<ToolName>(['get_symbols_at', 'find_symbols', 'get_relationships', 'search_sources', 'workspace_status', 'find_tests', 'impact_completeness'])
+const PAGED = new Set<ToolName>(['get_symbols_at', 'find_symbols', 'get_relationships', 'search_sources', 'workspace_status', 'find_tests', 'impact_completeness', 'get_context_map'])
 /** Tools that answer over a workspace's link file rather than one repository snapshot (A28). None yet in this file; get_ecosystem joins at integration. */
 const WORKSPACE_SCOPED = new Set<ToolName>([])
 
@@ -138,7 +139,8 @@ export function runTool(dataDir: string, tool: string, input: Record<string, unk
   if (!(TOOLS as readonly string[]).includes(tool)) throw new ProofmeshError('NOT_FOUND', `unknown tool ${tool}`)
   const problem = check(`tools/${tool}.input.schema.json`, input ?? {})
   if (problem) throw new ProofmeshError('INVALID_ARGUMENT', `invalid input: ${problem}; ${tool} accepts ${Object.keys((loadSchema(`tools/${tool}.input.schema.json`) as { properties?: Record<string, unknown> }).properties ?? {}).join(', ')}`)
-  const out = answer(dataDir, tool as ToolName, input, session)
+  // get_context_map's budget_bytes is its answer's max_bytes, so the cut that holds every answer to max_bytes holds it (FR922).
+  const out = answer(dataDir, tool as ToolName, tool === 'get_context_map' ? { ...input, limits: { ...(input.limits as object | undefined), max_bytes: input.budget_bytes ?? CONTEXT_BUDGET } } : input, session)
   // An answer that breaks its own schema is a defect: refused as one rather than sent as if it were right (FR037). A lean answer's
   // text is rendered from the envelope checked here.
   const { text: _text, ...env } = out
@@ -629,6 +631,20 @@ const fileAlias = (db: Database.Database, id: string): string | undefined => id.
   ? (db.prepare("select id from symbol where file_id = ? and kind = 'module' order by id limit 1").get(id) as { id: string } | undefined)?.id
   : (db.prepare("select file_id as id from symbol where id = ? and kind = 'module'").get(id) as { id: string } | undefined)?.id
 
+/** get_context_map's default budget_bytes and max_depth (FR920). */
+const CONTEXT_BUDGET = 4096, CONTEXT_DEPTH = 2
+
+/** The symbols a name in get_context_map's focus names: an id, else every symbol whose row name is it, else every symbol of that plain name. */
+function symbolsNamed(db: Database.Database, name: string): string[] {
+  if (db.prepare('select 1 from symbol where id = ?').get(name)) return [name]
+  const plain = name.slice(Math.max(name.lastIndexOf('.'), name.lastIndexOf(':')) + 1)
+  const all = db.prepare(`${SYMBOL_SQL} where s.name = ? and s.kind <> 'module' order by f.path, s.start_line, s.id`).all(plain) as SymbolRow[]
+  const exact = all.filter((s) => leanName(s) === name || s.qualified_name === name)
+  const hits = exact.length ? exact : name === plain ? all : []
+  if (!hits.length) throw new ProofmeshError('NOT_FOUND', `no symbol named ${name} in this snapshot; find_symbols searches by part of a name`)
+  return hits.map((s) => s.id)
+}
+
 const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Partial> = {
   workspace_status(ctx, input) {
     const meta = Object.fromEntries((ctx.db.prepare('select key, value from meta').all() as Array<{ key: string; value: string }>).map((m) => [m.key, m.value]))
@@ -809,6 +825,47 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
       }
     } finally {
       for (const db of new Set([baseDb, headDb])) if (db !== ctx.db) db.close()
+    }
+  },
+
+  get_context_map(ctx, input) {
+    const focus = input.focus as { paths?: string[]; symbols?: string[]; base?: string; head?: string }
+    const ids: string[] = [], changed = new Set<string>(), limitations: string[] = []
+    for (const p of focus.paths ?? []) {
+      try { ids.push(fileAt(ctx, p).id) } catch (e) {
+        // A file no adapter analyses has an empty map, and the answer says why (FR923).
+        if (!(e instanceof ProofmeshError) || e.details.detail !== 'path_not_indexed' || e.details.disposition === 'not found') throw e
+        limitations.push(`${String(e.details.path)} is ${String(e.details.disposition)} in snapshot ${ctx.snapshot.id}, so it has no declarations to map.`)
+      }
+    }
+    for (const name of focus.symbols ?? []) ids.push(...symbolsNamed(ctx.db, name))
+    if (focus.base !== undefined) {
+      const root = ctx.repo.root
+      const commit = (rev: string) => {
+        const g = gitInfo(root, rev)
+        if (!g.commit) throw new ProofmeshError('INVALID_ARGUMENT', g.available ? `${rev} names no commit in ${ctx.repo.name}` : `${root} is not the top of a git working tree, so it has no commits`, { detail: 'unknown_commit', rev })
+        return g.commit
+      }
+      const base = commit(focus.base), head = focus.head === undefined ? null : commit(focus.head)
+      const text = (p: string) => { const f = ctx.db.prepare('select content_hash from file where path = ?').get(p) as { content_hash: string | null } | undefined; return f?.content_hash ? ctx.store.read(f.content_hash)?.toString('utf8') : undefined }
+      // The changed lines are placed on this snapshot's declarations: the declarations of head, or of the working tree with no head.
+      const diff = diffLines(root, base, head)
+      // A declaration that only lost lines has none on the head side: the head line at its gap places it.
+      // shortcut: a gap at a declaration's first or last line can fall on its neighbour; read the base side's declarations if that misleads.
+      const lines = new Map(diff.head)
+      for (const [p, rs] of diff.gaps) lines.set(p, [...(lines.get(p) ?? []), ...rs])
+      for (const s of touched(ctx.db, lines, text)) { ids.push(s.id); changed.add(s.id) }
+      const snapCommit = (JSON.parse((ctx.db.prepare("select value from meta where key = 'git'").get() as { value: string } | undefined)?.value ?? '{}') as { commit?: string }).commit
+      if (head ? snapCommit !== head : !treeFreshness(ctx.db, ctx.dataDir, root).current) limitations.push(`Snapshot ${ctx.snapshot.id} is not of ${head ?? 'the working tree'}, so changed lines may fall on other declarations than they changed; index ${head ? 'that commit' : 'again'} first.`)
+      if (!changed.size) limitations.push(`The diff from ${focus.base} changes no declaration this snapshot holds.`)
+    }
+    if (!ids.length && !limitations.length) throw new ProofmeshError('INVALID_ARGUMENT', 'focus names nothing: give paths, symbols, or base')
+    const rows = contextMap(ctx.db, ids, changed, Number(input.max_depth ?? CONTEXT_DEPTH))
+    const end = ctx.page.offset + ctx.limits.max_rows
+    return {
+      data: { rows: rows.slice(ctx.page.offset, end).map(({ direction: _d, weight: _w, inferred, ...r }) => ({ ...r, ...(inferred ? { basis: 'inferred' } : {}) })), totals: { rows: rows.length } },
+      stop_reasons: rows.length > end ? ['max_rows'] : [], more: rows.length > end, shrink: 'rows', keep: 1, limitations,
+      lean: (data) => (data.rows as Array<{ name: string; path: string; line: number; relation: string; depth: number; basis?: string }>).map((r) => leanRow(r.name, r.path, r.line, [r.relation, `depth=${r.depth}`, ...(r.basis ? ['inferred'] : [])])),
     }
   },
 
