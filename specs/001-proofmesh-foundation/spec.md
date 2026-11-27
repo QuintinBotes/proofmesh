@@ -337,6 +337,7 @@ Acceptance: CI runs my pull request without secrets or release credentials; lice
 - FR269: MUST have each built-in adapter (typescript, syntax, python, terraform, build, scip, csharp) exit when its input ends.
 - FR265: MUST print a stage line when capture ends (`prepare`) and when each later stage starts, so a crash shows where the index stopped.
 - FR780: MUST capture a source, configuration or ownership file whose bytes are not valid UTF-8 (Latin-1 text, an invalid sequence) but give it to no adapter and record it `failed` with detail `not_utf8`, so it fails alone and every other file is indexed as usual; adapters count byte offsets on decoded text, which would put the ranges of such a file on the wrong bytes or past its end. A file with a NUL byte in its first 8 KiB, which includes UTF-16 text, stays `unsupported` as `binary`.
+- FR810: MUST have every adapter report byte offsets into the file as stored: in a UTF-8 file that starts with a byte order mark, the mark's 3 bytes count, so each symbol's range is the bytes of its declaration and a module's range is the whole file, mark included. The TypeScript compiler drops the mark when it reads a file, so the TypeScript adapter adds it back.
 
 ### Syntax floor
 

@@ -1,5 +1,7 @@
+import fs from 'node:fs'
+import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { fixtureRepo, indexedDataDir, withSnapshot } from './helpers.js'
+import { fixtureRepo, indexedDataDir, indexedRepo, withSnapshot } from './helpers.js'
 
 type Call = { line: number; resolution: string; to?: string; external?: unknown; reason?: string }
 
@@ -21,6 +23,22 @@ describe('M2 the TypeScript adapter analyses each file under the project configu
       { line: 4, resolution: 'resolved_external', external: { module: 'lib.dom.d.ts', name: 'Document.createElement' } },
       { line: 5, resolution: 'resolved_external', external: { module: 'lib.es5.d.ts', name: 'String' } },
       { line: 5, resolution: 'resolved', to: 'packages/core/src/money:cents' },
+    ])
+  }, 120000)
+})
+
+describe('FR810 a TypeScript file that starts with a UTF-8 byte order mark keeps its ranges on the bytes as stored', () => {
+  it('FR810 byte order mark: the bytes of the captured a.ts at each symbol range are its declaration, and the module is the whole file', async () => {
+    const file = "\uFEFFexport function hello() { return 'é' }\nexport class Box {\n  get value() { return 1 }\n}\n"
+    const { repo, dataDir } = await indexedRepo({ 'a.ts': file })
+    const bytes = fs.readFileSync(path.join(repo, 'a.ts'))
+    const slices = withSnapshot(dataDir, (db) => (db.prepare("select s.qualified_name as name, s.start_byte as start, s.end_byte as end from symbol s join file f on f.id = s.file_id where f.path = 'a.ts' order by s.start_byte, s.qualified_name").all() as Array<{ name: string; start: number; end: number }>)
+      .map((s) => [s.name, bytes.subarray(s.start, s.end).toString('utf8')]))
+    expect(slices).toEqual([
+      ['a', file],
+      ['a:hello', "export function hello() { return 'é' }"],
+      ['a:Box', 'export class Box {\n  get value() { return 1 }\n}'],
+      ['a:Box.value', 'get value() { return 1 }'],
     ])
   }, 120000)
 })
