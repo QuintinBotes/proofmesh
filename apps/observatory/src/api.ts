@@ -39,10 +39,15 @@ export async function fetchGalaxy(): Promise<ArrayBuffer> {
 }
 
 export async function galaxySymbolId(index: number): Promise<string> {
-  const r = await fetch('/api/v1/galaxy/symbol', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(scoped(replay ? { index, snapshot_id: replay } : { index })) })
+  return (await galaxySymbol(index)).id
+}
+
+/** A galaxy point's symbol id, and with `card` (the get_symbol_card input) its card in the same request (FR1180). */
+export async function galaxySymbol(index: number, card?: Record<string, unknown>): Promise<{ id: string; card?: { data: unknown } }> {
+  const r = await fetch('/api/v1/galaxy/symbol', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(scoped({ index, ...(replay ? { snapshot_id: replay } : {}), ...(card ? { card } : {}) })) })
   const body = await r.json().catch(() => ({}))
   if (!r.ok) throw new ToolError(body?.error?.code ?? 'INTERNAL_ERROR', body?.error?.message ?? `HTTP ${r.status}`, r.status)
-  return body.id as string
+  return body
 }
 
 export type SnapshotInfo = { id: string; published_at: string | null; analysis_mode: string; current: boolean; git: { available: boolean; reason?: string } | null }

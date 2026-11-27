@@ -297,6 +297,27 @@
               "string",
               "null"
             ]
+          },
+          "site": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "path",
+              "start_line"
+            ],
+            "description": "On a hop of a path: where the relationship is written, its first evidence's file and line. Absent on an edge the search only explored.",
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "start_line": {
+                "type": "integer"
+              },
+              "generated": {
+                "type": "boolean",
+                "description": "Present and true when the file is generated (FR292); absent otherwise."
+              }
+            }
           }
         }
       }

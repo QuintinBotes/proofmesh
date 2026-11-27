@@ -10,6 +10,7 @@ const KEYED: Partial<Record<ToolName, Array<[string, string, string]>>> = {
   workspace_status: [['hubs[]', 'id', 'key']],
   find_symbols: [['symbols[]', 'id', 'key']],
   get_relationships: [['relationships[].other', 'id', 'key'], ['relationships[].via', 'id', 'key'], ['boundaries[]', 'from_id', 'from_key']],
+  get_symbol_card: [['incoming.rows[].other', 'id', 'key'], ['incoming.rows[].via', 'id', 'key'], ['outgoing.rows[].other', 'id', 'key'], ['outgoing.rows[].via', 'id', 'key']],
   trace_paths: [['nodes{}', '$', 'key'], ['search.horizon[]', 'id', 'key'], ['boundaries[]', 'from_id', 'from_key'], ['search.explored[]', 'from', 'from_key'], ['search.explored[]', 'to', 'to_key']],
   analyze_impact: [['dependents[]', 'id', 'key']],
   find_tests: [['tests[]', 'id', 'key']],

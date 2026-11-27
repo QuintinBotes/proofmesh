@@ -67,7 +67,8 @@
         "get_context_map",
         "plan_rename",
         "search_structure",
-        "search_concepts"
+        "search_concepts",
+        "get_symbol_card"
       ]
     },
     "snapshot": {

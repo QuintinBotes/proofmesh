@@ -2052,6 +2052,33 @@
     ],
     "FR1126": [
       "packages/proofmesh/test/fast-rebuild.test.ts"
+    ],
+    "FR1180": [
+      "packages/proofmesh/test/symbol-card.test.ts",
+      "apps/observatory/test/card.test.ts",
+      "e2e/lens.spec.ts"
+    ],
+    "FR1181": [
+      "packages/proofmesh/test/symbol-card.test.ts",
+      "e2e/lens.spec.ts"
+    ],
+    "FR1182": [
+      "packages/proofmesh/test/symbol-card.test.ts",
+      "e2e/lens.spec.ts"
+    ],
+    "FR1183": [
+      "apps/observatory/test/card.test.ts",
+      "e2e/lens.spec.ts"
+    ],
+    "FR1184": [
+      "e2e/lens.spec.ts"
+    ],
+    "FR1185": [
+      "packages/proofmesh/test/symbol-card.test.ts",
+      "e2e/lens.spec.ts"
+    ],
+    "FR1186": [
+      "e2e/lens.spec.ts"
     ]
   },
   "manual": {
@@ -2060,6 +2087,7 @@
     "FR074": "No CI exists in this repository. When CI is added, a maintainer reviews that pull-request workflows run on pull_request (not pull_request_target), with read-only permissions and no secrets or release credentials; release signing runs only on tags (docs/proofmesh/release.md).",
     "SC006": "A maintainer registers Proofmesh in Claude Code and in Codex with proofmesh mcp-config, asks both the same snapshot-pinned questions (bench/eval/samples/invoicing-questions.json), records the sessions, scores them with bench/eval/run.mjs, and confirms both cite the same snapshot id. Last run on 2026-11-12 on the final build, over fixtures/ts-invoicing (snapshot snap_7278727f7dee33d0928b30e7): headless Claude Code 2.1.322 (claude -p, only the Proofmesh MCP server and its tools) and Codex 0.163.0 (codex exec, read-only sandbox, the server passed with -c and its tools approved for that server only) answered the same three snapshot-pinned questions identically, citing the same snapshot id, and both answers equal the fixture oracle.",
     "FR049.publication": "A maintainer publishes the signed npm packages and the OCI image, with checksums, SBOM, signatures, provenance and release notes, to the registries; publication is never automated.",
-    "SC016.tag": "A maintainer tags the release commit of the public fresh-history repository; CI builds, signs (keyless) and attests the artifacts from that tag, including the C# adapter."
+    "SC016.tag": "A maintainer tags the release commit of the public fresh-history repository; CI builds, signs (keyless) and attests the artifacts from that tag, including the C# adapter.",
+    "FR1187": "A maintainer indexes the TypeORM parity fixture (bench/parity/run.sh builds it at commit 3d55188c) into a fresh data directory and runs node bench/observatory/evidence.mjs --data-dir <dir> --symbol src/data-source/DataSource:DataSource.initialize --runs 10 --check, which exits 0 when the warm and first-open p95 and the requests per open are within SC-001 and SC-002 of #45, and records the machine and its load beside the times."
   }
 }

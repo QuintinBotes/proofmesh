@@ -4,7 +4,7 @@
 export interface Envelope {
 schema_version: "0.1"
 query_id: string
-tool: ("workspace_status" | "list_repositories" | "list_snapshots" | "list_workspaces" | "find_symbols" | "get_symbol" | "get_relationships" | "trace_paths" | "read_evidence" | "get_overview" | "analyze_impact" | "find_tests" | "search_sources" | "get_memory" | "verify_claim" | "request_index" | "get_job" | "get_claims" | "save_memory" | "get_table_reach" | "get_property_reads" | "get_external_usage" | "find_query_source" | "compare_snapshots" | "list_queries" | "get_ecosystem" | "prepare_verification" | "get_verification" | "impact_completeness" | "get_symbols_at" | "get_session_trail" | "find_stale_mentions" | "find_unused" | "find_cycles" | "find_entry_points" | "find_hubs" | "get_context_map" | "plan_rename" | "search_structure" | "search_concepts")
+tool: ("workspace_status" | "list_repositories" | "list_snapshots" | "list_workspaces" | "find_symbols" | "get_symbol" | "get_relationships" | "trace_paths" | "read_evidence" | "get_overview" | "analyze_impact" | "find_tests" | "search_sources" | "get_memory" | "verify_claim" | "request_index" | "get_job" | "get_claims" | "save_memory" | "get_table_reach" | "get_property_reads" | "get_external_usage" | "find_query_source" | "compare_snapshots" | "list_queries" | "get_ecosystem" | "prepare_verification" | "get_verification" | "impact_completeness" | "get_symbols_at" | "get_session_trail" | "find_stale_mentions" | "find_unused" | "find_cycles" | "find_entry_points" | "find_hubs" | "get_context_map" | "plan_rename" | "search_structure" | "search_concepts" | "get_symbol_card")
 /**
  * The sealed snapshot or link file that answered; null for a catalog tool, which answers from the list of registered repositories.
  */
@@ -2294,6 +2294,328 @@ freshness?: ("snapshot" | "strict")
 envelope?: ("full" | "compact" | "lean")
 }
 
+export interface GetSymbolCardData {
+symbol: {
+id: string
+kind: ("function" | "class" | "method" | "interface" | "type_alias" | "variable" | "module" | "struct" | "enum" | "property" | "field" | "constructor" | "namespace" | "project" | "package" | "endpoint" | "table" | "message" | "channel" | "job" | "feature_flag" | "config_key" | "team" | "service")
+name: string
+qualified_name: string
+path: string
+start_line: number
+end_line: number
+signature: (string | null)
+evidence_id: string
+/**
+ * path#qualified_name#kind, as this snapshot stores it.
+ */
+stable_key: string
+/**
+ * SHA-256 of the declaration text with line endings, common indentation, trailing whitespace and the symbol's own name normalised (a module: its file text); null when the span is no more than the name, or the snapshot was sealed before hashes existed.
+ */
+body_hash: (string | null)
+/**
+ * The roles the adapter gave the symbol, when it gave any: test (a test entry point) or test_support (test code that is no entry point).
+ */
+roles?: ("test" | "test_support")[]
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
+/**
+ * What the adapter recorded beside the symbol's name, when it recorded any: scip, the SCIP index's own symbol for a definition the SCIP importer declared (FR441). Absent when the adapter sent none (no built-in adapter but the SCIP importer sends it), and in a snapshot sealed before format 0.11.
+ */
+detail?: {
+/**
+ * The SCIP index's own symbol for this definition, as the index wrote it (FR441).
+ */
+scip?: string
+}
+}
+/**
+ * The declaration's evidence, as read_evidence answers it; text is null when the object fails its integrity check or is missing.
+ */
+declaration: {
+id: string
+path: string
+start_line: number
+end_line: number
+object_hash: string
+extractor: string
+extractor_version: string
+analysis_mode: ("no_execution" | "trusted_build")
+integrity: {
+status: ("verified" | "failed" | "unavailable")
+actual_hash?: string
+}
+text: (string | null)
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
+}
+/**
+ * Null when direction asks only for the other side.
+ */
+incoming: ({
+rows: {
+assertion_id: string
+type: ("calls" | "imports" | "contains" | "inherits" | "implements" | "overrides" | "references" | "injects" | "registered_as" | "exposes" | "maps_to" | "runs" | "dispatches_to" | "handles" | "publishes" | "consumes" | "sends_to" | "listens_on" | "evaluates_flag" | "reads_config" | "depends_on" | "depends_on_package" | "owned_by" | "calls_service" | "renders" | "uses_hook" | "provides_context" | "uses_context" | "mentions")
+direction: ("in" | "out")
+resolution: ("resolved" | "resolved_external" | "candidate" | "ambiguous" | "unresolved")
+origin: ("syntax" | "semantic_resolver" | "configuration_adapter" | "framework_adapter" | "contract_match" | "runtime_observation" | "documentation" | "human_assertion" | "model_hypothesis")
+/**
+ * observed: a compiler, an index or a declared configuration proves it. inferred: a convention, a name match or a contract match suggests it. Derived when the answer is built. Absent on an unresolved boundary, which is not a relationship.
+ */
+basis?: ("observed" | "inferred")
+other: {
+kind: ("symbol" | "file" | "external" | "none")
+id?: string
+name?: string
+qualified_name?: string
+path?: string
+module?: string
+symbol_kind?: string
+start_line?: number
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
+/**
+ * The stable_key of the symbol on the far side (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file.
+ */
+key?: string
+}
+site: {
+path: string
+start_line: number
+end_line: number
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
+}
+reason: (string | null)
+evidence_ids: string[]
+detail: ({
+[k: string]: string
+} | null)
+/**
+ * On an inbound row: the member the subject implements or overrides that the call or reference names, through which it may dispatch to the subject.
+ */
+via?: {
+id: string
+qualified_name: string
+/**
+ * The stable_key of the member the call or reference names (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file.
+ */
+key?: string
+}
+/**
+ * Present on a row of another repository of the workspace (include_workspace): that repository, and the commit its snapshot was built from. Its ids and evidence ids are of that snapshot.
+ */
+repository?: {
+id: string
+name: string
+commit: (string | null)
+}
+/**
+ * The call site's evidence: its span and integrity, and the whole lines of the site (at most 8) with the cited span as character offsets in them. context is null when the object fails its integrity check or is missing. Null when the row has no evidence.
+ */
+evidence: ({
+id: string
+path: string
+start_line: number
+end_line: number
+integrity: {
+status: ("verified" | "failed" | "unavailable")
+actual_hash?: string
+}
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
+context: ({
+start_line: number
+text: string
+/**
+ * The cited span's start and end, as character offsets in text.
+ * 
+ * @minItems 2
+ * @maxItems 2
+ */
+highlight: [number, number, ...(number)[]]
+} | null)
+} | null)
+}[]
+/**
+ * Every row of this side, listed or not.
+ */
+total: number
+/**
+ * Pass as offset, with direction, for the next rows of this side; null when every row is listed.
+ */
+next_offset: (number | null)
+} | null)
+/**
+ * Null when direction asks only for the other side.
+ */
+outgoing: ({
+rows: {
+assertion_id: string
+type: ("calls" | "imports" | "contains" | "inherits" | "implements" | "overrides" | "references" | "injects" | "registered_as" | "exposes" | "maps_to" | "runs" | "dispatches_to" | "handles" | "publishes" | "consumes" | "sends_to" | "listens_on" | "evaluates_flag" | "reads_config" | "depends_on" | "depends_on_package" | "owned_by" | "calls_service" | "renders" | "uses_hook" | "provides_context" | "uses_context" | "mentions")
+direction: ("in" | "out")
+resolution: ("resolved" | "resolved_external" | "candidate" | "ambiguous" | "unresolved")
+origin: ("syntax" | "semantic_resolver" | "configuration_adapter" | "framework_adapter" | "contract_match" | "runtime_observation" | "documentation" | "human_assertion" | "model_hypothesis")
+/**
+ * observed: a compiler, an index or a declared configuration proves it. inferred: a convention, a name match or a contract match suggests it. Derived when the answer is built. Absent on an unresolved boundary, which is not a relationship.
+ */
+basis?: ("observed" | "inferred")
+other: {
+kind: ("symbol" | "file" | "external" | "none")
+id?: string
+name?: string
+qualified_name?: string
+path?: string
+module?: string
+symbol_kind?: string
+start_line?: number
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
+/**
+ * The stable_key of the symbol on the far side (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file.
+ */
+key?: string
+}
+site: {
+path: string
+start_line: number
+end_line: number
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
+}
+reason: (string | null)
+evidence_ids: string[]
+detail: ({
+[k: string]: string
+} | null)
+/**
+ * On an inbound row: the member the subject implements or overrides that the call or reference names, through which it may dispatch to the subject.
+ */
+via?: {
+id: string
+qualified_name: string
+/**
+ * The stable_key of the member the call or reference names (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file.
+ */
+key?: string
+}
+/**
+ * Present on a row of another repository of the workspace (include_workspace): that repository, and the commit its snapshot was built from. Its ids and evidence ids are of that snapshot.
+ */
+repository?: {
+id: string
+name: string
+commit: (string | null)
+}
+/**
+ * The call site's evidence: its span and integrity, and the whole lines of the site (at most 8) with the cited span as character offsets in them. context is null when the object fails its integrity check or is missing. Null when the row has no evidence.
+ */
+evidence: ({
+id: string
+path: string
+start_line: number
+end_line: number
+integrity: {
+status: ("verified" | "failed" | "unavailable")
+actual_hash?: string
+}
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
+context: ({
+start_line: number
+text: string
+/**
+ * The cited span's start and end, as character offsets in text.
+ * 
+ * @minItems 2
+ * @maxItems 2
+ */
+highlight: [number, number, ...(number)[]]
+} | null)
+} | null)
+}[]
+/**
+ * Every row of this side, listed or not.
+ */
+total: number
+/**
+ * Pass as offset, with direction, for the next rows of this side; null when every row is listed.
+ */
+next_offset: (number | null)
+} | null)
+}
+
+/**
+ * A symbol's card in one request (FR1180): the symbol, its declaration evidence with integrity and text, and the first page of its incoming and outgoing relationships, each with its call site's evidence (span, integrity, the site's lines and the cited span within them), basis, resolution and reason, and totals. Read-only, and bounded by limits: max_rows applies to each side, max_bytes to the whole answer.
+ */
+export interface GetSymbolCardInput {
+/**
+ * Optional when exactly one repository is registered.
+ */
+repository_id?: string
+/**
+ * Null pins the current published snapshot.
+ */
+snapshot_id?: (string | null)
+limits?: {
+timeout_ms?: number
+max_rows?: number
+max_bytes?: number
+max_depth?: number
+}
+/**
+ * Or { name, path }: the symbol of that name in that file. Give symbol_id or key.
+ */
+symbol_id?: (string | {
+/**
+ * The name a lean row shows (BudgetLedger.consume), or the plain name (consume); it must name one symbol in the file.
+ */
+name: string
+/**
+ * The repository-relative path of the file that declares the symbol.
+ */
+path: string
+})
+/**
+ * A symbol by its stable_key (FR149): the key get_symbol and every other row names it with, unique in a snapshot and the same in every tier. An unknown key is NOT_FOUND. In place of the id.
+ */
+key?: string
+/**
+ * The relationship types listed on each side; default calls.
+ * 
+ * @minItems 1
+ */
+types?: [("calls" | "imports" | "contains" | "inherits" | "implements" | "overrides" | "references" | "injects" | "registered_as" | "exposes" | "maps_to" | "runs" | "dispatches_to" | "handles" | "publishes" | "consumes" | "sends_to" | "listens_on" | "evaluates_flag" | "reads_config" | "depends_on" | "depends_on_package" | "owned_by" | "calls_service" | "renders" | "uses_hook" | "provides_context" | "uses_context" | "mentions"), ...(("calls" | "imports" | "contains" | "inherits" | "implements" | "overrides" | "references" | "injects" | "registered_as" | "exposes" | "maps_to" | "runs" | "dispatches_to" | "handles" | "publishes" | "consumes" | "sends_to" | "listens_on" | "evaluates_flag" | "reads_config" | "depends_on" | "depends_on_package" | "owned_by" | "calls_service" | "renders" | "uses_hook" | "provides_context" | "uses_context" | "mentions"))[]]
+/**
+ * Only this side, to page it with offset; both sides when absent.
+ */
+direction?: ("in" | "out")
+/**
+ * The row each side starts at: a side's next_offset.
+ */
+offset?: number
+/**
+ * compact: the JSON envelope without the snapshot-wide parts an earlier answer gave. full (default): the whole envelope.
+ */
+envelope?: ("full" | "compact")
+}
+
 export interface GetSymbolsAtData {
 results: {
 location: string
@@ -3762,6 +4084,17 @@ origin: string
  */
 basis: ("observed" | "inferred")
 rule: (string | null)
+/**
+ * On a hop of a path: where the relationship is written, its first evidence's file and line. Absent on an edge the search only explored.
+ */
+site?: {
+path: string
+start_line: number
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
+}
 }
 }
 }

@@ -30,7 +30,9 @@ const canon = (x: unknown): unknown => {
 }
 // #159 (FR860) added line and relationship to each analyze_impact dependent; as for the keys above, the digest is of everything else.
 const pre159 = (d: unknown) => { const x = d as { dependents?: Array<Record<string, unknown>> }; return x.dependents ? { ...x, dependents: x.dependents.map(({ line: _l, relationship: _r, ...rest }) => rest) } : d }
-const sha = (e: { data: unknown; limitations: unknown }) => createHash('sha256').update(JSON.stringify(canon({ d: pre159(e.data), l: e.limitations })).replace(ID, '<id>')).digest('hex').slice(0, 16)
+// #45 (FR1185) added site to each hop of a trace_paths path; as for the keys above, the digest is of everything else.
+const pre45 = (d: unknown) => { const x = d as { paths?: unknown; relationships?: Record<string, Record<string, unknown>> }; return x.paths && x.relationships ? { ...x, relationships: Object.fromEntries(Object.entries(x.relationships).map(([k, { site: _s, ...rest }]) => [k, rest])) } : d }
+const sha = (e: { data: unknown; limitations: unknown }) => createHash('sha256').update(JSON.stringify(canon({ d: pre45(pre159(e.data)), l: e.limitations })).replace(ID, '<id>')).digest('hex').slice(0, 16)
 const git = (cwd: string, ...args: string[]) => execFileSync('git', ['-c', 'user.name=Test', '-c', 'user.email=test@example.com', '-c', 'commit.gpgsign=false', ...args], { cwd, encoding: 'utf8' }).trim()
 
 let constrained: string

@@ -5,7 +5,7 @@ import { OVERLAY_RGB } from './diff'
 import { areaColor } from './map'
 import { visible } from './visible'
 
-type Props = { data: GalaxyData; query: string; focusArea: number | null; onOpen: (index: number) => void; onClear: () => void; onSettled?: () => void; overlay?: Uint8Array | null }
+type Props = { data: GalaxyData; query: string; focusArea: number | null; onOpen: (index: number) => void; onHover?: (index: number | null) => void; onClear: () => void; onSettled?: () => void; overlay?: Uint8Array | null }
 
 const BASE: Record<string, number> = { project: 9, class: 3.2, interface: 3.2, struct: 3, enum: 2.6, type_alias: 2.6, endpoint: 6, job: 6, table: 8, feature_flag: 5.5, message: 7, channel: 7, config_key: 4.5 }
 const MINOR = new Set(['method', 'function', 'property', 'field', 'constructor', 'variable'])
@@ -96,13 +96,13 @@ function fogOf(d: GalaxyData, sum: Float64Array, sq: Float64Array, g: Graph): Fo
 }
 const GHOSTS = 10
 
-export function Galaxy({ data, query, focusArea, onOpen, onClear, onSettled, overlay }: Props) {
+export function Galaxy({ data, query, focusArea, onOpen, onHover, onClear, onSettled, overlay }: Props) {
   const box = useRef<HTMLDivElement>(null)
   const graph = useRef<Graph | null>(null)
   // The last positions read back from the GPU, until the simulation moves a point: reading them again costs a GPU stall.
   const positions = useRef<ArrayLike<number> | null>(null)
-  const handlers = useRef({ onOpen, onSettled })
-  handlers.current = { onOpen, onSettled }
+  const handlers = useRef({ onOpen, onHover, onSettled })
+  handlers.current = { onOpen, onHover, onSettled }
   const mouse = useRef({ x: 0, y: 0 })
   // The full drawing, kept while a filter shows a subset; viewMap maps a shown point to its index in the full galaxy.
   const full = useRef<{ colours: Float32Array; sizes: Float32Array; linkColours: Float32Array; linkWidths: Float32Array } | null>(null)
@@ -177,8 +177,8 @@ export function Galaxy({ data, query, focusArea, onOpen, onClear, onSettled, ove
       simulationFriction: 0.88, simulationDecay: settleTicks(d.n), fitViewOnInit: false, fitViewPadding: 0.12, enableDrag: true,
       hoveredPointCursor: 'pointer', renderHoveredPointRing: true, hoveredPointRingColor: '#ffffff', focusedPointRingColor: '#ffd36e',
       pointGreyoutOpacity: 0.05, linkGreyoutOpacity: 0.015, attribution: '',
-      onPointMouseOver: (i: number) => { const o = orig(i); setTip({ x: mouse.current.x, y: mouse.current.y, name: d.names[o]!, area: d.areas[d.area[o]!]!.name }) },
-      onPointMouseOut: () => setTip(null),
+      onPointMouseOver: (i: number) => { const o = orig(i); handlers.current.onHover?.(o); setTip({ x: mouse.current.x, y: mouse.current.y, name: d.names[o]!, area: d.areas[d.area[o]!]!.name }) },
+      onPointMouseOut: () => { handlers.current.onHover?.(null); setTip(null) },
       onPointClick: (i: number) => handlers.current.onOpen(orig(i)),
       onZoom: scheduleLabels,
       onSimulationTick: () => { areaSums = null; positions.current = null },

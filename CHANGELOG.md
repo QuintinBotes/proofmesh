@@ -4,6 +4,13 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 ## Unreleased
 
+Evidence in one request: the Proof lens (part of #45; FR1180 to FR1187):
+
+- Opening a symbol made four requests in series (`galaxy/symbol`, `get_symbol`, `get_relationships`, `read_evidence`), and an edge's evidence a second `get_relationships`. `get_symbol_card` (the `extra` MCP profile) now answers a symbol's card in one read-only request: the symbol, its verified declaration, and the first rows of each side, each with its call site's lines, the cited span, its basis, resolution and reason, and each side's total. It is bounded like every tool: `max_rows` per side, `max_bytes` for the whole answer, and `direction` with `offset` for the next rows. A Galaxy point's `galaxy/symbol` request carries its card, so a point also opens with one request.
+- Explore's drawn neighbourhood is replaced by the Proof lens: callers, the focus and callees as rows, each at its call site and marked `observed`, `inferred` or `unresolved · <reason>` in words, glyph and marker style. Opening a row's evidence asks the server nothing; the code panel highlights the cited span. Evidence that fails its integrity check keeps its row, and the panel says the source is unavailable. A hub shows its first 24 rows per side with the count, and pages the rest in as the list scrolls.
+- Keyboard: an opened symbol takes the focus; ↑ ↓ move between rows, ← → between columns, Enter opens the evidence, `f` explores from the row. Resting the pointer on a row or a Galaxy point for 80 ms prefetches its card, one at a time. The lens asks for a path from the focus and shows it as a chain of hops, each with its call site (`trace_paths` now gives each hop of a path its `site`), labelled by its weakest hop.
+- `bench/observatory/evidence.mjs` times the click to the evidence text, warm and on a page's first open, counts the requests, and records the machine's load; `--check` holds it to 150 ms warm and 400 ms first open at p95, and one request per open.
+- The Trace a path tab and its form are unchanged; replacing them with the lens is left to a later change.
 Galaxy search finds the symbol the text is in after a name that lengthens when lowered (closes #200; FR1200):
 
 - Galaxy search scanned the lowered, joined names but took each name's offset from the names as written. A name holding `İ`, whose lowercase is two code units, shifted every later offset, so a match was attributed to a later symbol: the Galaxy highlighted, counted and listed it, and Explore opened it. The offsets now come from the lowered names, in one helper that the Galaxy and the command palette share.

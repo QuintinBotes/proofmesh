@@ -51,7 +51,7 @@ import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 
-export const TOOLS = ['workspace_status', 'list_repositories', 'list_snapshots', 'list_workspaces', 'find_symbols', 'get_symbol', 'get_relationships', 'trace_paths', 'read_evidence', 'get_overview', 'analyze_impact', 'find_tests', 'search_sources', 'get_memory', 'verify_claim', 'request_index', 'get_job', 'get_claims', 'save_memory', 'get_table_reach', 'get_property_reads', 'get_external_usage', 'find_query_source', 'compare_snapshots', 'list_queries', 'get_ecosystem', 'prepare_verification', 'get_verification', 'impact_completeness', 'get_symbols_at', 'get_session_trail', 'find_stale_mentions', 'find_unused', 'find_cycles', 'find_entry_points', 'find_hubs', 'get_context_map', 'plan_rename', 'search_structure', 'search_concepts'] as const
+export const TOOLS = ['workspace_status', 'list_repositories', 'list_snapshots', 'list_workspaces', 'find_symbols', 'get_symbol', 'get_relationships', 'trace_paths', 'read_evidence', 'get_overview', 'analyze_impact', 'find_tests', 'search_sources', 'get_memory', 'verify_claim', 'request_index', 'get_job', 'get_claims', 'save_memory', 'get_table_reach', 'get_property_reads', 'get_external_usage', 'find_query_source', 'compare_snapshots', 'list_queries', 'get_ecosystem', 'prepare_verification', 'get_verification', 'impact_completeness', 'get_symbols_at', 'get_session_trail', 'find_stale_mentions', 'find_unused', 'find_cycles', 'find_entry_points', 'find_hubs', 'get_context_map', 'plan_rename', 'search_structure', 'search_concepts', 'get_symbol_card'] as const
 export type ToolName = (typeof TOOLS)[number]
 /** The query tools whose results are code locations: they answer in the lean envelope on request, and by default over MCP (FR099). */
 export const LEAN = new Set<string>(['find_symbols', 'search_concepts', 'get_symbol', 'get_symbols_at', 'get_relationships', 'trace_paths', 'analyze_impact', 'find_tests', 'get_session_trail', 'find_unused', 'find_cycles', 'find_entry_points', 'find_hubs', 'get_context_map', 'search_structure'])
@@ -69,7 +69,7 @@ export const CAPABILITY: Record<ToolName, ListQueriesData['tools'][number]['capa
   verify_claim: 'read', request_index: 'management', get_job: 'read', get_claims: 'read', save_memory: 'management', get_table_reach: 'read',
   get_property_reads: 'read', get_external_usage: 'read', find_query_source: 'read', compare_snapshots: 'read', list_queries: 'read',
   get_ecosystem: 'read', prepare_verification: 'management', get_verification: 'read', impact_completeness: 'management', get_symbols_at: 'read', get_session_trail: 'read', find_stale_mentions: 'read',
-  find_unused: 'read', find_cycles: 'read', find_entry_points: 'read', find_hubs: 'read', get_context_map: 'read', plan_rename: 'read', search_structure: 'read', search_concepts: 'read',
+  find_unused: 'read', find_cycles: 'read', find_entry_points: 'read', find_hubs: 'read', get_context_map: 'read', plan_rename: 'read', search_structure: 'read', search_concepts: 'read', get_symbol_card: 'read',
 }
 
 /**
@@ -89,6 +89,8 @@ export const PROFILE: Record<ToolName, ListQueriesData['tools'][number]['profile
   plan_rename: 'extra',
   // Structural search runs a matcher process over captured source: a question for a pattern, not most questions (#37).
   search_structure: 'extra',
+  // What Observatory opens a symbol with (FR1180); an assistant asks get_symbol and get_relationships, so core's list stays as it is.
+  get_symbol_card: 'extra',
 }
 /** How a client loads the tools of another profile, said by list_queries, which lists them all (FR422). */
 const PROFILES_NOTE = 'Over MCP, proofmesh mcp lists the core profile; start it with --tools <profile[,profile]> (core, data, claims, extra) or --tools all to list the others. A tool outside the profiles it was started with answers INVALID_ARGUMENT naming its profile.'
@@ -498,7 +500,7 @@ function withNamedIds(db: Database.Database, tool: string, input: Record<string,
   const id = (v: unknown) => (v !== null && typeof v === 'object' ? symbolNamed(db, v as { name: string; path: string }) : v)
   const out = { ...input }
   // A `key` is a stable_key, the same in every tier (FR149): it stands in for the id the tool takes.
-  const ids: Record<string, [string, string]> = { get_symbol: ['key', 'symbol_id'], get_memory: ['key', 'symbol_id'], get_relationships: ['key', 'subject_id'], analyze_impact: ['key', 'subject_ids'], find_tests: ['key', 'subject_ids'], plan_rename: ['key', 'subject_id'] }
+  const ids: Record<string, [string, string]> = { get_symbol: ['key', 'symbol_id'], get_memory: ['key', 'symbol_id'], get_relationships: ['key', 'subject_id'], analyze_impact: ['key', 'subject_ids'], find_tests: ['key', 'subject_ids'], plan_rename: ['key', 'subject_id'], get_symbol_card: ['key', 'symbol_id'] }
   const keyed = (name: string, into: string) => {
     if (!(name in out)) return
     // A key is one way to name the subject: with an id or a path as well, the call does not say which it means.
@@ -1709,11 +1711,14 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     }
     const relationships: Record<string, unknown> = {}
     const hopBasis = new Map<string, Basis>()
+    // A hop of a path carries its call site, so a reader sees each hop's proof with no request per hop (FR1185).
+    const onPath = new Set(t.paths.flatMap((p) => p.assertions))
     for (const id of [...new Set([...t.paths.flatMap((p) => p.assertions), ...t.explored.map((e) => e.assertion_id)])].sort(byKey((i) => assertionKey(ctx.db, i)))) {
       const a = ctx.db.prepare('select type, origin, resolution, detail from assertion where id = ?').get(id) as { type: string; origin: string; resolution: string; detail: string | null }
       const basis = basisOf(a) ?? 'observed'
       hopBasis.set(id, basis)
-      relationships[id] = { type: a.type, origin: a.origin, basis, rule: a.detail ? ((JSON.parse(a.detail) as { rule?: string }).rule ?? null) : null }
+      const site = onPath.has(id) ? siteOf(ctx.db, id) : null
+      relationships[id] = { type: a.type, origin: a.origin, basis, rule: a.detail ? ((JSON.parse(a.detail) as { rule?: string }).rule ?? null) : null, ...(site ? { site: { path: site.path, start_line: site.start_line } } : {}) }
     }
     // A path is inferred when any hop is.
     const paths = t.paths.map((p) => ({ ...p, basis: p.assertions.some((a) => hopBasis.get(a) === 'inferred') ? 'inferred' as const : 'observed' as const }))
@@ -1761,7 +1766,61 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     })
     return { data: { evidence }, evidence_ids: ids, shrink: 'evidence' }
   },
+
+  // FR1180: a symbol's card in one request, so a reader sees its proof without four round trips. Read-only; every part is what
+  // get_symbol, get_relationships and read_evidence answer, each object verified once per request.
+  get_symbol_card(ctx, input) {
+    const symbol = IMPL.get_symbol(ctx, { symbol_id: input.symbol_id }).data.symbol as SymbolRow & Record<string, unknown>
+    const verified = new Map<string, ReturnType<EvidenceStore['verify']>>()
+    const verify = (hash: string) => { if (!verified.has(hash)) verified.set(hash, ctx.store.verify(hash)); return verified.get(hash)! }
+    const evidenceRow = (id: string) => ctx.db.prepare('select e.*, f.path from evidence e join file f on f.id = e.file_id where e.id = ?').get(id) as Record<string, any>
+    const decl = evidenceRow((ctx.db.prepare('select evidence_id from symbol where id = ?').get(symbol.id) as { evidence_id: string }).evidence_id)
+    const d = verify(decl.object_hash)
+    const declaration = {
+      id: decl.id, path: decl.path, start_line: decl.start_line, end_line: decl.end_line, object_hash: decl.object_hash, extractor: decl.extractor, extractor_version: decl.extractor_version,
+      analysis_mode: decl.analysis_mode, integrity: d.integrity, text: d.integrity.status === 'verified' && d.content ? d.content.subarray(decl.start_byte, decl.end_byte).toString('utf8') : null,
+    }
+    // A row's call site: the whole lines of the cited span, at most CARD_CONTEXT_LINES, with the span's character offsets in them;
+    // no text when the object fails its integrity check, so the lens says why rather than showing unverified source.
+    const cited = (id: string | undefined) => {
+      if (!id) return null
+      const e = evidenceRow(id), v = verify(e.object_hash)
+      const site = { id, path: e.path as string, start_line: e.start_line as number, end_line: e.end_line as number, integrity: v.integrity }
+      if (v.integrity.status !== 'verified' || !v.content) return { ...site, context: null }
+      // Buffer.lastIndexOf counts a negative offset from the end, so a span at the file's first byte starts its line there.
+      const c = v.content, from = e.start_byte === 0 ? 0 : c.lastIndexOf(10, e.start_byte - 1) + 1
+      let to = e.end_byte, lines = 0
+      while (to < c.length && c[to] !== 10) to++
+      for (let i = from; i < to; i++) if (c[i] === 10 && ++lines >= CARD_CONTEXT_LINES) { to = i; break }
+      const before = c.subarray(from, e.start_byte).toString('utf8'), span = c.subarray(e.start_byte, Math.min(e.end_byte, to)).toString('utf8')
+      return { ...site, context: { start_line: e.start_line as number, text: c.subarray(from, to).toString('utf8'), highlight: [before.length, before.length + span.length] } }
+    }
+    const types = (input.types as string[] | undefined) ?? ['calls']
+    const offset = (input.offset as number | undefined) ?? 0
+    const notes = new Set<string>()
+    let more = false
+    const side = (direction: 'in' | 'out') => {
+      if (input.direction && input.direction !== direction) return null
+      const r = IMPL.get_relationships({ ...ctx, page: { ...ctx.page, offset } }, { subject_id: symbol.id, direction, types, include_external: true })
+      for (const l of r.limitations ?? []) notes.add(l)
+      more ||= !!r.more
+      const d = r.data as { relationships: Array<Record<string, unknown> & { evidence_ids: string[] }>; totals: { in: number; out: number } }
+      const total = d.totals[direction]
+      return { rows: d.relationships.map((row) => ({ ...row, evidence: cited(row.evidence_ids[0]) })), total, next_offset: offset + d.relationships.length < total ? offset + d.relationships.length : null }
+    }
+    const incoming = side('in'), outgoing = side('out')
+    return {
+      data: { symbol, declaration, incoming, outgoing },
+      evidence_ids: [decl.id, ...[incoming, outgoing].flatMap((s) => s?.rows.flatMap((r) => r.evidence_ids) ?? [])],
+      stop_reasons: more ? ['max_rows'] : [], limitations: [...notes, ...(more ? ['Each side lists its first rows; pass direction and its next_offset as offset for the rest.'] : [])],
+      // A row that does not fit max_bytes is cut from the end of each side; next_offset still counts from what was listed.
+      shrink: ['outgoing.rows', 'incoming.rows'],
+      prune: (data) => { for (const s of [data.incoming, data.outgoing] as Array<{ rows: unknown[]; total: number; next_offset: number | null } | null>) if (s) s.next_offset = offset + s.rows.length < s.total ? offset + s.rows.length : null },
+    }
+  },
 }
+/** Most lines of source a card row carries of its call site. */
+const CARD_CONTEXT_LINES = 8
 
 /** What impact_completeness says about candidate edges: for the changed symbols that followed them, and for those that did not (FR209). */
 const inferredNotesFor = (done: Array<{ follow: { on: boolean; asked: boolean }; sites: { followable: number; capped: number } }>): string[] => {
