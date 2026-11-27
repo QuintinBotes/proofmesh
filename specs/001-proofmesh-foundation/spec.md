@@ -986,6 +986,7 @@ From #39: a fresh clone starts from the snapshot a teammate or CI built for the 
 - FR1223: MUST run no layout simulation in the browser: the Galaxy's first frame shows every symbol at its final position, and it has no pause or resume control, no IndexedDB layout cache and no warm start.
 - FR1224: MUST say in the Galaxy's legend that position shows containment (directory, then file, then name), that nearness is not a relationship, and that only drawn lines are relationships (FR068).
 - FR1225: MUST lay out 250,000 symbols on the server in at most one second on the reference machine (#44 SC-002).
+- FR1620: MUST check FR1225 by the CPU time the test process spends in the layout (user and system, every thread of the process, so garbage collection counts), not by wall-clock time, so other processes on a busy machine cannot fail it while a layout that really does over a second of work still does (#221). The layout is synchronous computation with no I/O, so on an idle machine its wall-clock time is no more than about this CPU time; best-of-N wall-clock runs were not chosen, because under sustained load every run is stretched (the fastest of five reached 990 ms with the layout's own CPU time at 140 ms).
 
 ### Open source and extensibility
 
