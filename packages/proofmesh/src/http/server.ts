@@ -65,6 +65,12 @@ export async function startViewServer(dataDir: string, port = 7317, assets = obs
         if (url.pathname === '/api/v1/galaxy/symbol') {
           const id = galaxyFor(dataDir, scope).ids[Number(body.index)]
           if (!Number.isInteger(body.index) || !id) return fail(new ProofmeshError('INVALID_ARGUMENT', 'index is not a point of the current galaxy'))
+          // With card, the point's get_symbol_card answer comes too, so a point opens with one request (FR1180); the tool checks its input.
+          if (body.card !== undefined) {
+            if (body.card === null || typeof body.card !== 'object' || Array.isArray(body.card)) return fail(new ProofmeshError('INVALID_ARGUMENT', 'card is the get_symbol_card input, without symbol_id'))
+            const card = runTool(dataDir, 'get_symbol_card', { ...(body.card as Record<string, unknown>), symbol_id: id, ...(pinned ? { snapshot_id: pinned } : {}), ...(scope.repositoryId ? { repository_id: scope.repositoryId } : {}) })
+            return send(200, JSON.stringify({ id, card }))
+          }
           return send(200, JSON.stringify({ id }))
         }
         return fail(new ProofmeshError('NOT_FOUND', `no route ${url.pathname}`))

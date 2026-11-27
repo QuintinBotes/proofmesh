@@ -1,0 +1,894 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "get_symbol_card.data.schema.json",
+  "title": "get_symbol_card data",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "symbol",
+    "declaration",
+    "incoming",
+    "outgoing"
+  ],
+  "properties": {
+    "symbol": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "name",
+        "qualified_name",
+        "path",
+        "start_line",
+        "end_line",
+        "signature",
+        "evidence_id",
+        "stable_key",
+        "body_hash"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^sym_[0-9a-z]+$"
+        },
+        "kind": {
+          "enum": [
+            "function",
+            "class",
+            "method",
+            "interface",
+            "type_alias",
+            "variable",
+            "module",
+            "struct",
+            "enum",
+            "property",
+            "field",
+            "constructor",
+            "namespace",
+            "project",
+            "package",
+            "endpoint",
+            "table",
+            "message",
+            "channel",
+            "job",
+            "feature_flag",
+            "config_key",
+            "team",
+            "service"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "qualified_name": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "start_line": {
+          "type": "integer"
+        },
+        "end_line": {
+          "type": "integer"
+        },
+        "signature": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "evidence_id": {
+          "type": "string",
+          "pattern": "^ev_[0-9a-z]+$"
+        },
+        "stable_key": {
+          "type": "string",
+          "description": "path#qualified_name#kind, as this snapshot stores it."
+        },
+        "body_hash": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{64}$",
+          "description": "SHA-256 of the declaration text with line endings, common indentation, trailing whitespace and the symbol's own name normalised (a module: its file text); null when the span is no more than the name, or the snapshot was sealed before hashes existed."
+        },
+        "roles": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "test",
+              "test_support"
+            ]
+          },
+          "description": "The roles the adapter gave the symbol, when it gave any: test (a test entry point) or test_support (test code that is no entry point)."
+        },
+        "generated": {
+          "type": "boolean",
+          "description": "Present and true when the file is generated (FR292); absent otherwise."
+        },
+        "detail": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "scip": {
+              "type": "string",
+              "description": "The SCIP index's own symbol for this definition, as the index wrote it (FR441)."
+            }
+          },
+          "description": "What the adapter recorded beside the symbol's name, when it recorded any: scip, the SCIP index's own symbol for a definition the SCIP importer declared (FR441). Absent when the adapter sent none (no built-in adapter but the SCIP importer sends it), and in a snapshot sealed before format 0.11."
+        }
+      }
+    },
+    "declaration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "path",
+        "start_line",
+        "end_line",
+        "object_hash",
+        "extractor",
+        "extractor_version",
+        "analysis_mode",
+        "integrity",
+        "text"
+      ],
+      "description": "The declaration's evidence, as read_evidence answers it; text is null when the object fails its integrity check or is missing.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^ev_[0-9a-z]+$"
+        },
+        "path": {
+          "type": "string"
+        },
+        "start_line": {
+          "type": "integer"
+        },
+        "end_line": {
+          "type": "integer"
+        },
+        "object_hash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "extractor": {
+          "type": "string"
+        },
+        "extractor_version": {
+          "type": "string"
+        },
+        "analysis_mode": {
+          "enum": [
+            "no_execution",
+            "trusted_build"
+          ]
+        },
+        "integrity": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status"
+          ],
+          "properties": {
+            "status": {
+              "enum": [
+                "verified",
+                "failed",
+                "unavailable"
+              ]
+            },
+            "actual_hash": {
+              "type": "string"
+            }
+          }
+        },
+        "text": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "generated": {
+          "type": "boolean",
+          "description": "Present and true when the file is generated (FR292); absent otherwise."
+        }
+      }
+    },
+    "incoming": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "required": [
+        "rows",
+        "total",
+        "next_offset"
+      ],
+      "description": "Null when direction asks only for the other side.",
+      "properties": {
+        "rows": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "assertion_id",
+              "type",
+              "direction",
+              "resolution",
+              "origin",
+              "other",
+              "site",
+              "reason",
+              "evidence_ids",
+              "detail",
+              "evidence"
+            ],
+            "properties": {
+              "assertion_id": {
+                "type": "string",
+                "pattern": "^as_[0-9a-z]+$"
+              },
+              "type": {
+                "enum": [
+                  "calls",
+                  "imports",
+                  "contains",
+                  "inherits",
+                  "implements",
+                  "overrides",
+                  "references",
+                  "injects",
+                  "registered_as",
+                  "exposes",
+                  "maps_to",
+                  "runs",
+                  "dispatches_to",
+                  "handles",
+                  "publishes",
+                  "consumes",
+                  "sends_to",
+                  "listens_on",
+                  "evaluates_flag",
+                  "reads_config",
+                  "depends_on",
+                  "depends_on_package",
+                  "owned_by",
+                  "calls_service",
+                  "renders",
+                  "uses_hook",
+                  "provides_context",
+                  "uses_context",
+                  "mentions"
+                ]
+              },
+              "direction": {
+                "enum": [
+                  "in",
+                  "out"
+                ]
+              },
+              "resolution": {
+                "enum": [
+                  "resolved",
+                  "resolved_external",
+                  "candidate",
+                  "ambiguous",
+                  "unresolved"
+                ]
+              },
+              "origin": {
+                "enum": [
+                  "syntax",
+                  "semantic_resolver",
+                  "configuration_adapter",
+                  "framework_adapter",
+                  "contract_match",
+                  "runtime_observation",
+                  "documentation",
+                  "human_assertion",
+                  "model_hypothesis"
+                ]
+              },
+              "basis": {
+                "enum": [
+                  "observed",
+                  "inferred"
+                ],
+                "description": "observed: a compiler, an index or a declared configuration proves it. inferred: a convention, a name match or a contract match suggests it. Derived when the answer is built. Absent on an unresolved boundary, which is not a relationship."
+              },
+              "other": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "symbol",
+                      "file",
+                      "external",
+                      "none"
+                    ]
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "qualified_name": {
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "module": {
+                    "type": "string"
+                  },
+                  "symbol_kind": {
+                    "type": "string"
+                  },
+                  "start_line": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "generated": {
+                    "type": "boolean",
+                    "description": "Present and true when the file is generated (FR292); absent otherwise."
+                  },
+                  "key": {
+                    "type": "string",
+                    "description": "The stable_key of the symbol on the far side (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file."
+                  }
+                }
+              },
+              "site": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "path",
+                  "start_line",
+                  "end_line"
+                ],
+                "properties": {
+                  "path": {
+                    "type": "string"
+                  },
+                  "start_line": {
+                    "type": "integer"
+                  },
+                  "end_line": {
+                    "type": "integer"
+                  },
+                  "generated": {
+                    "type": "boolean",
+                    "description": "Present and true when the file is generated (FR292); absent otherwise."
+                  }
+                }
+              },
+              "reason": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "evidence_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^ev_[0-9a-z]+$"
+                }
+              },
+              "detail": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "via": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "qualified_name"
+                ],
+                "description": "On an inbound row: the member the subject implements or overrides that the call or reference names, through which it may dispatch to the subject.",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "qualified_name": {
+                    "type": "string"
+                  },
+                  "key": {
+                    "type": "string",
+                    "description": "The stable_key of the member the call or reference names (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file."
+                  }
+                }
+              },
+              "repository": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "name",
+                  "commit"
+                ],
+                "description": "Present on a row of another repository of the workspace (include_workspace): that repository, and the commit its snapshot was built from. Its ids and evidence ids are of that snapshot.",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "commit": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                }
+              },
+              "evidence": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "path",
+                  "start_line",
+                  "end_line",
+                  "integrity",
+                  "context"
+                ],
+                "description": "The call site's evidence: its span and integrity, and the whole lines of the site (at most 8) with the cited span as character offsets in them. context is null when the object fails its integrity check or is missing. Null when the row has no evidence.",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "pattern": "^ev_[0-9a-z]+$"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "start_line": {
+                    "type": "integer"
+                  },
+                  "end_line": {
+                    "type": "integer"
+                  },
+                  "integrity": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "status"
+                    ],
+                    "properties": {
+                      "status": {
+                        "enum": [
+                          "verified",
+                          "failed",
+                          "unavailable"
+                        ]
+                      },
+                      "actual_hash": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "generated": {
+                    "type": "boolean",
+                    "description": "Present and true when the file is generated (FR292); absent otherwise."
+                  },
+                  "context": {
+                    "type": [
+                      "object",
+                      "null"
+                    ],
+                    "additionalProperties": false,
+                    "required": [
+                      "start_line",
+                      "text",
+                      "highlight"
+                    ],
+                    "properties": {
+                      "start_line": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "text": {
+                        "type": "string"
+                      },
+                      "highlight": {
+                        "type": "array",
+                        "items": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "minItems": 2,
+                        "maxItems": 2,
+                        "description": "The cited span's start and end, as character offsets in text."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "total": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Every row of this side, listed or not."
+        },
+        "next_offset": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "Pass as offset, with direction, for the next rows of this side; null when every row is listed."
+        }
+      }
+    },
+    "outgoing": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "required": [
+        "rows",
+        "total",
+        "next_offset"
+      ],
+      "description": "Null when direction asks only for the other side.",
+      "properties": {
+        "rows": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "assertion_id",
+              "type",
+              "direction",
+              "resolution",
+              "origin",
+              "other",
+              "site",
+              "reason",
+              "evidence_ids",
+              "detail",
+              "evidence"
+            ],
+            "properties": {
+              "assertion_id": {
+                "type": "string",
+                "pattern": "^as_[0-9a-z]+$"
+              },
+              "type": {
+                "enum": [
+                  "calls",
+                  "imports",
+                  "contains",
+                  "inherits",
+                  "implements",
+                  "overrides",
+                  "references",
+                  "injects",
+                  "registered_as",
+                  "exposes",
+                  "maps_to",
+                  "runs",
+                  "dispatches_to",
+                  "handles",
+                  "publishes",
+                  "consumes",
+                  "sends_to",
+                  "listens_on",
+                  "evaluates_flag",
+                  "reads_config",
+                  "depends_on",
+                  "depends_on_package",
+                  "owned_by",
+                  "calls_service",
+                  "renders",
+                  "uses_hook",
+                  "provides_context",
+                  "uses_context",
+                  "mentions"
+                ]
+              },
+              "direction": {
+                "enum": [
+                  "in",
+                  "out"
+                ]
+              },
+              "resolution": {
+                "enum": [
+                  "resolved",
+                  "resolved_external",
+                  "candidate",
+                  "ambiguous",
+                  "unresolved"
+                ]
+              },
+              "origin": {
+                "enum": [
+                  "syntax",
+                  "semantic_resolver",
+                  "configuration_adapter",
+                  "framework_adapter",
+                  "contract_match",
+                  "runtime_observation",
+                  "documentation",
+                  "human_assertion",
+                  "model_hypothesis"
+                ]
+              },
+              "basis": {
+                "enum": [
+                  "observed",
+                  "inferred"
+                ],
+                "description": "observed: a compiler, an index or a declared configuration proves it. inferred: a convention, a name match or a contract match suggests it. Derived when the answer is built. Absent on an unresolved boundary, which is not a relationship."
+              },
+              "other": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "enum": [
+                      "symbol",
+                      "file",
+                      "external",
+                      "none"
+                    ]
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "qualified_name": {
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "module": {
+                    "type": "string"
+                  },
+                  "symbol_kind": {
+                    "type": "string"
+                  },
+                  "start_line": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "generated": {
+                    "type": "boolean",
+                    "description": "Present and true when the file is generated (FR292); absent otherwise."
+                  },
+                  "key": {
+                    "type": "string",
+                    "description": "The stable_key of the symbol on the far side (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file."
+                  }
+                }
+              },
+              "site": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "path",
+                  "start_line",
+                  "end_line"
+                ],
+                "properties": {
+                  "path": {
+                    "type": "string"
+                  },
+                  "start_line": {
+                    "type": "integer"
+                  },
+                  "end_line": {
+                    "type": "integer"
+                  },
+                  "generated": {
+                    "type": "boolean",
+                    "description": "Present and true when the file is generated (FR292); absent otherwise."
+                  }
+                }
+              },
+              "reason": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "evidence_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^ev_[0-9a-z]+$"
+                }
+              },
+              "detail": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "via": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "qualified_name"
+                ],
+                "description": "On an inbound row: the member the subject implements or overrides that the call or reference names, through which it may dispatch to the subject.",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "qualified_name": {
+                    "type": "string"
+                  },
+                  "key": {
+                    "type": "string",
+                    "description": "The stable_key of the member the call or reference names (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file."
+                  }
+                }
+              },
+              "repository": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "name",
+                  "commit"
+                ],
+                "description": "Present on a row of another repository of the workspace (include_workspace): that repository, and the commit its snapshot was built from. Its ids and evidence ids are of that snapshot.",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "commit": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                }
+              },
+              "evidence": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "path",
+                  "start_line",
+                  "end_line",
+                  "integrity",
+                  "context"
+                ],
+                "description": "The call site's evidence: its span and integrity, and the whole lines of the site (at most 8) with the cited span as character offsets in them. context is null when the object fails its integrity check or is missing. Null when the row has no evidence.",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "pattern": "^ev_[0-9a-z]+$"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "start_line": {
+                    "type": "integer"
+                  },
+                  "end_line": {
+                    "type": "integer"
+                  },
+                  "integrity": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "status"
+                    ],
+                    "properties": {
+                      "status": {
+                        "enum": [
+                          "verified",
+                          "failed",
+                          "unavailable"
+                        ]
+                      },
+                      "actual_hash": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "generated": {
+                    "type": "boolean",
+                    "description": "Present and true when the file is generated (FR292); absent otherwise."
+                  },
+                  "context": {
+                    "type": [
+                      "object",
+                      "null"
+                    ],
+                    "additionalProperties": false,
+                    "required": [
+                      "start_line",
+                      "text",
+                      "highlight"
+                    ],
+                    "properties": {
+                      "start_line": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "text": {
+                        "type": "string"
+                      },
+                      "highlight": {
+                        "type": "array",
+                        "items": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "minItems": 2,
+                        "maxItems": 2,
+                        "description": "The cited span's start and end, as character offsets in text."
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "total": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Every row of this side, listed or not."
+        },
+        "next_offset": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "Pass as offset, with direction, for the next rows of this side; null when every row is listed."
+        }
+      }
+    }
+  }
+}
