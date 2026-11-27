@@ -10,7 +10,8 @@ A reproducible Observatory benchmark with published budgets (part of #41; FR1160
 - Each measure is the median of `--runs` cold runs (3), each in a new browser process and profile and a new `proofmesh view`, with its spread; the machine's first run is reported apart. The JSON and Markdown name the hardware, its load average, the browser build, the viewport, the WebGL renderer and the ProofMesh commit. A software renderer is named and checked against the budgets' software column.
 - `--fixture synthetic --nodes N --seed S` writes a deterministic galaxy of any size into the server's cache, so the real server serves it; its points open real evidence.
 - `bench/observatory/budgets.json` holds the budgets with GPU and software columns and the targets of the Observatory specs (#44 to #47); `--check` exits 1 when a median misses its budget, and the table marks it `over budget`. The earlier budgets are unchanged; the one new budget, the longest main-thread task at 100 ms, catches a build slowed by a 200 ms task. `bench/observatory/README.md` publishes the budgets and the latest results.
-- RESULTS_LINE
+- First results (2026-11-27, Apple M5 Max under load, headless Chromium 158 on Metal): on the TypeORM sample every budget is met (longest task 79 ms, frames 16.8 ms p95, search 29 ms), and final positions take 84 s. At 50,000 and 250,000 symbols the longest main-thread task, 116 ms and 280 ms, is over its 100 ms budget. Under that load the cold runs did not agree within 10% on every time over 100 ms.
+- Not done yet: a run on a quiet machine to show three cold runs agree within 10% (SC-002); a click on a point of the canvas (evidence is opened from the Galaxy table's Explore button, which runs the same code); a software-renderer run.
 
 A Composer `require-dev` package is for tests only (closes #180; FR1040):
 

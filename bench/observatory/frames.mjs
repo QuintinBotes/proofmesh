@@ -26,7 +26,8 @@ const RUNS = Number(flag('--runs', 3)), SEED = Number(flag('--seed', 1)), NODES 
 const query = flag('--query', 'order'), workspace = flag('--workspace'), repository = flag('--repository'), headless = !args.includes('--headed')
 const out = path.resolve(flag('--out', path.join(HERE, 'out', `${fixtureName === 'synthetic' ? `synthetic-${NODES}` : fixtureName ?? 'data-dir'}.json`)))
 const budgetsFile = flag('--budgets', path.join(HERE, 'budgets.json'))
-if (!(fixtureName === 'typeorm' || fixtureName === 'synthetic' || dataDirArg) || !(RUNS >= 1)) {
+// --fixture with --data-dir is refused: a synthetic galaxy would overwrite the galaxy cache of a person's own data directory.
+if (!(fixtureName === 'typeorm' || fixtureName === 'synthetic' || dataDirArg) || (fixtureName && dataDirArg) || !(RUNS >= 1)) {
   console.error('usage: node bench/observatory/frames.mjs --fixture typeorm|synthetic [--nodes N] [--seed S] [--runs N] [--out file.json] [--budgets file] [--check] [--inject-task-ms N] [--headed]\n       node bench/observatory/frames.mjs --data-dir <dir> [--workspace W --repository R] [...]')
   process.exit(2)
 }
@@ -176,9 +177,10 @@ const timedClick = (page, find, ready, arg) => page.evaluate(async ({ find, read
   const t1 = performance.now()
   return { ms: Math.round(t1 - t0), requests: performance.getEntriesByType('resource').filter((e) => e.startTime >= t0 && e.startTime <= t1 && e.name.includes('/api/')).length }
 }, { find: find.toString(), ready: ready.toString(), arg })
-/** The galaxy in the server's cache: the name, degree and kind of each point. */
-function cachedGalaxy() {
-  const buf = zlib.gunzipSync(fs.readFileSync(path.join(dataDir, 'cache', fs.readdirSync(path.join(dataDir, 'cache')).find((f) => /^galaxy-v2-.*\.bin\.gz$/.test(f)))))
+/** The galaxy of a snapshot (or the only one) in the server's cache: the name, degree and kind of each point. */
+function cachedGalaxy(snapshotId) {
+  const file = snapshotId ? `galaxy-v2-${snapshotId}.bin.gz` : fs.readdirSync(path.join(dataDir, 'cache')).find((f) => /^galaxy-v2-.*\.bin\.gz$/.test(f))
+  const buf = zlib.gunzipSync(fs.readFileSync(path.join(dataDir, 'cache', file)))
   const hl = buf.readUInt32LE(0), h = JSON.parse(buf.subarray(4, 4 + hl).toString('utf8')), base = 4 + hl + ((4 - ((4 + hl) % 4)) % 4)
   return {
     names: buf.subarray(base + h.offsets.names, base + h.offsets.names + h.names_bytes).toString('utf8').split('\n'),
@@ -269,7 +271,8 @@ async function coldRun(i, { keepFor } = {}) {
   await tab('Galaxy')
   // Symbol to evidence: the Galaxy table's Explore button for one symbol (the same call path as a click on its point), to the source
   // text shown; the first open, then again once Explore's renderer has started. Then an edge of it, from the Explore table.
-  if (!evidenceName) { const g = cachedGalaxy(); evidenceName = g.names[evidencePoint(g)] }
+  // The galaxy shown is the one of the snapshot its layout key names; a data directory's cache may hold others.
+  if (!evidenceName) { const g = cachedGalaxy(layout.key.slice(0, layout.key.lastIndexOf(':'))); evidenceName = g.names[evidencePoint(g)] }
   const symbol = evidenceName
   if (!symbol) throw new Error('no symbol with a name no other name contains')
   const openSymbol = async () => {
@@ -279,6 +282,7 @@ async function coldRun(i, { keepFor } = {}) {
     return timedClick(page, (s) => [...document.querySelectorAll('[aria-label="Galaxy table"] tr')].find((r) => r.children[2]?.textContent === s)?.querySelector('button'), () => document.querySelector('[data-testid=evidence-text]')?.textContent, symbol)
   }
   const evFirst = await openSymbol()
+  if (!evFirst) throw new Error(`the Galaxy table has no row for ${symbol}`)
   await page.getByRole('button', { name: 'Close evidence' }).click()
   const ev = await openSymbol()
   await page.getByRole('button', { name: 'Table', exact: true }).click()
@@ -291,7 +295,8 @@ async function coldRun(i, { keepFor } = {}) {
     search_ms: summarize(search).median, symbol_to_evidence_first_ms: evFirst?.ms, symbol_to_evidence_ms: ev?.ms, symbol_to_evidence_requests: ev?.requests,
     edge_to_evidence_ms: edge?.ms ?? null, edge_to_evidence_requests: edge?.requests ?? null, map_switch_ms: mapWarm.ms, map_switch_cold_ms: mapCold.ms,
     script_gzip_kb: Math.round(loadBytes.filter((b) => b.type === 'script').reduce((s, b) => s + b.gzip, 0) / 1024),
-    transferred_kb: Math.round(loadBytes.reduce((s, b) => s + b.transferred, 0) / 1024),
+    // Scripts and style sheets only, as #47's target counts them ("before data"); the bytes table lists the data apart.
+    transferred_kb: Math.round(loadBytes.filter((b) => b.type !== 'api').reduce((s, b) => s + b.transferred, 0) / 1024),
   })
   for (const k of Object.keys(run)) if (typeof run[k] === 'number') run[k] = Math.round(run[k] * 10) / 10
   // Warm: the Galaxy loaded again in the same page, its layout and HTTP cache kept (a reload would reopen the symbol Explore shows).

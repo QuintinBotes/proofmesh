@@ -14,7 +14,7 @@
     "cold.edge_to_evidence_ms": { "label": "Edge to evidence", "gpu": null, "software": null, "target": "≤ 150 ms p95 warm (#45 SC-001)" },
     "cold.map_switch_ms": { "label": "Map switch", "gpu": 2000, "software": 2000, "target": null },
     "cold.script_gzip_kb": { "label": "Initial JavaScript, gzip", "gpu": null, "software": null, "target": "≤ 150 KB (#47 SC-001)" },
-    "cold.transferred_kb": { "label": "Transferred on a cold load", "gpu": null, "software": null, "target": "≤ 250 KB before data (#47 SC-001)" },
+    "cold.transferred_kb": { "label": "Transferred on a cold load, before data", "gpu": null, "software": null, "target": "≤ 250 KB before data (#47 SC-001)" },
     "cold.browser_rss_mb": { "label": "Browser memory, all processes", "gpu": null, "software": null, "target": "≤ 300 MB at 50,000, ≤ 600 MB at 250,000 (#47 SC-005)" },
     "warm.first_draw_ms": { "label": "First drawn map, warm", "gpu": null, "software": null, "target": "≤ 300 ms at 50,000 symbols (#47 SC-003)" }
   }
