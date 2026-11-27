@@ -24,7 +24,7 @@ const OUT = path.resolve(process.env.PARITY_OUT ?? path.join(HERE, 'out'))
 const RUNS = Number(process.env.PARITY_RUNS ?? 3)
 const WORK = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'parity-run-')))
 process.on('exit', () => fs.rmSync(WORK, { recursive: true, force: true, maxRetries: 3 }))
-for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(sig, () => process.exit(130))
+for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(sig, () => process.exit(128 + os.constants.signals[sig]))
 const FIX = path.join(WORK, 'fixture')
 const CACHES = ['graphify-out/', '.serena/', '.aider.tags.cache.v4/']
 fs.cpSync(SRC, FIX, { recursive: true, filter: (f) => !CACHES.includes(`${path.relative(SRC, f)}/`) }) // a fixture an older harness ran in holds caches
@@ -456,7 +456,8 @@ const md = [
 ].join('\n')
 fs.writeFileSync(path.join(WORK, 'parity.md'), md)
 
-// Into out/ by rename, so a run that shares PARITY_OUT never reads or removes a file half written; the run that ends last wins.
+// Into out/ by rename, so a run that shares PARITY_OUT never reads or removes a file half written. Each file is whole, but
+// two runs that end at the same moment can leave files of both.
 fs.mkdirSync(OUT, { recursive: true })
 const staged = (name) => path.join(OUT, `.${name}.${process.pid}`)
 for (const name of ['truth.json', 'results.json', 'parity.md']) { fs.copyFileSync(path.join(WORK, name), staged(name)); fs.renameSync(staged(name), path.join(OUT, name)) }

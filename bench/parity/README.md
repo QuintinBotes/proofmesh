@@ -30,7 +30,8 @@ sh bench/parity/run.sh          # then read bench/parity/out/parity.md
   (`parity: fixture copy <dir>`) and removes when it ends; the ProofMesh data, the SCIP index, Serena's home (linked to
   the shared home's language servers) and the results are kept there too. The fixture at `PARITY_FIXTURE` is only
   read, so two runs at once, on one fixture and one `out/`, never edit, index or clean up each other's files: each
-  exits 0 with its own table, and `out/` holds the results of the run that ended last, each file put in by rename.
+  exits 0 with its own table. Each file of `out/` is put in whole, by rename, from the run that wrote it last; when
+  two runs end at the same moment, `parity.md`, `results.json`, `truth.json` and `raw/` can come from different runs.
   The first run builds the fixture in a directory of its own and renames it into place, so runs that start together
   with no fixture use one whole copy. A `PARITY_FIXTURE` that exists without a `PROVENANCE` note is refused, not
   replaced.
