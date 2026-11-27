@@ -19,7 +19,8 @@ import type { ModuleCycle } from '../indexer/module-cycles.js'
 import { overview } from './overview.js'
 import { getEcosystem } from './ecosystem.js'
 import { type Basis, basisOf, byBasis, inferredSql } from './basis.js'
-import { analyzeImpact, IMPACT_TYPES, type Impact } from './impact.js'
+import { analyzeImpact, IMPACT_TYPES, structure, type Impact } from './impact.js'
+import { mismatchNotes, repoTag, withWorkspace, workspaceDependents, type Inbound, type WorkspaceDependent } from './workspace.js'
 import { CANDIDATE_TYPES, candidatesFrom, inferredNotes, resolveFollow, sitesNaming } from './inferred.js'
 import { ADAPTER_LANGUAGE_NAMES } from '../indexer/language-detect.js'
 import { hasRoles, isTestCode, isTestPath, parseRoles, roleTest, rolesSql } from './tests.js'
@@ -522,7 +523,9 @@ function siteOf(db: Database.Database, assertionId: string): { path: string; sta
  * Each dependent at the site of the edge that first reached it, or at its declaration when dispatch reached it (FR097, FR860): the
  * row's line in its own file and the relationship, and `site` when that edge is recorded in another file (a registration, say).
  */
-const impactRows = (ctx: Ctx, dependents: Impact['dependents'], reached: Impact['reached_by']) => dependents.map((x) => {
+const impactRows = (ctx: Ctx, dependents: Array<Impact['dependents'][number] & { repository?: WorkspaceDependent['repository'] }>, reached: Impact['reached_by']) => dependents.map((x) => {
+  // A dependent in another repository already holds its line, relationship and site, read from its own snapshot.
+  if (x.repository) return x as WorkspaceDependent
   const via = reached.get(x.id), site = via ? siteOf(ctx.db, via) : null
   const line = site?.path === x.path ? site.start_line : (ctx.db.prepare('select start_line from symbol where id = ?').get(x.id) as { start_line: number }).start_line
   const relationship = via ? (ctx.db.prepare('select type from assertion where id = ?').get(via) as { type: string }).type : 'dispatch'
@@ -749,7 +752,23 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     for (const id of subjects) if (!ctx.db.prepare(`select 1 from ${id.startsWith('ext_') ? 'external_symbol' : id.startsWith('file_') ? 'file' : 'symbol'} where id = ?`).get(id)) throw new ProofmeshError('NOT_FOUND', `symbol ${id} is not in snapshot ${ctx.snapshot.id}`)
     const types = (input.types as string[] | undefined) ?? [...IMPACT_TYPES]
     const follow = resolveFollow(ctx.db, input.include_inferred, subjects)
-    const { reached_by, sites, ...r } = analyzeImpact(ctx.db, ctx.snapshot.id, subjects, types, ctx.limits.max_depth, ctx.limits.max_rows, undefined, follow.on)
+    const across = input.include_workspace === true
+    const { reached_by, sites, ...r } = analyzeImpact(ctx.db, ctx.snapshot.id, subjects, types, ctx.limits.max_depth, across ? Number.MAX_SAFE_INTEGER : ctx.limits.max_rows, undefined, follow.on)
+    // FR903: dependents in the other members of this repository's workspaces, through the packages it builds, after the local walk.
+    const ws = across ? withWorkspace(ctx.catalog, ctx.repo, ctx.snapshot, ctx.db, (w) => {
+      const reached = new Map<string, number>(), { membersOf } = structure(ctx.db, ctx.snapshot.id)
+      for (const id of subjects) for (const m of [id, ...(membersOf.get(id) ?? [])]) reached.set(m, 0)
+      for (const d of r.dependents) if (!reached.has(d.id)) reached.set(d.id, d.depth)
+      return { header: w.header, limitations: w.limitations, ...workspaceDependents(w, reached, types, ctx.limits.max_depth) }
+    }) : null
+    if (ws) {
+      const all: Array<Impact['dependents'][number] & { repository?: WorkspaceDependent['repository'] }> = [...r.dependents, ...ws.dependents]
+      all.sort((a, b) => a.depth - b.depth || (a.repository?.name ?? '').localeCompare(b.repository?.name ?? '') || a.qualified_name.localeCompare(b.qualified_name) || a.path.localeCompare(b.path))
+      r.dependents = all.slice(0, ctx.limits.max_rows)
+      r.totals.dependents += ws.dependents.length
+      for (const d of ws.dependents) { r.totals.by_basis[d.basis]++; r.totals.by_depth[String(d.depth)] = (r.totals.by_depth[String(d.depth)] ?? 0) + 1 }
+      if (ws.stopped && !r.stopped_by) r.stopped_by = 'max_depth'
+    }
     const calls = snapshotSummary(ctx.db, ctx.snapshot.id).unresolved_calls
     // Lean states only what applies to this answer; the tool description carries the standing caveat.
     const limitations = [
@@ -759,12 +778,13 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
       ...inferredNotes(follow, sites, subjects.length),
       ...(!types.includes('imports') && subjects.some((id) => id.startsWith('file_') || fileAlias(ctx.db, id) !== undefined) ? ['A file is reached only through imports; add imports to types for the files that depend on it.'] : []),
       ...leanReferencesNote(ctx, types),
+      ...(ws ? [...ws.limitations, ...mismatchNotes(ws.notes, ctx.repo.name), ...(ws.dependents.length ? ['Dependents in other repositories carry their repository; by_project, by_area and by_team count this repository\'s dependents only.'] : [])] : []),
     ]
     const stop: Array<'max_depth' | 'max_rows'> = [...(r.stopped_by === 'max_depth' ? ['max_depth' as const] : []), ...(r.stopped_by === 'node_budget' || r.totals.dependents > ctx.limits.max_rows ? ['max_rows' as const] : [])]
     const rows = impactRows(ctx, r.dependents, reached_by)
     return {
-      data: { subjects, types, ...r, dependents: rows }, stop_reasons: stop, limitations, shrink: 'dependents', total: r.totals.dependents,
-      lean: (data) => (data.dependents as typeof rows).map((x) => leanRow(leanName(x), x.site?.path ?? x.path, x.site?.start_line ?? x.line, [`depth=${x.depth}`, ...(x.relationship === 'dispatch' ? ['dispatch'] : types.length > 1 ? [x.relationship] : []), ...(x.basis === 'inferred' ? ['inferred'] : [])])),
+      data: { subjects, types, ...r, dependents: rows, ...(ws ? { workspace: ws.header } : {}) }, stop_reasons: stop, limitations, shrink: 'dependents', total: r.totals.dependents,
+      lean: (data) => (data.dependents as typeof rows).map((x) => leanRow(leanName(x), x.site?.path ?? x.path, x.site?.start_line ?? x.line, [`depth=${x.depth}`, ...(x.relationship === 'dispatch' ? ['dispatch'] : types.length > 1 ? [x.relationship] : []), ...('repository' in x && x.repository ? [repoTag(x.repository)] : []), ...(x.basis === 'inferred' ? ['inferred'] : [])])),
     }
   },
 
@@ -1306,6 +1326,12 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
       return names.includes(subject) ? undefined : names.find((n) => via.has(n))
     }
     const rows = all.slice(offset, offset + ctx.limits.max_rows + 1)
+    // FR902: inbound sites in the other members of this repository's workspaces, through the packages it builds. They follow every local row
+    // in the total order, so a page reaches them only once the local rows are all listed.
+    const ws = input.include_workspace === true && !isFile && !isExternal && direction !== 'out'
+      ? withWorkspace(ctx.catalog, ctx.repo, ctx.snapshot, ctx.db, (w) => ({ header: w.header, limitations: w.limitations, rows: w.inbound(ids, types).filter((r) => resolutions.includes(r.resolution) && !(input.include_tests === false && isTestPath(r.source.path))) }))
+      : null
+    const across = ws ? ws.rows.slice(Math.max(0, offset - all.length), Math.max(0, offset + ctx.limits.max_rows + 1 - all.length)) : []
     const describe = (kind: string | null, id: string | null) => {
       if (!kind || !id) return { kind: 'none' }
       if (kind === 'symbol') { const s = ctx.db.prepare(`${SYMBOL_SQL} where s.id = ?`).get(id) as SymbolRow; return { kind: 'symbol', id, symbol_kind: s.kind, name: s.name, qualified_name: s.qualified_name, path: s.path, start_line: s.start_line } }
@@ -1320,8 +1346,12 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
         other: a.direction === 'out' ? describe(a.target_kind, a.target_id) : describe(a.source_kind, a.source_id),
         site: { path: site.path, start_line: site.start_line, end_line: site.end_line }, reason: a.reason, detail: a.detail ? (JSON.parse(a.detail) as Record<string, string>) : null, evidence_ids: site.evidence,
         ...(viaOf(a) ? { via: { id: viaOf(a)!, qualified_name: (ctx.db.prepare('select qualified_name from symbol where id = ?').get(viaOf(a)) as { qualified_name: string }).qualified_name } } : {}),
-      }
-    })
+      } as { via?: { id: string; qualified_name: string }; repository?: Inbound['repository'] } & Record<string, unknown> & { assertion_id: string; type: string; direction: 'in' | 'out'; resolution: string; basis?: Basis; other: Record<string, unknown>; site: { path: string; start_line: number; end_line: number }; reason: string | null; detail: Record<string, string> | null; evidence_ids: string[] }
+    }).concat(across.map((r) => ({
+      assertion_id: r.assertion_id, type: r.type, direction: 'in' as const, resolution: r.resolution, origin: r.origin, basis: r.basis,
+      other: { kind: 'symbol', id: r.source.id, symbol_kind: r.source.kind, name: r.source.name, qualified_name: r.source.qualified_name, path: r.source.path, start_line: r.source.start_line, key: r.source.key },
+      site: r.site, reason: null, detail: r.detail, evidence_ids: r.evidence_ids, repository: r.repository,
+    })))
     const boundaries = !isFile && !isExternal && direction !== 'out' && types.includes('calls')
       ? incomingBoundaries(ctx, subject, via)
       : NO_BOUNDARIES
@@ -1340,7 +1370,8 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     const inCount = direction === 'out' ? null : counted(inbound, inboundParams)
     const inheritedBasis = byBasis(inherited.map((a) => ({ basis: basisOf(a) })))
     const outExternal = hideExternal ? (ctx.db.prepare(`select count(*) as n from assertion where source_id in (${sp}) and type = 'calls' and resolution = 'resolved_external'`).get(...ids) as { n: number }).n : 0
-    const totals = { in: inCount?.total ?? 0, out: outCount ? outCount.total + inherited.length : 0, by_basis: { observed: (outCount?.observed ?? 0) + (inCount?.observed ?? 0) + (outCount ? inheritedBasis.observed : 0), inferred: (outCount?.inferred ?? 0) + (inCount?.inferred ?? 0) + (outCount ? inheritedBasis.inferred : 0) }, ...(boundaries !== NO_BOUNDARIES ? { boundaries_calling_name: boundaries.name_matched } : {}), ...(outExternal ? { out_external: outExternal } : {}) }
+    const wsBasis = byBasis(ws?.rows ?? [])
+    const totals = { in: (inCount?.total ?? 0) + (ws?.rows.length ?? 0), out: outCount ? outCount.total + inherited.length : 0, by_basis: { observed: (outCount?.observed ?? 0) + (inCount?.observed ?? 0) + (outCount ? inheritedBasis.observed : 0) + wsBasis.observed, inferred: (outCount?.inferred ?? 0) + (inCount?.inferred ?? 0) + (outCount ? inheritedBasis.inferred : 0) + wsBasis.inferred }, ...(boundaries !== NO_BOUNDARIES ? { boundaries_calling_name: boundaries.name_matched } : {}), ...(outExternal ? { out_external: outExternal } : {}) }
     for (const g of outGroups) byReason[g.reason] = (byReason[g.reason] ?? 0) + g.n
     const truncated = relationships.length > ctx.limits.max_rows
     const limitations = [
@@ -1352,10 +1383,12 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
       ...(isExternal ? ['The subject is an external symbol: only resolved calls into it are listed, and a closed generic is a separate external symbol from its open definition.'] : []),
       ...(input.include_tests === false ? [`Rows whose other side is test code were left out: ${TEST_RECOGNISED}.`] : []),
       ...leanReferencesNote(ctx, types),
+      ...(ws ? [...ws.limitations, ...mismatchNotes(ws.rows, ctx.repo.name), ...(ws.rows.length ? ['Rows from other repositories carry their repository and commit; their ids and evidence ids are of that repository\'s snapshot.'] : [])] : []),
     ]
     return {
-      data: { relationships: relationships.slice(0, ctx.limits.max_rows), boundaries: boundaries.items, totals },
-      evidence_ids: [...new Set(relationships.slice(0, ctx.limits.max_rows).flatMap((r) => r.evidence_ids))].sort(byKey((i) => evidenceKey(ctx.db, i))),
+      data: { relationships: relationships.slice(0, ctx.limits.max_rows), boundaries: boundaries.items, totals, ...(ws ? { workspace: ws.header } : {}) },
+      // The envelope's evidence is this snapshot's; a row of another repository lists its own.
+      evidence_ids: [...new Set(relationships.slice(0, ctx.limits.max_rows).filter((r) => !r.repository).flatMap((r) => r.evidence_ids))].sort(byKey((i) => evidenceKey(ctx.db, i))),
       unresolved: { scope: 'query', items: [...boundaries.items, ...outUnresolved], count: boundaries.count + outGroups.reduce((n, g) => n + g.n, 0), by_reason: byReason },
       stop_reasons: truncated ? ['max_rows'] : [], more: relationships.length > ctx.limits.max_rows, limitations, shrink: ['relationships', 'boundaries'],
       // One row per site: the other side's name at the call, import or reference line, tagged with what a plain row would hide (FR096).
@@ -1366,7 +1399,7 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
           // A query that mixes directions or types says which each row is, as the JSON rows' direction and type fields do.
           ...(direction === 'both' ? [r.direction] : []), ...(types.length > 1 ? [r.type] : []), ...(r.via ? ['dispatch'] : []), ...(o.kind === 'external' ? ['external'] : []),
           ...(r.resolution === 'unresolved' ? [`unresolved:${r.reason}`] : r.resolution === 'candidate' || r.resolution === 'ambiguous' ? [r.resolution] : []),
-          ...(r.basis === 'inferred' ? ['inferred'] : []),
+          ...(r.basis === 'inferred' ? ['inferred'] : []), ...(r.repository ? [repoTag(r.repository)] : []),
         ])
       }),
     }

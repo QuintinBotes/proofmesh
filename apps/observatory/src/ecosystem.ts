@@ -3,13 +3,13 @@
 import { forceLayout } from './layout'
 import { TOKENS, type Scene, type SceneEdge, type SceneNode } from './scene'
 
-export type LinkType = 'calls_endpoint' | 'messages' | 'depends_on_package' | 'calls_service' | 'deploys' | 'uses_resource'
+export type LinkType = 'calls_endpoint' | 'messages' | 'depends_on_package' | 'calls_service' | 'deploys' | 'uses_resource' | 'calls' | 'inherits' | 'implements' | 'references'
 export type EcosystemMember = { repository_id: string; name: string; snapshot_id: string; current: boolean; symbols: number; files_indexed: number; endpoints: number; channels: number; projects: number }
 export type EcosystemLink = { source_repository_id: string; target_repository_id: string; type: LinkType; resolved: number; candidate: number; min_confidence: number; max_confidence: number; sample: Array<{ link_id: string; source: string; target: string | null; confidence: number; rule: string }> }
 export type EcosystemBoundary = { repository_id: string; type: LinkType; count: number; sample: Array<{ link_id: string; source: string; reason: string }> }
 export type Ecosystem = { workspace: { name: string; link_file_id: string; sealed_at: string; rules: Record<string, string> }; members: EcosystemMember[]; links: EcosystemLink[]; boundaries: EcosystemBoundary[] }
 
-export const LINK_WORDS: Record<LinkType, string> = { calls_endpoint: 'calls endpoints of', messages: 'sends messages to', depends_on_package: 'depends on packages of', calls_service: 'calls the service', deploys: 'deploys', uses_resource: 'uses the cloud resource' }
+export const LINK_WORDS: Record<LinkType, string> = { calls_endpoint: 'calls endpoints of', messages: 'sends messages to', depends_on_package: 'depends on packages of', calls_service: 'calls the service', deploys: 'deploys', uses_resource: 'uses the cloud resource', calls: 'calls code of', inherits: 'extends types of', implements: 'implements types of', references: 'uses types of' }
 /** How a member relates to the selected repository, read from the link file's pairs (A11). */
 export type Relation = 'selected' | 'links_to' | 'linked_from' | 'both' | 'indirect' | 'unlinked'
 export const RELATION_COLOURS: Record<Relation, string> = { selected: '#ffd166', links_to: '#7fd4ff', linked_from: '#c49bff', both: '#5ee2a0', indirect: '#8f99ad', unlinked: '#4d566b' }

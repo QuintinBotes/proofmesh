@@ -199,6 +199,14 @@ generated?: boolean
  * The stable_key of the dependent (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file.
  */
 key?: string
+/**
+ * Present on a row of another repository of the workspace (include_workspace): that repository, and the commit its snapshot was built from. Its ids and evidence ids are of that snapshot.
+ */
+repository?: {
+id: string
+name: string
+commit: (string | null)
+}
 }[]
 totals: {
 dependents: number
@@ -230,6 +238,20 @@ stopped_by: ("max_depth" | "node_budget" | null)
  * Members nested in type subjects, included as starting points because calls reach a type through them.
  */
 subject_members: number
+/**
+ * With include_workspace: each workspace that holds this repository, its link file (null when none is sealed), and each member's side of it: the snapshot and commit the link file was built from, and whether that snapshot is still the member's current one.
+ */
+workspace?: {
+name: string
+link_file_id: (string | null)
+members: {
+id: string
+name: string
+commit: (string | null)
+snapshot_id: string
+current: boolean
+}[]
+}[]
 }
 
 /**
@@ -304,6 +326,10 @@ envelope?: ("full" | "compact" | "lean")
  * Whether the walk follows candidate edges: a call site that binds one candidate, or an ambiguous one of at most five. true follows them, false never does, auto (the default) follows them when every subject's file was analysed by the syntax tier alone. Every row reached through one is inferred; a site with more than five candidates is never followed.
  */
 include_inferred?: (boolean | "auto")
+/**
+ * true continues the walk into the other repositories of this repository's workspaces through the packages it builds (an npm package.json), read from the workspace's sealed link file: a site there that reaches a dependent is one deeper, and its own dependents follow. Each such dependent carries its repository and commit.
+ */
+include_workspace?: boolean
 }
 
 /**
@@ -895,7 +921,7 @@ projects: number
 links: {
 source_repository_id: string
 target_repository_id: string
-type: ("calls_endpoint" | "messages" | "depends_on_package" | "calls_service" | "deploys" | "uses_resource")
+type: ("calls_endpoint" | "messages" | "depends_on_package" | "calls_service" | "deploys" | "uses_resource" | "calls" | "inherits" | "implements" | "references")
 resolved: number
 candidate: number
 min_confidence: number
@@ -930,7 +956,7 @@ rule: string
  */
 boundaries: {
 repository_id: string
-type: ("calls_endpoint" | "messages" | "depends_on_package" | "calls_service" | "deploys" | "uses_resource")
+type: ("calls_endpoint" | "messages" | "depends_on_package" | "calls_service" | "deploys" | "uses_resource" | "calls" | "inherits" | "implements" | "references")
 count: number
 /**
  * @maxItems 5
@@ -1501,6 +1527,14 @@ qualified_name: string
  */
 key?: string
 }
+/**
+ * Present on a row of another repository of the workspace (include_workspace): that repository, and the commit its snapshot was built from. Its ids and evidence ids are of that snapshot.
+ */
+repository?: {
+id: string
+name: string
+commit: (string | null)
+}
 }[]
 boundaries: {
 assertion_id: string
@@ -1544,6 +1578,20 @@ boundaries_calling_name?: number
  */
 out_external?: number
 }
+/**
+ * With include_workspace: each workspace that holds this repository, its link file (null when none is sealed), and each member's side of it: the snapshot and commit the link file was built from, and whether that snapshot is still the member's current one.
+ */
+workspace?: {
+name: string
+link_file_id: (string | null)
+members: {
+id: string
+name: string
+commit: (string | null)
+snapshot_id: string
+current: boolean
+}[]
+}[]
 }
 
 /**
@@ -1614,6 +1662,10 @@ envelope?: ("full" | "compact" | "lean")
  * Default false: outbound rows leave out calls that resolved to code outside the repository (framework and library members), and totals.out_external counts them; relationship types whose targets are external by nature, such as depends_on_package, keep them. True lists those calls too. Ignored when resolutions is given, and for an external subject.
  */
 include_external?: boolean
+/**
+ * true adds inbound calls, inherits, implements and references from the other repositories of this repository's workspaces whose sites reach the subject through a package it builds (an npm package.json), read from the workspace's sealed link file; each row carries its repository and commit. The same version installed as built is observed; another version is inferred, with the mismatch stated.
+ */
+include_workspace?: boolean
 }
 
 export interface GetSessionTrailData {

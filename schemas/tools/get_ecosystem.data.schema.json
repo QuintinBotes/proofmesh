@@ -35,7 +35,7 @@
         "type": "object", "additionalProperties": false, "required": ["source_repository_id", "target_repository_id", "type", "resolved", "candidate", "min_confidence", "max_confidence", "sample"],
         "properties": {
           "source_repository_id": { "type": "string" }, "target_repository_id": { "type": "string" },
-          "type": { "enum": ["calls_endpoint", "messages", "depends_on_package", "calls_service", "deploys", "uses_resource"] },
+          "type": { "enum": ["calls_endpoint", "messages", "depends_on_package", "calls_service", "deploys", "uses_resource", "calls", "inherits", "implements", "references"] },
           "resolved": { "type": "integer", "minimum": 0 }, "candidate": { "type": "integer", "minimum": 0 },
           "min_confidence": { "type": "number" }, "max_confidence": { "type": "number" },
           "sample": {
@@ -52,7 +52,7 @@
       "items": {
         "type": "object", "additionalProperties": false, "required": ["repository_id", "type", "count", "sample"],
         "properties": {
-          "repository_id": { "type": "string" }, "type": { "enum": ["calls_endpoint", "messages", "depends_on_package", "calls_service", "deploys", "uses_resource"] }, "count": { "type": "integer", "minimum": 0 },
+          "repository_id": { "type": "string" }, "type": { "enum": ["calls_endpoint", "messages", "depends_on_package", "calls_service", "deploys", "uses_resource", "calls", "inherits", "implements", "references"] }, "count": { "type": "integer", "minimum": 0 },
           "sample": { "type": "array", "maxItems": 5, "items": { "type": "object", "additionalProperties": false, "required": ["link_id", "source", "reason"], "properties": { "link_id": { "type": "string" }, "source": { "type": "string" }, "source_key": { "type": "string", "description": "The stable_key of that symbol in its member snapshot (FR280); absent when the end is no symbol." }, "reason": { "type": "string" } } } }
         }
       }
