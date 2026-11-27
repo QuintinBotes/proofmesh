@@ -1759,6 +1759,21 @@
     "FR1032": [
       "packages/proofmesh/test/parity-bench.test.ts"
     ],
+    "FR1100": [
+      "packages/proofmesh/test/parity-bench.test.ts"
+    ],
+    "FR1101": [
+      "packages/proofmesh/test/parity-bench.test.ts"
+    ],
+    "FR1102": [
+      "packages/proofmesh/test/parity-bench.test.ts"
+    ],
+    "FR1110": [
+      "packages/proofmesh/test/parity-bench.test.ts"
+    ],
+    "FR1111": [
+      "packages/proofmesh/test/parity-bench.test.ts"
+    ],
     "FR600": [
       "packages/proofmesh/test/syntax-rust-turbofish-calls.test.ts"
     ],
@@ -1934,6 +1949,15 @@
     ],
     "FR1085": [
       "packages/proofmesh/test/snapshot-transfer.test.ts"
+    ],
+    "FR1010": [
+      "packages/proofmesh/test/typescript-references.test.ts"
+    ],
+    "FR1020": [
+      "packages/proofmesh/test/typescript-property-references.test.ts"
+    ],
+    "FR1021": [
+      "packages/proofmesh/test/typescript-property-references.test.ts"
     ],
     "FR1060": [
       "packages/proofmesh/test/search-structure.test.ts"
