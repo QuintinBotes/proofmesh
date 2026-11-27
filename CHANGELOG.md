@@ -23,6 +23,10 @@ One source file that is not UTF-8 fails alone, not the whole index (closes #139;
 
 - `proofmesh mcp --help` and `mcp -h` started the MCP server on stdio and waited for a client, so a person looking up its flags saw nothing. They now print the usage of `mcp`, which names `--tools` and its profiles and the `--http` and `--port` flags, and exit 0 without starting a server.
 
+A finished index job is no longer reported `interrupted` (closes #130; FR740):
+
+- `get_job` reports a `running` job as `interrupted` when no process holds its repository's index lease. The index freed the lease first and wrote the job's final state after it, so a `get_job` in that gap read a job that had succeeded or failed as `interrupted`, with `error` and `result` null. Under load the gap was wide enough to fail `jobs.test.ts` #36 now and then: polling every 2 ms, 9 of 120 C# incremental jobs read `interrupted` while their rows then said `succeeded`. The index now writes the job's outcome while it still holds the lease, and `get_job` reads a `running` row again once it finds the lease free, so `interrupted` now means only that the process stopped before it recorded an outcome.
+
 `NUGET_PACKAGES` reaches the C# adapter (closes #142; FR680):
 
 - On a machine whose NuGet global packages folder is not `~/.nuget/packages`, the C# adapter looked for restored packages in the wrong place: it reads `NUGET_PACKAGES`, but the core starts every adapter with an allowlisted environment that did not carry it. A restored package read as missing, so calls into it were unresolved and it was not listed as an external input. The allowlist now carries `NUGET_PACKAGES` when it is set, the standard NuGet variable that `dotnet` itself reads; it is still an allowlist.
