@@ -461,6 +461,7 @@ Acceptance: CI runs my pull request without secrets or release credentials; lice
 - FR421: MUST select named profiles with `proofmesh mcp --tools <profile[,profile]>`, over stdio and Streamable HTTP: `core`, `data` (table, property, query-source and external-usage tools), `claims` (claims and verification), `extra` (snapshots, index jobs, workspaces, memory and impact completeness) and `all`, which lists every tool exactly as its schema file declares it. An unknown profile is refused at start as `INVALID_ARGUMENT` naming the profiles.
 - FR422: MUST make `list_queries` list every tool, loaded or not, with its `profile`, and say in its limitations how to load the other profiles.
 - FR423: MUST answer a call to a tool outside the profiles a server was started with as `INVALID_ARGUMENT` naming the profile that lists it (`details.profile`), never as an unknown tool or a silent failure; tool names, input schemas and envelopes do not change.
+- FR720: MUST exit `proofmesh mcp` on stdio with status 0 once its client closes stdin, after writing the answers to every request read before it, with no `unsettled top-level await` warning on stderr; an error on stdin, or one at start, still exits non-zero.
 
 ### Parity benchmark (#25)
 
