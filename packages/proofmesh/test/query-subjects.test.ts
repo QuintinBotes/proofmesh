@@ -5,7 +5,9 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js'
+import Database from 'better-sqlite3'
 import { Catalog } from '../src/meshstore/catalog.js'
+import { subjectsOf } from '../src/query/subjects.js'
 import { cli, fixtureRepo, indexedDataDir, tmpDir, tool } from './helpers.js'
 import { mcpClient } from './mcp-client.js'
 
@@ -55,6 +57,24 @@ const subjectRows = (dataDir: string) => {
   const c = Catalog.open(dataDir)
   try { return c.db.prepare('select * from query_subject').all() as Array<Record<string, unknown>> } finally { c.close() }
 }
+
+describe('#50 a diff\'s subjects', () => {
+  it('FR1941 a symbol that only moved, or whose change is a member\'s change, such as the class around an edited method, is not a subject; the member is', () => {
+    const db = new Database(':memory:')
+    db.exec('create table symbol (id text); create table file (path text)')
+    const sym = (n: number) => `sym_${String(n).padStart(24, '0')}`
+    const at = (id: string, qualified_name: string, kind = 'method', what = ['range', 'body']) => ({ id, base_id: id, qualified_name, kind, path: 'src/a.ts', what })
+    const data = {
+      base: { snapshot_id: 'snap_a' },
+      symbols: {
+        changed: [at(sym(1), 'src/a:DataSource', 'class'), at(sym(2), 'src/a:DataSource.initialize'), at(sym(3), 'src/a', 'module'), at(sym(5), 'src/a:QueryBuilder', 'class'), at(sym(7), 'src/a:DataSource.connect', 'method', ['range'])],
+        removed: [at(sym(4), 'src/b:titleCase', 'function')],
+        added: [at(sym(6), 'src/a:QueryBuilder.clearParameters')],
+      },
+    }
+    expect(subjectsOf(db, 'compare_snapshots', {}, data)).toEqual({ symbols: [sym(4), sym(2)], paths: [], base: 'snap_a' })
+  })
+})
 
 describe('#50 the subjects of each MCP query, recorded locally by session', () => {
   it('FR1940 FR1944 recording is off by default: no subject is written, the trail says recording is off and how to turn it on (SC-003)', async () => {

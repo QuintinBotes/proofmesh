@@ -23,9 +23,15 @@ export function subjectsOf(db: Database.Database, tool: string, input: Record<st
   const symbols: unknown[] = [], paths: unknown[] = []
   let base: string | undefined
   if (tool === 'compare_snapshots') {
-    // A module's text change is its file's (FR132), not a change to a symbol with dependents of its own.
-    const s = data.symbols as { removed: Array<{ id: string; kind: string }>; changed: Array<{ base_id?: string; kind: string }> }
-    symbols.push(...s.removed.filter((r) => r.kind !== 'module').map((r) => r.id), ...s.changed.filter((c) => c.kind !== 'module').map((c) => c.base_id))
+    // A module's text change is its file's (FR132), and a class changes with its edited member: the innermost change is the subject,
+    // so the dependents are the member's, not every user of the class.
+    // A symbol that only moved, because lines above it changed, is not changed either.
+    type Sym = { id: string; base_id?: string; kind: string; qualified_name: string; what?: string[] }
+    const s = data.symbols as { removed: Sym[]; changed: Sym[]; added: Sym[] }
+    const edited = s.changed.filter((c) => c.what?.some((w) => w === 'body' || w === 'signature'))
+    const names = [...s.removed, ...edited, ...s.added].map((x) => x.qualified_name)
+    const innermost = (x: Sym) => x.kind !== 'module' && !names.some((n) => n.startsWith(`${x.qualified_name}.`))
+    symbols.push(...s.removed.filter(innermost).map((r) => r.id), ...edited.filter(innermost).map((c) => c.base_id))
     base = (data.base as { snapshot_id: string }).snapshot_id
   } else if (tool === 'verify_claim') {
     const p = data.proposition as { source?: unknown; target?: unknown }
