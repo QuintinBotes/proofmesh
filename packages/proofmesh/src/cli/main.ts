@@ -573,7 +573,8 @@ export async function main(argv: string[]): Promise<number> {
           return await new Promise<number>(() => {})
         }
         await serveStdio(dataDir, VERSION, profiles)
-        return await new Promise<number>(() => {})
+        // A client stops a stdio server by closing stdin, a clean exit; the SDK's transport does not watch for it (#147).
+        return await new Promise<number>((resolve, reject) => process.stdin.once('end', () => resolve(0)).once('error', reject))
       }
       case 'view': {
         const opts = [...rest]
