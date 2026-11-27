@@ -10,12 +10,13 @@ A local-first code graph for coding agents. Proofmesh indexes a repository on yo
 
 ## Install
 
-Requirements: Node.js 22.13 or later and pnpm 10; the .NET 10 SDK to build the C# adapter.
+Requirements: Node.js 22.13 or later and pnpm 10; the .NET 10 SDK to build the C# adapter. The CLI is not published to a package registry yet, so install it from a clone:
 
 ```
+git clone https://github.com/QuintinBotes/proofmesh && cd proofmesh
 corepack enable            # gives you pnpm if it is not on your PATH
 pnpm install --frozen-lockfile && pnpm build    # also builds the C# adapter when dotnet is on PATH
-alias proofmesh="node $PWD/packages/proofmesh/bin/proofmesh.mjs"
+cd packages/proofmesh && npm link && cd ../..    # puts proofmesh on PATH for every shell, Claude Code and the plugin
 proofmesh init
 proofmesh repo add ~/code/some-repo
 proofmesh index ~/code/some-repo
@@ -23,6 +24,8 @@ proofmesh view
 ```
 
 Without pnpm or Corepack on your PATH, run the pinned pnpm through npx instead: `npx --yes pnpm@10.14.0 install --frozen-lockfile && npx --yes pnpm@10.14.0 build`.
+
+`npm link` links this checkout into npm's global bin folder, so a program that does not read your shell's aliases, such as Claude Code or the plugin's MCP server, finds `proofmesh` too, and the updating steps below update it in place. `npm rm -g proofmesh` removes the link.
 
 `pnpm build` ends with `dotnet build adapters/csharp -c Release -m:1` when `dotnet` is on your PATH. Without it the build prints `skipped: build the C# adapter` and C# files are read by the syntax tier; install the .NET 10 SDK and run `pnpm build` again, or run that `dotnet build` yourself. `proofmesh status` lists the adapters this install can run, and for each it cannot, why: for C#, `not built: looked in` and the paths.
 

@@ -495,6 +495,8 @@ The Claude Code plugin's hooks module (a mod, Claude Code 2.1.287 and later) is 
 - FR487: MUST run at most one `proofmesh` process at a time, none after 10 minutes without a tool call, prompt or `/pm-status`, and in a session with no surface (`claude -p`, the Agent SDK) MUST draw nothing and call ProofMesh only when `/pm-status` asks.
 - FR660: MUST, when the `SessionStart` hook finds no `proofmesh` on PATH, exit 0 and print one line, as both `systemMessage` (shown to the person) and `additionalContext` (for Claude), that starts `proofmesh: not installed` as the status line does (FR483) and gives the command that installs the CLI; an edit with no CLI prints nothing.
 - FR661: MUST state that install command in the first paragraph of `packages/proofmesh-plugin/README.md`, with no spec id in its place.
+- FR690: MUST install the CLI in the root `README.md` Install section by linking it onto PATH with `npm link` from `packages/proofmesh`, after `pnpm install --frozen-lockfile` and `pnpm build`, the command FR661 gives, and never through a shell alias, which Claude Code, `claude mcp add … -- proofmesh mcp` and the plugin cannot run.
+- FR691: MUST make that `npm link` line put `proofmesh` on PATH for a shell that never saw an alias, so `command -v proofmesh` prints a path and `proofmesh --version` runs.
 
 ### FFI seams between languages
 
