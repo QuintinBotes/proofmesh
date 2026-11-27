@@ -345,3 +345,30 @@ describe('FR150 a note whose reference used a name of an older format is told to
     expect(r.limitations.join(' ')).toMatch(/snapshot format 0\.8.*qualified names changed.*rewrite/i)
   }, 240000)
 })
+
+describe('FR440 trace_paths explored edges and get_overview links name each symbol end by its key too', () => {
+  it('from_key and to_key sit beside from and to where that end is a symbol', () => {
+    const { d } = indexed({ 'a.ts': 'export function b(): number {\n  return 1\n}\n\nexport function a(): number {\n  return b()\n}\n' })
+    const key = (name: string) => `a.ts#a:${name}#function`
+    const idOf = (k: string) => withSnapshot(d, (db) => (db.prepare('select id from symbol where stable_key = ?').get(k) as { id: string }).id)
+    const links = (tool(d, 'get_overview', { path: 'a.ts' }).data as { links: Array<Record<string, unknown>> }).links
+    expect(links).toEqual([expect.objectContaining({ from: idOf(key('a')), to: idOf(key('b')), from_key: key('a'), to_key: key('b') })])
+    const explored = (tool(d, 'trace_paths', { source_key: key('a'), target_key: key('b') }).data as { search: { explored: Array<Record<string, unknown>> } }).search.explored
+    expect(explored.length).toBeGreaterThan(0)
+    for (const e of explored) expect(e).toEqual(expect.objectContaining({ from_key: key('a'), to_key: key('b') }))
+  }, 240000)
+})
+
+describe('FR441 a symbol the SCIP importer declares keeps the index\'s own symbol in detail.scip', () => {
+  it('get_symbol gives detail.scip on the SCIP tier, and no detail on the syntax tier', () => {
+    const d = tmpDir(), repo = copy()
+    ids(d, repo, ['index', repo])
+    const symbol = (key: string) => (tool(d, 'get_symbol', { key }).data as { symbol: Record<string, unknown> }).symbol
+    expect(symbol('go/cart.go#go/cart:Cart.Checkout#method').detail).toBeUndefined()
+    name(repo, d)
+    index(d, repo)
+    expect(symbol('go/cart.go#go/cart:Cart.Checkout#method').detail).toEqual({ scip: `${GO}Cart#Checkout().` })
+    expect(symbol('java/Shop.java#com.acme.Shop.add(String)#method').detail).toEqual({ scip: `${JAVA}Shop#add(+1).` })
+    expect(withSnapshot(d, (db) => db.prepare("select detail from symbol where stable_key = 'go/cart.go#go/cart:New#function'").get())).toEqual({ detail: JSON.stringify({ scip: `${GO}New().` }) })
+  }, 240000)
+})

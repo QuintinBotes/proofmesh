@@ -1149,8 +1149,10 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     // Only a hash sealed with the snapshot is answered; none is computed here from another reading of the span (FR135).
     const sealed = hasBodyHash(ctx.db)
     const identity = ctx.db.prepare(`select stable_key, ${sealed ? 'body_hash' : 'null as body_hash'} from symbol where id = ?`).get(id) as { stable_key: string; body_hash: string | null }
+    // What the adapter kept beside the name, such as the SCIP index's own symbol (FR441); a snapshot before format 0.11 has none.
+    const detail = ctx.db.prepare("select 1 from pragma_table_info('symbol') where name = 'detail'").get() ?(ctx.db.prepare('select detail from symbol where id = ?').get(id) as { detail: string | null }).detail : null
     return {
-      data: { symbol: { ...withRoles(ctx.db, [s])[0]!, ...identity } }, evidence_ids: [s.evidence_id],
+      data: { symbol: { ...withRoles(ctx.db, [s])[0]!, ...identity, ...(detail ? { detail: JSON.parse(detail) as Record<string, string> } : {}) } }, evidence_ids: [s.evidence_id],
       limitations: !sealed ? ['This snapshot was sealed before body hashes existed, so body_hash is null; index again to compute it.']
         : identity.body_hash ? []
         : unreadableFiles(ctx.db).paths.includes(s.path) ? [`The content of ${s.path} was unavailable when the snapshot was sealed, so body_hash is null.`]

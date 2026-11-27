@@ -1181,6 +1181,14 @@ count: number
 by_type: {
 [k: string]: number
 }
+/**
+ * The stable_key of the symbol at from (FR440): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when that end is no symbol, such as a file or a directory.
+ */
+from_key?: string
+/**
+ * The stable_key of the symbol at to (FR440): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when that end is no symbol, such as a file or a directory.
+ */
+to_key?: string
 }[]
 omitted: number
 /**
@@ -1565,6 +1573,15 @@ roles?: ("test" | "test_support")[]
  * Present and true when the file is generated (FR292); absent otherwise.
  */
 generated?: boolean
+/**
+ * What the adapter recorded beside the symbol's name, when it recorded any: scip, the SCIP index's own symbol for a definition the SCIP importer declared (FR441). Absent otherwise, and in a snapshot sealed before format 0.11.
+ */
+detail?: {
+/**
+ * The SCIP index's own symbol for this definition, as the index wrote it (FR441).
+ */
+scip?: string
+}
 }
 }
 
@@ -2653,6 +2670,14 @@ from: string
 to: string
 assertion_id: string
 depth: number
+/**
+ * The stable_key of the symbol at from (FR440): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when that end is no symbol, such as a file or a directory.
+ */
+from_key?: string
+/**
+ * The stable_key of the symbol at to (FR440): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when that end is no symbol, such as a file or a directory.
+ */
+to_key?: string
 }[]
 explored_truncated: boolean
 }
@@ -3311,6 +3336,15 @@ signature: (string | null)
  * Optional (protocol 1.1). test: the symbol is a test entry point by its framework's marker. test_support: the symbol is test code without being an entry point, by its scope, such as the members of a Rust #[cfg(test)] module or the helpers of a test class. Absent or empty: no role.
  */
 roles?: ("test" | "test_support")[]
+/**
+ * Optional (protocol 1.2). Facts about the symbol beside its name: scip, the symbol a SCIP index gave the definition, which the qualified name replaces with the form of its language (FR441). Absent: none.
+ */
+detail?: {
+/**
+ * The SCIP index's own symbol for this definition, as the index wrote it (FR441).
+ */
+scip?: string
+}
 }[]
 relationships: {
 type: ("calls" | "imports" | "contains" | "inherits" | "implements" | "overrides" | "references" | "injects" | "registered_as" | "exposes" | "maps_to" | "runs" | "dispatches_to" | "handles" | "publishes" | "consumes" | "sends_to" | "listens_on" | "evaluates_flag" | "reads_config" | "depends_on" | "depends_on_package" | "owned_by" | "calls_service" | "renders" | "uses_hook" | "provides_context" | "uses_context")

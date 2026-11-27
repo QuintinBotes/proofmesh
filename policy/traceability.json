@@ -1477,6 +1477,12 @@
     ],
     "FR405": [
       "packages/proofmesh/test/seams-schema.test.ts"
+    ],
+    "FR440": [
+      "packages/proofmesh/test/stable-keys.test.ts"
+    ],
+    "FR441": [
+      "packages/proofmesh/test/stable-keys.test.ts"
     ]
   },
   "manual": {

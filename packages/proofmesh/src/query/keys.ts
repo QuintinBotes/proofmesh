@@ -10,12 +10,12 @@ const KEYED: Partial<Record<ToolName, Array<[string, string, string]>>> = {
   workspace_status: [['hubs[]', 'id', 'key']],
   find_symbols: [['symbols[]', 'id', 'key']],
   get_relationships: [['relationships[].other', 'id', 'key'], ['relationships[].via', 'id', 'key'], ['boundaries[]', 'from_id', 'from_key']],
-  trace_paths: [['nodes{}', '$', 'key'], ['search.horizon[]', 'id', 'key'], ['boundaries[]', 'from_id', 'from_key']],
+  trace_paths: [['nodes{}', '$', 'key'], ['search.horizon[]', 'id', 'key'], ['boundaries[]', 'from_id', 'from_key'], ['search.explored[]', 'from', 'from_key'], ['search.explored[]', 'to', 'to_key']],
   analyze_impact: [['dependents[]', 'id', 'key']],
   find_tests: [['tests[]', 'id', 'key']],
   find_query_source: [['candidates[]', 'id', 'key']],
-  // A file child's key is its path; only a symbol child's is an id.
-  get_overview: [['children[]', 'key', 'symbol_key']],
+  // A file child's key is its path; only a symbol child's is an id, and so only a file scope's links name symbols (FR440).
+  get_overview: [['children[]', 'key', 'symbol_key'], ['links[]', 'from', 'from_key'], ['links[]', 'to', 'to_key']],
   get_property_reads: [['reads[]', 'symbol_id', 'symbol_key'], ['unread_mapped_properties[]', 'symbol_id', 'symbol_key'], ['static_reads[]', 'symbol_id', 'symbol_key']],
   get_table_reach: [['tables[]', 'id', 'key'], ['tables[].symbols[]', 'id', 'key'], ['tables[].entities[]', 'id', 'key'], ['tables[].reach[]', 'id', 'key'], ['tables[].accessors[]', 'id', 'key'], ['tables[].property_reads[]', 'symbol_id', 'symbol_key']],
 }

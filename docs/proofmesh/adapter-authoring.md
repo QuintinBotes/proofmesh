@@ -20,11 +20,15 @@ The adapter reads files from the workspace directory, which holds exactly the ca
 
 ## Versions (A22)
 
-The core speaks protocol 1.1 and accepts any adapter that answers `1.x`. Protocol 1.1 added the optional `roles` of a symbol (see Test roles below); an adapter that never sends it is as valid as before. A minor version only adds optional fields, and each side ignores the fields it does not know. The core sends fields your adapter has never seen; accept them. An adapter that answers another major version is refused with both versions named. A breaking change to the protocol needs 2.0.
+The core speaks protocol 1.2 and accepts any adapter that answers `1.x`. Protocol 1.1 added the optional `roles` of a symbol (see Test roles below), and 1.2 its optional `detail` (see Symbol detail below); an adapter that never sends them is as valid as before. A minor version only adds optional fields, and each side ignores the fields it does not know. The core sends fields your adapter has never seen; accept them. An adapter that answers another major version is refused with both versions named. A breaking change to the protocol needs 2.0.
 
 ## Test roles (protocol 1.1)
 
 A symbol may carry `roles`, a list of `test` (a test entry point, by its framework's marker) and `test_support` (test code that is none: the members of a test-only scope, the helpers of a test class). It is optional: an adapter that never sends it is valid, and its symbols are test code only by their file's convention. The core stores it, answers it in `find_symbols` and `get_symbol`, and uses it to leave a symbol out of `include_tests: false` answers and to decide which symbols `find_tests` lists. Read the marker from syntax; do not run the framework.
+
+## Symbol detail (protocol 1.2)
+
+A symbol may carry `detail`, an object of facts kept beside its name. Its one field is `scip`: the SCIP importer puts the index's own symbol there, since the qualified name is the language's form and not the index's (FR441). The core stores it and answers it in `get_symbol`. Other adapters need not send it.
 
 ## Facts
 
