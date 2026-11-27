@@ -69,7 +69,8 @@
         "plan_move",
         "search_structure",
         "search_concepts",
-        "get_symbol_card"
+        "get_symbol_card",
+        "query_graph"
       ]
     },
     "snapshot": {

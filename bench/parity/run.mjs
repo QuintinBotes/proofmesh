@@ -13,7 +13,7 @@ import os from 'node:os'
 import { once } from 'node:events'
 import { spawnSync } from 'node:child_process'
 import { McpClient } from '../graph-bench/mcp-client.mjs'
-import { makeTruth, score, graphifyAdapter, proofmeshAdapter, bfs, tarjan, last } from '../graph-bench/lib.mjs'
+import { makeTruth, score, graphifyAdapter, proofmeshAdapter, queryGraphAdapter, bfs, tarjan, last } from '../graph-bench/lib.mjs'
 
 const HERE = path.dirname(new URL(import.meta.url).pathname)
 const ROOT = path.resolve(HERE, '../..')
@@ -118,6 +118,10 @@ async function runProofMesh() {
   const ask = proofmeshAdapter(pm, pmExtra, truth, raw)
   const answers = {}
   for (const q of Q) answers[q.id] = await ask(q)
+  // The same questions, each as one query_graph query (#36), over the extra-profile client; asked RUNS times each.
+  const query = queryGraphAdapter(pmExtra, truth, raw, RUNS)
+  const query_graph = {}
+  for (const q of Q) query_graph[q.id] = await query(q)
   pm.close(); pmExtra.close()
   // The context map (get_context_map, in the data profile) is scored as aider's map is: the target file as the focus, at each budget.
   const cm = new McpClient('node', pmArgs('mcp', '--tools', 'data'), { cwd: FIX })
@@ -136,7 +140,7 @@ async function runProofMesh() {
     }
   }
   cm.close()
-  return { cost, answers, context_map: contextMap, tools_list_bytes: Buffer.byteLength(JSON.stringify(tools)), tools: tools.length, startup_ms: startMs }
+  return { cost, answers, query_graph, context_map: contextMap, tools_list_bytes: Buffer.byteLength(JSON.stringify(tools)), tools: tools.length, startup_ms: startMs }
 }
 
 // ---------- Graphify (CLI, code-only update) ----------
@@ -403,7 +407,18 @@ const scored = Q.map((q) => {
   return row
 })
 const meta = { fixture: `typeorm @ ${fixtureCommit} (src/, ${T.files.length} files)`, proofmesh: `${pmVersion} @ ${pmCommit}`, truth: `${T.tool} ${T.ts_version}`, runs: RUNS, when: new Date().toISOString(), machine: `${os.type()} ${os.release()} ${os.arch()}, ${os.cpus()[0]?.model ?? ''} x${os.cpus().length}, ${Math.round(os.totalmem() / 2 ** 30)} GB, Node ${process.version}`, fixture_clean: status === '', fixture_status: status }
-fs.writeFileSync(path.join(WORK, 'results.json'), JSON.stringify({ meta, tools: Object.fromEntries(Object.entries(results).map(([k, v]) => [k, { ...v, answers: undefined }])), questions: scored }, (k, v) => (v instanceof Set ? [...v] : v), 1))
+// query_graph beside the typed tools: its score on the truth, whether its items equal the typed answer's, and its time (#36).
+const pmr = results.proofmesh
+const qg = Q.map((q) => {
+  const a = pmr.query_graph[q.id], typed = pmr.answers[q.id], t = truthFor(q)
+  const same = a.error ? 'error' : q.kind === 'path' ? (a.path_hops === typed.path_hops && a.path_valid === typed.path_valid ? 'yes' : `no (${typed.path_hops} hops)`)
+    : (() => { const extra = [...a.answer].filter((x) => !typed.answer.has(x)).length, missing = [...typed.answer].filter((x) => !a.answer.has(x)).length; return extra || missing ? `no (+${extra} −${missing})` : 'yes' })()
+  const cellOf = () => a.error ? `error: ${short(a.error)}` : q.kind === 'path' ? `${a.path_valid ? 'valid' : 'invalid'} ${a.path_hops ?? '-'} hops (shortest ${t.shortest})` : `${rp(score(t.items, a.answer))}${a.cut ? ' (cut)' : ''}`
+  return { id: q.id, kind: q.kind, query: a.query, cell: cellOf(), same, ms: a.ms, all_ms: a.all_ms, bytes: a.bytes, ...(a.answer ? score(t.items, a.answer) : {}) }
+})
+const allMs = qg.filter((r) => Number(r.id.slice(1)) <= 12).flatMap((r) => r.all_ms ?? []).sort((a, b) => a - b)
+const p95 = allMs.length ? allMs[Math.ceil(allMs.length * 0.95) - 1] : null
+fs.writeFileSync(path.join(WORK, 'results.json'), JSON.stringify({ meta, query_graph: { questions: qg, p95_ms: p95 }, tools: Object.fromEntries(Object.entries(results).map(([k, v]) => [k, { ...v, answers: undefined }])), questions: scored }, (k, v) => (v instanceof Set ? [...v] : v), 1))
 
 const head = `| Q | class | truth | ${TOOLS.map((t) => t.label).join(' | ')} |`
 const sep = `|---|---|---|${TOOLS.map(() => '---|').join('')}`
@@ -455,6 +470,15 @@ const md = [
   '## Callers at three levels: items · `file:line` sites · files',
   '',
   `| Q | ${TOOLS.filter((t) => t.id !== 'aider').map((t) => t.label).join(' | ')} |`, `|---|${TOOLS.filter((t) => t.id !== 'aider').map(() => '---|').join('')}`, ...levels,
+  '',
+  '## ProofMesh through query_graph: one query per question (#36)',
+  '',
+  'Each question as one read-only query (extra profile), scored on the same truth, beside the typed tools\' answer. The queries are in `bench/graph-bench/lib.mjs` (`queryGraphQuery`) and each answer in `out/raw/pm-query-<Q>.txt`.',
+  '',
+  '| Q | class | ProofMesh (typed tools) | ProofMesh query_graph | same items as typed | ms (median) |', '|---|---|---|---|---|---|',
+  ...qg.map((r, i) => `| ${r.id} | ${r.kind} | ${scored[i].proofmesh.cell} | ${r.cell} | ${r.same} | ${r.ms == null ? '-' : Math.round(r.ms)} |`),
+  '',
+  `query_graph p95 over Q1–Q12, ${RUNS} run${RUNS === 1 ? '' : 's'} each: ${p95 == null ? '-' : `${Math.round(p95)} ms`} (target 500 ms).`,
   '',
   `## Cost (medians of ${RUNS} runs)`,
   '',

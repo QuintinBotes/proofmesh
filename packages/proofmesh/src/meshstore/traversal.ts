@@ -62,9 +62,16 @@ export function trace(edges: EdgeSource, o: TraceOptions): TraceResult {
   let found = o.source === o.target
   let stopped: TraceResult['stopped_by'] = null
   let depth = 0
+  const unexplored = new Map<string, number>()
   while (!found && frontier.length) {
-    if (depth >= o.maxDepth) { stopped = 'max_depth'; break }
-    if (Date.now() > o.deadline) { stopped = 'timeout'; break }
+    if (depth >= o.maxDepth || Date.now() > o.deadline) {
+      // A frontier node with nothing left to follow was searched to the end: it counts as expanded, and only the others are where a limit stopped the search.
+      for (const e of edges.outEdges(frontier, o.types, o.resolutions)) unexplored.set(e.src, (unexplored.get(e.src) ?? 0) + 1)
+      expanded.push(...frontier.filter((id) => !unexplored.has(id)))
+      frontier = frontier.filter((id) => unexplored.has(id))
+      if (frontier.length) stopped = depth >= o.maxDepth ? 'max_depth' : 'timeout'
+      break
+    }
     const out = edges.outEdges(frontier, o.types, o.resolutions)
     expanded.push(...frontier)
     depth++
@@ -97,7 +104,7 @@ export function trace(edges: EdgeSource, o: TraceOptions): TraceResult {
     if (paths.length > o.maxRows) { paths.length = o.maxRows; stopped = 'max_rows' }
   }
   const horizon = stopped === 'max_depth' || stopped === 'timeout'
-    ? [...frontier].sort((a, b) => cmp((o.rank ?? ((id: string) => id))(a), (o.rank ?? ((id: string) => id))(b)) || cmp(a, b)).map((id) => ({ id, unexplored_edges: edges.outEdges([id], o.types, o.resolutions).length }))
+    ? [...frontier].sort((a, b) => cmp((o.rank ?? ((id: string) => id))(a), (o.rank ?? ((id: string) => id))(b)) || cmp(a, b)).map((id) => ({ id, unexplored_edges: unexplored.get(id)! }))
     : []
   return { paths, levels, stopped_by: stopped, horizon, expanded, explored, explored_truncated: exploredTruncated }
 }

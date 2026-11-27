@@ -32,7 +32,10 @@ const canon = (x: unknown): unknown => {
 const pre159 = (d: unknown) => { const x = d as { dependents?: Array<Record<string, unknown>> }; return x.dependents ? { ...x, dependents: x.dependents.map(({ line: _l, relationship: _r, ...rest }) => rest) } : d }
 // #45 (FR1185) added site to each hop of a trace_paths path; as for the keys above, the digest is of everything else.
 const pre45 = (d: unknown) => { const x = d as { paths?: unknown; relationships?: Record<string, Record<string, unknown>> }; return x.paths && x.relationships ? { ...x, relationships: Object.fromEntries(Object.entries(x.relationships).map(([k, { site: _s, ...rest }]) => [k, rest])) } : d }
-const sha = (e: { data: unknown; limitations: unknown }) => createHash('sha256').update(JSON.stringify(canon({ d: pre45(pre159(e.data)), l: e.limitations })).replace(ID, '<id>')).digest('hex').slice(0, 16)
+// #217 (FR1540) named Python in the references note every answer from the snapshot carries; the digest is of the subject's answer,
+// not of that standing note, which says what the snapshot's adapters record (FR204).
+const STANDING = /^References other than calls and imports /
+const sha = (e: { data: unknown; limitations: string[] }) => createHash('sha256').update(JSON.stringify(canon({ d: pre45(pre159(e.data)), l: e.limitations.filter((x) => !STANDING.test(x)) })).replace(ID, '<id>')).digest('hex').slice(0, 16)
 const git = (cwd: string, ...args: string[]) => execFileSync('git', ['-c', 'user.name=Test', '-c', 'user.email=test@example.com', '-c', 'commit.gpgsign=false', ...args], { cwd, encoding: 'utf8' }).trim()
 
 let constrained: string
@@ -69,20 +72,21 @@ describe('FR201 FR202 FR203 FR209 issue 21 scenarios 1 and 2: analyze_impact in 
 })
 
 describe('FR204 FR201 issue 21 scenario 3: an answer for a subject a precise tier analysed is unchanged', () => {
-  // The hashes are of the data and limitations as the code before this slice answered them.
+  // The hashes are of the data and limitations as the code before this slice answered them; re-pinned once without the standing
+  // references note, on the code before #217 changed that note, so its words are no part of them.
   it('FR204 scenario 3: analyze_impact, find_tests and trace_paths on the TypeScript fixtures are byte-identical to before, and to include_inferred false', async () => {
     const { dataDir: a } = await indexedDataDir(fixtureRepo('ts-invoicing'))
     const f = symbolId(a, 'packages/format/src/currency:formatAmount'), h = symbolId(a, 'packages/api/src/handler:handleInvoice')
     for (const [name, input, pinned] of [
-      ['analyze_impact', { subject_ids: [f] }, 'b46e40daffaa581c'],
-      ['find_tests', { subject_ids: [f] }, '14229cabf3e620c9'],
-      ['trace_paths', { source_id: h, target_id: f }, '8433e868d5914ce6'],
+      ['analyze_impact', { subject_ids: [f] }, '57536f7f2d0db3fc'],
+      ['find_tests', { subject_ids: [f] }, 'f94e846efa6a26c0'],
+      ['trace_paths', { source_id: h, target_id: f }, 'c30ae989ea255dc7'],
     ] as const) {
       expect(sha(tool(a, name, input))).toBe(pinned)
       expect(sha(tool(a, name, { ...input, include_inferred: false }))).toBe(pinned)
     }
     const { dataDir: m } = await indexedDataDir(fixtureRepo('ts-module'))
-    expect(sha(tool(m, 'analyze_impact', { subject_ids: [symbolId(m, 'src/app:greet')] }))).toBe('538f790ce73d06e1')
+    expect(sha(tool(m, 'analyze_impact', { subject_ids: [symbolId(m, 'src/app:greet')] }))).toBe('6483e58d4523b8fc')
   }, 240000)
 
   it('FR201 auto follows candidate edges only where every subject\'s file was analysed by the syntax tier alone', async () => {
@@ -326,11 +330,11 @@ describe('FR210 FR201 FR204 issue 21 edge cases: an observed chain wins, an infe
   it('FR204 a precise-tier subject with candidate sites answers byte-identically with the default input, data and limitations, in every tool', async () => {
     const d = await guessIndex({ ...FILES, 'test/t.guess': 'def testY\n  call Y\n' })
     const S = symbolId(d, 's:S'), X = symbolId(d, 'p:X'), Y = symbolId(d, 'y:Y')
-    // The digests are of the answers the code before issue 21 gave for this repository.
-    expect(sha(tool(d, 'analyze_impact', { subject_ids: [S] }))).toBe('f896ece756590e17')
-    expect(sha(tool(d, 'find_tests', { subject_ids: [S] }))).toBe('bd8b98971215cf8d')
-    expect(sha(tool(d, 'trace_paths', { source_id: X, target_id: S }))).toBe('a418129d2e0af03f')
-    expect(sha(tool(d, 'trace_paths', { source_id: X, target_id: Y }))).toBe('ff647a1e5996434b')
+    // The digests are of the answers the code before issue 21 gave for this repository, re-pinned without the standing references note as above.
+    expect(sha(tool(d, 'analyze_impact', { subject_ids: [S] }))).toBe('5175aa34462c41e4')
+    expect(sha(tool(d, 'find_tests', { subject_ids: [S] }))).toBe('9f5f86deea813446')
+    expect(sha(tool(d, 'trace_paths', { source_id: X, target_id: S }))).toBe('cc355ebe715dc2b1')
+    expect(sha(tool(d, 'trace_paths', { source_id: X, target_id: Y }))).toBe('6070d04f090d11e8')
   }, 240000)
 
   it('FR210 a chain with one inferred hop makes the row inferred: P0 calls X, which is reached only through Y', async () => {

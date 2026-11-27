@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "query_graph.data.schema.json",
+  "title": "query_graph data",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "columns",
+    "rows"
+  ],
+  "properties": {
+    "columns": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "The RETURN items, by alias or by their text."
+    },
+    "rows": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "values"
+        ],
+        "properties": {
+          "values": {
+            "type": "array",
+            "items": {},
+            "description": "One value a column. A node is { id, kind, name, path, line, key } (an external symbol { id, kind: external, name, module }); a relationship { id, type, from, to, from_name, to_name, path, line, basis }, at its site; a path { nodes, relationships }; otherwise a scalar or a list."
+          },
+          "inferred": {
+            "type": "boolean",
+            "description": "True when any relationship the row was matched through is inferred."
+          }
+        }
+      }
+    }
+  }
+}

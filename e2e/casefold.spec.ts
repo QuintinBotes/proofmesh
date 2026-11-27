@@ -45,5 +45,6 @@ test('FR1200 the Galaxy and the palette find the symbol the text is in, after na
 
   await page.keyboard.press('Control+K')
   await page.keyboard.type('findme')
-  await expect(page.getByRole('dialog', { name: 'Command palette' }).getByRole('option').filter({ hasText: 'src/' })).toHaveText([/src\/target:findMe/])
+  // The symbols and files the palette found carry a dim line; a command, such as Trace a path from the focus, has none (FR1200).
+  await expect(page.getByRole('dialog', { name: 'Command palette' }).getByRole('option').filter({ has: page.locator('.dim') })).toHaveText(['findMe function · src/target:findMe'])
 })

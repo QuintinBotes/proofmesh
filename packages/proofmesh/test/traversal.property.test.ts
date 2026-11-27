@@ -31,8 +31,9 @@ function reference(edges: E[], source: string, target: string, maxDepth: number)
     }
   }
   if (found && source !== target) walk(target, [])
-  const stoppedByDepth = !found && frontier.length > 0
-  return { found, paths: paths.map((p) => p.join('>')).sort(), horizon: stoppedByDepth ? [...frontier].sort() : [] }
+  // FR1500 a frontier node with no out-edge was searched to the end, so only the others are where the depth limit stopped the search.
+  const open = found ? [] : frontier.filter((n) => g.outDegree(n) > 0)
+  return { found, paths: paths.map((p) => p.join('>')).sort(), horizon: open.sort() }
 }
 
 const graphArb = fc.integer({ min: 2, max: 9 }).chain((n) =>
@@ -75,6 +76,14 @@ describe('AC17 traversal matches an independent graphology oracle', () => {
     const r = trace(memory(edges), { source: 'a', target: 'd', types: ['calls'], resolutions: ['resolved'], maxDepth: 5, maxRows: 1, deadline: Date.now() + 5000 })
     expect(r.paths).toHaveLength(1)
     expect(r.stopped_by).toBe('max_rows')
+  })
+
+  it('FR1500 the horizon holds only frontier nodes with an edge left; the others count as expanded, and a frontier with none is no stop', () => {
+    const at = (edges: E[]) => trace(memory(edges), { source: 'a', target: 'z', types: ['calls'], resolutions: ['resolved'], maxDepth: 1, maxRows: 10, deadline: Date.now() + 5000 })
+    const leaf = at([{ src: 'a', dst: 'b', assertion_id: 'as_1' }])
+    expect([leaf.stopped_by, leaf.horizon, leaf.expanded]).toEqual([null, [], ['a', 'b']])
+    const mixed = at([{ src: 'a', dst: 'b', assertion_id: 'as_1' }, { src: 'a', dst: 'c', assertion_id: 'as_2' }, { src: 'c', dst: 'd', assertion_id: 'as_3' }])
+    expect([mixed.stopped_by, mixed.horizon, mixed.expanded]).toEqual(['max_depth', [{ id: 'c', unexplored_edges: 1 }], ['a', 'b']])
   })
 
   it('FR020 an expired deadline stops the search with a horizon', () => {
