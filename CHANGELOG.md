@@ -4,6 +4,13 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 ## Unreleased
 
+Calls into a library resolve to its repository when both are in one workspace (part of #28; FR900 to FR904):
+
+- A call from one registered repository into an npm package that another registered repository builds ended at the package boundary, as `resolved_external`, so callers and impact stopped there. `proofmesh workspace link` now seals a `package_symbol` link for each TypeScript `calls`, `inherits`, `implements` or `references` site into such a package, to the symbol of that name in the repository whose `package.json` builds it. The same installed and built version is `observed`; a mismatch or an unknown version is `inferred`. Two repositories building one package make a candidate naming both, and a package no member builds makes no link.
+- `get_relationships` and `analyze_impact` take `include_workspace: true`. Rows and dependents from another repository carry `repository` (id, name, commit) and a lean `repo=<name>@<commit>` tag; `data.workspace` names each member's side of the link file and whether it is still current, and a version mismatch is stated as `version mismatch: app uses 1.1.0, lib is 1.2.0`. The core `tools/list` grows by the two optional properties.
+- Upgrade note: link format 0.3 (new link types `calls`, `inherits`, `implements`, `references`, and the `package_symbol` rule), so the next `proofmesh workspace link` seals a new link file; older link files stay readable. `get_ecosystem` lists the new link types.
+- Not done yet: `trace_paths` and `find_tests` across repositories, the public library and application pair in `bench/parity` (scenario 4), ecosystems other than npm, and chains that cross into a third repository.
+
 Docs link to the code they name, and say when it changes (closes #29; FR820 to FR826):
 
 - A Markdown doc's inline code and links are matched by name, with no model, to the files and symbols they name: `Ledger.consume`, `total()`, `Ledger`, `src/ledger.ts`, `[the ledger](../src/ledger.ts)`. Each is a new `mentions` relationship from the doc at its line, origin `documentation`, so always `inferred`; a name of several symbols is `ambiguous` with its candidates, never guessed. Fenced code, bare member names such as `id`, words such as `true` and links with a scheme are not recorded. `get_relationships` with `types: ["mentions"]`, inbound, lists the docs that name a symbol or file.

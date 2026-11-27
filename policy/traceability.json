@@ -1785,6 +1785,21 @@
     "FR873": [
       "packages/proofmesh/test/plugin.test.ts",
       "packages/proofmesh-plugin/tests/status.test.ts"
+    ],
+    "FR900": [
+      "packages/proofmesh/test/xrepo-symbols.test.ts"
+    ],
+    "FR901": [
+      "packages/proofmesh/test/xrepo-symbols.test.ts"
+    ],
+    "FR902": [
+      "packages/proofmesh/test/xrepo-symbols.test.ts"
+    ],
+    "FR903": [
+      "packages/proofmesh/test/xrepo-symbols.test.ts"
+    ],
+    "FR904": [
+      "packages/proofmesh/test/xrepo-symbols.test.ts"
     ]
   },
   "manual": {
