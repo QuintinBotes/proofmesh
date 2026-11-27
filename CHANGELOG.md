@@ -4,6 +4,8 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 ## Unreleased
 
+A Python file the Python adapter analysed reports `references: partial` even when it records no use, as it was read for them (#224; FR1640). A snapshot of Python alone now gives the partial references note instead of `References other than calls and imports are not analysed for this snapshot.`, and the language census counts those files as partial.
+
 The Terrain replaces the Galaxy and Map views: semantic zoom from areas to symbols, with bundles that open their evidence (part of #46; closes #42; FR1400 to FR1409):
 
 - The first view draws the snapshot's own layout as nested cells: areas, a file's first two directories such as `src/driver`, each named with its symbol count, then directories and files, then symbols. A label shows once its cell is 40 px on screen, never over another label; an area too small is named in its tooltip and the table. Symbols are drawn per area once the zoom reaches them, so a large snapshot's overview draws areas and bundles only. Nothing moves as you zoom.
