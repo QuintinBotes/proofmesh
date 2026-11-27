@@ -85,6 +85,13 @@ describe('FR980 to FR987 the rename plan on fixtures/rename-parity', () => {
     expect(observed(plan(dataDir, PINNED[9]!))).toContain('src/util/OrmUtils.ts:10')
   })
 
+  it('FR980 FR981 a function called above its declaration is placed at its declaration; a recursive call inside a template is a site, an option and a key of its name are not', () => {
+    const p = plan(dataDir, { path: 'src/util/StringUtils.ts', name: 'nest' })
+    expect(p.subject.line).toBe(21)
+    expect(observed(p)).toEqual(['src/util/StringUtils.ts:17', 'src/util/StringUtils.ts:21', 'src/util/StringUtils.ts:28'])
+    expect(observed(p)).toEqual(truth(p.subject.path, 21, 'nest'))
+  })
+
   it('FR982 scenario 2: Driver.escape lists every member that implements or overrides it as must_rename_together with its file and line, and not AuroraDriver, which only inherits one', () => {
     const p = plan(dataDir, PINNED[4]!)
     expect(p.must_rename_together.map((m) => [`${m.path}:${m.line}`, m.name, m.relationship])).toEqual([

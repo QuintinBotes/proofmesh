@@ -968,7 +968,7 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     if (!ctx.db.prepare("select 1 from symbol where id = ? and kind <> 'module'").get(id)) throw new ProofmeshError('NOT_FOUND', `${id} is no symbol of snapshot ${ctx.snapshot.id}; plan_rename takes a symbol, not a file`)
     const p = planRename(ctx.db, ctx.store, id, ctx.started + ctx.limits.timeout_ms)
     const s = p.subject, newName = String(input.new_name)
-    const row = (x: typeof s) => ({ id: x.id, key: x.key, name: x.name, kind: x.kind, path: x.path, line: p.sites.find((t) => t.key === x.key && t.basis === 'observed' && t.path === x.path)?.line ?? x.start_line })
+    const row = (x: typeof s) => ({ id: x.id, key: x.key, name: x.name, kind: x.kind, path: x.path, line: p.declared.get(x.id) ?? x.start_line })
     const observed = p.sites.filter((x) => x.basis === 'observed').length
     // A name the new one would collide with: a symbol of that name in the same container, or at the top of the same file.
     const container = s.qualified_name.includes('.') ? s.qualified_name.slice(0, s.qualified_name.lastIndexOf('.') + 1) : `${s.qualified_name.slice(0, s.qualified_name.indexOf(':') + 1)}`

@@ -7,7 +7,7 @@ import type { EvidenceStore } from '../evidence/store.js'
 type Sym = { id: string; key: string; name: string; kind: string; qualified_name: string; path: string; file_id: string; start_byte: number; end_byte: number; start_line: number; hash: string | null }
 export type Site = { path: string; line: number; kind: string; basis: 'observed' | 'inferred'; key: string; seam?: string; rule?: string; text?: string; resolution?: string }
 export type Possible = { path: string; line: number; callee: string; resolution: string }
-export type Plan = { subject: Sym; group: Array<Sym & { relationship: string }>; sites: Site[]; possibly: Possible[]; carriers: string[]; stopped: boolean }
+export type Plan = { subject: Sym; group: Array<Sym & { relationship: string }>; declared: Map<string, number>; sites: Site[]; possibly: Possible[]; carriers: string[]; stopped: boolean }
 
 const SYM_SQL = 'select s.id, s.stable_key as key, s.name, s.kind, s.qualified_name, f.path, s.file_id, s.start_byte, s.end_byte, s.start_line, f.content_hash as hash from symbol s join file f on f.id = s.file_id'
 /** Origins that observe code: a name the compiler or the syntax bound. Every other origin binds by a rule, so its sites are seams. */
@@ -20,8 +20,11 @@ const NAME_RULES: Record<string, string> = {
 /** A call whose callee is one of these, with the name as a string argument, reads or registers a dependency-injection key. */
 const DI_CALLEES = /^(register\w*|bind|provide|inject|Inject|resolve|make|singleton|transient|scoped)$/
 
-/** Strings and comments blanked to spaces, keeping offsets and newlines, so a name inside them is not taken for code. */
-const blank = (s: string) => s.replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\/|'(?:[^'\\\n]|\\.)*'|"(?:[^"\\\n]|\\.)*"|`(?:[^`\\]|\\.)*`/g, (m) => m.replace(/[^\n]/g, ' '))
+/**
+ * Strings and comments blanked to spaces, keeping offsets and newlines, so a name inside them is not taken for code. A template's
+ * `${...}` stays: it is code.
+ */
+const blank = (s: string) => s.replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\/|'(?:[^'\\\n]|\\.)*'|"(?:[^"\\\n]|\\.)*"|`(?:[^`\\]|\\.)*`/g, (m) => m.replace(m[0] === '`' ? /\$\{[^}]*\}|[^\n]/g : /[^\n]/g, (x) => (x.length > 1 ? x : ' ')))
 
 /**
  * The public entry, among `paths`, of a package.json the snapshot indexed: its `main`, `module`, `types`, `typings`, `source` or any
@@ -144,17 +147,22 @@ export function planRename(db: Database.Database, store: EvidenceStore, subjectI
   const inbound = db.prepare("select a.id, a.type, a.origin, a.resolution, a.detail from assertion a where a.target_id = ? and a.type not in ('contains', 'imports') union select a.id, a.type, a.origin, a.resolution, a.detail from assertion_candidate c join assertion a on a.id = c.assertion_id where c.symbol_id = ? and a.type not in ('contains', 'imports')")
   const outbound = db.prepare("select a.id, a.type, a.resolution, a.target_id, a.detail from assertion a where a.source_id = ? and a.origin not in ('semantic_resolver', 'syntax')")
   const candidatesOf = db.prepare('select symbol_id from assertion_candidate where assertion_id = ? order by rank')
-  const possibly: Possible[] = []
+  const possibly: Possible[] = [], declared = new Map<string, number>()
   for (const m of [subject, ...group.values()]) {
     const own = m === subject && topLevel ? known : [m.name]
     const decl = lineIn(m.hash, m.start_byte, m.end_byte, m.start_line, [m.name]) ?? m.start_line
+    declared.set(m.id, decl)
     add({ path: m.path, line: decl, kind: m === subject ? 'declaration' : group.get(m.id)!.relationship === 'implements' ? 'implementation' : 'override', basis: 'observed', key: m.key })
     // Its own name inside its own body (a recursive call, this.name, Container.name): the adapters record no edge from a symbol to itself.
     const body = blank(text(m.hash)?.subarray(m.start_byte, m.end_byte).toString('utf8') ?? '')
     const container = m.qualified_name.includes('.') ? m.qualified_name.slice(0, m.qualified_name.lastIndexOf('.')).split(/[.:]/).at(-1)! : ''
-    // A member's own name after `this.` or its container's name; a top-level symbol's anywhere but after a dot.
-    const self = container ? new RegExp(`(?:\\bthis|(?<![\\w$])${container.replace(/[$]/g, '\\$')})\\s*\\.\\s*$`) : /(?<!\.\s*)$/
-    for (const x of [...body.matchAll(names([m.name]))].slice(1)) if (self.test(body.slice(0, x.index))) add({ path: m.path, line: m.start_line + lines(body.slice(0, x.index)), kind: /^\s*\(/.test(body.slice(x.index + x[0].length)) ? 'call' : 'reference', basis: 'observed', key: m.key })
+    // A member's own name after `this.` or its container's name; a top-level symbol's only as a call not after a dot, so a key, a
+    // destructured option or a parameter of the same name is not taken for it.
+    const self = container ? new RegExp(`(?:\\bthis|(?<![\\w$])${container.replace(/[$]/g, '\\$')})\\s*\\.\\s*$`) : /(?<!(?:\.|\bfunction)\s*)$/
+    for (const x of [...body.matchAll(names([m.name]))].slice(1)) {
+      const call = /^\s*\(/.test(body.slice(x.index + x[0].length))
+      if (self.test(body.slice(0, x.index)) && (call || container)) add({ path: m.path, line: m.start_line + lines(body.slice(0, x.index)), kind: call ? 'call' : 'reference', basis: 'observed', key: m.key })
+    }
     for (const a of inbound.all(m.id, m.id) as Array<{ id: string; type: string; origin: string; resolution: string; detail: string | null }>) {
       const detail = a.detail ? (JSON.parse(a.detail) as Record<string, string>) : {}
       const evs = evidenceOf.all(a.id) as Ev[]
@@ -221,5 +229,5 @@ export function planRename(db: Database.Database, store: EvidenceStore, subjectI
   const listed = new Set([...uniq.values()].filter((s) => s.basis === 'observed').map((s) => `${s.path}:${s.line}`))
   const maybe = new Map<string, Possible>()
   for (const p of possibly) { const k = `${p.path}:${p.line}`; if (!listed.has(k) && !maybe.has(k)) maybe.set(k, p) }
-  return { subject, group: [...group.values()].sort((a, b) => order({ path: a.path, line: a.start_line }, { path: b.path, line: b.start_line })), sites: [...uniq.values()].sort(order), possibly: [...maybe.values()].sort(order), carriers, stopped }
+  return { subject, declared, group: [...group.values()].sort((a, b) => order({ path: a.path, line: a.start_line }, { path: b.path, line: b.start_line })), sites: [...uniq.values()].sort(order), possibly: [...maybe.values()].sort(order), carriers, stopped }
 }
