@@ -17,4 +17,6 @@ Removed without a deprecation period: the `detail.inferred` values `name_match` 
 
 Changed behaviour of C# test recognition (roles, protocol 1.1): a type that holds an xUnit, NUnit or MSTest attribute, and its members, are test code wherever the file sits, where only a `*Tests.cs` name or a test project made them so before; and `find_tests` lists only the attributed methods of a C# file that has any, where it listed every symbol of a test file. A C# file with no attribute is decided by its path and project as before. The C# names `Contest.cs` and `Latest.cs` still match the existing `Tests?.cs` file rule, which is case-insensitive and was not changed.
 
+Changed default of `proofmesh mcp` (#26): it lists the `core` tool profile, 13 of the 30 tools, with the per-field descriptions left out of their listed input schemas. Tool names, input schemas, validation and envelopes do not change. `proofmesh mcp --tools all` lists every tool as before; a call to a tool that is not listed is `INVALID_ARGUMENT` naming the profile that lists it (docs/proofmesh/mcp.md).
+
 Deprecations are listed in CHANGELOG.md under the release that announces them.

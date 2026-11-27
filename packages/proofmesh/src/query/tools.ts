@@ -65,6 +65,21 @@ export const CAPABILITY: Record<ToolName, ListQueriesData['tools'][number]['capa
   get_ecosystem: 'read', prepare_verification: 'management', get_verification: 'read', impact_completeness: 'management', get_symbols_at: 'read',
 }
 
+/**
+ * The MCP tool profile that lists each tool (FR420 to FR423). `proofmesh mcp` lists core, the tools most code questions need, so a
+ * session starts with a small tool list; `--tools <profile[,profile]>` or `--tools all` lists the others.
+ */
+export const PROFILE: Record<ToolName, ListQueriesData['tools'][number]['profile']> = {
+  workspace_status: 'core', list_repositories: 'core', find_symbols: 'core', get_symbol: 'core', get_symbols_at: 'core', get_relationships: 'core', trace_paths: 'core',
+  read_evidence: 'core', get_overview: 'core', analyze_impact: 'core', find_tests: 'core', search_sources: 'core', list_queries: 'core',
+  get_table_reach: 'data', get_property_reads: 'data', get_external_usage: 'data', find_query_source: 'data',
+  verify_claim: 'claims', get_claims: 'claims', prepare_verification: 'claims', get_verification: 'claims',
+  list_snapshots: 'extra', list_workspaces: 'extra', get_ecosystem: 'extra', compare_snapshots: 'extra', impact_completeness: 'extra', request_index: 'extra',
+  get_job: 'extra', get_memory: 'extra', save_memory: 'extra',
+}
+/** How a client loads the tools of another profile, said by list_queries, which lists them all (FR422). */
+const PROFILES_NOTE = 'Over MCP, proofmesh mcp lists the core profile; start it with --tools <profile[,profile]> (core, data, claims, extra) or --tools all to list the others. A tool outside the profiles it was started with answers INVALID_ARGUMENT naming its profile.'
+
 /** The version of every public contract this build speaks (FR037, FR076); COMPATIBILITY.md states the same versions and their policy. */
 export const CONTRACT: ListQueriesData['contract'] = {
   envelope: ENVELOPE_VERSION, snapshot_format: FORMAT_VERSION, link_format: LINK_FORMAT_VERSION, adapter_protocol: PROTOCOL_VERSION,
@@ -182,7 +197,7 @@ function catalogTool(catalog: Catalog, tool: ToolName, input: Record<string, unk
     const limit = Math.min(Number(input.limit ?? 50), applied.max_rows)
     const records = catalog.queryRecords({ tool: input.tool as string | undefined, limit })
     data = { tools: toolCatalog(), contract: CONTRACT, records }
-    limitations = ['Records of every registered repository, newest first; pass repository_id for one. Records hold the hash of each query input, never its text or its result.']
+    limitations = ['Records of every registered repository, newest first; pass repository_id for one. Records hold the hash of each query input, never its text or its result.', PROFILES_NOTE]
   }
   return {
     schema_version: ENVELOPE_VERSION, query_id: queryId(), tool, snapshot: null, freshness: { mode: 'snapshot', status: 'catalog' }, coverage: null, data, evidence_ids: [],
@@ -204,7 +219,7 @@ function gitOfSnapshot(catalog: Catalog, snap: SnapshotRow): { commit?: string; 
 
 const toolCatalog = () => TOOLS.map((name) => ({
   name, description: String(loadSchema(`tools/${name}.input.schema.json`).description ?? name),
-  input_schema: `tools/${name}.input.schema.json`, data_schema: `tools/${name}.data.schema.json`, paged: PAGED.has(name), workspace_scoped: WORKSPACE_SCOPED.has(name), capability: CAPABILITY[name],
+  input_schema: `tools/${name}.input.schema.json`, data_schema: `tools/${name}.data.schema.json`, paged: PAGED.has(name), workspace_scoped: WORKSPACE_SCOPED.has(name), capability: CAPABILITY[name], profile: PROFILE[name],
 }))
 
 function runRepositoryTool(dataDir: string, tool: string, input: Record<string, unknown>, session?: ToolSession): Answer {
@@ -870,7 +885,7 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     const tools = toolCatalog()
     const all = ctx.catalog.queryRecords({ repository_id: ctx.repo.id, tool: input.tool as string | undefined, limit: limit + 1 })
     const records = all.slice(0, limit)
-    return { data: { tools, contract: CONTRACT, records }, stop_reasons: all.length > limit ? ['max_rows'] : [], limitations: ['Records hold the hash of each query input, never its text or its result.'] }
+    return { data: { tools, contract: CONTRACT, records }, stop_reasons: all.length > limit ? ['max_rows'] : [], limitations: ['Records hold the hash of each query input, never its text or its result.', PROFILES_NOTE] }
   },
 
   prepare_verification(ctx, input) {

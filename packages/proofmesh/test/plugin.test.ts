@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { Catalog } from '../src/meshstore/catalog.js'
+import { PROFILE, TOOLS } from '../src/query/tools.js'
 import { cli, fixtureRepo, indexedDataDir, tmpDir } from './helpers.js'
 
 const PLUGIN = path.join(import.meta.dirname, '..', '..', 'proofmesh-plugin')
@@ -23,7 +24,12 @@ async function until(check: () => boolean, ms = 180000) {
 describe('A13 the Claude Code plugin: skill, MCP registration, commands, and hooks that keep the snapshot fresh after edits', () => {
   it('A13 the manifest, MCP registration, hooks and commands are well formed, and every command says what it does', () => {
     expect(JSON.parse(fs.readFileSync(path.join(PLUGIN, '.claude-plugin', 'plugin.json'), 'utf8')).name).toBe('proofmesh')
-    expect(JSON.parse(fs.readFileSync(path.join(PLUGIN, '.mcp.json'), 'utf8')).mcpServers.proofmesh).toEqual({ command: 'proofmesh', args: ['mcp'] })
+    expect(JSON.parse(fs.readFileSync(path.join(PLUGIN, '.mcp.json'), 'utf8')).mcpServers.proofmesh).toEqual({ command: 'proofmesh', args: ['mcp', '--tools', 'core,data,claims'] })
+    // FR421: every tool the skill and commands name is in a profile the registration loads.
+    const docs = ['skills/proofmesh/SKILL.md', ...fs.readdirSync(path.join(PLUGIN, 'commands')).map((f) => `commands/${f}`)].map((f) => fs.readFileSync(path.join(PLUGIN, f), 'utf8')).join('\n')
+    const named = TOOLS.filter((t) => new RegExp(`\\b${t}\\b`).test(docs))
+    expect(named).toContain('verify_claim')
+    expect(named.filter((t) => !['core', 'data', 'claims'].includes(PROFILE[t]))).toEqual([])
     const hooks = JSON.parse(fs.readFileSync(path.join(PLUGIN, 'hooks', 'hooks.json'), 'utf8')).hooks
     expect(Object.keys(hooks).sort()).toEqual(['PostToolUse', 'SessionStart'])
     expect(hooks.PostToolUse[0].matcher).toBe('Edit|Write|MultiEdit|NotebookEdit')

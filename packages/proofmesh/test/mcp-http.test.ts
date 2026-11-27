@@ -10,7 +10,7 @@ import { mcpClient } from './mcp-client.js'
 let child: ReturnType<typeof spawn>, url = '', token = '', dataDir = '', snapshotId = ''
 beforeAll(async () => {
   ;({ dataDir, snapshotId } = await indexedDataDir())
-  child = spawn(process.execPath, [CLI, '--data-dir', dataDir, 'mcp', '--http', '--port', '0'], { stdio: ['ignore', 'pipe', 'ignore'] })
+  child = spawn(process.execPath, [CLI, '--data-dir', dataDir, 'mcp', '--http', '--port', '0', '--tools', 'all'], { stdio: ['ignore', 'pipe', 'ignore'] })
   await new Promise<void>((resolve) => readline.createInterface({ input: child.stdout! }).on('line', (line) => {
     const u = /^MCP over Streamable HTTP: (\S+)$/.exec(line), t = /^Authorization: Bearer ([0-9a-f]+)$/.exec(line)
     if (u) url = u[1]!
@@ -49,8 +49,8 @@ describe('FR040 NFR002 MCP over Streamable HTTP on loopback', () => {
 })
 
 describe('FR034 SC005 stdio and Streamable HTTP run the same application logic', () => {
-  it('FR034 Streamable HTTP lists exactly the tools stdio lists, with the same descriptions and input schemas', async () => {
-    const stdio = await mcpClient(dataDir), http = await httpClient()
+  it('FR034 FR421 Streamable HTTP lists exactly the tools stdio lists, with the same descriptions and input schemas', async () => {
+    const stdio = await mcpClient(dataDir, '--tools', 'all'), http = await httpClient()
     try {
       const [overStdio, overHttp] = [(await stdio.listTools()).tools, (await http.listTools()).tools]
       expect(overHttp.map((t) => t.name).sort()).toEqual([...TOOLS].sort())
@@ -81,7 +81,7 @@ describe('FR034 SC005 stdio and Streamable HTTP run the same application logic',
       answers.verify_claim.data.run_id = 'a run of its own'
       return answers
     }
-    const stdio = await mcpClient(dataDir), http = await httpClient()
+    const stdio = await mcpClient(dataDir, '--tools', 'all'), http = await httpClient()
     try {
       const viaStdio = await scenario(stdio), viaHttp = await scenario(http)
       expect(viaHttp).toEqual(viaStdio)

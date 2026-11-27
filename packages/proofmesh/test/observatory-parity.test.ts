@@ -65,7 +65,8 @@ beforeAll(async () => {
   const c = Catalog.open(d)
   try { c.addToWorkspace('pair', [repoId, twinId], 'test'); buildLinkFile(c, d, 'pair') } finally { c.close() }
   s = await startViewServer(d, 0)
-  client = await mcpClient(d)
+  // Every tool the Observatory draws from, data and claims included (FR421).
+  client = await mcpClient(d, '--tools', 'all')
   const r = await new Promise<string>((resolve, reject) => {
     const req = http.request({ host: '127.0.0.1', port: s.port, method: 'POST', path: '/session', headers: { host: `127.0.0.1:${s.port}`, origin: s.url, 'content-type': 'application/json' } }, (res) => { res.resume(); resolve(String(res.headers['set-cookie']).split(';')[0]!) })
     req.on('error', reject)

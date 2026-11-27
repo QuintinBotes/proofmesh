@@ -453,6 +453,13 @@ Acceptance: CI runs my pull request without secrets or release credentials; lice
 - FR391: MUST, when the walk is cut by `max_depth`, still return the static reads found within the depth, count in `static_bound.not_visited` the symbols one hop past the cut that were not visited, and say both in a limitation.
 - FR392: MUST, when no imported run observed property reads for the endpoint or entity asked, say so in the tool's first limitation, naming them, so empty observed lists do not read as no reads.
 
+### Tool profiles (#26)
+
+- FR420: MUST make `core` the default tool profile of `proofmesh mcp`: its `tools/list` holds at least `find_symbols`, `get_symbol`, `get_relationships`, `analyze_impact`, `trace_paths`, `find_tests`, `search_sources`, `read_evidence`, `workspace_status`, `list_repositories` and `list_queries`, and the JSON of its tool array is at most 20,000 bytes, asserted by a test. Each tool keeps its description and every field its input schema declares; per-field descriptions are left out of that listing, except the first sentence of `envelope`'s.
+- FR421: MUST select named profiles with `proofmesh mcp --tools <profile[,profile]>`, over stdio and Streamable HTTP: `core`, `data` (table, property, query-source and external-usage tools), `claims` (claims and verification), `extra` (snapshots, index jobs, workspaces, memory and impact completeness) and `all`, which lists every tool exactly as its schema file declares it. An unknown profile is refused at start as `INVALID_ARGUMENT` naming the profiles.
+- FR422: MUST make `list_queries` list every tool, loaded or not, with its `profile`, and say in its limitations how to load the other profiles.
+- FR423: MUST answer a call to a tool outside the profiles a server was started with as `INVALID_ARGUMENT` naming the profile that lists it (`details.profile`), never as an unknown tool or a silent failure; tool names, input schemas and envelopes do not change.
+
 ### Impact completeness
 
 - FR108: MUST provide `impact_completeness` with `base`, a commit-ish, optional `head` (omitted, the working tree), `depth` (default 1, at most 5), `include_tests` and the usual limits, and the CLI `proofmesh completeness <repository> <base>[..<head>] [--depth N] [--json]`.

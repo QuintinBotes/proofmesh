@@ -18,7 +18,7 @@ import { watch } from '../indexer/watch.js'
 import { BUILT_IN, Registry, registryFor } from '../indexer/languages.js'
 import { runKit } from '../conformance/kit.js'
 import { runTool, treeFreshness } from '../query/tools.js'
-import { serveHttp, serveStdio } from '../mcp/server.js'
+import { serveHttp, serveStdio, toolProfiles } from '../mcp/server.js'
 import { startViewServer } from '../http/server.js'
 import { galaxyFor } from '../query/galaxy.js'
 import { fingerprint, readNotes } from '../query/notes.js'
@@ -77,7 +77,7 @@ Usage: proofmesh [--data-dir DIR] <command>
   completeness <repository> <base>[..<head>] [--depth N] [--json]   every symbol the change made and what calls, implements, references or imports it, each changed, tested or neither; indexes a side with no snapshot and waits; exits 0 when no dependent is neither, 1 when one is, 2 on a usage error or unknown commit
   tests <repository> <path | path#name> [--json]   the tests that reach a file or symbol, how each is known and its chain; exits 0 when one executes it, 1 when none does, 2 on a usage error or unknown subject
   status [repository] [--json] [--fresh]   inventory and coverage of the current snapshot, and index jobs queued or running; --fresh compares the working tree with it and starts nothing
-  mcp [--http [--port P]]           MCP server on stdio, or Streamable HTTP on loopback with a bearer token
+  mcp [--http [--port P]]           MCP server on stdio, or Streamable HTTP on loopback with a bearer token; [--tools P[,P]] lists tool profiles other than core (data, claims, extra, all)
   view [--port P] [--no-open]       Observatory on loopback
   debug dump --normalized <snapshot-id>`
 
@@ -561,15 +561,15 @@ export async function main(argv: string[]): Promise<number> {
         return 0
       }
       case 'mcp': {
+        const opts = [...rest], profiles = toolProfiles(take(opts, '--tools'))
         Catalog.open(dataDir).close()
-        if (rest.includes('--http')) {
-          const opts = [...rest]
-          const s = await serveHttp(dataDir, VERSION, Number(take(opts, '--port') ?? 7318))
+        if (opts.includes('--http')) {
+          const s = await serveHttp(dataDir, VERSION, Number(take(opts, '--port') ?? 7318), profiles)
           console.log(`MCP over Streamable HTTP: ${s.url}`)
           console.log(`Authorization: Bearer ${s.token}`)
           return await new Promise<number>(() => {})
         }
-        await serveStdio(dataDir, VERSION)
+        await serveStdio(dataDir, VERSION, profiles)
         return await new Promise<number>(() => {})
       }
       case 'view': {

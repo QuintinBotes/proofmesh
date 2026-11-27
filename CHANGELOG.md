@@ -18,6 +18,13 @@ The C# adapter is built by `pnpm build`, and an unbuilt one says so (closes #100
 - When no imported run observed reads for the endpoint or entity, the tool's first limitation says so, so empty `reads` and `loaded_not_used` no longer read as "no reads".
 - Not done: the tool still does not page past a depth cut, and the snapshot-wide `unresolved.count` is unchanged (`static_bound.unresolved_calls` is the endpoint's own count).
 
+`proofmesh mcp` lists a core tool profile by default, in under 20 KB (part of #26; FR420 to FR423):
+
+- An MCP client that loads every tool up front read 86,473 bytes of tool list before the first question. The default `core` profile lists the 13 tools most code questions need (`find_symbols`, `get_symbol`, `get_symbols_at`, `get_relationships`, `trace_paths`, `analyze_impact`, `find_tests`, `search_sources`, `read_evidence`, `workspace_status`, `list_repositories`, `get_overview`, `list_queries`) in 18,338 bytes. A test fails when the list passes 20,000 bytes.
+- `proofmesh mcp --tools <profile[,profile]>` lists the `data`, `claims` and `extra` profiles too, and `--tools all` lists every tool exactly as before. The core listing keeps every input field but leaves out per-field descriptions, except the first sentence of `envelope`'s.
+- `list_queries` names each tool's `profile` (a new field of its data schema) and says how to load the others. A call to a tool that is not listed is `INVALID_ARGUMENT` with `details.profile`, not an unknown tool.
+- Upgrade note: a client that uses `data`, `claims` or `extra` tools adds `--tools all`, or the profiles it needs, after `mcp` in its server arguments.
+
 Discover skips directories git ignores as a whole (closes #102; FR380 to FR384):
 
 - A directory that git ignores as a whole, such as build output in `bin/`, `obj/` or `node_modules/` when `.gitignore` names it, is now one `excluded_by_rule` entry with detail `gitignore` and a path ending in `/`. Discovery no longer reads anything inside it, which on a built C# working tree was most of the stage's file calls.

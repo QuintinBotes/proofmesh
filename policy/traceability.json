@@ -1444,6 +1444,21 @@
     ],
     "FR392": [
       "packages/proofmesh/test/property-reads.static.test.ts"
+    ],
+    "FR420": [
+      "packages/proofmesh/test/tool-profiles.test.ts"
+    ],
+    "FR421": [
+      "packages/proofmesh/test/tool-profiles.test.ts",
+      "packages/proofmesh/test/mcp.contract.test.ts",
+      "packages/proofmesh/test/mcp-http.test.ts",
+      "packages/proofmesh/test/plugin.test.ts"
+    ],
+    "FR422": [
+      "packages/proofmesh/test/tool-profiles.test.ts"
+    ],
+    "FR423": [
+      "packages/proofmesh/test/tool-profiles.test.ts"
     ]
   },
   "manual": {
