@@ -8,4 +8,17 @@ A skill that tells agents to call Proofmesh before searching by hand and to veri
 
 `/pm-status` answers at once, also while Claude is working, and starts no model turn: the state, the repository, the snapshot's id, mode, commit and age, the files edited since, and the adapters that are unavailable. `/proofmesh:status` stays for older Claude Code versions, which ignore `modules`.
 
+## Session trail and /pm-trail (off by default)
+
+The module can record a session trail: what a session searched, opened, changed and claimed. It records nothing until a person runs `proofmesh trail on <repo>` for the repository. `proofmesh trail off <repo>` stops it. The module learns the setting from the `proofmesh status` it already polls, so the change takes effect within a minute, or at once on `/pm-trail`. Once recording is on, it records each completed call of these tools:
+
+- `opened`: Read, and ProofMesh's `get_symbol`
+- `searched`: Grep, Glob, and the other ProofMesh tools
+- `changed`: Edit, Write, MultiEdit and NotebookEdit
+- `claimed`: `verify_claim`
+
+Each entry holds the repository-relative path or symbol id, the tool, the time, the subagent's id if a subagent made the call, and whether the call succeeded. It never holds a pattern, a match, an edit's text or a result. Paths outside the repository and Bash commands are not recorded. At the end of each turn and at session end, the module hands its entries to `proofmesh trail record`, one process for each batch. The entries stay in ProofMesh's local catalog. `proofmesh trail purge` deletes them, and so does `proofmesh gc` after 30 days.
+
+`/pm-trail` answers at once, with no model turn. It lists the trail in order. Then, for each symbol in a file the session changed, it lists the dependents the session never opened, with their `file:line`. A dependent is `never seen`, or `searched only` when a search covered its directory. If recording is off, `/pm-trail` says how to turn it on. MCP clients get the same answer from `get_session_trail`, in the `data` profile.
+
 Run the module's tests with `pnpm test:plugin` (`claude plugin test packages/proofmesh-plugin`).

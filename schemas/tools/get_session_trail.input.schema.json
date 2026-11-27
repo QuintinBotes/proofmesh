@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "get_session_trail.input.schema.json",
+  "title": "get_session_trail input",
+  "description": "The session trail of one Claude Code session in this repository, recorded by the Proofmesh plugin only where a person ran proofmesh trail on: what the session searched, opened, changed and claimed, in order, each a repository-relative path or a symbol id with the tool and the time, never source text. For each symbol declared in a file it changed, the dependents (analyze_impact) whose file no successful opened entry names, split into searched_only (under a path a search covered) and never_seen.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "session_id"
+  ],
+  "properties": {
+    "repository_id": {
+      "type": "string",
+      "pattern": "^repo_[0-9a-z]+$",
+      "description": "Optional when exactly one repository is registered."
+    },
+    "snapshot_id": {
+      "oneOf": [
+        {
+          "type": "string",
+          "pattern": "^snap_[0-9a-z]+$"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Null pins the current published snapshot."
+    },
+    "session_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200,
+      "description": "Claude Code's session id (the transcript file's name); /pm-trail passes the current session's."
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "timeout_ms": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_rows": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_depth": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "envelope": {
+      "enum": [
+        "full",
+        "compact",
+        "lean"
+      ],
+      "description": "lean, the default over MCP: plain text with no JSON and no structuredContent. A header `# <tool> · <n> rows · <snapshot> current` (stale when the snapshot is older than the repository's current one), one `<name> <path>:<line>` row per result, then `# ` lines for the limitations of this answer and `# more: cursor <c>` when a next page exists. The line is the call, import or reference site for relationship, impact and path rows and the declaration for symbol rows; tags follow: in or out when both directions are asked, depth=<n>, dispatch, external, candidate, ambiguous, unresolved:<reason>, and the relationship type when the query mixes types. A name or path with a space, quote or # is quoted as JSON. compact: the JSON envelope without the snapshot-wide parts an earlier answer gave (coverage, unresolved reasons, standing limitations). full: the whole JSON envelope. Ask for compact or full for ids, evidence and totals."
+    }
+  }
+}

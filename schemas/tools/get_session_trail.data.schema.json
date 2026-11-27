@@ -1,0 +1,210 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "get_session_trail.data.schema.json",
+  "title": "get_session_trail data",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "session_id",
+    "recording",
+    "cut",
+    "entries",
+    "changed"
+  ],
+  "properties": {
+    "session_id": {
+      "type": "string"
+    },
+    "recording": {
+      "type": "boolean",
+      "description": "Whether the trail is being recorded for this repository now (proofmesh trail on)."
+    },
+    "cut": {
+      "type": "boolean",
+      "description": "True when the trail reached 10,000 entries and later ones were dropped."
+    },
+    "entries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "seq",
+          "at",
+          "kind",
+          "tool",
+          "outcome"
+        ],
+        "properties": {
+          "seq": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "at": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "searched",
+              "opened",
+              "changed",
+              "claimed"
+            ]
+          },
+          "tool": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string",
+            "description": "Repository-relative; '.' is the whole repository."
+          },
+          "symbol_id": {
+            "type": "string"
+          },
+          "agent_id": {
+            "type": "string",
+            "description": "The subagent that made the call, for the session."
+          },
+          "outcome": {
+            "enum": [
+              "ok",
+              "failed"
+            ],
+            "description": "failed: the call failed or was denied; it counts as attempted, not as opened."
+          },
+          "generated": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    "changed": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "kind",
+          "name",
+          "qualified_name",
+          "path",
+          "line",
+          "never_seen",
+          "searched_only"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "qualified_name": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "line": {
+            "type": "integer"
+          },
+          "generated": {
+            "type": "boolean"
+          },
+          "never_seen": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "id",
+                "kind",
+                "name",
+                "qualified_name",
+                "path",
+                "line",
+                "depth"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "qualified_name": {
+                  "type": "string"
+                },
+                "path": {
+                  "type": "string",
+                  "description": "The file of the use that reaches the changed symbol: the call, import or reference site."
+                },
+                "line": {
+                  "type": "integer"
+                },
+                "depth": {
+                  "type": "integer"
+                },
+                "generated": {
+                  "type": "boolean"
+                }
+              }
+            },
+            "description": "Dependents in a file no entry opened or searched."
+          },
+          "searched_only": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "id",
+                "kind",
+                "name",
+                "qualified_name",
+                "path",
+                "line",
+                "depth"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "qualified_name": {
+                  "type": "string"
+                },
+                "path": {
+                  "type": "string",
+                  "description": "The file of the use that reaches the changed symbol: the call, import or reference site."
+                },
+                "line": {
+                  "type": "integer"
+                },
+                "depth": {
+                  "type": "integer"
+                },
+                "generated": {
+                  "type": "boolean"
+                }
+              }
+            },
+            "description": "Dependents under a path a search covered, in a file no entry opened."
+          }
+        }
+      }
+    }
+  }
+}

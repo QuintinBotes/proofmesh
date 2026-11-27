@@ -58,6 +58,8 @@ With `--keep-current`, the repository's current snapshot stays the one it was be
 
 `proofmesh gc [--keep N] [--dry-run]` keeps the newest N published snapshots per repository (default 3) and retires the rest, deleting their sealed files, then deletes evidence objects no remaining snapshot references. It never retires the current snapshot, a pinned one (`proofmesh snapshot pin <id>`), or a member of a recorded workspace link file, and it refuses to run while an index holds a lock; an index started while gc runs waits for it. `--dry-run` lists what would go. A retired snapshot keeps its catalog row, so its id still names what existed.
 
+`--records-days D` (default 30) sets how long query records and session trails are kept. gc deletes the ones recorded more than D days ago. Before this option, query records were kept forever. `proofmesh trail purge [--session <id>]` deletes trails at any time (FR612).
+
 ## Client configuration (A13, FR041)
 
 `proofmesh mcp-config [--client claude-code|codex] [--scope project|user]` prints the registration for this installation. It writes only when asked, and only a Claude Code `.mcp.json` (`--write .mcp.json`), keeping the other servers in it. `packages/proofmesh-plugin/` is the Claude Code plugin: a skill that sends agents to Proofmesh before searching by hand, and the MCP registration.

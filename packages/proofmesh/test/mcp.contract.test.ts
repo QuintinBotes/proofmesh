@@ -1,11 +1,11 @@
 import { spawn } from 'node:child_process'
 import readline from 'node:readline'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, onTestFinished } from 'vitest'
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { ProofmeshError } from '../src/core/errors.js'
 import { check, loadSchema } from '../src/core/schemas.js'
 import { queryHash } from '../src/query/cursor.js'
-import { LEAN, runTool } from '../src/query/tools.js'
+import { LEAN, PROFILE, runTool } from '../src/query/tools.js'
 import { CLI, indexedDataDir, symbolId, tool } from './helpers.js'
 import { mcpClient } from './mcp-client.js'
 
@@ -17,7 +17,7 @@ beforeAll(async () => {
 })
 afterAll(async () => { await client?.close() })
 
-const TOOLS = ['analyze_impact', 'compare_snapshots', 'find_query_source', 'find_symbols', 'find_tests', 'get_claims', 'get_ecosystem', 'get_external_usage', 'get_job', 'get_memory', 'get_overview', 'get_property_reads', 'get_relationships', 'get_symbol', 'get_symbols_at', 'get_table_reach', 'get_verification', 'impact_completeness', 'list_queries', 'list_repositories', 'list_snapshots', 'list_workspaces', 'prepare_verification', 'read_evidence', 'request_index', 'save_memory', 'search_sources', 'trace_paths', 'verify_claim', 'workspace_status']
+const TOOLS = ['analyze_impact', 'compare_snapshots', 'find_query_source', 'find_symbols', 'find_tests', 'get_claims', 'get_ecosystem', 'get_external_usage', 'get_job', 'get_memory', 'get_overview', 'get_property_reads', 'get_relationships', 'get_session_trail', 'get_symbol', 'get_symbols_at', 'get_table_reach', 'get_verification', 'impact_completeness', 'list_queries', 'list_repositories', 'list_snapshots', 'list_workspaces', 'prepare_verification', 'read_evidence', 'request_index', 'save_memory', 'search_sources', 'trace_paths', 'verify_claim', 'workspace_status']
 
 describe('AC22 MCP tool contracts', () => {
   it('FR035 FR421 with --tools all lists exactly the M0 tools plus the M2, M3, M5 and M6 tools, each with its input schema file unchanged', async () => {
@@ -63,11 +63,15 @@ describe('AC22 MCP tool contracts', () => {
     const calls: Array<[string, Record<string, unknown>]> = [
       ['find_symbols', { text: 'formatAmount' }], ['get_symbol', { symbol_id: handle }], ['get_relationships', { subject_id: handle }],
       ['trace_paths', { source_id: handle, target_id: target }], ['analyze_impact', { subject_ids: [target] }], ['find_tests', { subject_ids: [target] }],
-      ['get_symbols_at', { locations: ['packages/api/src/handler.ts:1'] }],
+      ['get_symbols_at', { locations: ['packages/api/src/handler.ts:1'] }], ['get_session_trail', { session_id: 'a-session-with-no-trail' }],
     ]
     expect(calls.map(([name]) => name).sort()).toEqual([...LEAN].sort())
+    // get_session_trail is in the data profile; the default client lists core only.
+    const data = await mcpClient(d, '--tools', 'core,data')
+    onTestFinished(() => data.close())
     for (const [name, args] of calls) {
-      const r = await client.callTool({ name, arguments: args }) as { content: Array<{ type: string; text: string }>; structuredContent?: unknown; isError?: boolean }
+      const via = PROFILE[name as keyof typeof PROFILE] === 'core' ? client : data
+      const r = await via.callTool({ name, arguments: args }) as { content: Array<{ type: string; text: string }>; structuredContent?: unknown; isError?: boolean }
       expect(r.isError, name).toBeFalsy()
       expect(r.structuredContent, name).toBeUndefined()
       expect(r.content.map((c) => c.type), name).toEqual(['text'])
@@ -75,7 +79,7 @@ describe('AC22 MCP tool contracts', () => {
       expect(header, name).toMatch(/^# .+ · \d+ rows? · snap_[0-9a-z]+ (current|stale)$/)
       expect(rest.every((l) => !l.startsWith('{') && !l.startsWith('[')), name).toBe(true)
       for (const envelope of ['compact', 'full']) {
-        const j = await client.callTool({ name, arguments: { ...args, envelope } })
+        const j = await via.callTool({ name, arguments: { ...args, envelope } })
         expect(check('envelope.schema.json', j.structuredContent), `${name} ${envelope}`).toBeUndefined()
         expect(JSON.parse((j.content as Array<{ text: string }>)[0]!.text), `${name} ${envelope}`).toEqual(j.structuredContent)
       }

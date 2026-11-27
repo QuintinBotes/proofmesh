@@ -31,6 +31,7 @@ import { runClone } from './clone.js'
 import { runBundle } from './bundle.js'
 import { backup, restore } from './backup.js'
 import { runGc } from './gc.js'
+import { runTrail } from './trail.js'
 import { runMcpConfig } from './mcp-config.js'
 import { runConventions } from './conventions.js'
 import { weakestCapability, type CensusRow } from '../indexer/census.js'
@@ -69,7 +70,9 @@ Usage: proofmesh [--data-dir DIR] <command>
   bundle export <repository> --out <dir.pmb> [--query <json>]... [--include-source]   portable evidence bundle; source only with consent
   bundle check <dir.pmb>            verify a bundle offline, with no data directory
   backup <dir> | restore <dir> --into <data-dir>   consistent copy of the data directory, verified on restore
-  gc [--keep N] [--dry-run]         retire old snapshots and unreferenced evidence; never current, pinned or linked ones
+  gc [--keep N] [--records-days D] [--dry-run]   retire old snapshots and unreferenced evidence, never current, pinned or linked ones; delete query records and session trail entries recorded more than D days ago (default 30)
+  trail on <repo> | trail off <repo>   record the session trail of Claude Code sessions in this repository (off by default): the paths and symbol ids they search, open, change and claim, never source text
+  trail record | trail purge [--session <id>]   append trail entries (JSON lines on stdin; the plugin does this) | delete one session's trail, or all
   snapshot pin <id> | snapshot unpin <id>
   mcp-config [--client claude-code|codex] [--scope project|user] [--write .mcp.json]   print the client registration
   index <repository-id or path> [--rev <commit-ish>] [--no-wait] [--allow-partial]   capture, analyse, seal, and publish a snapshot; --rev indexes a commit without touching the working tree; one index per repository at a time: a second waits, or with --no-wait exits INDEX_IN_PROGRESS; progress on stderr
@@ -517,7 +520,7 @@ export async function main(argv: string[]): Promise<number> {
             if (!snapshot) throw new ProofmeshError('SNAPSHOT_UNAVAILABLE', 'no published snapshot for this repository; run "proofmesh index" first', { detail: 'none' })
             const db = openSnapshot(catalog, snapshot)
             const t = (() => { try { return treeFreshness(db, dataDir, repo.root) } finally { db.close() } })()
-            const out = { repository_id: repo.id, name: repo.name, snapshot_id: snapshot.id, current: t.current, changed_count: t.changed.length, changed: t.changed.slice(0, 20) }
+            const out = { repository_id: repo.id, name: repo.name, snapshot_id: snapshot.id, current: t.current, changed_count: t.changed.length, changed: t.changed.slice(0, 20), trail_recording: catalog.trailRecording(repo.id) }
             if (json) console.log(JSON.stringify(out, null, 2))
             else console.log(t.current ? `${repo.name}: snapshot ${snapshot.id} matches the working tree` : `${repo.name}: the working tree differs from snapshot ${snapshot.id}: ${t.changed.length} files changed${t.changed.length ? `, such as ${t.changed.slice(0, 3).map((c) => `${c.path} (${c.change})`).join(', ')}` : ''}`)
             return 0
@@ -612,6 +615,7 @@ export async function main(argv: string[]): Promise<number> {
         return 0
       }
       case 'gc': return runGc(dataDir, rest, take, has)
+      case 'trail': return await runTrail(dataDir, rest, take)
       case 'snapshot': {
         if ((rest[0] !== 'pin' && rest[0] !== 'unpin') || !rest[1]) throw new ProofmeshError('INVALID_ARGUMENT', 'usage: proofmesh snapshot pin <id> | snapshot unpin <id>')
         const catalog = Catalog.open(dataDir)

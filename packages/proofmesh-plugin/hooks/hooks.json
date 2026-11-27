@@ -1,5 +1,5 @@
 {
-  "description": "Keeps the Proofmesh snapshot fresh: after an edit, and at session start when the working tree has moved on, a debounced background index publishes a new snapshot. The hooks module shows the snapshot's state under the prompt and adds /pm-status.",
+  "description": "Keeps the Proofmesh snapshot fresh: after an edit, and at session start when the working tree has moved on, a debounced background index publishes a new snapshot. The hooks module shows the snapshot's state under the prompt and adds /pm-status, and /pm-trail for the session trail a person turned on with proofmesh trail on.",
   "modules": ["./register.mjs"],
   "hooks": {
     "PostToolUse": [

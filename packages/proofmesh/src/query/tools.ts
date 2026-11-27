@@ -45,10 +45,10 @@ import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 
-export const TOOLS = ['workspace_status', 'list_repositories', 'list_snapshots', 'list_workspaces', 'find_symbols', 'get_symbol', 'get_relationships', 'trace_paths', 'read_evidence', 'get_overview', 'analyze_impact', 'find_tests', 'search_sources', 'get_memory', 'verify_claim', 'request_index', 'get_job', 'get_claims', 'save_memory', 'get_table_reach', 'get_property_reads', 'get_external_usage', 'find_query_source', 'compare_snapshots', 'list_queries', 'get_ecosystem', 'prepare_verification', 'get_verification', 'impact_completeness', 'get_symbols_at'] as const
+export const TOOLS = ['workspace_status', 'list_repositories', 'list_snapshots', 'list_workspaces', 'find_symbols', 'get_symbol', 'get_relationships', 'trace_paths', 'read_evidence', 'get_overview', 'analyze_impact', 'find_tests', 'search_sources', 'get_memory', 'verify_claim', 'request_index', 'get_job', 'get_claims', 'save_memory', 'get_table_reach', 'get_property_reads', 'get_external_usage', 'find_query_source', 'compare_snapshots', 'list_queries', 'get_ecosystem', 'prepare_verification', 'get_verification', 'impact_completeness', 'get_symbols_at', 'get_session_trail'] as const
 export type ToolName = (typeof TOOLS)[number]
 /** The query tools whose results are code locations: they answer in the lean envelope on request, and by default over MCP (FR099). */
-export const LEAN = new Set<string>(['find_symbols', 'get_symbol', 'get_symbols_at', 'get_relationships', 'trace_paths', 'analyze_impact', 'find_tests'])
+export const LEAN = new Set<string>(['find_symbols', 'get_symbol', 'get_symbols_at', 'get_relationships', 'trace_paths', 'analyze_impact', 'find_tests', 'get_session_trail'])
 /** A lean answer is its text; the envelope beside it is what the text was rendered from, for in-process callers. */
 export type Answer = Envelope & { text?: string }
 
@@ -62,7 +62,7 @@ export const CAPABILITY: Record<ToolName, ListQueriesData['tools'][number]['capa
   read_evidence: 'read', get_overview: 'read', analyze_impact: 'read', find_tests: 'read', search_sources: 'read', get_memory: 'read',
   verify_claim: 'read', request_index: 'management', get_job: 'read', get_claims: 'read', save_memory: 'management', get_table_reach: 'read',
   get_property_reads: 'read', get_external_usage: 'read', find_query_source: 'read', compare_snapshots: 'read', list_queries: 'read',
-  get_ecosystem: 'read', prepare_verification: 'management', get_verification: 'read', impact_completeness: 'management', get_symbols_at: 'read',
+  get_ecosystem: 'read', prepare_verification: 'management', get_verification: 'read', impact_completeness: 'management', get_symbols_at: 'read', get_session_trail: 'read',
 }
 
 /**
@@ -72,7 +72,7 @@ export const CAPABILITY: Record<ToolName, ListQueriesData['tools'][number]['capa
 export const PROFILE: Record<ToolName, ListQueriesData['tools'][number]['profile']> = {
   workspace_status: 'core', list_repositories: 'core', find_symbols: 'core', get_symbol: 'core', get_symbols_at: 'core', get_relationships: 'core', trace_paths: 'core',
   read_evidence: 'core', get_overview: 'core', analyze_impact: 'core', find_tests: 'core', search_sources: 'core', list_queries: 'core',
-  get_table_reach: 'data', get_property_reads: 'data', get_external_usage: 'data', find_query_source: 'data',
+  get_table_reach: 'data', get_property_reads: 'data', get_external_usage: 'data', find_query_source: 'data', get_session_trail: 'data',
   verify_claim: 'claims', get_claims: 'claims', prepare_verification: 'claims', get_verification: 'claims',
   list_snapshots: 'extra', list_workspaces: 'extra', get_ecosystem: 'extra', compare_snapshots: 'extra', impact_completeness: 'extra', request_index: 'extra',
   get_job: 'extra', get_memory: 'extra', save_memory: 'extra',
@@ -888,6 +888,50 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     const all = ctx.catalog.queryRecords({ repository_id: ctx.repo.id, tool: input.tool as string | undefined, limit: limit + 1 })
     const records = all.slice(0, limit)
     return { data: { tools, contract: CONTRACT, records }, stop_reasons: all.length > limit ? ['max_rows'] : [], limitations: ['Records hold the hash of each query input, never its text or its result.', PROFILES_NOTE] }
+  },
+
+  get_session_trail(ctx, input) {
+    const { entries, cut } = ctx.catalog.trail(String(input.session_id), ctx.repo.id)
+    const recording = ctx.catalog.trailRecording(ctx.repo.id)
+    // A failed or denied call was attempted, not done. A search covers the files under the path it searched; a search of the whole
+    // repository (.) covers no file in particular, since the trail keeps no matches.
+    const done = entries.filter((e) => e.outcome === 'ok')
+    const covers = (kind: string, d: { id: string; path: string }) => done.some((e) => e.kind === kind && (e.symbol_id === d.id || (e.path !== undefined && (d.path === e.path || d.path.startsWith(`${e.path}/`)))))
+    const paths = [...new Set(done.flatMap((e) => (e.kind === 'changed' && e.path !== undefined ? [e.path] : [])))]
+    const symbols = paths.flatMap((p) => ctx.db.prepare("select s.id, s.kind, s.name, s.qualified_name, f.path, s.start_line as line from symbol s join file f on f.id = s.file_id where f.path = ? and s.kind <> 'module' order by s.start_byte, s.id").all(p) as Array<{ id: string; kind: string; name: string; qualified_name: string; path: string; line: number }>)
+    const missing = paths.filter((p) => !ctx.db.prepare('select 1 from file where path = ?').get(p))
+    type Row = { id: string; kind: string; name: string; qualified_name: string; path: string; line: number; depth: number }
+    let stopped = false
+    const changed = symbols.map((s) => {
+      const { dependents, reached_by, stopped_by } = analyzeImpact(ctx.db, ctx.snapshot.id, [s.id], IMPACT_TYPES, ctx.limits.max_depth, ctx.limits.max_rows)
+      stopped ||= stopped_by !== null
+      // The site of the use that reaches the change, as an impact row gives it; a peer reached through dispatch has its declaration.
+      const row = (d: Impact['dependents'][number]): Row => {
+        const via = reached_by.get(d.id), site = via ? siteOf(ctx.db, via) : null
+        return { id: d.id, kind: d.kind, name: d.name, qualified_name: d.qualified_name, path: site?.path ?? d.path, line: site?.start_line ?? (ctx.db.prepare('select start_line from symbol where id = ?').get(d.id) as { start_line: number }).start_line, depth: d.depth }
+      }
+      const unopened = dependents.filter((d) => !covers('opened', d))
+      return { ...s, never_seen: unopened.filter((d) => !covers('searched', d)).map(row), searched_only: unopened.filter((d) => covers('searched', d)).map(row) }
+    })
+    const lastChange = done.filter((e) => e.kind === 'changed').at(-1)?.at
+    const entryRow = (e: (typeof entries)[number]) => [e.seq, e.kind, e.tool, quote(e.path ?? e.symbol_id ?? '-'), ...(e.outcome === 'failed' ? ['failed'] : []), ...(e.agent_id ? [`agent=${e.agent_id}`] : [])].join(' ')
+    const rows = (list: Row[], tag: string) => list.map((d) => leanRow(leanName(d), d.path, d.line, [tag, `depth=${d.depth}`]))
+    return {
+      data: { session_id: String(input.session_id), recording, cut, entries, changed },
+      shrink: ['entries', 'changed'],
+      limitations: [
+        ...(recording ? [] : [`Session trail recording is off for ${ctx.repo.name}; a person turns it on with proofmesh trail on ${ctx.repo.id}, and the Claude Code plugin then records its sessions.`]),
+        ...(cut ? ['The trail was cut at 10,000 entries; later steps of the session were not recorded.'] : []),
+        ...(lastChange && ctx.snapshot.published_at && ctx.snapshot.published_at < lastChange ? [`Snapshot ${ctx.snapshot.id} was published before the session's last change (${lastChange}); index again for the dependents of the code as it was changed.`] : []),
+        ...(missing.length ? [`${missing.length} changed file${missing.length === 1 ? ' is' : 's are'} not in this snapshot: ${missing.slice(0, 20).join(', ')}.`] : []),
+        ...(stopped ? ['The impact search stopped at a limit for a changed symbol; more dependents may exist.'] : []),
+        'A dependent counts as opened when a successful opened entry names its file or its symbol; a search covers the files under the path it searched, and a search of the whole repository covers none, since the trail keeps no matches. Steps taken through Bash are not recorded.',
+      ],
+      lean: (data) => [
+        ...(data.entries as typeof entries).map(entryRow),
+        ...(data.changed as typeof changed).flatMap((c) => [leanRow(leanName(c), c.path, c.line, ['changed']), ...rows(c.never_seen, 'never_seen'), ...rows(c.searched_only, 'searched_only')]),
+      ],
+    }
   },
 
   prepare_verification(ctx, input) {

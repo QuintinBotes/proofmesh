@@ -4,7 +4,7 @@
 export interface Envelope {
 schema_version: "0.1"
 query_id: string
-tool: ("workspace_status" | "list_repositories" | "list_snapshots" | "list_workspaces" | "find_symbols" | "get_symbol" | "get_relationships" | "trace_paths" | "read_evidence" | "get_overview" | "analyze_impact" | "find_tests" | "search_sources" | "get_memory" | "verify_claim" | "request_index" | "get_job" | "get_claims" | "save_memory" | "get_table_reach" | "get_property_reads" | "get_external_usage" | "find_query_source" | "compare_snapshots" | "list_queries" | "get_ecosystem" | "prepare_verification" | "get_verification" | "impact_completeness" | "get_symbols_at")
+tool: ("workspace_status" | "list_repositories" | "list_snapshots" | "list_workspaces" | "find_symbols" | "get_symbol" | "get_relationships" | "trace_paths" | "read_evidence" | "get_overview" | "analyze_impact" | "find_tests" | "search_sources" | "get_memory" | "verify_claim" | "request_index" | "get_job" | "get_claims" | "save_memory" | "get_table_reach" | "get_property_reads" | "get_external_usage" | "find_query_source" | "compare_snapshots" | "list_queries" | "get_ecosystem" | "prepare_verification" | "get_verification" | "impact_completeness" | "get_symbols_at" | "get_session_trail")
 /**
  * The sealed snapshot or link file that answered; null for a catalog tool, which answers from the list of registered repositories.
  */
@@ -1544,6 +1544,107 @@ envelope?: ("full" | "compact" | "lean")
  * Default false: outbound rows leave out calls that resolved to code outside the repository (framework and library members), and totals.out_external counts them; relationship types whose targets are external by nature, such as depends_on_package, keep them. True lists those calls too. Ignored when resolutions is given, and for an external subject.
  */
 include_external?: boolean
+}
+
+export interface GetSessionTrailData {
+session_id: string
+/**
+ * Whether the trail is being recorded for this repository now (proofmesh trail on).
+ */
+recording: boolean
+/**
+ * True when the trail reached 10,000 entries and later ones were dropped.
+ */
+cut: boolean
+entries: {
+seq: number
+at: string
+kind: ("searched" | "opened" | "changed" | "claimed")
+tool: string
+/**
+ * Repository-relative; '.' is the whole repository.
+ */
+path?: string
+symbol_id?: string
+/**
+ * The subagent that made the call, for the session.
+ */
+agent_id?: string
+/**
+ * failed: the call failed or was denied; it counts as attempted, not as opened.
+ */
+outcome: ("ok" | "failed")
+generated?: boolean
+}[]
+changed: {
+id: string
+kind: string
+name: string
+qualified_name: string
+path: string
+line: number
+generated?: boolean
+/**
+ * Dependents in a file no entry opened or searched.
+ */
+never_seen: {
+id: string
+kind: string
+name: string
+qualified_name: string
+/**
+ * The file of the use that reaches the changed symbol: the call, import or reference site.
+ */
+path: string
+line: number
+depth: number
+generated?: boolean
+}[]
+/**
+ * Dependents under a path a search covered, in a file no entry opened.
+ */
+searched_only: {
+id: string
+kind: string
+name: string
+qualified_name: string
+/**
+ * The file of the use that reaches the changed symbol: the call, import or reference site.
+ */
+path: string
+line: number
+depth: number
+generated?: boolean
+}[]
+}[]
+}
+
+/**
+ * The session trail of one Claude Code session in this repository, recorded by the Proofmesh plugin only where a person ran proofmesh trail on: what the session searched, opened, changed and claimed, in order, each a repository-relative path or a symbol id with the tool and the time, never source text. For each symbol declared in a file it changed, the dependents (analyze_impact) whose file no successful opened entry names, split into searched_only (under a path a search covered) and never_seen.
+ */
+export interface GetSessionTrailInput {
+/**
+ * Optional when exactly one repository is registered.
+ */
+repository_id?: string
+/**
+ * Null pins the current published snapshot.
+ */
+snapshot_id?: (string | null)
+/**
+ * Claude Code's session id (the transcript file's name); /pm-trail passes the current session's.
+ */
+session_id: string
+limits?: {
+timeout_ms?: number
+max_rows?: number
+max_bytes?: number
+max_depth?: number
+}
+/**
+ * lean, the default over MCP: plain text with no JSON and no structuredContent. A header `# <tool> · <n> rows · <snapshot> current` (stale when the snapshot is older than the repository's current one), one `<name> <path>:<line>` row per result, then `# ` lines for the limitations of this answer and `# more: cursor <c>` when a next page exists. The line is the call, import or reference site for relationship, impact and path rows and the declaration for symbol rows; tags follow: in or out when both directions are asked, depth=<n>, dispatch, external, candidate, ambiguous, unresolved:<reason>, and the relationship type when the query mixes types. A name or path with a space, quote or # is quoted as JSON. compact: the JSON envelope without the snapshot-wide parts an earlier answer gave (coverage, unresolved reasons, standing limitations). full: the whole JSON envelope. Ask for compact or full for ids, evidence and totals.
+ */
+envelope?: ("full" | "compact" | "lean")
 }
 
 export interface GetSymbolData {
