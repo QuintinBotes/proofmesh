@@ -463,6 +463,11 @@
             "null"
           ],
           "description": "Continues a truncated list (find_symbols, get_relationships) on the same snapshot; null when there is nothing more or the tool does not page."
+        },
+        "total": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "How many rows the answer's list holds uncut, before max_rows, max_bytes or a page cut it: analyze_impact's dependents and find_tests' tests. Absent from the other tools."
         }
       }
     },

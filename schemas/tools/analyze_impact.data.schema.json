@@ -38,7 +38,9 @@
           "path",
           "project",
           "depth",
-          "basis"
+          "basis",
+          "line",
+          "relationship"
         ],
         "properties": {
           "id": {
@@ -55,6 +57,15 @@
           },
           "path": {
             "type": "string"
+          },
+          "line": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The line in path of the relationship that first reached the dependent (for a call, its call site); its declaration line when dispatch alone reached it or that relationship is recorded in another file."
+          },
+          "relationship": {
+            "type": "string",
+            "description": "That relationship's type (calls, implements, imports and so on), or dispatch when the dependent was reached only as an implementation or override of a member the walk reached."
           },
           "depth": {
             "type": "integer",

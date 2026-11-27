@@ -1665,6 +1665,27 @@
     "FR706": [
       "packages/proofmesh-plugin/tests/impact.test.ts"
     ],
+    "FR860": [
+      "packages/proofmesh/test/impact.test.ts"
+    ],
+    "FR861": [
+      "packages/proofmesh/test/impact.test.ts"
+    ],
+    "FR862": [
+      "packages/proofmesh/test/test-reach.test.ts"
+    ],
+    "FR863": [
+      "packages/proofmesh-plugin/tests/impact.test.ts"
+    ],
+    "FR864": [
+      "packages/proofmesh-plugin/tests/impact.test.ts"
+    ],
+    "FR865": [
+      "packages/proofmesh-plugin/tests/impact.test.ts"
+    ],
+    "FR866": [
+      "packages/proofmesh-plugin/tests/impact.test.ts"
+    ],
     "FR550": [
       "packages/proofmesh/test/ts-accessors.test.ts"
     ],

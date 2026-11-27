@@ -114,6 +114,10 @@ timed_out: boolean
  * Continues a truncated list (find_symbols, get_relationships) on the same snapshot; null when there is nothing more or the tool does not page.
  */
 next_cursor: (string | null)
+/**
+ * How many rows the answer's list holds uncut, before max_rows, max_bytes or a page cut it: analyze_impact's dependents and find_tests' tests. Absent from the other tools.
+ */
+total?: number
 }
 limits: {
 requested: {
@@ -162,6 +166,14 @@ kind: string
 name: string
 qualified_name: string
 path: string
+/**
+ * The line in path of the relationship that first reached the dependent (for a call, its call site); its declaration line when dispatch alone reached it or that relationship is recorded in another file.
+ */
+line: number
+/**
+ * That relationship's type (calls, implements, imports and so on), or dispatch when the dependent was reached only as an implementation or override of a member the walk reached.
+ */
+relationship: string
 depth: number
 /**
  * inferred when the strongest chain to the dependent has an inferred hop; the strongest chain is the shortest all-observed chain where one exists, and depth is that chain's.
