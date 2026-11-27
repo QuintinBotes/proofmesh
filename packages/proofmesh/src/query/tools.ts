@@ -1065,6 +1065,8 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
           .filter((p) => !p.name.includes('.') && !rows.some((r) => r.property === p.name)).map((p) => ({ entity, property: p.name, symbol_id: p.id }))
       : []
     const limitations: string[] = [
+      // An empty observed side most often means nothing was imported, so it is the first thing said (FR392).
+      ...(rows.length ? [] : [`No imported run observed property reads for ${[endpoint, entity].filter(Boolean).join(' and ')}, so reads and loaded_not_used are empty: they come only from an instrumented run imported with proofmesh observe import, and an empty list is not evidence that nothing reads a property.`]),
       PROPERTY_READS_NOTE,
       ...(rows.some((r) => r.read_kind === 'orm') ? ['ORM reads are the properties the ORM materialised or tracked, loaded but not necessarily used; application reads are what code read. loaded_not_used lists properties with ORM reads and no application read.'] : ['No import distinguished ORM reads from application reads (observations 0.3 read_kind), so every read counts as an application read.']),
       ...(entity && !unread.length && !rows.length ? ['The snapshot has no property symbols for that entity name and no import names it; check the qualified name.'] : []),
@@ -1079,10 +1081,15 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     const comparison = statics && observed.size
       ? { both: [...statically].filter(([k]) => observed.has(k)).map(([, v]) => v), static_only: [...statically].filter(([k]) => !observed.has(k)).map(([, v]) => v), observed_only: [...observed].filter(([k]) => !statically.has(k)).map(([, v]) => v) }
       : null
-    if (endpoint && !endpoints.length) limitations.push(`The snapshot has no endpoint named ${endpoint}, so there are no static reads; check the qualified name.`)
+    // Why static_reads is what it is (FR390): an adapter that fell back to the syntax tier left code with no endpoints and no property reads.
+    const fallbacks = endpoint && !endpoints.length ? (JSON.parse((ctx.db.prepare("select value from meta where key = 'fallbacks'").get() as { value: string } | undefined)?.value ?? '{"handoffs":[]}') as { handoffs: Array<{ adapter: string; files: number; reason: string }> }).handoffs : []
+    const staticAnalysis = !endpoint ? null : !endpoints.length ? (fallbacks.length ? 'not_available_in_mode' : 'no_endpoint') : statics!.stopped_by === 'max_depth' ? 'cut_by_depth' : statics!.stopped_by === 'max_rows' ? 'cut_by_rows' : 'ran'
+    if (fallbacks.length) limitations.push(`Static property-read analysis is not available for this code: the syntax tier read ${fallbacks.map((f) => `${f.files} file${f.files === 1 ? '' : 's'} adapter ${f.adapter} could not analyse (${f.reason})`).join(', ')}, and the syntax tier records no endpoints and no property reads. Make the adapter available and index again, or check the endpoint's qualified name.`)
+    else if (endpoint && !endpoints.length) limitations.push(`The snapshot has no endpoint named ${endpoint}, so there are no static reads; check the qualified name.`)
+    if (statics?.stopped_by === 'max_depth') limitations.push(`The static traversal stopped at max_depth ${ctx.limits.max_depth}: static_reads lists the reads found within ${ctx.limits.max_depth} hops; ${statics.not_visited} symbol${statics.not_visited === 1 ? '' : 's'} one hop further ${statics.not_visited === 1 ? 'was' : 'were'} not visited, so reads in and past ${statics.not_visited === 1 ? 'it' : 'them'} are missing.`)
     if (statics && endpoints.length) limitations.push(`Static reads are static reach, not load: properties read on any resolved path from the endpoint, an upper bound on what one request reads, and blind past the ${statics.unresolved_calls} call${statics.unresolved_calls === 1 ? '' : 's'} with no single resolved target and to reads by reflection or serialization (an entity returned whole is serialized property by property).`)
     return {
-      data: { reads, loaded_not_used: loadedNotUsed, unread_mapped_properties: unread, static_reads: (statics?.reads ?? []).slice(0, ctx.limits.max_rows), static_bound: statics ? { endpoints: endpoints.length, methods: statics.methods, unresolved_calls: statics.unresolved_calls, stopped_by: statics.stopped_by } : null, comparison },
+      data: { reads, loaded_not_used: loadedNotUsed, unread_mapped_properties: unread, static_reads: (statics?.reads ?? []).slice(0, ctx.limits.max_rows), static_analysis: staticAnalysis, static_bound: statics ? { endpoints: endpoints.length, methods: statics.methods, unresolved_calls: statics.unresolved_calls, stopped_by: statics.stopped_by, not_visited: statics.not_visited } : null, comparison },
       stop_reasons: [...(rows.length > ctx.limits.max_rows || (statics?.reads.length ?? 0) > ctx.limits.max_rows ? ['max_rows' as const] : []), ...(statics?.stopped_by === 'max_depth' ? ['max_depth' as const] : [])], limitations, shrink: ['reads', 'static_reads', 'unread_mapped_properties', 'loaded_not_used'],
     }
   },

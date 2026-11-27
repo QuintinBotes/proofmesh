@@ -1435,6 +1435,15 @@
     ],
     "FR387": [
       "packages/proofmesh/test/syntax-floor.test.ts"
+    ],
+    "FR390": [
+      "packages/proofmesh/test/property-reads.static.test.ts"
+    ],
+    "FR391": [
+      "packages/proofmesh/test/property-reads.static.test.ts"
+    ],
+    "FR392": [
+      "packages/proofmesh/test/property-reads.static.test.ts"
     ]
   },
   "manual": {

@@ -1,7 +1,7 @@
 import type Database from 'better-sqlite3'
 
 export type StaticRead = { entity: string; property: string; symbol_id: string; read_by: string[]; depth: number }
-export type StaticReads = { reads: StaticRead[]; methods: number; unresolved_calls: number; stopped_by: 'max_depth' | 'max_rows' | null }
+export type StaticReads = { reads: StaticRead[]; methods: number; unresolved_calls: number; stopped_by: 'max_depth' | 'max_rows' | null; not_visited: number }
 
 /** Edges followed forward from an endpoint: to its action, the calls it makes, the handlers it dispatches to, the code a job runs. */
 const FORWARD = ['exposes', 'calls', 'dispatches_to', 'runs'] as const
@@ -10,17 +10,19 @@ const CHUNK = 500
 const chunks = <T>(xs: T[]): T[][] => Array.from({ length: Math.ceil(xs.length / CHUNK) }, (_, i) => xs.slice(i * CHUNK, (i + 1) * CHUNK))
 
 /** The code reached from the given symbols over resolved calls, dispatch, endpoint actions and job classes, with each one's hop count. */
-export function forwardReach(db: Database.Database, from: string[], maxDepth: number, maxNodes: number): { depthOf: Map<string, number>; stopped: StaticReads['stopped_by'] } {
+export function forwardReach(db: Database.Database, from: string[], maxDepth: number, maxNodes: number): { depthOf: Map<string, number>; stopped: StaticReads['stopped_by']; notVisited: number } {
   const depthOf = new Map<string, number>(from.map((id) => [id, 0]))
-  let frontier = [...from], stopped: StaticReads['stopped_by'] = null
+  let frontier = [...from], stopped: StaticReads['stopped_by'] = null, notVisited = 0
   const forward = db.prepare(`select dst as id from edge where src = ? and type in (${FORWARD.map(() => '?').join(',')}) and resolution = 'resolved'`)
   // A call to an interface or virtual member may dispatch to any implementation of it.
   const down = db.prepare("select src as id from edge where dst = ? and type in ('implements', 'overrides') and resolution = 'resolved'")
+  const step = (id: string) => [...(forward.all(id, ...FORWARD) as Array<{ id: string }>), ...(down.all(id) as Array<{ id: string }>)]
   for (let depth = 1; frontier.length; depth++) {
-    if (depth > maxDepth) { stopped = 'max_depth'; break }
+    // The symbols one hop past the cut: the least the cut left out, since what lies beyond them is not walked.
+    if (depth > maxDepth) { stopped = 'max_depth'; notVisited = new Set(frontier.flatMap((id) => step(id).map((r) => r.id)).filter((id) => !depthOf.has(id))).size; break }
     const next: string[] = []
     for (const id of frontier) {
-      for (const r of [...(forward.all(id, ...FORWARD) as Array<{ id: string }>), ...(down.all(id) as Array<{ id: string }>)]) {
+      for (const r of step(id)) {
         if (depthOf.has(r.id)) continue
         if (depthOf.size >= maxNodes) { stopped = 'max_rows'; break }
         depthOf.set(r.id, depth)
@@ -29,7 +31,7 @@ export function forwardReach(db: Database.Database, from: string[], maxDepth: nu
     }
     frontier = next
   }
-  return { depthOf, stopped }
+  return { depthOf, stopped, notVisited }
 }
 
 /**
@@ -43,7 +45,7 @@ export type ReadsModel = { entities: Set<string>; config: Set<string> }
 export const readsModel = (db: Database.Database): ReadsModel => ({ entities: entityTypes(db), config: modelConfiguration(db) })
 
 export function staticPropertyReads(db: Database.Database, from: string[], maxDepth: number, maxNodes: number, model: ReadsModel = readsModel(db)): StaticReads {
-  const { depthOf, stopped } = forwardReach(db, from, maxDepth, maxNodes)
+  const { depthOf, stopped, notVisited } = forwardReach(db, from, maxDepth, maxNodes)
   const reached = [...depthOf.keys()]
   const { entities, config } = model
   const reads = new Map<string, StaticRead>()
@@ -67,7 +69,7 @@ export function staticPropertyReads(db: Database.Database, from: string[], maxDe
   for (const part of chunks(reached)) unresolved += (db.prepare(`select count(*) as n from assertion where type = 'calls' and resolution in ('unresolved', 'candidate', 'ambiguous') and source_id in (${part.map(() => '?').join(',')})`).get(...part) as { n: number }).n
   return {
     reads: [...reads.values()].sort((a, b) => (a.entity < b.entity ? -1 : a.entity > b.entity ? 1 : a.property < b.property ? -1 : 1)),
-    methods: reached.length - from.length, unresolved_calls: unresolved, stopped_by: stopped,
+    methods: reached.length - from.length, unresolved_calls: unresolved, stopped_by: stopped, not_visited: notVisited,
   }
 }
 

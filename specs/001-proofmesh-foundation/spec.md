@@ -447,6 +447,12 @@ Acceptance: CI runs my pull request without secrets or release credentials; lice
 - FR386: MUST end `pnpm build` with `dotnet build adapters/csharp -c Release -nologo -v:q -m:1` when `dotnet` is on PATH, failing the build when it fails; without `dotnet` MUST print that it skipped the C# adapter and succeed, unless an earlier build of the adapter exists, which would stay in use, and then fail saying so.
 - FR387: MUST print in `proofmesh status` one line listing the adapters this install can run and, for each it cannot, why (for the C# adapter, `not built: looked in <paths>`).
 
+### Why a property-read answer is empty
+
+- FR390: MUST give `get_property_reads` with an `endpoint` a `static_analysis` status beside its lists: `ran` when the walk from the endpoint finished, `cut_by_depth` or `cut_by_rows` when it stopped at `max_depth` or at its node cap, `not_available_in_mode` when the snapshot has no such endpoint and an adapter fell back to the syntax tier (which records no endpoints and no property reads), with a limitation naming the adapter, its files and the reason, and `no_endpoint` when the snapshot has no such endpoint otherwise; null without an endpoint.
+- FR391: MUST, when the walk is cut by `max_depth`, still return the static reads found within the depth, count in `static_bound.not_visited` the symbols one hop past the cut that were not visited, and say both in a limitation.
+- FR392: MUST, when no imported run observed property reads for the endpoint or entity asked, say so in the tool's first limitation, naming them, so empty observed lists do not read as no reads.
+
 ### Impact completeness
 
 - FR108: MUST provide `impact_completeness` with `base`, a commit-ish, optional `head` (omitted, the working tree), `depth` (default 1, at most 5), `include_tests` and the usual limits, and the CLI `proofmesh completeness <repository> <base>[..<head>] [--depth N] [--json]`.

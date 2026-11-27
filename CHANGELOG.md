@@ -11,6 +11,13 @@ The C# adapter is built by `pnpm build`, and an unbuilt one says so (closes #100
 - `proofmesh status` prints `adapters available: ...; unavailable: <id> (<why>)` for this install.
 - Not done: `repo trust --build-evaluation` still says nothing when the C# adapter is absent.
 
+`get_property_reads` says why an answer is empty (closes #97; FR390 to FR392):
+
+- With an endpoint, `data.static_analysis` says whether the static walk `ran`, was `cut_by_depth` or `cut_by_rows`, was `not_available_in_mode` (no such endpoint, and an adapter fell back to the syntax tier, which records no endpoints and no property reads; a limitation names the adapter, its files and the reason), or found `no_endpoint`. Null without an endpoint.
+- A walk cut at `max_depth` still returns the reads found within the depth, and `static_bound.not_visited` counts the symbols one hop past the cut that were not visited; a limitation says both.
+- When no imported run observed reads for the endpoint or entity, the tool's first limitation says so, so empty `reads` and `loaded_not_used` no longer read as "no reads".
+- Not done: the tool still does not page past a depth cut, and the snapshot-wide `unresolved.count` is unchanged (`static_bound.unresolved_calls` is the endpoint's own count).
+
 Discover skips directories git ignores as a whole (closes #102; FR380 to FR384):
 
 - A directory that git ignores as a whole, such as build output in `bin/`, `obj/` or `node_modules/` when `.gitignore` names it, is now one `excluded_by_rule` entry with detail `gitignore` and a path ending in `/`. Discovery no longer reads anything inside it, which on a built C# working tree was most of the stage's file calls.

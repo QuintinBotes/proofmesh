@@ -1295,6 +1295,10 @@ depth: number
  */
 symbol_key?: string
 }[]
+/**
+ * With an endpoint, why static_reads is what it is (FR390): ran, the walk from the endpoint finished; cut_by_depth or cut_by_rows, it stopped at max_depth or at its node cap, and static_reads holds the reads found before the cut; not_available_in_mode, the snapshot has no such endpoint and an adapter fell back to the syntax tier, which records no endpoints and no property reads; no_endpoint, the snapshot has no such endpoint. Null without an endpoint.
+ */
+static_analysis: ("ran" | "cut_by_depth" | "cut_by_rows" | "not_available_in_mode" | "no_endpoint" | null)
 static_bound: (null | {
 endpoints: number
 /**
@@ -1306,6 +1310,10 @@ methods: number
  */
 unresolved_calls: number
 stopped_by: ("max_depth" | "max_rows" | null)
+/**
+ * With stopped_by max_depth, the symbols one hop past the cut that were not visited: the least the cut left out (FR391). 0 otherwise.
+ */
+not_visited: number
 })
 comparison: (null | {
 both: {
