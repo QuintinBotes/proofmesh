@@ -7,7 +7,7 @@ import type * as TS from 'typescript'
 import { graphqlDocument } from '../../syntax/src/contracts.js'
 
 const ts = createRequire(import.meta.url)('typescript') as typeof TS
-const VERSION = '0.2.0'
+const VERSION = '0.2.1'
 type Range = { start_byte: number; end_byte: number; start_line: number; end_line: number }
 type Ref = { symbol: string } | { file: string } | { external: { module: string; name: string } }
 
@@ -77,13 +77,20 @@ const readsInstalled = {
 }
 const noExt = (p: string) => p.replace(/\.[^./]+$/, '')
 
-/** UTF-8 byte offset for every UTF-16 position of the file. */
+/** 3 when the file as stored starts with a UTF-8 byte order mark, which ts.sys.readFile drops from the text. */
+function bomBytes(file: string): number {
+  const head = Buffer.alloc(3)
+  try { const fd = fs.openSync(installedPath(file) ?? file, 'r'); try { fs.readSync(fd, head, 0, 3, 0) } finally { fs.closeSync(fd) } } catch { return 0 }
+  return head[0] === 0xef && head[1] === 0xbb && head[2] === 0xbf ? 3 : 0
+}
+
+/** UTF-8 byte offset in the file as stored for every UTF-16 position of the file's text. */
 function bytesAt(sf: TS.SourceFile, pos: number): number {
   let map = byteMaps.get(sf)
   if (!map) {
     const text = sf.text
     map = new Int32Array(text.length + 1)
-    let b = 0
+    let b = bomBytes(sf.fileName)
     for (let i = 0; i < text.length; i++) {
       map[i] = b
       const c = text.charCodeAt(i)
@@ -261,7 +268,8 @@ function indexDeclarations(sf: TS.SourceFile): void {
     const endLine = sf.text.endsWith('\n') ? r.end_line - 1 : r.end_line
     const local = `${p}#module#${base}#0`
     declLocal.set(keyOf(sf), local)
-    out.push({ local_id: local, path: p, kind: 'module', name: path.posix.basename(p), qualified_name: base, range: { ...r, end_line: Math.max(1, endLine) }, signature: null })
+    // The module is the whole file, its byte order mark included.
+    out.push({ local_id: local, path: p, kind: 'module', name: path.posix.basename(p), qualified_name: base, range: { ...r, start_byte: 0, end_line: Math.max(1, endLine) }, signature: null })
   }
   const visit = (statements: TS.NodeArray<TS.Statement>, prefix: string) => {
     for (const s of statements) {

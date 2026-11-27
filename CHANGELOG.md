@@ -4,6 +4,11 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 ## Unreleased
 
+The TypeScript adapter counts a UTF-8 byte order mark (closes #156; FR810):
+
+- In a `.ts` or `.js` file that starts with a UTF-8 BOM, every range was 3 bytes early: the TypeScript compiler drops the BOM when it reads a file, and the adapter counted byte offsets on that text, while the core stores ranges against the captured file, BOM included. `read_evidence` and every evidence text began 3 bytes before the declaration and lost its last 3 bytes. The adapter now counts the BOM, so each range is the bytes of its declaration, and a module's range is the whole file, BOM included, as in the syntax tier. The syntax tier, Python and C# already counted it.
+- The TypeScript adapter is 0.2.1, so facts cached by 0.2.0 are not replayed; the next index of a repository with such a file re-extracts it.
+
 One source file that is not UTF-8 fails alone, not the whole index (closes #139; FR780):
 
 - A Latin-1 file, or any file with an invalid UTF-8 sequence, ended the index with `INTERNAL_ERROR: range ... does not fit <file>` and published no snapshot. Every adapter (TypeScript, the syntax tier and Python, C#, SCIP import) decodes a file as UTF-8 and counts byte offsets on the decoded text, where each invalid byte became U+FFFD and counted as three bytes, so the ranges after it pointed at the wrong bytes or past the end of the file. pylint keeps such a file on purpose (`tests/functional/i/implicit/implicit_str_concat_latin1.py`), so no snapshot of it could be built.

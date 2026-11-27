@@ -1508,6 +1508,9 @@
     "FR780": [
       "packages/proofmesh/test/python.test.ts"
     ],
+    "FR810": [
+      "packages/proofmesh/test/typescript-projects.test.ts"
+    ],
     "FR400": [
       "packages/proofmesh/test/seams-schema.test.ts"
     ],
