@@ -18,6 +18,8 @@
     "cold.script_gzip_kb": { "label": "Initial JavaScript, gzip", "gpu": null, "software": null, "target": "≤ 150 KB (#47 SC-001)" },
     "cold.transferred_kb": { "label": "Transferred on a cold load, before data", "gpu": null, "software": null, "target": "≤ 250 KB before data (#47 SC-001)" },
     "cold.browser_rss_mb": { "label": "Browser memory, all processes", "gpu": null, "software": null, "target": "≤ 300 MB at 50,000, ≤ 600 MB at 250,000 (#47 SC-005)" },
-    "warm.first_draw_ms": { "label": "First drawn map, warm", "gpu": null, "software": null, "target": "≤ 300 ms at 50,000 symbols (#47 SC-003)" }
+    "warm.first_draw_ms": { "label": "First drawn map, warm", "gpu": null, "software": null, "target": "≤ 300 ms at 50,000 symbols (#47 SC-003)" },
+    "warm.time_step_ms": { "label": "Time, a step between two loaded snapshots", "gpu": 300, "software": 300, "target": "≤ 300 ms (#48 SC-002)" },
+    "stability.a_to_b.moved_2pct": { "label": "Shared symbols moved more than 2% of the map's width, A then B (share)", "gpu": 0.01, "software": 0.01, "target": "≤ 1% (#48 SC-001)" }
   }
 }

@@ -4,6 +4,13 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 ## Unreleased
 
+Time: scrub snapshots on the same map (part of #48; FR1760 to FR1765):
+
+- The header's snapshot picker is now Time, in the left panel: a scrubber and a strip of every published snapshot, newest first, each with its symbols and unresolved share, which `list_snapshots` now gives (`symbols`, `relationships`, `unresolved`). `[` and `]` step one snapshot, and every view is pinned to the snapshot shown.
+- A step draws its change on the Terrain, from `compare_snapshots` of the shown snapshot and the one just older. An added symbol is a dot, a removed one a ghost cross where it was, a changed declaration a ring, and a moved symbol slides in from where it was. Moved lines and changes through a member are listed, not ringed, and every change is listed in words.
+- Statuses, galaxies and comparisons are kept once loaded: on the TypeORM sample a step between two loaded snapshots takes 87 ms with no request. Reduced motion switches the marks without animation. `?snapshot=<id>` links to a pinned snapshot, and a link to a retired one offers the oldest listed instead.
+- The Observatory benchmark's snapshot B is now a realistic commit (`bench/observatory/snapshot-b.mjs`), and the benchmark budgets the share of shared symbols moving more than 2% of the width (1%) and the Time step (300 ms).
+
 The Terrain replaces the Galaxy and Map views: semantic zoom from areas to symbols, with bundles that open their evidence (part of #46; closes #42; FR1400 to FR1409):
 
 - The first view draws the snapshot's own layout as nested cells: areas, a file's first two directories such as `src/driver`, each named with its symbol count, then directories and files, then symbols. A label shows once its cell is 40 px on screen, never over another label; an area too small is named in its tooltip and the table. Symbols are drawn per area once the zoom reaches them, so a large snapshot's overview draws areas and bundles only. Nothing moves as you zoom.

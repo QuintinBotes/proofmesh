@@ -3262,6 +3262,18 @@ current: boolean
 git: (null | {
 
 })
+/**
+ * Symbols in the snapshot, as compare_snapshots counts a side; null when its sealed file cannot be read.
+ */
+symbols: (number | null)
+/**
+ * Relationships in the snapshot, as compare_snapshots counts a side; null when its sealed file cannot be read.
+ */
+relationships: (number | null)
+/**
+ * Relationships that are neither resolved nor resolved to an external symbol; null when its sealed file cannot be read.
+ */
+unresolved: (number | null)
 }[]
 }
 

@@ -6,7 +6,7 @@ export type ChangedSymbol = { id: string; qualified_name: string; kind: string; 
 export type CompareData = {
   base: { snapshot_id: string; published_at: string; symbols: number; relationships: number; unresolved: number }
   head: { snapshot_id: string; published_at: string; symbols: number; relationships: number; unresolved: number }
-  symbols: { counts: { added: number; removed: number; changed: number }; added: ChangedSymbol[]; removed: ChangedSymbol[]; changed: ChangedSymbol[] }
+  symbols: { counts: { added: number; removed: number; changed: number }; added: ChangedSymbol[]; removed: ChangedSymbol[]; changed: ChangedSymbol[]; paired?: Array<{ change: string; base: ChangedSymbol; head: ChangedSymbol }> }
   relationships: { added: number; removed: number; by_type: Record<string, { added: number; removed: number }> }
   files: { added: string[]; removed: string[]; changed: string[]; disposition_changes: Array<{ path: string; from: string; to: string }> }
 }

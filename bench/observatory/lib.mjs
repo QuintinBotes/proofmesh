@@ -40,11 +40,11 @@ export function mainThread({ longTasks, fcp, firstDraw }) {
 export const isSoftwareRenderer = (renderer) => /swiftshader|llvmpipe|softpipe|software/i.test(renderer ?? '')
 
 const valueAt = (result, key) => key.split('.').reduce((o, k) => o?.[k], result)
-/** Each budget against the median of its measure, from the GPU column or, on a software renderer, the software column. */
+/** Each budget against the median of its measure, or the measure itself when it is one number (stability), from the GPU column or, on a software renderer, the software column. */
 export function checkBudgets(result, budgets) {
   const column = result.software_renderer ? 'software' : 'gpu'
   return Object.entries(budgets).map(([key, b]) => {
-    const median = valueAt(result, key)?.median ?? null, budget = b[column] ?? null
+    const v = valueAt(result, key), median = typeof v === 'number' ? v : v?.median ?? null, budget = b[column] ?? null
     return { key, label: b.label, median, budget, column, target: b.target ?? null, over: budget != null && median != null && median > budget }
   })
 }
@@ -60,7 +60,7 @@ const LABELS = {
   search_ms: 'Search', symbol_to_evidence_ms: 'Symbol to evidence', symbol_to_evidence_requests: 'Symbol to evidence, requests',
   edge_to_evidence_ms: 'Edge to evidence', edge_to_evidence_requests: 'Edge to evidence, requests', terrain_switch_ms: 'Terrain switch', terrain_switch_cold_ms: 'Terrain switch, first',
   palette_p50_ms: 'Command palette, query to matches, p50', palette_p95_ms: 'Command palette, query to matches, p95', palette_max_ms: 'Command palette, query to matches, max',
-  palette_typing_longest_task_ms: 'Command palette, longest task while typing',
+  palette_typing_longest_task_ms: 'Command palette, longest task while typing', time_step_ms: 'Time, a step between two loaded snapshots',
 }
 export const labelOf = (key) => { const [phase, k] = key.split('.'); return `${LABELS[k] ?? k}${phase === 'warm' ? ', warm' : phase === 'cold' && /^(fcp|first_draw|settled|tti|tbt|longest_task)_/.test(k) ? ', cold' : ''}` }
 const kb = (n) => `${Math.round(n / 1024).toLocaleString('en')} KB`
@@ -83,6 +83,7 @@ export function markdown(r, rows) {
     const key = `${phase}.${k}`, b = byKey.get(key)
     lines.push(`| ${b?.label ?? labelOf(key)} | ${fmt(s.median, k)} | ${s.min === s.max ? '-' : `${fmt(s.min, k)}–${fmt(s.max, k)} (${s.spread_pct}%)`} | ${phase === 'cold' ? fmt(r.first_run?.[k], k) : '-'} | ${b?.budget != null ? `${fmt(b.budget, k)} (${b.column})` : '-'} | ${b?.target ?? '-'} | ${!b || b.budget == null ? '-' : b.over ? 'over budget' : 'within'} |`)
   }
+  for (const b of rows) if (b.median != null && !/^(cold|warm)\./.test(b.key)) lines.push(`| ${b.label} | ${fmt(b.median, b.key)} | - | - | ${b.budget != null ? `${fmt(b.budget, b.key)} (${b.column})` : '-'} | ${b.target ?? '-'} | ${b.budget == null ? '-' : b.over ? 'over budget' : 'within'} |`)
   for (const b of rows) if (b.median == null) lines.push(`| ${b.label} | not measured | - | - | ${b.budget ?? '-'} (${b.column}) | ${b.target ?? '-'} | not measured |`)
   if (r.agreement) lines.push('', r.agreement.ok ? `Cold runs agree within 10% on every time over 100 ms.` : `Cold runs differ by more than 10% on: ${r.agreement.outliers.join(', ')}.`)
   if (r.bytes_total) {
@@ -96,7 +97,7 @@ export function markdown(r, rows) {
   if (r.stability) {
     lines.push('', '| Stability (share of map width) | Shared symbols | Median | p90 | Max | Moved > 2% | Moved > 5% |', '|---|---|---|---|---|---|---|')
     const p = (x) => (x == null ? '-' : `${(x * 100).toFixed(2)}%`)
-    for (const [name, s] of [['Same snapshot, two fresh profiles', r.stability.same_snapshot], ['Snapshot A, then B (a commit touching four files)', r.stability.a_to_b]]) {
+    for (const [name, s] of [['Same snapshot, two fresh profiles', r.stability.same_snapshot], ['Snapshot A, then B (bench/observatory/snapshot-b.mjs)', r.stability.a_to_b]]) {
       lines.push(s?.shared != null ? `| ${name} | ${s.shared.toLocaleString('en')} | ${p(s.median)} | ${p(s.p90)} | ${p(s.max)} | ${p(s.moved_2pct)} | ${p(s.moved_5pct)} |` : `| ${name} | ${s?.reason ?? 'not measured'} | | | | | |`)
     }
   }

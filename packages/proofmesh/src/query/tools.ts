@@ -42,7 +42,7 @@ import { generatedLeftOut, generatedPaths, markGenerated, withGeneratedPaths } f
 import { innermost } from './symbol-at.js'
 import { findCycles, findEntryPoints, findHubs, findUnused, type CycleEdge, type EntryPoint, type Hub, type UnusedRow } from './structure.js'
 import { contextMap } from './context-map.js'
-import { compare, hasBodyHash, unreadableFiles } from './compare.js'
+import { compare, hasBodyHash, side, unreadableFiles } from './compare.js'
 import { importersOf, MAX_FILE_BYTES, MAX_SOURCE_BYTES, reachSet, searchStructure, type StructureMatch } from './structure-search.js'
 import { loadSchema } from '../core/schemas.js'
 import { changes, workingTree } from '../indexer/freshness.js'
@@ -203,7 +203,7 @@ function catalogTool(catalog: Catalog, tool: ToolName, input: Record<string, unk
   } else if (tool === 'list_snapshots') {
     // The snapshots a query can pin: what the Observatory's snapshot picker shows, for any client (FR055).
     const repo = catalog.resolveRepository(input.repository_id as string | undefined), current = catalog.currentSnapshot(repo.id)?.id
-    data = { repository_id: repo.id, snapshots: catalog.publishedSnapshots(repo.id).map((s) => ({ id: s.id, published_at: s.published_at, analysis_mode: s.analysis_mode, current: s.id === current, git: gitOfSnapshot(catalog, s) })) }
+    data = { repository_id: repo.id, snapshots: catalog.publishedSnapshots(repo.id).map((s) => ({ id: s.id, published_at: s.published_at, analysis_mode: s.analysis_mode, current: s.id === current, git: gitOfSnapshot(catalog, s), ...countsOfSnapshot(catalog, s) })) }
     limitations = ['Pass a snapshot id as snapshot_id to answer from that snapshot; retired snapshots are not listed.']
   } else if (tool === 'list_workspaces') {
     data = { workspaces: catalog.workspaces().map((w) => ({ name: w.name, members: w.members.map((id) => ({ repository_id: id, name: catalog.repository(id).name })) })) }
@@ -238,6 +238,16 @@ function gitOfSnapshot(catalog: Catalog, snap: SnapshotRow): { commit?: string; 
     try { return JSON.parse((db.prepare("select value from meta where key = 'git'").get() as { value: string } | undefined)?.value ?? '{}') } finally { db.close() }
   } catch {
     return null
+  }
+}
+
+/** A snapshot's symbols, relationships and unresolved relationships as compare_snapshots counts each side, or nulls when its file cannot be read (FR1760). */
+function countsOfSnapshot(catalog: Catalog, snap: SnapshotRow): { symbols: number | null; relationships: number | null; unresolved: number | null } {
+  try {
+    const db = openSnapshot(catalog, snap)
+    try { const { symbols, relationships, unresolved } = side(db, snap.id, snap.published_at ?? ''); return { symbols, relationships, unresolved } } finally { db.close() }
+  } catch {
+    return { symbols: null, relationships: null, unresolved: null }
   }
 }
 
