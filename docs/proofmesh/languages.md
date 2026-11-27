@@ -141,9 +141,35 @@ Go builds no package from a `vendor` or `testdata` directory, or one starting wi
 
 Dependencies (FR172): a module sees the modules the build graph records a direct, resolved `depends_on` to, and no others. A dependency of the test scope (Maven `<scope>test</scope>`, a Gradle `test...` configuration) is seen by test sources only (`src/test` and the like), and one of the runtime scope by none, so a name only such a module holds is `dependency_missing` for a main source. A transitive dependency is not seen: a module that uses a type of a module it reaches only through another gets `dependency_missing` until it declares the dependency, as a Go module must list what it imports.
 
-Java visibility: `private` within the top-level class, package-private within the package, `protected` in the package or by inheritance, `public` always, and an interface member without `private` is public. A type is reachable when it and every type around it is public or in the file's package. A name the repository does not declare (the JDK's, a library's, a package outside it) keeps `outside_capability`. Kotlin, Rust, PHP, Ruby, C and C++ are not covered yet; their rows stay as the tier wrote them.
+Java visibility: `private` within the top-level class, package-private within the package, `protected` in the package or by inheritance, `public` always, and an interface member without `private` is public. A type is reachable when it and every type around it is public or in the file's package. A name the repository does not declare (the JDK's, a library's, a package outside it) keeps `outside_capability`. Rust, C and C++ have rules of their own (below); Kotlin, PHP and Ruby are not covered yet, and their rows stay as the tier wrote them.
 
 `workspace_status` gives `module_cycles` (FR178): each cycle among the build modules of an ecosystem whose builds forbid one (Maven, Gradle, Go modules, Cargo, .NET) that these rows form, with the edges that form it, and a warning in `limitations`. It is empty on a repository whose declared dependencies do not loop.
+
+## The syntax tier: constrained name matching in Rust, C and C++
+
+The same pass binds Rust, C and C++ names by their own rules (FR750 to FR758), with the same outcomes: a `candidate` or `ambiguous` row naming its rule, `inferred`, never `resolved`, at most five candidates, and the row the tier wrote where no rule can judge. Imports are candidates too, also where a path fixes the file, as a Go import path is: the syntax tier gives no observed row.
+
+| rule | what it binds |
+|---|---|
+| `rust_same_module` | a bare `f()` to a function of the caller's own module (its file, or the inline `mod x { }` it is in); a trait name to a trait of it |
+| `rust_use` | a bare `f()` to the item a `use` of the module names, by its alias or last segment (grouped entries too); a `use` itself to the item, module or glob it names |
+| `rust_glob_use` | a bare `f()` to the public functions a glob `use a::*` brings (`use super::*` in a test module brings the parent's own) |
+| `rust_path` | `p::f()` through `crate`, `self`, `super`, a child module (`a.rs`, `a/mod.rs` or inline), a name a `use` brought, or a library crate of the repository, to a function of that module or an associated function of a type in it (`Widget::new()`); a trait an `impl` names by path |
+| `rust_self` | `Self::f()` and `self.f()` to the methods of the impl's own type, from the impl blocks of its file |
+| `rust_mod_file` | `mod x;` to the module symbol of `x.rs` or `x/mod.rs` beside the declaring file's module |
+| `c_include_path` | `#include "p"` to the file at `p` relative to the including file |
+| `c_include_name` | any other `#include` to the files of the repository whose path ends with `p`; `ambiguous` when several do |
+| `c_same_file` | a bare `f()` to a function the calling file defines, `static` or not; a type name to a type of it |
+| `c_include` | a bare `f()` to what the included headers (directly or through each other) declare: its definitions in the declaring header and in the files that include that header, never a `static` function of another file |
+| `cpp_same_class` | a bare `f()` inside a C++ method to the members `f` of its own class, ahead of every other rule |
+| `cpp_class_member` | `T::f()` to the members `f` of a class `T` the file defines or its headers declare, their definitions where the repository has them |
+| `cpp_namespace` | `ns::f()` to the functions `f` of included headers that open `namespace ns` |
+
+- Rust privacy (FR752): `pub` reaches everywhere, `pub(crate)`, `pub(super)` and `pub(in ...)` their crate, and a private item its own module and the modules inside it; a trait's items and a trait impl's methods are as visible as the trait. A function or type the path names that the caller may not see is `unresolved` `unknown_name` with `detail.visibility` `private` or `crate`.
+- Rust crates (FR753): a path into another crate of the repository binds only when the caller's crate declares a direct compile-scope dependency on it. With no dependency of that name at all it is `dependency_missing` naming the crate; a crate declared only as a dev or build dependency, or a name a crate outside the repository also has, keeps the row. A crate is found by its package name, `-` read as `_`; a dependency renamed with `package =` is not followed.
+- A call on any receiver but `self` (`w.paint()`, `o.run()`, `p->run()`) binds to nothing, as in Go and Java. A C function only declared, with no definition in the repository, keeps its row: its body is in a library or across a foreign-function interface, which the FFI seams link (FR465).
+- Crates and modules: `lib.rs`, `main.rs` and each file of `src/bin/`, `tests/`, `examples/` and `benches/` is a crate root whose `mod x;` children sit beside it, so `crate::` in `src/main.rs` is the binary's own root even beside `src/lib.rs`, which the binary names by its package name. A name a module declares with `mod`, or a child module a glob `use` brings, is never read as a crate. In C++, a member the method's class declares hides every free function of the name, also when the repository holds no body for it.
+- Not followed yet: `pub use` re-exports, an impl block in another file than its type, a `use` inside a function body (its import row is bound, no call through it is), a local closure named like a function, a C++ member inherited from a base class, and the namespaces of a C++ bare call.
 
 ## The build graph: JavaScript and Go modules
 
@@ -283,7 +309,7 @@ A tier gives a row, or states under `not_at_tier` why it cannot; a row neither g
 
 | Language | Tier | find_symbols | implements | calls_shape_area | calls_circle_area | imports | impact | find_tests | trace_paths |
 |---|---|---|---|---|---|---|---|---|---|
-| `cpp` | syntax | 3/4+1 | 0/2 | 0/1 | 0/2 | 0/1 | 0/4 | 0/1 | 0/3 |
+| `cpp` | syntax | 3/4+1 | 0/2 | 0/1 | 0/2 | 1/1+1 | 0/4 | 1/1 | 0/3 |
 | `csharp` | precise | 4/4 | 2/2 | 1/1 | 2/2 | 0/1 | 4/4 | 1/1 | 3/3 |
 | `go` | syntax | 3/4 | 0/2 | 0/1 | 0/2 | 1/1 | 0/4 | 1/1 | 0/3 |
 | `java` | syntax | 4/4 | 2/2 | 0/1 | 0/2 | 1/1 | 0/4 | 1/1 | 0/3 |
@@ -291,7 +317,7 @@ A tier gives a row, or states under `not_at_tier` why it cannot; a row neither g
 | `php` | syntax | 4/4 | 0/2 | 0/1 | 0/2 | 0/1 | 0/4 | 0/1 | 0/3 |
 | `python` | precise | 4/4 | 0/2 | 1/1 | 2/2 | 1/1 | 4/4 | 1/1 | 3/3 |
 | `ruby` | syntax | 4/4 | 0/2 | 0/1 | 0/2 | 0/1 | 0/4 | 0/1 | 0/3 |
-| `rust` | syntax | 3/4 | 0/2 | 0/1 | 0/2 | 0/1 | 0/4 | 0/1 | 0/3 |
+| `rust` | syntax | 3/4 | 2/2 | 0/1 | 0/2 | 0/1+2 | 0/4 | 0/1 | 0/3 |
 | `typescript` | precise | 4/4 | 2/2 | 1/1 | 2/2 | 1/1 | 4/4 | 1/1 | 3/3 |
 
 ## Other languages

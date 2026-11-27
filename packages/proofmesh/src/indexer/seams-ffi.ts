@@ -17,13 +17,13 @@
 //   python_c_extension  `m.f(...)` in Python, where m is imported -> the C function a `PyMethodDef` entry of module m registers as f
 //
 // A C function target is a definition (a body follows it) where the repository has one, else the prototypes that declare it.
-import path from 'node:path'
 import { canonicalJson } from '../core/hash.js'
 import { CAP, type Item, type Rel, type Sym } from './constrained/common.js'
+import { rustModules } from './constrained/rust.js'
 import type { Qualified } from './seams-http.js'
 
 /** Bump when a rule changes what is linked: it is part of a snapshot's identity, so an older snapshot is never reused. */
-export const FFI_SEAMS_VERSION = '1'
+export const FFI_SEAMS_VERSION = '2'
 export const FFI_PRODUCER = 'seams-ffi'
 
 const C_FILE = /\.(c|h|cc|cpp|cxx|hpp|hh|hxx)$/
@@ -181,23 +181,8 @@ export function linkFfi<P extends { id: string }>(code: Sym[], items: Array<Item
     return pyNames.set(f, { modules, functions: fns }).get(f)!
   }
 
-  // Rust modules by file: `lib.rs`, `main.rs` and `mod.rs` hold their children beside them, `a.rs` in `a/`.
-  const join = (dir: string, name: string) => (dir === '.' ? name : `${dir}/${name}`)
-  const childrenOf = (f: string) => (/(^|\/)(lib|main|mod)\.rs$/.test(f) ? path.posix.dirname(f) : f.slice(0, -'.rs'.length))
-  const firstFile = (...candidates: string[]) => candidates.find((c) => rustFiles.has(c))
-  const crateRoot = (f: string) => { for (let d = path.posix.dirname(f); ; d = path.posix.dirname(d)) { const root = firstFile(join(d, 'lib.rs'), join(d, 'main.rs')); if (root || d === '.') return root } }
-  /** The file of the module a call's path names from the calling file: `ffi`, `self::ffi`, `super::ffi`, `crate::sys::ffi`; none for a path through a type or a crate outside the repository. */
-  const moduleFile = (from: string, qualifier: string): string | undefined => {
-    let cur: string | undefined = from
-    for (const [i, seg] of qualifier.split('::').entries()) {
-      if (!cur) return undefined
-      if (seg === 'crate' && i === 0) cur = crateRoot(from)
-      else if (seg === 'self' && i === 0) continue
-      else if (seg === 'super') { const dir = path.posix.dirname(childrenOf(cur)); cur = firstFile(`${dir}.rs`, join(dir, 'mod.rs'), join(dir, 'lib.rs'), join(dir, 'main.rs')) }
-      else { const dir = join(childrenOf(cur), seg); cur = firstFile(`${dir}.rs`, join(dir, 'mod.rs')) }
-    }
-    return cur
-  }
+  // Rust modules by file, as constrained resolution reads them.
+  const { moduleFile } = rustModules(rustFiles)
   /** A Go file's cgo: whether it imports "C", and the first library its `#cgo LDFLAGS` links. */
   const cgo = new Map<string, { library: string } | null>()
   const cgoOf = (f: string) => {

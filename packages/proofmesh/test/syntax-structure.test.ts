@@ -98,8 +98,8 @@ describe('FR221 FR222 FR223 the syntax tier records imports and heritage in Kotl
         ['implements', 'App.Shapes.Circle', { name: 'Shape' }, 'unresolved', 'outside_capability', null, 6],
         ['inherits', 'com.acme.kshapes.Circle', { name: 'Base' }, 'unresolved', 'outside_capability', null, 5],
         ['inherits', 'com.acme.kshapes.Circle', { name: 'Shape', relation: 'supertype' }, 'unresolved', 'outside_capability', null, 5],
-        ['inherits', 'rust/lib:Named', { name: 'Shape' }, 'unresolved', 'outside_capability', null, 7],
-        ['implements', 'rust/lib:Circle', { name: 'Shape' }, 'unresolved', 'outside_capability', null, 11],
+        ['inherits', 'rust/lib:Named', { name: 'Shape', rule: 'rust_same_module' }, 'candidate', 'candidate', null, 7], // a trait of its own module (FR750)
+        ['implements', 'rust/lib:Circle', { name: 'Shape', rule: 'rust_same_module' }, 'candidate', 'candidate', null, 11],
         ['inherits', 'ruby/circle:Circle', { name: 'Base' }, 'unresolved', 'outside_capability', null, 4],
         ['inherits', 'ruby/circle:Circle', { name: 'Comparable', relation: 'include' }, 'unresolved', 'outside_capability', null, 5],
       ].sort((a, b) => String(a[1]).localeCompare(String(b[1])) || String(JSON.stringify(a[2])).localeCompare(String(JSON.stringify(b[2])))))
