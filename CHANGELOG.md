@@ -10,6 +10,11 @@ Every call of a chain is its own `calls` row (closes #134; FR650, FR651):
 - Expectations that changed: `syntax-floor.test.ts` (cs-orders at the syntax tier) gains the callee `Send`, whose site was already listed; `csharp.golden.test.ts` (cs-orders, precise tier) blames 2 unresolved sites on the missing package `Contoso.Missing.Client`, not 1, since `new AuditClient()` and `.Send(total)` are now two rows. No fixture oracle file changed: they list call sites, which were already there.
 - Upgrade note: snapshot identity gains `site_key: span`, so the first index after upgrading builds a new snapshot (adapter facts are still replayed from the cache). A re-indexed repository with chained calls reports more `calls` rows and more unresolved calls in `workspace_status`, one per call a chain had merged.
 
+The plugin says when the `proofmesh` CLI is missing, and how to install it (closes #133; FR660, FR661):
+
+- Installed from the catalog without the CLI, the plugin's MCP server could not start and both hooks exited silently. With no `proofmesh` on PATH, the `SessionStart` hook now prints one line to the person and to Claude: `proofmesh: not installed`, that the MCP server and hooks need the CLI, and the install command.
+- The CLI is not published to a package registry, so the command builds it from a clone and links it onto PATH with `npm link`. The plugin README's first paragraph gives the same command in place of the spec id "A13".
+
 A parity benchmark scores ProofMesh and every local alternative on one truth (part of #25; FR510 to FR516):
 
 - `sh bench/parity/run.sh` copies `src/` and `LICENSE` of TypeORM at `3d55188c` (504 files, MIT) into `$TMPDIR`, never into this repository, and asks ProofMesh, Graphify 0.9.108, scip-typescript 0.3.15 (with the scip CLI 0.10.0), Serena v2.1.0 and aider-chat 0.86.2 the twelve question classes of `bench/graph-bench`, scored by `bench/graph-bench/truth.mjs`. `out/parity.md` has the quality table, callers at three levels, and the costs: full build, peak memory, disk, no-change re-index, one-edit rebuild (medians of three runs), ms and bytes per question, and `tools/list` bytes.

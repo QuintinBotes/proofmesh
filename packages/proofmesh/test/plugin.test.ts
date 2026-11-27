@@ -88,9 +88,31 @@ describe('A13 the Claude Code plugin: skill, MCP registration, commands, and hoo
     const shim = tmpDir('pm-plugin-bin-')
     fs.writeFileSync(path.join(shim, 'proofmesh'), `#!/bin/sh\nexec "${process.execPath}" "${BIN}" "$@"\n`, { mode: 0o755 })
     expect(hook('edited', { cwd: path.dirname(outside), tool_input: { file_path: outside } }, { PATH: `${shim}:${process.env.PATH}`, PROOFMESH_DATA_DIR: dataDir, PROOFMESH_HOOK_STATE: state })).toBeNull()
-    expect(hook('session', { cwd: path.dirname(outside) }, { PATH: `${tmpDir('pm-empty-')}:/usr/bin:/bin`, PROOFMESH_HOOK_STATE: state })).toBeNull()
     expect(fs.readdirSync(state)).toEqual([])
   }, 240000)
+})
+
+describe('#133 a plugin installed without the proofmesh CLI says so and how to install it', () => {
+  const INSTALL = 'git clone https://github.com/QuintinBotes/proofmesh && cd proofmesh && pnpm install --frozen-lockfile && pnpm build && cd packages/proofmesh && npm link'
+  const NO_CLI = () => ({ PATH: `${tmpDir('pm-empty-')}:/usr/bin:/bin`, PROOFMESH_HOOK_STATE: tmpDir('pm-plugin-state-') })
+
+  it('FR660 with no proofmesh on PATH, the SessionStart hook prints one line, exit 0, that names the missing CLI and the install command, to the person and to Claude', () => {
+    const env = NO_CLI()
+    const r = spawnSync(process.execPath, [path.join(PLUGIN, 'hooks', 'fresh.mjs'), 'session'], { input: JSON.stringify({ cwd: tmpDir('pm-plugin-cwd-') }), encoding: 'utf8', env: { ...process.env, ...env } })
+    expect(r.status, r.stderr).toBe(0)
+    expect(r.stdout.trim().split('\n')).toHaveLength(1)
+    const line = `proofmesh: not installed. The Proofmesh plugin's MCP server and hooks need the proofmesh CLI on PATH; install it: ${INSTALL}`
+    expect(JSON.parse(r.stdout)).toEqual({ systemMessage: line, hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: line } })
+    expect(fs.readdirSync(env.PROOFMESH_HOOK_STATE)).toEqual([])
+    // An edit with no CLI stays silent: the session-start line already said it, once.
+    expect(hook('edited', { cwd: tmpDir('pm-plugin-cwd-'), tool_input: { file_path: '/x/y.ts' } }, NO_CLI())).toBeNull()
+  })
+
+  it("FR661 the plugin README's first paragraph gives that install command, not a spec id", () => {
+    const first = fs.readFileSync(path.join(PLUGIN, 'README.md'), 'utf8').split('\n\n')[1]
+    expect(first).toContain(INSTALL)
+    expect(first).not.toMatch(/\(A\d+\)/)
+  })
 })
 
 describe("#113 the plugin's hooks module: the snapshot state under the prompt and /pm-status (its scenarios run under claude plugin test)", () => {
