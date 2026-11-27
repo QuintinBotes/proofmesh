@@ -2209,6 +2209,22 @@ line: number
 depth: number
 generated?: boolean
 }[]
+/**
+ * Dependents a successful opened entry names, by file or symbol: with never_seen and searched_only, every dependent once.
+ */
+opened: {
+id: string
+kind: string
+name: string
+qualified_name: string
+/**
+ * The file of the use that reaches the changed symbol: the call, import or reference site.
+ */
+path: string
+line: number
+depth: number
+generated?: boolean
+}[]
 }[]
 }
 

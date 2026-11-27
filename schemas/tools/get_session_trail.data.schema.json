@@ -99,7 +99,8 @@
           "path",
           "line",
           "never_seen",
-          "searched_only"
+          "searched_only",
+          "opened"
         ],
         "properties": {
           "id": {
@@ -210,6 +211,50 @@
               }
             },
             "description": "Dependents under a path a search covered, in a file no entry opened."
+          },
+          "opened": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "id",
+                "kind",
+                "name",
+                "qualified_name",
+                "path",
+                "line",
+                "depth"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "qualified_name": {
+                  "type": "string"
+                },
+                "path": {
+                  "type": "string",
+                  "description": "The file of the use that reaches the changed symbol: the call, import or reference site."
+                },
+                "line": {
+                  "type": "integer"
+                },
+                "depth": {
+                  "type": "integer"
+                },
+                "generated": {
+                  "type": "boolean"
+                }
+              }
+            },
+            "description": "Dependents a successful opened entry names, by file or symbol: with never_seen and searched_only, every dependent once."
           }
         }
       }

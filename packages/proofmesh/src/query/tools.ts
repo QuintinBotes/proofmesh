@@ -1309,7 +1309,7 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
         return { id: d.id, kind: d.kind, name: d.name, qualified_name: d.qualified_name, path: site?.path ?? d.path, line: site?.start_line ?? (ctx.db.prepare('select start_line from symbol where id = ?').get(d.id) as { start_line: number }).start_line, depth: d.depth }
       }
       const unopened = dependents.filter((d) => !covers('opened', d))
-      return { ...s, never_seen: unopened.filter((d) => !covers('searched', d)).map(row), searched_only: unopened.filter((d) => covers('searched', d)).map(row) }
+      return { ...s, never_seen: unopened.filter((d) => !covers('searched', d)).map(row), searched_only: unopened.filter((d) => covers('searched', d)).map(row), opened: dependents.filter((d) => covers('opened', d)).map(row) }
     })
     // Only a change the plugin recorded has a time of its own; a diff's is the time it was asked.
     const lastChange = done.filter((e) => e.kind === 'changed' && e.query_id === undefined).at(-1)?.at

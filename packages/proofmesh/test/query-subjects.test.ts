@@ -11,7 +11,7 @@ import { mcpClient } from './mcp-client.js'
 
 type Entry = { seq: number; kind: string; tool: string; path?: string; symbol_id?: string; query_id?: string; snapshot_id?: string; outcome: string }
 type Dependent = { id: string; name: string; path: string; depth: number }
-type Trail = { session_id: string; recording: boolean; entries: Entry[]; changed: Array<{ id: string; name: string; never_seen: Dependent[]; searched_only: Dependent[] }> }
+type Trail = { session_id: string; recording: boolean; entries: Entry[]; changed: Array<{ id: string; name: string; never_seen: Dependent[]; searched_only: Dependent[]; opened: Dependent[] }> }
 
 const call = async (client: Client, name: string, args: Record<string, unknown>) => {
   const r = await client.callTool({ name, arguments: { envelope: 'compact', ...args } })
@@ -93,6 +93,8 @@ describe('#50 the subjects of each MCP query, recorded locally by session', () =
       // invoiceTotal was found by the first search, never opened; handleInvoice was opened in B, matched in A by its stable key.
       expect(formatAmount.searched_only.map((d) => d.name)).toEqual(['invoiceTotal'])
       expect(formatAmount.never_seen).toEqual([])
+      // The three lists split the dependents whole, so a client can say how many of them the session never looked at.
+      expect(formatAmount.opened.map((d) => d.name)).toEqual(['handleInvoice'])
       expect(trail.limitations.join('\n')).toMatch(/queried 2 snapshots/)
 
       // On B the deleted symbol is not in the snapshot, and the answer says where to look.
