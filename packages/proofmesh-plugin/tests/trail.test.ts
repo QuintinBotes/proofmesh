@@ -18,7 +18,7 @@ const ok = (stdout: string): Run => ({ exitCode: 0, stdout, stderr: '' })
  * Stubs what Claude Code and ProofMesh answer for a session in /work/app/src, with trail recording on or off for the repository; `shell`
  * is the directory a Bash `cd` left the session in.
  */
-function world(on: On, w: { recording?: boolean; list?: Run | string; trail?: object; tool?: (e: { tool: string }) => object; shell?: string } = {}) {
+function world(on: On, w: { recording?: boolean; list?: Run | string; trail?: object; tool?: (e: { tool: string }) => object; shell?: string; missing?: string[] } = {}) {
   const clock = mock.clock(on, { now: NOW })
   const runs: Array<{ argv: string[]; stdin?: string }> = [], mcp: Array<{ tool: string; args: Record<string, unknown> }> = []
   on('session.start', () => ({ cwd: '/work/app/src' }))
@@ -28,7 +28,7 @@ function world(on: On, w: { recording?: boolean; list?: Run | string; trail?: ob
   on('session.id', () => ({ value: SESSION }))
   on('command.register', () => ({ value: undefined }))
   on('ui.status', () => ({ value: undefined }))
-  on('fs.stat', ($, e) => ({ value: { kind: 'file', size: 0, mtimeMs: 0, isLink: false, realPath: e.path } }))
+  on('fs.stat', ($, e) => (w.missing?.includes(e.path) ? { deny: 'ENOENT: no such file or directory' } : { value: { kind: 'file', size: 0, mtimeMs: 0, isLink: false, realPath: e.path } }))
   on('process.run', ($, e) => {
     runs.push({ argv: [...e.argv], ...(e.init?.stdin !== undefined ? { stdin: e.init.stdin } : {}) })
     const [, cmd, , flag] = e.argv
@@ -244,7 +244,7 @@ test('FR800 FR801: Bash cat, sed -n, head, rg, grep -rn and find record opened f
   await $.tool.call({ tool: 'Bash', command: 'cat /work/app/packages/format/src/currency.ts' })
   await $.tool.call({ tool: 'Bash', command: "sed -n '1,20p' ../packages/billing/src/invoice.ts" })
   await $.tool.call({ tool: 'Bash', command: 'head -n 40 lib.ts' })
-  await $.tool.call({ tool: 'Bash', command: 'rg -n formatAmount /work/app/packages' })
+  await $.tool.call({ tool: 'Bash', command: 'rg -n -d 2 formatAmount /work/app/packages' })
   await $.tool.call({ tool: 'Bash', command: 'grep -rn "formatAmount|invoiceTotal" ../packages/billing | head -20' })
   await $.tool.call({ tool: 'Bash', command: "find /work/app/packages -name '*.test.ts'" })
   await endTurn($, w)
@@ -260,13 +260,17 @@ test('FR800 FR801: Bash cat, sed -n, head, rg, grep -rn and find record opened f
   for (const text of ['formatAmount', 'invoiceTotal', '1,20p', 'sed', 'grep', 'test.ts', 'toFixed', 'head']) expect(sent).not.toContain(text)
 })
 
-test('FR802: a Bash command the trail cannot read with confidence records nothing, nor one that reads outside the repository', async ($, on) => {
-  const w = world(on, { recording: true })
+test('FR802: a Bash command the trail cannot read with confidence records nothing, nor one that reads outside the repository or a path where nothing is', async ($, on) => {
+  // A word taken for a path by mistake, a search pattern say, names nothing on disk, so it is never stored.
+  const w = world(on, { recording: true, missing: ['/work/app/src/sk_live_pattern'] })
   await start($, w)
   for (const command of [
     'cat src/*.ts', 'cat $HOME/notes.md', 'cat a.ts; rm b.ts', 'cat a.ts && cat b.ts', 'cat a.ts > b.ts', 'cat a.ts\ncat b.ts', 'grep -rn x src 2>/dev/null',
-    'grep -rn x src | sh', 'sed -i s/a/b/ a.ts', 'sed s/a/b/ a.ts', 'find . -name x -delete', 'find . -exec cat {} +', 'rg x', 'grep -rn x', 'rg --unknown x src',
-    'FOO=1 cat a.ts', 'ls src', 'echo cat a.ts', 'cat "a.ts', 'cat /elsewhere/notes.md', 'grep -rn x ../../outside',
+    // sed -n -i edits in place; find -exec with a quoted '{}' passes the word check and is refused for its action alone.
+    'grep -rn x src | sh', "sed -n -i 's/a/b/p' a.ts", 'sed s/a/b/ a.ts', 'find . -name x -delete', "find . -exec grep -l x '{}' +", 'rg x', 'grep -rn x', 'rg --unknown x src',
+    // A short option it does not know may take a value, which would read as the pattern and push the pattern into the paths.
+    'rg -Q 2 x src', 'tail -W 3 a.ts', 'cat sk_live_pattern',
+    'FOO=1 cat a.ts', 'ls src', 'echo cat a.ts', 'cat "a.ts', 'cat ""', 'grep -rn x ""', 'cat /elsewhere/notes.md', 'grep -rn x ../../outside',
   ]) await $.tool.call({ tool: 'Bash', command })
   await endTurn($, w)
   expect(w.entries()).toEqual([])

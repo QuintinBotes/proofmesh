@@ -152,7 +152,7 @@ describe("#113 the plugin's hooks module: the snapshot state under the prompt an
 
   it("FR486 FR614 FR701 the module reaches ProofMesh only through $.process.run and the plugin's own MCP server, and every tool it calls is listed by the server .mcp.json starts", async () => {
     const source = fs.readFileSync(MODULE, 'utf8')
-    expect([...new Set(source.match(/\$\.\w+\.\w+/g))].sort()).toEqual(['$.clock.after', '$.clock.every', '$.clock.now', '$.command.register', '$.fs.stat', '$.mcp.call', '$.mcp.connect', '$.process.run', '$.session.id', '$.ui.close', '$.ui.copy', '$.ui.invalidate', '$.ui.open', '$.ui.panes', '$.ui.resolve', '$.ui.status'])
+    expect([...new Set(source.match(/\$\.\w+\.\w+/g))].sort()).toEqual(['$.clock.after', '$.clock.every', '$.clock.now', '$.command.register', '$.fs.stat', '$.mcp.call', '$.mcp.connect', '$.process.run', '$.session.cwd', '$.session.id', '$.ui.close', '$.ui.copy', '$.ui.invalidate', '$.ui.open', '$.ui.panes', '$.ui.resolve', '$.ui.status'])
     expect(source).toContain("$.process.run(['proofmesh', ...args], stdin === undefined ? undefined : { stdin })")
     expect(source).toContain("$.mcp.connect('proofmesh')")
     const called = [...source.matchAll(/callTool\(\$, '(\w+)'/g)].map((m) => m[1])
