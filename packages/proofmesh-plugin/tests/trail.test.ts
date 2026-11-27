@@ -16,9 +16,9 @@ const ok = (stdout: string): Run => ({ exitCode: 0, stdout, stderr: '' })
 
 /**
  * Stubs what Claude Code and ProofMesh answer for a session in /work/app/src, with trail recording on or off for the repository; `shell`
- * is the directory a Bash `cd` left the session in.
+ * is the directory a Bash `cd` left the session in, and `record` answers each `trail record` call by its number.
  */
-function world(on: On, w: { recording?: boolean; list?: Run | string; trail?: object; tool?: (e: { tool: string }) => object; shell?: string; missing?: string[] } = {}) {
+function world(on: On, w: { recording?: boolean; list?: Run | string; trail?: object; tool?: (e: { tool: string }) => object; shell?: string; missing?: string[]; record?: (n: number) => Run | string } = {}) {
   const clock = mock.clock(on, { now: NOW })
   const runs: Array<{ argv: string[]; stdin?: string }> = [], mcp: Array<{ tool: string; args: Record<string, unknown> }> = []
   on('session.start', () => ({ cwd: '/work/app/src' }))
@@ -33,7 +33,11 @@ function world(on: On, w: { recording?: boolean; list?: Run | string; trail?: ob
     runs.push({ argv: [...e.argv], ...(e.init?.stdin !== undefined ? { stdin: e.init.stdin } : {}) })
     const [, cmd, , flag] = e.argv
     if (cmd === 'repo') return typeof w.list === 'string' ? { deny: w.list } : { value: w.list ?? ok(LIST) }
-    if (cmd === 'trail') return { value: ok('recorded\n') }
+    if (cmd === 'trail') {
+      // `record` answers the n-th trail record: a run, or a string the call rejects with, as a process that cannot start does.
+      const r = w.record?.(runs.filter((x) => x.argv[1] === 'trail').length) ?? ok('recorded\n')
+      return typeof r === 'string' ? { deny: r } : { value: r }
+    }
     if (flag === '--fresh') return { value: ok(JSON.stringify({ repository_id: 'repo_app', name: 'app', snapshot_id: 'snap_1', current: true, changed_count: 0, changed: [], trail_recording: w.recording ?? false })) }
     return { value: ok('') }
   })
@@ -287,4 +291,38 @@ test('FR803: a Bash path is resolved against the directory the shell is in after
   await $.tool.call({ tool: 'Bash', command: 'head ../README.md' })
   await endTurn($, w)
   expect(w.entries().map((e) => e.path)).toEqual(['packages/format/src/currency.ts', 'README.md'])
+})
+
+const EMPTY = { snapshot: { id: 'snap_1', analysis_mode: 'no_execution', published_at: new Date(NOW).toISOString(), commit: 'abc123' }, data: { session_id: SESSION, recording: true, cut: false, entries: [], changed: [] }, limitations: [] }
+
+test('FR790 FR791: a turn trail record refuses is not sent again, a later flush records the turns after it, and /pm-trail says the trail is incomplete and why', async ($, on) => {
+  const refused = 'proofmesh: INVALID_ARGUMENT: trail record line 2: path must be relative to the repository root, inside it; nothing was recorded'
+  const w = world(on, { recording: true, trail: EMPTY, record: (n) => (n === 1 ? { exitCode: 1, stdout: '', stderr: `${refused}\n` } : ok('recorded 1 entries\n')) })
+  await start($, w)
+  await $.tool.call({ tool: 'Read', file_path: '/work/app/src/a.ts' })
+  await $.tool.call({ tool: 'Grep', pattern: 'x', path: '/work/app/src' })
+  await endTurn($, w)
+  await $.tool.call({ tool: 'Read', file_path: '/work/app/src/b.ts' })
+  await endTurn($, w)
+  // Two processes, and the refused turn's entries are not in the second: trail record stores a batch whole or not at all.
+  expect(w.recorded().map((r) => r.stdin!.trim().split('\n').map((l) => JSON.parse(l).path))).toEqual([['src/a.ts', 'src'], ['src/b.ts']])
+  const answer = await $.command.run({ command: 'pm-trail', args: '' })
+  expect(answer.text).toBe([
+    `session trail ${SESSION} in app, as of snapshot snap_1: 0 entries`,
+    `# incomplete: 2 entries of this session were not recorded (${refused})`,
+  ].join('\n'))
+})
+
+test('FR790 FR791: a trail record that cannot start marks the trail incomplete with its reason, and a trail with nothing lost says nothing of it', async ($, on) => {
+  const failed = 'ENOENT: Executable not found in $PATH: "proofmesh"'
+  const w = world(on, { recording: true, trail: EMPTY, record: (n) => (n === 1 ? failed : ok('recorded 1 entries\n')) })
+  await start($, w)
+  expect((await $.command.run({ command: 'pm-trail', args: '' })).text).toBe(`session trail ${SESSION} in app, as of snapshot snap_1: 0 entries`)
+  await $.tool.call({ tool: 'Read', file_path: '/work/app/src/a.ts' })
+  await endTurn($, w)
+  expect((await $.command.run({ command: 'pm-trail', args: '' })).text).toBe([
+    `session trail ${SESSION} in app, as of snapshot snap_1: 0 entries`,
+    // The whole message the call rejected with, as the kit words a denied process.
+    `# incomplete: 1 entry of this session was not recorded (proofmesh: $.process.run: ${failed})`,
+  ].join('\n'))
 })

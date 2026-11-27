@@ -20,6 +20,10 @@ One source file that is not UTF-8 fails alone, not the whole index (closes #139;
 - The core now checks each captured file once: a file that is not valid UTF-8 is captured but given to no adapter, and recorded `failed` with detail `not_utf8`, which `workspace_status` and `proofmesh status --json` show in the file summary and the language census. Every other file is indexed as before, with its ranges on the right bytes. A file with a NUL byte in its first 8 KiB, UTF-16 text included, is still `unsupported` as `binary`.
 - No upgrade step: no snapshot holding such a file could be published before.
 
+`/pm-trail` says when the session trail is incomplete (closes #148; FR790, FR791):
+
+- The plugin's hooks module did not check the exit code of `proofmesh trail record`. When it refused a batch (one malformed entry, a busy catalog, a CLI older than the plugin), or could not start, that turn's entries were dropped and nobody was told, so `/pm-trail` showed a trail with holes as if it were whole. The module now counts the entries of each failed flush and keeps the last reason. `/pm-trail` then prints `# incomplete: <n> entries of this session were not recorded (<reason>)` under its heading. A failed batch is not sent again: `trail record` stores a batch whole or not at all, so nothing is recorded twice, and a later flush still records the turns after it. `get_session_trail` over MCP does not see what the module never sent.
+
 `proofmesh mcp` exits 0 when its client closes stdin (closes #147; FR720):
 
 - Closing stdin is how an MCP client stops a stdio server, but `proofmesh mcp` then exited 13 with Node's `Warning: Detected unsettled top-level await`: after starting the server it waited on a promise that never settled, so once stdin ended nothing kept Node running. It now waits for stdin to end and exits 0, after answering what it was sent; an error on stdin still exits non-zero. Stopped by SIGTERM or SIGINT, over stdio or `--http`, it still ends by the signal (143 and 130 under a shell), as before.
