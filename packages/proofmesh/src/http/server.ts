@@ -5,7 +5,7 @@ import { asProofmeshError, ProofmeshError } from '../core/errors.js'
 import { randomToken } from '../core/hash.js'
 import { observatoryDir } from '../core/paths.js'
 import { runTool } from '../query/tools.js'
-import { galaxyBundle, galaxyFor } from '../query/galaxy.js'
+import { galaxyBundle, galaxyFor, galaxyPoints } from '../query/galaxy.js'
 import { Catalog } from '../meshstore/catalog.js'
 import { openSnapshot } from '../meshstore/snapshot.js'
 
@@ -47,7 +47,7 @@ export async function startViewServer(dataDir: string, port = 7317, assets = obs
           return send(204, '', 'text/plain', { 'Set-Cookie': `pm_session=${session}; HttpOnly; SameSite=Strict; Path=/` })
         }
         const m = /^\/api\/v1\/tools\/([a-z_]+)$/.exec(url.pathname)
-        const api = m || url.pathname === '/api/v1/galaxy' || url.pathname === '/api/v1/galaxy/symbol' || url.pathname === '/api/v1/galaxy/bundle' || url.pathname === '/api/v1/snapshots'
+        const api = m || url.pathname === '/api/v1/galaxy' || url.pathname === '/api/v1/galaxy/symbol' || url.pathname === '/api/v1/galaxy/bundle' || url.pathname === '/api/v1/galaxy/points' || url.pathname === '/api/v1/snapshots'
         if (api) {
           const cookie = /(?:^|;\s*)pm_session=([0-9a-f]+)/.exec(String(req.headers.cookie ?? ''))
           if (!cookie || !sessions.has(cookie[1]!)) return fail(new ProofmeshError('UNAUTHORIZED', 'no valid session'))
@@ -67,6 +67,11 @@ export async function startViewServer(dataDir: string, port = 7317, assets = obs
           const offset = body.offset ?? 0, limit = body.limit ?? 500
           if (typeof body.from !== 'string' || typeof body.to !== 'string' || !Number.isInteger(offset) || (offset as number) < 0 || !Number.isInteger(limit) || (limit as number) < 1 || (limit as number) > 1000) return fail(new ProofmeshError('INVALID_ARGUMENT', 'from and to are area names; offset is a whole number from 0, limit from 1 to 1000'))
           return send(200, JSON.stringify(galaxyBundle(dataDir, scope, body.from, body.to, { offset: offset as number, limit: limit as number })))
+        }
+        // Where a tool's rows sit on the map, by stable key (FR1813): Change review marks impact_completeness rows with it.
+        if (url.pathname === '/api/v1/galaxy/points') {
+          if (!Array.isArray(body.keys) || body.keys.length > 100000 || !body.keys.every((k) => typeof k === 'string')) return fail(new ProofmeshError('INVALID_ARGUMENT', 'keys is a list of stable keys'))
+          return send(200, JSON.stringify({ indices: galaxyPoints(dataDir, scope, body.keys as string[]) }))
         }
         if (url.pathname === '/api/v1/galaxy/symbol') {
           const id = galaxyFor(dataDir, scope).ids[Number(body.index)]

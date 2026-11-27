@@ -3057,6 +3057,29 @@ key?: string
  * Present and true when the file is generated (FR292); absent otherwise.
  */
 generated?: boolean
+/**
+ * How the dependent reaches the change (FR1811): from the dependent at its call, import or reference site, through each caller or member it reaches the change through, to the changed symbol at its declaration, in the snapshot the row is from.
+ */
+chain: {
+name: string
+path: string
+/**
+ * The site of the relationship to the next hop; for the last hop, the changed symbol's declaration.
+ */
+line: number
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
+/**
+ * The stable_key of the symbol at this hop (FR280).
+ */
+key?: string
+/**
+ * The relationship from this hop to the next, as get_relationships and read_evidence name it; absent on the last hop, the changed symbol at its declaration.
+ */
+assertion_id?: string
+}[]
 }[]
 /**
  * The stable_key of the changed symbol (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file.
