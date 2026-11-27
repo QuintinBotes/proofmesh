@@ -70,7 +70,7 @@ export function runGc(dataDir: string, rest: string[], take: (args: string[], fl
     // Query records and session trails (#114) share one retention, counted from when they were recorded.
     const before = new Date(Date.now() - days * 86_400_000).toISOString()
     const n = catalog.expireRecords(before, dryRun)
-    console.log(`${dryRun ? 'would delete' : 'delete'} ${n.queries} query records and ${n.trail} trail entries recorded more than ${days} days ago`)
+    console.log(`${dryRun ? 'would delete' : 'delete'} ${n.queries} query records and ${n.trail} trail entries recorded more than ${days} days ago, and the subjects of ${n.subjects} queries`)
     console.log(`${dryRun ? 'dry run: ' : ''}keeping the newest ${keep} published snapshots per repository, plus current, pinned and linked ones`)
     return 0
   } finally {

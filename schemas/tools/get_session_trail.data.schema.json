@@ -17,7 +17,7 @@
     },
     "recording": {
       "type": "boolean",
-      "description": "Whether the trail is being recorded for this repository now (proofmesh trail on)."
+      "description": "Whether the trail is being recorded for this repository now (proofmesh trail on): the Claude Code plugin's entries, and the subjects of each proofmesh mcp query."
     },
     "cut": {
       "type": "boolean",
@@ -74,6 +74,14 @@
           },
           "generated": {
             "type": "boolean"
+          },
+          "query_id": {
+            "type": "string",
+            "description": "The query proofmesh mcp recorded this subject of; its entries share it, one a subject."
+          },
+          "snapshot_id": {
+            "type": "string",
+            "description": "The snapshot the query read, whose symbol id this is: the base side for compare_snapshots."
           }
         }
       }

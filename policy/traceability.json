@@ -2248,6 +2248,24 @@
     ],
     "FR966": [
       "packages/proofmesh/test/parity-bench.test.ts"
+    ],
+    "FR1940": [
+      "packages/proofmesh/test/query-subjects.test.ts"
+    ],
+    "FR1941": [
+      "packages/proofmesh/test/query-subjects.test.ts"
+    ],
+    "FR1942": [
+      "packages/proofmesh/test/query-subjects.test.ts"
+    ],
+    "FR1943": [
+      "packages/proofmesh/test/query-subjects.test.ts"
+    ],
+    "FR1944": [
+      "packages/proofmesh/test/query-subjects.test.ts"
+    ],
+    "FR1945": [
+      "packages/proofmesh/test/query-subjects.test.ts"
     ]
   },
   "manual": {

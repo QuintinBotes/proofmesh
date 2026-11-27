@@ -73,9 +73,9 @@ Usage: proofmesh [--data-dir DIR] <command>
   bundle export <repository> --out <dir.pmb> [--query <json>]... [--include-source]   portable evidence bundle; source only with consent
   bundle check <dir.pmb>            verify a bundle offline, with no data directory
   backup <dir> | restore <dir> --into <data-dir>   consistent copy of the data directory, verified on restore
-  gc [--keep N] [--records-days D] [--dry-run]   retire old snapshots and unreferenced evidence, never current, pinned or linked ones; delete query records and session trail entries recorded more than D days ago (default 30)
-  trail on <repo> | trail off <repo>   record the session trail of Claude Code sessions in this repository (off by default): the paths and symbol ids they search, open, change and claim, never source text
-  trail record | trail purge [--session <id>]   append trail entries (JSON lines on stdin; the plugin does this) | delete one session's trail, or all
+  gc [--keep N] [--records-days D] [--dry-run]   retire old snapshots and unreferenced evidence, never current, pinned or linked ones; delete query records, with their subjects, and session trail entries recorded more than D days ago (default 30)
+  trail on <repo> | trail off <repo>   record the session trail of Claude Code sessions in this repository, and the subjects of each MCP query by its session (off by default): the paths and symbol ids they search, open, change and claim, never source text
+  trail record | trail purge [--session <id>]   append trail entries (JSON lines on stdin; the plugin does this) | delete one session's trail and query subjects, or all
   snapshot pin <id> | snapshot unpin <id>
   snapshot export <repository> [--snapshot <id>] --out <file>   write a snapshot built here, with a manifest of its commit, adapters and file hashes, and no source
   snapshot import <repository> <file>   start from a snapshot built elsewhere for the same commit: verified against its hashes, the adapters here and the working tree, refused when anything does not match, and never over a snapshot the repository has

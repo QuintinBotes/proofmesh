@@ -2134,7 +2134,7 @@ include_workspace?: boolean
 export interface GetSessionTrailData {
 session_id: string
 /**
- * Whether the trail is being recorded for this repository now (proofmesh trail on).
+ * Whether the trail is being recorded for this repository now (proofmesh trail on): the Claude Code plugin's entries, and the subjects of each proofmesh mcp query.
  */
 recording: boolean
 /**
@@ -2160,6 +2160,14 @@ agent_id?: string
  */
 outcome: ("ok" | "failed")
 generated?: boolean
+/**
+ * The query proofmesh mcp recorded this subject of; its entries share it, one a subject.
+ */
+query_id?: string
+/**
+ * The snapshot the query read, whose symbol id this is: the base side for compare_snapshots.
+ */
+snapshot_id?: string
 }[]
 changed: {
 id: string
@@ -2205,7 +2213,7 @@ generated?: boolean
 }
 
 /**
- * The session trail of one Claude Code session in this repository, recorded by the Proofmesh plugin only where a person ran proofmesh trail on: what the session searched, opened, changed and claimed, in order, each a repository-relative path or a symbol id with the tool and the time, never source text. For each symbol declared in a file it changed, the dependents (analyze_impact) whose file no successful opened entry names, split into searched_only (under a path a search covered) and never_seen.
+ * The session trail of one session in this repository, recorded only where a person ran proofmesh trail on: what a Claude Code session searched, opened, changed and claimed (recorded by the Proofmesh plugin), or the subjects of each query of a proofmesh mcp session (list_queries names its session_id), in order, each a repository-relative path or a symbol id with the tool and the time, never source text. For each symbol declared in a file it changed, or that a diff it asked for (compare_snapshots) removed or changed, the dependents (analyze_impact) that no successful opened entry names, split into searched_only (under a path a search covered, or found by a search) and never_seen.
  */
 export interface GetSessionTrailInput {
 /**
@@ -2217,7 +2225,7 @@ repository_id?: string
  */
 snapshot_id?: (string | null)
 /**
- * Claude Code's session id (the transcript file's name); /pm-trail passes the current session's.
+ * Claude Code's session id (the transcript file's name; /pm-trail passes the current session's), or a proofmesh mcp session's id (mcp_...).
  */
 session_id: string
 limits?: {
@@ -3189,6 +3197,10 @@ requested_at: string
 duration_ms: number
 truncated: boolean
 input_hash: string
+/**
+ * The proofmesh mcp session whose query this was, where its subjects were recorded (proofmesh trail on); get_session_trail lists them.
+ */
+session_id?: string
 }[]
 }
 
