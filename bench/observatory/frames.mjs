@@ -81,7 +81,7 @@ async function startView() {
 }
 
 // A synthetic galaxy replaces the indexed fixture's in the server's cache; its points map to the fixture's real symbol ids.
-// The cache's file names (galaxy-v4-<snapshot>) follow packages/proofmesh/src/query/galaxy.ts, whose format retires older payloads.
+// The cache's file names (galaxy-v5-<snapshot>) follow packages/proofmesh/src/query/galaxy.ts, whose format retires older payloads.
 let evidenceNames = null
 if (fixtureName === 'synthetic') {
   const v = await startView()
@@ -90,14 +90,14 @@ if (fixtureName === 'synthetic') {
   const g = cookie && await fetch(`${v.origin}/api/v1/galaxy`, { method: 'POST', headers: { Origin: v.origin, Cookie: cookie, 'Content-Type': 'application/json' }, body: '{}' })
   v.stop()
   if (!g?.ok) fail(`could not build the fixture's galaxy (${g?.status ?? session.status})`)
-  const cache = path.join(dataDir, 'cache'), idsFile = fs.readdirSync(cache).find((f) => /^galaxy-v4-.*\.ids\.json$/.test(f))
-  const snapshotId = /^galaxy-v4-(.*)\.ids\.json$/.exec(idsFile)[1]
+  const cache = path.join(dataDir, 'cache'), idsFile = fs.readdirSync(cache).find((f) => /^galaxy-v5-.*\.ids\.json$/.test(f))
+  const snapshotId = /^galaxy-v5-(.*)\.ids\.json$/.exec(idsFile)[1]
   // Evidence opens the synthetic point that maps to the fixture's best method, so its Explore view has edges.
   const real = evidencePoints(cachedGalaxy())
   const t0 = performance.now()
   const syn = generateGalaxy({ nodes: NODES, seed: SEED, snapshotId, ids: JSON.parse(fs.readFileSync(path.join(cache, idsFile), 'utf8')) })
   fs.writeFileSync(path.join(cache, idsFile), JSON.stringify(syn.ids))
-  fs.writeFileSync(path.join(cache, `galaxy-v4-${snapshotId}.bin.gz`), syn.gz)
+  fs.writeFileSync(path.join(cache, `galaxy-v5-${snapshotId}.bin.gz`), syn.gz)
   Object.assign(fixture, { nodes: NODES, seed: SEED, links: syn.links, galaxy_sha256: crypto.createHash('sha256').update(syn.gz).digest('hex'), generated_ms: Math.round(performance.now() - t0) })
   const names = cachedGalaxy().names
   const mapped = real.filter((i) => i < NODES && alone(names, i))
@@ -117,8 +117,8 @@ const INIT = `(() => {
       // --inject-task-ms: a main-thread task of that length right after the first draw, standing in for a slowed build.
       if (${INJECT}) setTimeout(() => { const end = performance.now() + ${INJECT}; while (performance.now() < end) {} }, 0)
     }
-    // Positions come with the snapshot (#44): they are final once the Galaxy has drawn them and marks itself ready.
-    if (o.marks.first_draw && !o.marks.settled && document.querySelector('.galaxy[data-ready]')) o.marks.settled = performance.now()
+    // Positions come with the snapshot (#44): they are final once the Terrain has drawn them and marks itself ready (#46).
+    if (o.marks.first_draw && !o.marks.settled && document.querySelector('.terrain[data-ready]')) o.marks.settled = performance.now()
   }
   new MutationObserver(check).observe(document, { subtree: true, childList: true, characterData: true, attributes: true })
 })()`
@@ -184,7 +184,7 @@ const timedClick = (page, find, ready, arg) => page.evaluate(async ({ find, read
 }, { find: find.toString(), ready: ready.toString(), arg })
 /** The galaxy of a snapshot (or the only one) in the server's cache: the name, degree and kind of each point. */
 function cachedGalaxy(snapshotId) {
-  const file = snapshotId ? `galaxy-v4-${snapshotId}.bin.gz` : fs.readdirSync(path.join(dataDir, 'cache')).find((f) => /^galaxy-v4-.*\.bin\.gz$/.test(f))
+  const file = snapshotId ? `galaxy-v5-${snapshotId}.bin.gz` : fs.readdirSync(path.join(dataDir, 'cache')).find((f) => /^galaxy-v5-.*\.bin\.gz$/.test(f))
   const buf = zlib.gunzipSync(fs.readFileSync(path.join(dataDir, 'cache', file)))
   const hl = buf.readUInt32LE(0), h = JSON.parse(buf.subarray(4, 4 + hl).toString('utf8')), base = 4 + hl + ((4 - ((4 + hl) % 4)) % 4)
   return {
@@ -268,14 +268,16 @@ async function coldRun(i, { keepFor } = {}) {
     search.push(Date.now() - s)
   }
   await page.getByLabel('Search').fill('')
-  // A person pauses between actions; without it the Map switch would also time the full galaxy's return after the search clears.
+  // A person pauses between actions; without it the switch would also time the Terrain's return after the search clears.
   await page.waitForTimeout(1000)
-  // The Map's data loads with the page, so switching asks the server nothing: once cold (its first WebGL programs compile) and once warm.
-  const tab = (name) => timedClick(page, (n) => [...document.querySelectorAll('[role=tab]')].find((e) => e.textContent === n), (n) => document.querySelector(n === 'Map' ? '[aria-label="Graph controls"]' : '[aria-label="Galaxy controls"]'), name)
-  const mapCold = await tab('Map')
-  await tab('Galaxy')
-  const mapWarm = await tab('Map')
-  // The command palette (#43), over the Map: from a query set in its field to the frame after the count of matches changes, twenty
+  // The Terrain switch (#46 replaced the Map): from Diff, a table, back to the Terrain, drawn again from the payload it holds, so it
+  // asks the server nothing; twice, the second warm.
+  const tab = (name) => timedClick(page, (n) => [...document.querySelectorAll('[role=tab]')].find((e) => e.textContent === n), (n) => document.querySelector(n === 'Terrain' ? '.terrain[data-ready] [aria-label="Terrain controls"]' : '[aria-label="Compare"]'), name)
+  await tab('Diff')
+  const switchCold = await tab('Terrain')
+  await tab('Diff')
+  const switchWarm = await tab('Terrain')
+  // The command palette (#43), over the Terrain: from a query set in its field to the frame after the count of matches changes, twenty
   // times; then the longest main-thread task while a query is typed a key at a time.
   await page.keyboard.press('Control+K')
   const palette = page.getByRole('combobox', { name: 'Find a symbol, file or command' })
@@ -303,24 +305,23 @@ async function coldRun(i, { keepFor } = {}) {
   await page.waitForTimeout(500)
   const typingTasks = await page.evaluate((t) => window.__obs.longTasks.filter((x) => x.start >= t).map((x) => x.duration), typingFrom)
   await page.keyboard.press('Escape')
-  await tab('Galaxy')
-  // Symbol to evidence: the Galaxy table's Explore button (the same call path as a click on the symbol's point) to the Proof lens
+  // Symbol to evidence: the Terrain table's Explore button (the same call path as a click on the symbol's point) to the Proof lens
   // showing the symbol's source text, with the API requests between. The first open is the page's first; the warm open is of a
   // second symbol, once the lens has drawn, so it still needs its own request. Then an edge: a caller or callee row of the lens to
   // its call site shown.
-  // The galaxy shown is the one of the snapshot its layout key names; a data directory's cache may hold others.
+  // The Terrain shown is the one of the snapshot its layout key names; a data directory's cache may hold others.
   if (!evidenceNames) { const g = cachedGalaxy(layout.key); evidenceNames = evidencePoints(g).map((i) => g.names[i]) }
   if (evidenceNames.length < 2) throw new Error('no two symbols with names no other name contains')
   const openSymbol = async (symbol) => {
-    await page.getByRole('tab', { name: 'Galaxy' }).click()
+    await page.getByRole('tab', { name: 'Terrain' }).click()
     await page.getByRole('button', { name: 'Table', exact: true }).click()
     await page.getByLabel('Search').fill(symbol)
     // A synthetic point opens the fixture's real symbol it maps to, so there the panel's title is only checked to have changed.
     const before = await page.evaluate(() => document.querySelector('.ev-title')?.textContent ?? null)
-    const t = await timedClick(page, (a) => [...document.querySelectorAll('[aria-label="Galaxy table"] tr')].find((r) => r.children[2]?.textContent === a.symbol)?.querySelector('button'),
+    const t = await timedClick(page, (a) => [...document.querySelectorAll('[aria-label="Terrain table"] tr')].find((r) => r.children[2]?.textContent === a.symbol)?.querySelector('button'),
       (a) => { const title = document.querySelector('.ev-title')?.textContent; return title && (a.exact ? title === a.symbol : title !== a.before) && document.querySelector('[data-testid=evidence-text]')?.textContent },
       { symbol, before, exact: fixtureName !== 'synthetic' })
-    if (!t) throw new Error(`the Galaxy table has no row for ${symbol}`)
+    if (!t) throw new Error(`the Terrain table has no row for ${symbol}`)
     return t
   }
   const evFirst = await openSymbol(evidenceNames[0])
@@ -333,7 +334,7 @@ async function coldRun(i, { keepFor } = {}) {
     frame_idle_p50_ms: pct(idle, 0.5), frame_idle_p95_ms: pct(idle, 0.95), frame_idle_max_ms: pct(idle, 1),
     frame_pan_zoom_p50_ms: pct(panZoom, 0.5), frame_pan_zoom_p95_ms: pct(panZoom, 0.95), frame_pan_zoom_max_ms: pct(panZoom, 1),
     search_ms: summarize(search).median, symbol_to_evidence_first_ms: evFirst?.ms, symbol_to_evidence_ms: ev?.ms, symbol_to_evidence_requests: ev?.requests,
-    edge_to_evidence_ms: edge?.ms ?? null, edge_to_evidence_requests: edge?.requests ?? null, map_switch_ms: mapWarm.ms, map_switch_cold_ms: mapCold.ms,
+    edge_to_evidence_ms: edge?.ms ?? null, edge_to_evidence_requests: edge?.requests ?? null, terrain_switch_ms: switchWarm.ms, terrain_switch_cold_ms: switchCold.ms,
     palette_p50_ms: pct(paletteMs, 0.5), palette_p95_ms: pct(paletteMs, 0.95), palette_max_ms: pct(paletteMs, 1),
     palette_typing_longest_task_ms: Math.max(0, ...typingTasks),
     script_gzip_kb: Math.round(loadBytes.filter((b) => b.type === 'script').reduce((s, b) => s + b.gzip, 0) / 1024),
@@ -341,7 +342,7 @@ async function coldRun(i, { keepFor } = {}) {
     transferred_kb: Math.round(loadBytes.filter((b) => b.type !== 'api').reduce((s, b) => s + b.transferred, 0) / 1024),
   })
   for (const k of Object.keys(run)) if (typeof run[k] === 'number') run[k] = Math.round(run[k] * 10) / 10
-  // Warm: the Galaxy loaded again in the same page, its HTTP cache kept (a reload would reopen the symbol Explore shows).
+  // Warm: the Terrain loaded again in the same page, its HTTP cache kept (a reload would reopen the symbol Explore shows).
   const galaxyUrl = v.origin + (workspace && repository ? new URL(v.url).search : '/')
   await page.goto(galaxyUrl)
   const warm = await loadMetrics(page, cdp, server.process().pid)

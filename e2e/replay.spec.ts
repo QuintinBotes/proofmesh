@@ -31,10 +31,9 @@ test('FR010 Replay pins every view to an older snapshot and says so until the pe
   expect(options.some((o) => o.endsWith('(current)'))).toBe(true)
   older = await picker.locator('option').filter({ hasNotText: '(current)' }).getAttribute('value') as string
 
-  // The current snapshot knows the new function; the Map's table lists it.
-  await page.getByRole('tab', { name: 'Map' }).click()
+  // The current snapshot knows the new function; the Terrain's table lists it.
   await page.getByRole('button', { name: 'Table', exact: true }).click()
-  await answered(page, () => page.fill('#search', 'invoiceTax'))
+  await page.fill('#search', 'invoiceTax')
   await expect(page.getByRole('main')).toContainText('invoiceTax')
 
   const pinned: string[] = []
@@ -43,19 +42,18 @@ test('FR010 Replay pins every view to an older snapshot and says so until the pe
   await expect(page.getByTestId('replay-banner')).toContainText(`Replaying snapshot ${older.slice(0, 13)}`)
   // The older snapshot does not know the new function: the same search now matches nothing.
   await expect(page.getByTestId('conclusion')).toContainText('0 matching symbols')
-  // Every query after the pin carries the older snapshot's id, the Galaxy included.
-  await answered(page, () => page.fill('#search', ''))
-  await page.getByRole('tab', { name: 'Galaxy' }).click()
+  // Every query after the pin carries the older snapshot's id, the Terrain included.
+  await page.fill('#search', '')
   await expect(page.getByTestId('conclusion')).toContainText('symbols in', { timeout: 60000 })
-  expect(pinned.length).toBeGreaterThan(2)
+  expect(pinned.length).toBeGreaterThan(1)
   expect(pinned.filter((p) => !p.endsWith(` ${older}`))).toEqual([])
-  await page.getByRole('tab', { name: 'Map' }).click()
 
   const serious = (await new AxeBuilder({ page }).analyze()).violations.filter((v) => v.impact === 'serious' || v.impact === 'critical').map((v) => v.id)
   expect(serious).toEqual([])
 
   await answered(page, () => page.getByRole('button', { name: 'Back to current' }).click())
   await expect(page.getByTestId('replay-banner')).toHaveCount(0)
-  await answered(page, () => page.fill('#search', 'invoiceTax'))
+  await expect(page.getByTestId('conclusion')).toContainText('symbols in', { timeout: 60000 })
+  await page.fill('#search', 'invoiceTax')
   await expect(page.getByRole('main')).toContainText('invoiceTax')
 })

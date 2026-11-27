@@ -1,0 +1,3 @@
+# Provenance
+
+Project-authored for Proofmesh. Apache-2.0. No third-party code. Two areas for the Terrain (#46 story 2), analysed by the syntax tier: `app/shop/models.py` calls `charge` in `app/billing/tables.py` (an observed relationship), and its Django model `Order` maps by Django's naming convention to the table `shop_order` (an inferred relationship), which `app/billing/tables.py` declares first with `__tablename__`. So one bundle between the two areas holds one observed and one inferred relationship. `django` is not installed; the import of `django.db.models` is enough for the convention.

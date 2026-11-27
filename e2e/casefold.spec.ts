@@ -24,7 +24,7 @@ let view: Awaited<ReturnType<typeof startView>>
 test.beforeAll(async () => { view = await startView(casefoldRepo()) })
 test.afterAll(() => view?.stop())
 
-test('FR1200 the Galaxy and the palette find the symbol the text is in, after names that lengthen when lowered', async ({ page }) => {
+test('FR1200 the Terrain and the palette find the symbol the text is in, after names that lengthen when lowered', async ({ page }) => {
   test.setTimeout(120000)
   await page.goto(view.launchUrl)
   const conclusion = page.getByTestId('conclusion')
@@ -38,7 +38,7 @@ test('FR1200 the Galaxy and the palette find the symbol the text is in, after na
   await answered(page, () => rows.getByRole('button', { name: 'Explore' }).click())
   await expect(page.getByRole('region', { name: 'Focus' })).toContainText('src/target:findMe')
 
-  await page.getByRole('tab', { name: 'Galaxy' }).click()
+  await page.getByRole('tab', { name: 'Terrain' }).click()
   await page.getByLabel('Search').fill('straße')
   await page.getByRole('button', { name: 'Table', exact: true }).click()
   await expect(page.getByRole('table', { name: 'Symbols matching “straße”' }).locator('tbody tr td:nth-child(3)')).toHaveText(['src/straße:GROẞe\u0301', 'src/straße:maße'])
