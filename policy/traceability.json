@@ -1983,6 +1983,32 @@
     ],
     "FR1067": [
       "packages/proofmesh/test/search-structure.test.ts"
+    ],
+    "FR1140": [
+      "e2e/palette.spec.ts",
+      "e2e/accessibility.spec.ts"
+    ],
+    "FR1141": [
+      "apps/observatory/test/palette.test.ts",
+      "e2e/palette.spec.ts"
+    ],
+    "FR1142": [
+      "apps/observatory/test/palette.test.ts",
+      "e2e/palette.spec.ts"
+    ],
+    "FR1143": [
+      "e2e/palette.spec.ts"
+    ],
+    "FR1144": [
+      "e2e/palette.spec.ts"
+    ],
+    "FR1145": [
+      "e2e/accessibility.spec.ts",
+      "e2e/palette.spec.ts"
+    ],
+    "FR1146": [
+      "e2e/a11y.spec.ts",
+      "e2e/palette.spec.ts"
     ]
   },
   "manual": {

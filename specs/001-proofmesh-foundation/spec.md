@@ -882,6 +882,13 @@ From #39: a fresh clone starts from the snapshot a teammate or CI built for the 
 - FR067: MUST offer a non-visual equivalent for every view and honor reduced-motion, color-scheme, and contrast preferences.
 - FR068: MUST keep layout derived and non-evidential; spatial proximity is never presented as a relationship.
 - FR640: MUST keep the Observatory's conclusion bar busy (`aria-busy` true, `Loading…`) until every query in flight has answered, so a query a person starts while another still loads, such as a click on a starting point during the first load, is not shown as answered when the other one finishes (#136).
+- FR1140: MUST give Observatory one command palette that lists symbols, files and commands: `Control+K` or `⌘K` opens it from anywhere and `/` wherever typing is not text; it is a modal `dialog` holding a `combobox` and a `listbox`, and Escape closes it and returns focus where it was (#43).
+- FR1141: MUST rank the palette's symbols and files by exact name, then name prefix, then name substring, then qualified name or path, each group by name, and list the first 30 with the number of further matches.
+- FR1142: MUST build the palette's name index once per snapshot in a Web Worker, from the Galaxy payload's names and analysed files, so no query scans names on the main thread; a query shorter than two characters lists commands only and says that symbols and files wait for two characters.
+- FR1143: MUST offer as palette commands every view, the table or graph switch, the Diff overlay, pinning each published snapshot and returning to the current one, tracing a path from the focused symbol, and exporting the current view; the commands whose words hold every typed word are listed first, each with its key, and Enter runs the highlighted entry.
+- FR1144: MUST give every view (`1` to `7`, in tab order), the table or graph switch (`t`) and the Diff overlay (`d`) a single-key shortcut, shown beside its tab or overlay and in `aria-keyshortcuts`, active only while focus is not in a field, and list every key when `?` is pressed.
+- FR1145: MUST, when a symbol is chosen in the palette, open it in Explore with its evidence and move focus to the evidence panel.
+- FR1146: MUST render repository text in the palette as text with the visible escaping of FR065, announce the highlighted option as the combobox's active descendant, and pass axe with no serious or critical violation in the light and the dark scheme.
 
 ### Open source and extensibility
 

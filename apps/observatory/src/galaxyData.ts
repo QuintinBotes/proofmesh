@@ -7,7 +7,7 @@ export type GalaxyArea = {
 }
 export type GalaxyData = {
   snapshotId: string; n: number; links: Uint32Array; degree: Uint32Array; area: Uint16Array; kind: Uint8Array
-  kinds: string[]; areas: GalaxyArea[]; names: string[]
+  kinds: string[]; areas: GalaxyArea[]; names: string[]; files: string[]
 }
 
 /** An unresolved share at or above this draws a ring round the area. */
@@ -30,7 +30,7 @@ export function parseGalaxy(buf: ArrayBuffer): GalaxyData {
   const h = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, 4, headerLength)))
   const base = 4 + headerLength + ((4 - ((4 + headerLength) % 4)) % 4)
   return {
-    snapshotId: h.snapshot_id, n: h.nodes, kinds: h.kinds, areas: h.areas,
+    snapshotId: h.snapshot_id, n: h.nodes, kinds: h.kinds, areas: h.areas, files: h.files ?? [],
     links: new Uint32Array(buf, base + h.offsets.links, h.links * 2),
     degree: new Uint32Array(buf, base + h.offsets.degree, h.nodes),
     area: new Uint16Array(buf, base + h.offsets.area, h.nodes),
