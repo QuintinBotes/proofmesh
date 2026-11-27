@@ -15,3 +15,4 @@ class Container {
 
 export const container = new Container()
 container.register("Mailer", Mailer)
+// container.resolve("Mailer") reads it back, in src/orders.ts

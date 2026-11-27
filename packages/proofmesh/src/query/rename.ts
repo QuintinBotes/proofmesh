@@ -7,7 +7,7 @@ import type { EvidenceStore } from '../evidence/store.js'
 type Sym = { id: string; key: string; name: string; kind: string; qualified_name: string; path: string; file_id: string; start_byte: number; end_byte: number; start_line: number; hash: string | null }
 export type Site = { path: string; line: number; kind: string; basis: 'observed' | 'inferred'; key: string; seam?: string; rule?: string; text?: string; resolution?: string }
 export type Possible = { path: string; line: number; callee: string; resolution: string }
-export type Plan = { subject: Sym; group: Array<Sym & { relationship: string }>; declared: Map<string, number>; sites: Site[]; possibly: Possible[]; carriers: string[]; stopped: boolean }
+export type Plan = { subject: Sym; group: Array<Sym & { relationship: string }>; declared: Map<string, number>; sites: Site[]; possibly: Possible[]; carriers: string[]; exported: boolean; stopped: boolean }
 
 const SYM_SQL = 'select s.id, s.stable_key as key, s.name, s.kind, s.qualified_name, f.path, s.file_id, s.start_byte, s.end_byte, s.start_line, f.content_hash as hash from symbol s join file f on f.id = s.file_id'
 /** Origins that observe code: a name the compiler or the syntax bound. Every other origin binds by a rule, so its sites are seams. */
@@ -106,8 +106,11 @@ export function planRename(db: Database.Database, store: EvidenceStore, subjectI
         if (h.alias && !known.includes(h.alias)) known.push(h.alias)
       }
       if (hits.length && fileId !== subject.file_id) carry(fileId, f.path)
+      if (hits.length && fileId === subject.file_id) exported = true
     }
   }
+  // Whether the declaring file exports the top-level name, by a modifier on its declaration or by an export list.
+  let exported = new RegExp(`\\bexport\\s+(?:default\\s+)?(?:declare\\s+)?(?:abstract\\s+)?(?:async\\s+)?(?:function\\*?|class|interface|type|enum|const|let|var|namespace)\\s+${known[0]!.replace(/[$]/g, '\\$')}(?![\\w$])`).test(blank(text(subject.hash)?.toString('utf8') ?? ''))
   while (subject.kind !== 'module' && queue.length) {
     const target = queue.shift()!
     ownExports(target)
@@ -207,6 +210,8 @@ export function planRename(db: Database.Database, store: EvidenceStore, subjectI
     buf.toString('utf8').split('\n').forEach((line, i) => {
       for (const x of line.matchAll(literal)) {
         const before = line.slice(0, x.index).trimEnd(), after = line.slice(x.index + x[0].length).trimStart()
+        // A string in a comment (`// container.resolve("Mailer")`, a doc comment's line) is no key.
+        if (/\/\/|\/\*|^\s*\*/.test(before.replace(/'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|`(?:[^`\\]|\\.)*`/g, ''))) continue
         let seam: string | undefined, rule: string | undefined
         if (before.endsWith('[')) { seam = 'serialised_key'; rule = 'string_key_access' }
         else if (after.startsWith(':') && (/[{,]$/.test(before) || before === '' || /\.(json|ya?ml)$/.test(f.path))) { seam = 'serialised_key'; rule = 'quoted_object_key' }
@@ -229,5 +234,5 @@ export function planRename(db: Database.Database, store: EvidenceStore, subjectI
   const listed = new Set([...uniq.values()].filter((s) => s.basis === 'observed').map((s) => `${s.path}:${s.line}`))
   const maybe = new Map<string, Possible>()
   for (const p of possibly) { const k = `${p.path}:${p.line}`; if (!listed.has(k) && !maybe.has(k)) maybe.set(k, p) }
-  return { subject, declared, group: [...group.values()].sort((a, b) => order({ path: a.path, line: a.start_line }, { path: b.path, line: b.start_line })), sites: [...uniq.values()].sort(order), possibly: [...maybe.values()].sort(order), carriers, stopped }
+  return { subject, declared, group: [...group.values()].sort((a, b) => order({ path: a.path, line: a.start_line }, { path: b.path, line: b.start_line })), sites: [...uniq.values()].sort(order), possibly: [...maybe.values()].sort(order), carriers, exported, stopped }
 }

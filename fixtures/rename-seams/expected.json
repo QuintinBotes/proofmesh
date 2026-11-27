@@ -21,7 +21,8 @@
       "code": ["src/container.ts:1", "src/container.ts:17", "src/mailer.ts:2", "src/orders.ts:3", "src/orders.ts:14"],
       "not_seams": [
         { "path": "src/orders.ts", "line": 16, "why": "console.log(\"Mailer\"): a log message, no key" },
-        { "path": "src/mailer.ts", "line": 4, "why": "a template that holds the name among other text" }
+        { "path": "src/mailer.ts", "line": 4, "why": "a template that holds the name among other text" },
+        { "path": "src/container.ts", "line": 18, "why": "a comment that names the key" }
       ]
     },
     {

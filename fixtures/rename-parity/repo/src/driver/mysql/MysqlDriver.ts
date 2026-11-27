@@ -18,4 +18,8 @@ export class MariaDriver extends MysqlDriver {
     escape(columnName: string): string {
         return super.escape(columnName)
     }
+
+    quoteName(name: string): string {
+        return this.escape(name)
+    }
 }

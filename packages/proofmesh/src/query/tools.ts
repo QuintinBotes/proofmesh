@@ -970,10 +970,11 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     const s = p.subject, newName = String(input.new_name)
     const row = (x: typeof s) => ({ id: x.id, key: x.key, name: x.name, kind: x.kind, path: x.path, line: p.declared.get(x.id) ?? x.start_line })
     const observed = p.sites.filter((x) => x.basis === 'observed').length
-    // A name the new one would collide with: a symbol of that name in the same container, or at the top of the same file.
-    const container = s.qualified_name.includes('.') ? s.qualified_name.slice(0, s.qualified_name.lastIndexOf('.') + 1) : `${s.qualified_name.slice(0, s.qualified_name.indexOf(':') + 1)}`
-    const clash = ctx.db.prepare('select f.path, s.start_line as line, s.kind from symbol s join file f on f.id = s.file_id where s.qualified_name = ? order by f.path, s.start_line').all(container + newName) as Array<{ path: string; line: number; kind: string }>
-    const entry = publicEntry(ctx.db, ctx.store, [s.path, ...p.carriers])
+    // A name the new one would collide with: a symbol of that name in the container of the subject or of a member renamed with it,
+    // or at the top of the same file.
+    const named = ctx.db.prepare('select f.path, s.start_line as line, s.kind from symbol s join file f on f.id = s.file_id where s.qualified_name = ? order by f.path, s.start_line')
+    const clash = [s, ...p.group].flatMap((m) => named.all(`${m.qualified_name.slice(0, (m.qualified_name.includes('.') ? m.qualified_name.lastIndexOf('.') : m.qualified_name.indexOf(':')) + 1)}${newName}`) as Array<{ path: string; line: number; kind: string }>)
+    const entry = publicEntry(ctx.db, ctx.store, [...(p.exported ? [s.path] : []), ...p.carriers])
     const sites = p.sites.slice(0, ctx.limits.max_rows)
     return {
       data: {

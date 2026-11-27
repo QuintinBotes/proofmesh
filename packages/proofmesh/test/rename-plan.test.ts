@@ -116,11 +116,13 @@ describe('FR980 to FR987 the rename plan on fixtures/rename-parity', () => {
   it('FR985 scenario 4: a symbol exported from the package\'s public entry carries the public export limitation, and one the entry does not export does not', () => {
     const LIMIT = 'public export: consumers outside this repository are not listed'
     for (const s of [PINNED[8]!, PINNED[2]!, PINNED[4]!, PINNED[1]!]) expect(plan(dataDir, s).limitations, s.name).toContain(LIMIT)
-    for (const s of [PINNED[0]!, PINNED[9]!]) expect(plan(dataDir, s).limitations, s.name).not.toContain(LIMIT)
+    // packageName is declared in the entry itself, but the entry does not export it.
+    for (const s of [PINNED[0]!, PINNED[9]!, { path: 'src/index.ts', name: 'packageName' }]) expect(plan(dataDir, s).limitations, s.name).not.toContain(LIMIT)
   })
 
-  it('FR984 a new name that a symbol of the same scope already has is said', () => {
+  it('FR985 a new name that a symbol of the same scope already has is said, in the scope of every member renamed together too', () => {
     expect(plan(dataDir, PINNED[2]!, 'hasMetadata').limitations).toContain('hasMetadata already names a method at src/data-source/DataSource.ts:27 in the same scope.')
+    expect(plan(dataDir, PINNED[4]!, 'quoteName').limitations).toContain('quoteName already names a method at src/driver/mysql/MysqlDriver.ts:22 in the same scope.')
   })
 
   it('FR987 the plan changes nothing: the repository is byte for byte the same after every plan, and the tool is a read tool outside core', () => {
