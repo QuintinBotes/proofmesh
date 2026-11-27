@@ -97,10 +97,13 @@ async function runProofMesh() {
   const pm = new McpClient('node', pmArgs('mcp'), { cwd: FIX })
   const t0 = performance.now(); await pm.init(); const startMs = performance.now() - t0
   const tools = await pm.tools()
-  const ask = proofmeshAdapter(pm, PM_DATA, truth, raw)
+  // Q10 to Q13 are asked of the structure tools, in the extra profile; a second server lists them, so tools/list above stays core.
+  const pmExtra = new McpClient('node', pmArgs('mcp', '--tools', 'extra'), { cwd: FIX })
+  await pmExtra.init()
+  const ask = proofmeshAdapter(pm, pmExtra, truth, raw)
   const answers = {}
-  for (const q of Q) answers[q.id] = { ...(await ask(q)), ...(['dead_code', 'cycles', 'roots'].includes(q.kind) ? { mark: 'data' } : {}) }
-  pm.close()
+  for (const q of Q) answers[q.id] = await ask(q)
+  pm.close(); pmExtra.close()
   // The context map (get_context_map, in the data profile) is scored as aider's map is: the target file as the focus, at each budget.
   const cm = new McpClient('node', pmArgs('mcp', '--tools', 'data'), { cwd: FIX })
   await cm.init()
@@ -199,6 +202,7 @@ function runScip() {
         case 'dead_code': return { answer: new Set([...S.info].filter(([sym, p]) => p.file.startsWith(q.scope) && /^[\w$]+\(\)\.$/.test(p.desc) && !callersOf(sym).some((r) => r.from !== sym)).map(([sym]) => S.key(sym))), mark: 'data' }
         case 'cycles': { const adj = new Map(); for (const [to, from] of importers) for (const f of from) { if (!adj.has(f)) adj.set(f, new Set()); adj.get(f).add(to) } return { answer: new Set(tarjan(new Set(srcFiles), adj).flat()), mark: 'data' } }
         case 'roots': { const imported = new Set([...importers].filter(([, from]) => [...from].some((f) => f.startsWith(q.scope))).map(([to]) => to)); return { answer: new Set(srcFiles.filter((f) => modules.has(f) && !imported.has(f))), mark: 'data' } }
+        default: return { none: true }
       }
     })()
     answers[q.id] = { ...a, ms: null, bytes: null }

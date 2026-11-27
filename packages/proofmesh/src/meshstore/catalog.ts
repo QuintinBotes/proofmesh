@@ -615,6 +615,15 @@ export class Catalog {
       .map((r) => this.job(r.id)!).filter((j) => j.state === 'queued' || j.state === 'running')
   }
 
+  /**
+   * The repository's job that last ended, or last moved if none has since, as job() reports it: an `index --no-wait` refused while
+   * another index ran ends before that index does, so the one that published is last.
+   */
+  lastJob(repositoryId: string): IndexJob | undefined {
+    const r = this.db.prepare('select id from index_job where repository_id = ? order by coalesce(finished_at, progress_at, started_at, requested_at) desc, rowid desc limit 1').get(repositoryId) as { id: string } | undefined
+    return r && this.job(r.id)
+  }
+
   updateJob(id: string, patch: Partial<{ state: string; started_at: string; finished_at: string; phase: string; done: number; total: number; result: string; error: string; owner: string; progress_at: string; phase_started_at: string; plan: string; adapter_progress: string }>): void {
     const keys = Object.keys(patch)
     if (keys.length) this.db.prepare(`update index_job set ${keys.map((k) => `${k} = ?`).join(', ')} where id = ?`).run(...keys.map((k) => (patch as Record<string, unknown>)[k]), id)
@@ -634,4 +643,22 @@ export class Catalog {
     const elapsed = started === null ? null : (row.finished_at ? Date.parse(row.finished_at as string) : Date.now()) - started
     return { ...rest, state: interrupted ? 'interrupted' : row.state, result: row.result ? JSON.parse(row.result as string) : null, plan: row.plan ? JSON.parse(row.plan as string) : null, adapters: adapterProgress ? JSON.parse(adapterProgress as string) : null, elapsed_ms: elapsed } as never
   }
+}
+
+/** The repository's last index job when it failed or was interrupted, with the one line every status surface shows for it (FR870). */
+export function lastIndexFailure(catalog: Catalog, repositoryId: string): { job: IndexJob; note: string } | null {
+  const last = catalog.lastJob(repositoryId)
+  if (last?.state !== 'failed' && last?.state !== 'interrupted') return null
+  // An interrupted job recorded no error: its process stopped before it could.
+  const job = { ...last, error: last.error ?? (last.state === 'interrupted' ? 'its process stopped before it recorded an outcome' : null) }
+  return { job, note: `last index job ${job.id} ${job.state}${job.finished_at ? ` at ${job.finished_at}` : ''}${job.error ? `: ${job.error}` : ''}` }
+}
+
+/** The one refusal for a repository with no published snapshot (FR1000): it names the open index job, else the last one when that failed, else says to index. */
+export function noSnapshot(catalog: Catalog, repositoryId: string, subject = 'this repository'): ProofmeshError {
+  const job = catalog.openJobs(repositoryId).at(-1)
+  if (job) return new ProofmeshError('SNAPSHOT_UNAVAILABLE', `no published snapshot for ${subject}; index job ${job.id} is ${job.state}${job.phase ? ` (${job.phase}${job.total ? ` ${job.done}/${job.total}` : job.done ? ` ${job.done} files found` : ''})` : ''}; poll it with get_job`, { detail: 'none', job_id: job.id })
+  const failed = lastIndexFailure(catalog, repositoryId)
+  if (!failed) return new ProofmeshError('SNAPSHOT_UNAVAILABLE', `no published snapshot for ${subject}; run "proofmesh index" first`, { detail: 'none' })
+  return new ProofmeshError('SNAPSHOT_UNAVAILABLE', `no published snapshot for ${subject}; ${failed.note}; run "proofmesh index" again`, { detail: 'none', job_id: failed.job.id, job_state: failed.job.state, job_finished_at: failed.job.finished_at, job_error: failed.job.error })
 }

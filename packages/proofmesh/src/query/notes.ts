@@ -78,7 +78,8 @@ export function fingerprint(db: Database.Database, refs: string[]): string {
   const label = (id: string) => { const s = db.prepare('select kind, qualified_name from symbol where id = ?').get(id) as { kind: string; qualified_name: string } | undefined; return s ? `${s.kind}:${s.qualified_name}` : id }
   const lines = new Set<string>()
   for (const id of ids) {
-    for (const e of db.prepare("select src, type, dst from edge where (src = ? or dst = ?) and resolution = 'resolved'").all(id, id) as Array<{ src: string; type: string; dst: string }>) lines.add(`${label(e.src)} ${e.type} ${label(e.dst)}`)
+    // A doc naming the code is no relationship of the code, and its source is a doc file whose id is the snapshot's own.
+    for (const e of db.prepare("select src, type, dst from edge where (src = ? or dst = ?) and resolution = 'resolved' and type <> 'mentions'").all(id, id) as Array<{ src: string; type: string; dst: string }>) lines.add(`${label(e.src)} ${e.type} ${label(e.dst)}`)
   }
   const relations = sha256(canonicalJson({ refs: [...refs].sort(), resolved: ids.map(label).sort(), edges: [...lines].sort() }))
   const files = new Set(ids.map((id) => { const r = db.prepare('select f.path, f.content_hash, ev.extractor from symbol s join file f on f.id = s.file_id join evidence ev on ev.id = s.evidence_id where s.id = ?').get(id) as { path: string; content_hash: string | null; extractor: string }; return `${sha256(r.path).slice(0, 8)}:${(r.content_hash ?? '').slice(0, 12)}:${r.extractor}` }))

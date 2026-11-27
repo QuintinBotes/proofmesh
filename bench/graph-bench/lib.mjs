@@ -52,6 +52,13 @@ export function makeTruth(T) {
       }
       case 'cycles': { const adj = group(T.imports, 'from', 'to'); return { items: new Set(tarjan(new Set(srcFiles), adj).flat()) } }
       case 'roots': return { items: new Set(srcFiles.filter((f) => ![...(impIn.get(f) ?? [])].some((x) => x.startsWith(q.scope)))) }
+      case 'hubs': {
+        // The top symbols by distinct callers and referrers (a symbol's use of itself is none); ties at the cut are listed beside it.
+        const users = new Map(); for (const [from, to] of [...T.calls.map((c) => [c.caller, c.callee]), ...T.refs.map((r) => [r.from, r.to])]) if (from !== to && sym.has(to)) { if (!users.has(to)) users.set(to, new Set()); users.get(to).add(from) }
+        const ranked = [...users].map(([id, u]) => [tKey(id), u.size]).sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))
+        const cut = ranked[q.top - 1]?.[1] ?? 0
+        return { items: new Set(ranked.slice(0, q.top).map(([k]) => k)), ranked: ranked.slice(0, q.top), tied_at_cut: ranked.filter(([, n]) => n === cut).map(([k]) => k) }
+      }
     }
   }
   return { T, sym, tKey, tFind, srcFiles, callKeys, callNames, truthFor }
@@ -119,14 +126,22 @@ export function graphifyAdapter(repo, { sym, tFind, srcFiles, callNames }) {
         const present = new Set(G.nodes.filter((n) => FILE_LABEL.test(n.label)).map((n) => n.source_file))
         return { answer: new Set(srcFiles.filter((f) => present.has(f) && !imported.has(f))), ms: performance.now() - t0, bytes: 0, note: 'no built-in tool: computed from graph.json', graph_level: true }
       }
+      case 'hubs': {
+        // Distinct sources per target over the use relations, as the truth ranks; god-nodes ranks by degree, which mixes in what a node uses.
+        const t0 = performance.now(); const USE = new Set(['calls', 'references', 'indirect_call', 'inherits', 'implements']); const users = new Map()
+        for (const e of G.links) if (USE.has(e.relation) && e.source !== e.target) { if (!users.has(e.target)) users.set(e.target, new Set()); users.get(e.target).add(e.source) }
+        const top = [...users].filter(([id]) => gNode.get(id) && !FILE_LABEL.test(gNode.get(id).label)).sort((a, b) => b[1].size - a[1].size || (a[0] < b[0] ? -1 : 1)).slice(0, q.top)
+        return { answer: new Set(top.map(([id]) => gKey(gNode.get(id)))), ms: performance.now() - t0, bytes: 0, note: 'computed from graph.json', graph_level: true }
+      }
     }
   }
 }
 
 // ---------- ProofMesh ----------
 // Asked over MCP (an McpClient already initialised) in its default envelope, lean: a header, one `name path:line [tags]`
-// row per result, `# ` lines (#41). Q10-Q12 have no MCP tool and are computed from the sealed snapshot in pmData.
-export function proofmeshAdapter(pm, pmData, { srcFiles, callKeys }, raw) {
+// row per result, `# ` lines (#41). Q10-Q13 are asked of find_unused, find_cycles, find_entry_points and find_hubs (#34), which are
+// in the extra profile: `pmExtra` is a second client started with --tools extra, so `pm` keeps the default core listing.
+export function proofmeshAdapter(pm, pmExtra, { callKeys }, raw) {
   let snapshotId
   const TOKEN = /"(?:[^"\\]|\\.)*"(?::\d+)?|\S+/g
   const unquote = (t) => (t.startsWith('"') ? JSON.parse(t) : t)
@@ -136,10 +151,10 @@ export function proofmeshAdapter(pm, pmData, { srcFiles, callKeys }, raw) {
     const named = !site(t[0]) && t[0] !== 'external', at = t[named ? 1 : 0]
     return { name: named ? unquote(t[0]) : null, path: site(at)?.path ?? null, line: site(at)?.line ?? null, tags: t.slice(named ? 2 : 1), row }
   }
-  async function pmLean(tool, args) {
+  async function pmLean(tool, args, client = pm) {
     let rows = [], ms = 0, bytes = 0, calls = 0, cursor, text = ''
     do {
-      const r = await pm.call(tool, { ...args, ...(cursor ? { cursor } : {}) })
+      const r = await client.call(tool, { ...args, ...(cursor ? { cursor } : {}) })
       ms += r.ms; bytes += r.bytes; calls++; text += (text ? '\n' : '') + r.text
       if (r.isError || !r.text.startsWith('# ')) return { rows, ms, bytes, calls, text, error: r.text.slice(0, 400) }
       const lines = r.text.split('\n')
@@ -159,25 +174,6 @@ export function proofmeshAdapter(pm, pmData, { srcFiles, callKeys }, raw) {
     const c = r.rows.filter((s) => s.path === file && (kinds ? kinds.includes(s.tags[0]) : s.name === qname || last(String(s.name)) === name))
     const best = c.find((s) => s.name === qname) ?? c[0]
     return { id: best?.tags.find((t) => t.startsWith('id='))?.slice(3), ms: r.ms, bytes: r.bytes, calls: r.calls }
-  }
-  function sql(query) {
-    const db = path.join(pmData, 'snapshots', `${snapshotId}.db`)
-    const r = spawnSync('sqlite3', ['-readonly', '-json', db, query], { encoding: 'utf8', maxBuffer: 256 << 20 })
-    return r.stdout.trim() ? JSON.parse(r.stdout) : []
-  }
-  function pmGraphLevel(q) {
-    const t0 = performance.now(); const note = 'no MCP tool: computed from the sealed snapshot (SQLite)'
-    if (q.kind === 'dead_code') {
-      const rows = sql(`select s.name, f.path from symbol s join file f on f.id=s.file_id where s.kind='function' and f.path like '${q.scope}%' and instr(substr(s.qualified_name, instr(s.qualified_name, ':')+1), '.')=0 and not exists (select 1 from edge e where e.dst=s.id and e.src<>s.id)`)
-      return { answer: new Set(rows.map((r) => `${r.path}::${last(r.name)}`)), ms: performance.now() - t0, bytes: 0, calls: 0, note, graph_level: true }
-    }
-    const imp = sql(`select fa.path a, fb.path b from assertion x join file fa on fa.id=x.source_id join file fb on fb.id=x.target_id where x.type='imports' and x.resolution='resolved'`)
-    if (q.kind === 'cycles') {
-      const adj = new Map(); for (const { a, b } of imp) { if (!adj.has(a)) adj.set(a, new Set()); adj.get(a).add(b) }
-      return { answer: new Set(tarjan(new Set(srcFiles), adj).flat()), ms: performance.now() - t0, bytes: 0, calls: 0, note, graph_level: true }
-    }
-    const imported = new Set(imp.filter((r) => r.a.startsWith(q.scope)).map((r) => r.b)); const present = new Set(sql(`select path from file where disposition='indexed'`).map((r) => r.path))
-    return { answer: new Set(srcFiles.filter((f) => present.has(f) && !imported.has(f))), ms: performance.now() - t0, bytes: 0, calls: 0, note, graph_level: true }
   }
   async function proofmesh(q) {
     // The symbol lookup is measured apart from the answering call(s), as Graphify's lookup is not counted (#41). A file question
@@ -213,9 +209,26 @@ export function proofmeshAdapter(pm, pmData, { srcFiles, callKeys }, raw) {
         const valid = keys.length > 1 && keys.every((k, i) => i === 0 || callKeys.has(`${keys[i - 1]}->${k}`))
         return done(r, { path_found: keys.length > 0, path_hops: keys.length ? keys.length - 1 : null, path_valid: valid, path_text: keys.join(' -> '), cites: cited(r.rows) })
       }
-      case 'dead_code':
-      case 'cycles':
-      case 'roots': return pmGraphLevel(q)
+      case 'dead_code': {
+        // Top-level functions under the scope; only rows tagged unused answer, not reachable_only_by or possibly_used.
+        const r = await pmLean('find_unused', { kinds: ['function'], path_prefix: q.scope, top_level_only: true, limits: { max_rows: 1000 } }, pmExtra)
+        const rows = r.rows.filter((x) => x.tags.includes('unused'))
+        return done(r, { answer: new Set(rows.map(pmKey)), facts: rows.map((x) => ({ item: pmKey(x) })), cites: cited(r.rows) })
+      }
+      case 'cycles': {
+        // A row is one import inside a cycle: `<imported> <importer>:<line>`; type-only cycles are included, as the truth counts them.
+        const r = await pmLean('find_cycles', { path_prefix: q.scope, include_type_only: true, limits: { max_rows: 1000 } }, pmExtra)
+        return done(r, { answer: new Set(r.rows.flatMap((x) => [x.path, x.name])), facts: [...new Set(r.rows.flatMap((x) => [x.path, x.name]))].map((item) => ({ item })), cites: cited(r.rows) })
+      }
+      case 'roots': {
+        const r = await pmLean('find_entry_points', { path_prefix: q.scope, limits: { max_rows: 1000 } }, pmExtra)
+        const rows = r.rows.filter((x) => x.tags.includes('not_imported'))
+        return done(r, { answer: new Set(rows.map((x) => x.path)), facts: rows.map((x) => ({ item: x.path })), cites: cited(r.rows) })
+      }
+      case 'hubs': {
+        const r = await pmLean('find_hubs', { top: q.top, by: 'fan_in' }, pmExtra)
+        return done(r, { answer: new Set(r.rows.map(pmKey)), facts: r.rows.map((x) => ({ item: pmKey(x) })), cites: cited(r.rows) })
+      }
     }
   }
   proofmesh.snapshotId = () => snapshotId

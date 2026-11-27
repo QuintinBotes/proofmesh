@@ -60,9 +60,14 @@ export async function callTool($, tool, args) {
   return body
 }
 
+// The last index job when it failed, in the words `proofmesh status` uses, less the job id and time (FR873).
+const lastFailed = (j) => (j?.state === 'failed' || j?.state === 'interrupted' ? `last index job ${j.state}${j.error ? `: ${j.error}` : ''}` : '')
+let failed = ''
+
 async function line($) {
-  if (kind === 'current') return `current ${snapshot} (${age((await $.clock.now()) - published)})`
-  if (kind === 'behind') return edited.size ? `behind (${plural(edited.size, 'file')} edited)` : `behind (${plural(changed, 'file')} changed)`
+  const tail = failed ? `; ${failed}` : ''
+  if (kind === 'current') return `current ${snapshot} (${age((await $.clock.now()) - published)})${tail}`
+  if (kind === 'behind') return `${edited.size ? `behind (${plural(edited.size, 'file')} edited)` : `behind (${plural(changed, 'file')} changed)`}${tail}`
   return text
 }
 
@@ -83,9 +88,17 @@ async function refresh($) {
   const seen = edits
   try {
     const f = await proofmesh($, ['status', repo.id, '--fresh', '--json'])
-    if (f.exitCode !== 0) return await (f.stderr.includes('SNAPSHOT_UNAVAILABLE') ? show($, 'missing') : show($, 'unknown', `unknown (${lastLine(f.stderr)})`))
+    if (f.exitCode !== 0) {
+      if (!f.stderr.includes('SNAPSHOT_UNAVAILABLE')) return await show($, 'unknown', `unknown (${lastLine(f.stderr)})`)
+      // The refusal's details name the last index job when it failed; a CLI older than FR872 prints none.
+      let d
+      try { d = JSON.parse(f.stdout).error.details } catch {}
+      const reason = lastFailed(d && { state: d.job_state, error: d.job_error })
+      return await show($, 'missing', reason ? `missing; ${reason}` : 'missing')
+    }
     const fresh = JSON.parse(f.stdout)
     recording = fresh.trail_recording === true
+    failed = lastFailed(fresh.failed_job)
     const status = await callTool($, 'workspace_status', { repository_id: repo.id, envelope: 'compact' })
     snapshot = status.snapshot.id
     published = Date.parse(status.snapshot.published_at)
@@ -298,21 +311,8 @@ const asOf = () => `${snapshot}|${edits}`
 /** The pane asks again only for a current snapshot it has no answer for, and never with no change in the session. */
 const stale = () => repo && kind === 'current' && touched.size > 0 && answer?.of !== asOf()
 
-/** One lean row of analyze_impact, `<name> <path>:<line> <tags>`, a token with a space quoted as JSON. */
-function dependentOf(row) {
-  const tokens = (row.match(/(?:"(?:[^"\\]|\\.)*"|[^\s"])+/g) ?? []).map((t) => t.replace(/^("(?:[^"\\]|\\.)*")/, (q) => JSON.parse(q)))
-  const site = /^(.*):(\d+)$/
-  const i = tokens.length > 1 && site.test(tokens[1]) ? 1 : 0
-  const [, path, line] = site.exec(tokens[i]) ?? [null, null, null]
-  const tags = tokens.slice(i + 1)
-  return {
-    name: i ? tokens[0] : path ?? tokens[0], path, line: Number(line),
-    relationship: tags.find((t) => !/^(depth=\d+|inferred|generated|external)$/.test(t)) ?? '-',
-    // A lean row says inferred when a hop of its chain is; every other row was reached along resolved relationships.
-    evidence: tags.includes('inferred') ? 'inferred' : 'resolved',
-    depth: tags.find((t) => t.startsWith('depth=')) ?? '',
-  }
-}
+// analyze_impact's standing caveat, which the tool description carries: not repeated under every changed symbol.
+const STANDING = 'Potential impact, not a safety proof'
 
 /** Asks ProofMesh about the session's changes on the current snapshot, pinned so every answer is of that one snapshot. */
 async function analyse($) {
@@ -344,12 +344,18 @@ async function analyse($) {
     }
     next.more = Math.max(0, changed.length - SHOWN)
     for (const s of changed.slice(0, SHOWN)) {
-      const lean = (await callTool($, 'analyze_impact', { ...pin, key: s.stable_key, envelope: 'lean' })).split('\n').slice(1)
+      const i = await callTool($, 'analyze_impact', { ...pin, key: s.stable_key, envelope: 'compact' })
       const t = await callTool($, 'find_tests', { ...pin, key: s.stable_key, envelope: 'compact' })
       const row = {
         name: s.name, line: s.start_line,
-        dependents: lean.filter((l) => !l.startsWith('# ')).map(dependentOf),
-        notes: lean.filter((l) => l.startsWith('# ')),
+        // At the site that reaches the change, which a relationship recorded in another file (a registration) names apart; inferred
+        // when a hop of the dependent's chain is, and every other row was reached along resolved relationships.
+        dependents: i.data.dependents.map((d) => ({ id: d.id, name: d.name, path: d.path, loc: d.site ? `${d.site.path}:${d.site.start_line}` : `${d.path}:${d.line}`, relationship: d.relationship, evidence: d.basis === 'inferred' ? 'inferred' : 'resolved', depth: `depth=${d.depth}` })),
+        notes: [
+          // A depth or node-budget stop leaves the rest unfound, so total counts only what was found; its own note says more may be affected.
+          ...(i.completion.total > i.data.dependents.length ? [`# dependents: ${i.data.dependents.length} of ${i.completion.total} shown (${i.completion.stop_reasons.join(', ')})`] : []),
+          ...i.limitations.filter((l) => !l.startsWith(STANDING)).map((l) => `# ${l}`),
+        ],
         tests: t.data.tests.map((x) => `test ${x.name} ${x.path}:${x.line} ${x.evidence}${x.basis === 'inferred' ? ' inferred' : ''}`),
         cut: t.completion.truncated ? `# tests: ${t.data.tests.length} of ${t.data.totals.tests} shown (${t.completion.stop_reasons.join(', ')})` : null,
       }
@@ -378,15 +384,15 @@ function impactRows() {
   if (!answer) return [{ depth: 0, text: kind === 'current' ? `impact: asking about ${snapshot}` : `impact: waiting for a snapshot with the session's edits (${kind || 'unknown'})` }, ...away]
   const out = [{ depth: 0, text: `impact as of ${answer.snapshot} (${answer.of === asOf() && kind === 'current' ? 'current' : 'behind'})` }]
   if (answer.error) return [...out, { depth: 0, text: `impact: unknown (${answer.error})` }]
-  // shortcut: an opened symbol id never matches, since a lean impact row names no id; a Read of the file, or get_symbol by name and path, does.
-  const unopened = (d) => recording && d.path !== null && ![...opened].some((p) => d.path === p || d.path.startsWith(`${p}/`))
+  // Opened: its symbol id (get_symbol by id), its file, or a directory over it.
+  const unopened = (d) => recording && !opened.has(d.id) && ![...opened].some((p) => d.path === p || d.path.startsWith(`${p}/`))
   const notOpened = [...answer.files.values()].flat().flatMap((s) => s.dependents).filter(unopened).length
   if (recording) out.push({ depth: 0, text: `${plural(notOpened, 'dependent')} not opened` })
   for (const [path, symbols] of answer.files) {
     out.push({ depth: 0, text: path })
     for (const s of symbols) {
       out.push({ depth: 1, text: `changed ${s.name} line ${s.line}` })
-      for (const d of s.dependents) out.push({ depth: 2, dep: { head: `${d.relationship} ${d.name}`, loc: d.path === null ? null : `${d.path}:${d.line}`, tail: [d.evidence, d.depth, ...(unopened(d) ? ['not opened'] : [])].filter(Boolean).join(' ') } })
+      for (const d of s.dependents) out.push({ depth: 2, dep: { head: `${d.relationship} ${d.name}`, loc: d.loc, tail: [d.evidence, d.depth, ...(unopened(d) ? ['not opened'] : [])].filter(Boolean).join(' ') } })
       out.push(...s.notes.map((n) => ({ depth: 2, text: n, dim: true })))
       out.push(...(s.tests.length ? s.tests : ['no test reaches it']).map((t) => ({ depth: 2, text: t })))
       if (s.cut) out.push({ depth: 2, text: s.cut, dim: true })
@@ -398,7 +404,7 @@ function impactRows() {
   return [...out, ...away]
 }
 
-const rowText = (r) => '  '.repeat(r.depth) + (r.dep ? [r.dep.head, r.dep.loc ?? 'external', r.dep.tail].join(' ') : r.text)
+const rowText = (r) => '  '.repeat(r.depth) + (r.dep ? [r.dep.head, r.dep.loc, r.dep.tail].join(' ') : r.text)
 
 /**
  * Draws the rows: a dependent is a Button that copies its file:line, beside an open button that does too. The file:line is not a Link:
@@ -410,12 +416,12 @@ function drawPane($, e) {
   const children = impactRows().map((r) => {
     if (!r.dep) return Box({ flexDirection: 'column', paddingLeft: r.depth * 2, children: [Text({ dimColor: r.dim === true, children: [r.text] })] })
     const i = n++, { head, loc, tail } = r.dep
-    const copy = (press) => (loc ? $.ui.copy({ text: loc, surface: press.surface }) : undefined)
+    const copy = (press) => $.ui.copy({ text: loc, surface: press.surface })
     return Box({
       flexDirection: 'row', columnGap: 1, paddingLeft: r.depth * 2,
       children: [
         Button({ key: `dep:${i}`, label: head, plain: true, onPress: copy }),
-        Text({ children: [loc ?? 'external'] }),
+        Text({ children: [loc] }),
         Text({ dimColor: true, children: [tail] }),
         Button({ key: `open:${i}`, label: 'open', onPress: copy }),
       ],
@@ -477,7 +483,7 @@ export function register(on) {
     const lines = [await line($), `repository ${repo.name} (${repo.id}) at ${repo.root}${published ? `, snapshot published ${age((await $.clock.now()) - published)} ago` : ''}`, `files edited since: ${edited.size ? [...edited].join(', ') : 'none'}`]
     try {
       const r = await proofmesh($, ['status', repo.id])
-      lines.push(...(r.exitCode === 0 ? r.stdout.split('\n').filter((l) => /^(index job |adapters available|snapshot )/.test(l)) : [lastLine(r.stderr)]))
+      lines.push(...(r.exitCode === 0 ? r.stdout.split('\n').filter((l) => /^(index job |last index job |adapters available|snapshot )/.test(l)) : [lastLine(r.stderr)]))
     } catch (err) {
       lines.push(`proofmesh status failed: ${why(err)}`)
     }

@@ -6,6 +6,7 @@ import { BUILT_IN_REGISTRY, type Registry } from './languages.js'
 import { ADAPTER_LANGUAGE_NAMES, adapterLanguageId, detectLanguage, type Kind } from './language-detect.js'
 import { CODEOWNERS_PATHS } from './ownership.js'
 import { attributeLookup, isGeneratedFile, type Attributes } from './generated-vendored.js'
+import { isDoc } from './doc-links.js'
 
 /** Directories excluded wherever they sit. `build` is not one: it is output only where a manifest names it (FR295). */
 export const EXCLUDED_DIRS = ['node_modules', 'dist', 'bin', 'obj'] as const
@@ -207,7 +208,8 @@ function classify(root: string, rel: string, ignored: (rel: string) => boolean, 
   }
   const name = path.posix.basename(rel)
   const found = classifyCaptured(root, rel, name, head, size, registry)
-  return found.status === 'capture' && found.role === 'source' && (attrs.generated ?? isGeneratedFile(name, head)) ? { ...found, generated: true } : found
+  // A Markdown doc is flagged as a source is, so a generated one names no code (FR822).
+  return ((found.status === 'capture' && found.role === 'source') || isDoc(found)) && (attrs.generated ?? isGeneratedFile(name, head)) ? { ...found, generated: true } : found
 }
 
 function classifyCaptured(root: string, rel: string, name: string, head: string, size: number, registry: Registry): Discovered {

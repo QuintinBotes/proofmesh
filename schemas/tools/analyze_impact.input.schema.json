@@ -158,6 +158,10 @@
         }
       ],
       "description": "Whether the walk follows candidate edges: a call site that binds one candidate, or an ambiguous one of at most five. true follows them, false never does, auto (the default) follows them when every subject's file was analysed by the syntax tier alone. Every row reached through one is inferred; a site with more than five candidates is never followed."
+    },
+    "include_workspace": {
+      "type": "boolean",
+      "description": "true continues the walk into the other repositories of this repository's workspaces through the packages it builds (an npm package.json), read from the workspace's sealed link file: a site there that reaches a dependent is one deeper, and its own dependents follow. Each such dependent carries its repository and commit."
     }
   }
 }

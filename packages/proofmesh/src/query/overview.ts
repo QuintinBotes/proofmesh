@@ -1,6 +1,6 @@
 import type Database from 'better-sqlite3'
 
-/** Resolved relationships between files by type, excluding a project's containment of its own files. */
+/** Resolved relationships between files by type, excluding a project's containment of its own files and a doc's mentions of code. */
 const LINKS_SQL = `
   select ss.file_id as src, sd.file_id as dst, e.type, count(*) as n from edge e
     join symbol ss on ss.id = e.src join symbol sd on sd.id = e.dst
@@ -8,7 +8,7 @@ const LINKS_SQL = `
     group by ss.file_id, sd.file_id, e.type
   union all
   select e.src, e.dst, e.type, count(*) from edge e
-    where e.resolution = 'resolved' and e.src like 'file\\_%' escape '\\' and e.dst like 'file\\_%' escape '\\' and e.src <> e.dst
+    where e.resolution = 'resolved' and e.type <> 'mentions' and e.src like 'file\\_%' escape '\\' and e.dst like 'file\\_%' escape '\\' and e.src <> e.dst
     group by e.src, e.dst, e.type`
 const STATS_SQL = "select file_id, sum(kind <> 'module') as symbols, count(*) as entries from symbol group by file_id"
 

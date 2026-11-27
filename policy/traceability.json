@@ -944,6 +944,39 @@
     "FR758": [
       "packages/proofmesh/test/constrained.test.ts"
     ],
+    "FR880": [
+      "packages/proofmesh/test/constrained.test.ts"
+    ],
+    "FR881": [
+      "packages/proofmesh/test/constrained.test.ts"
+    ],
+    "FR882": [
+      "packages/proofmesh/test/constrained.test.ts"
+    ],
+    "FR883": [
+      "packages/proofmesh/test/constrained.test.ts"
+    ],
+    "FR884": [
+      "packages/proofmesh/test/constrained.test.ts"
+    ],
+    "FR885": [
+      "packages/proofmesh/test/constrained.test.ts"
+    ],
+    "FR886": [
+      "packages/proofmesh/test/constrained.test.ts"
+    ],
+    "FR887": [
+      "packages/proofmesh/test/constrained.test.ts"
+    ],
+    "FR888": [
+      "packages/proofmesh/test/constrained.test.ts"
+    ],
+    "FR889": [
+      "packages/proofmesh/test/constrained.test.ts"
+    ],
+    "FR890": [
+      "packages/proofmesh/test/constrained.test.ts"
+    ],
     "FR181": [
       "packages/proofmesh/test/basis.test.ts"
     ],
@@ -1290,7 +1323,8 @@
       "packages/proofmesh/test/generated-vendored.test.ts"
     ],
     "FR299": [
-      "packages/proofmesh/test/generated-vendored.test.ts"
+      "packages/proofmesh/test/generated-vendored.test.ts",
+      "packages/proofmesh/test/structure-tools.test.ts"
     ],
     "FR330": [
       "packages/proofmesh/test/max-bytes-exact.test.ts"
@@ -1665,6 +1699,27 @@
     "FR706": [
       "packages/proofmesh-plugin/tests/impact.test.ts"
     ],
+    "FR860": [
+      "packages/proofmesh/test/impact.test.ts"
+    ],
+    "FR861": [
+      "packages/proofmesh/test/impact.test.ts"
+    ],
+    "FR862": [
+      "packages/proofmesh/test/test-reach.test.ts"
+    ],
+    "FR863": [
+      "packages/proofmesh-plugin/tests/impact.test.ts"
+    ],
+    "FR864": [
+      "packages/proofmesh-plugin/tests/impact.test.ts"
+    ],
+    "FR865": [
+      "packages/proofmesh-plugin/tests/impact.test.ts"
+    ],
+    "FR866": [
+      "packages/proofmesh-plugin/tests/impact.test.ts"
+    ],
     "FR550": [
       "packages/proofmesh/test/ts-accessors.test.ts"
     ],
@@ -1730,6 +1785,83 @@
     ],
     "FR852": [
       "packages/proofmesh/test/syntax-structure.test.ts"
+    ],
+    "FR820": [
+      "packages/proofmesh/test/doc-links.test.ts"
+    ],
+    "FR821": [
+      "packages/proofmesh/test/doc-links.test.ts"
+    ],
+    "FR822": [
+      "packages/proofmesh/test/doc-links.test.ts"
+    ],
+    "FR823": [
+      "packages/proofmesh/test/doc-links.test.ts"
+    ],
+    "FR824": [
+      "packages/proofmesh/test/doc-links.test.ts"
+    ],
+    "FR825": [
+      "packages/proofmesh/test/doc-links.test.ts"
+    ],
+    "FR826": [
+      "packages/proofmesh/test/doc-links.test.ts"
+    ],
+    "FR870": [
+      "packages/proofmesh/test/jobs.test.ts"
+    ],
+    "FR871": [
+      "packages/proofmesh/test/jobs.test.ts"
+    ],
+    "FR872": [
+      "packages/proofmesh/test/jobs.test.ts"
+    ],
+    "FR873": [
+      "packages/proofmesh/test/plugin.test.ts",
+      "packages/proofmesh-plugin/tests/status.test.ts"
+    ],
+    "FR900": [
+      "packages/proofmesh/test/xrepo-symbols.test.ts"
+    ],
+    "FR901": [
+      "packages/proofmesh/test/xrepo-symbols.test.ts"
+    ],
+    "FR902": [
+      "packages/proofmesh/test/xrepo-symbols.test.ts"
+    ],
+    "FR903": [
+      "packages/proofmesh/test/xrepo-symbols.test.ts"
+    ],
+    "FR904": [
+      "packages/proofmesh/test/xrepo-symbols.test.ts"
+    ],
+    "FR940": [
+      "packages/proofmesh/test/structure-tools.test.ts"
+    ],
+    "FR941": [
+      "packages/proofmesh/test/structure-tools.test.ts"
+    ],
+    "FR942": [
+      "packages/proofmesh/test/structure-tools.test.ts"
+    ],
+    "FR943": [
+      "packages/proofmesh/test/structure-tools.test.ts"
+    ],
+    "FR944": [
+      "packages/proofmesh/test/structure-tools.test.ts"
+    ],
+    "FR945": [
+      "packages/proofmesh/test/structure-tools.test.ts"
+    ],
+    "FR946": [
+      "packages/proofmesh/test/parity-bench.test.ts",
+      "bench/graph-bench/lib.mjs"
+    ],
+    "FR1000": [
+      "packages/proofmesh/test/jobs.test.ts"
+    ],
+    "FR1001": [
+      "e2e/no-snapshot.spec.ts"
     ],
     "FR920": [
       "packages/proofmesh/test/context-map.test.ts"

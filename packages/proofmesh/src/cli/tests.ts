@@ -40,6 +40,7 @@ export function runTests(dataDir: string, rest: string[], has: (args: string[], 
   } catch (e) {
     const err = asProofmeshError(e)
     process.stderr.write(`proofmesh: ${err.code}: ${err.message}\n`)
+    if (json) console.log(JSON.stringify(err.toJSON(), null, 2))
     return 2
   }
 }

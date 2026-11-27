@@ -4,7 +4,7 @@
 export interface Envelope {
 schema_version: "0.1"
 query_id: string
-tool: ("workspace_status" | "list_repositories" | "list_snapshots" | "list_workspaces" | "find_symbols" | "get_symbol" | "get_relationships" | "trace_paths" | "read_evidence" | "get_overview" | "analyze_impact" | "find_tests" | "search_sources" | "get_memory" | "verify_claim" | "request_index" | "get_job" | "get_claims" | "save_memory" | "get_table_reach" | "get_property_reads" | "get_external_usage" | "find_query_source" | "compare_snapshots" | "list_queries" | "get_ecosystem" | "prepare_verification" | "get_verification" | "impact_completeness" | "get_symbols_at" | "get_session_trail" | "get_context_map")
+tool: ("workspace_status" | "list_repositories" | "list_snapshots" | "list_workspaces" | "find_symbols" | "get_symbol" | "get_relationships" | "trace_paths" | "read_evidence" | "get_overview" | "analyze_impact" | "find_tests" | "search_sources" | "get_memory" | "verify_claim" | "request_index" | "get_job" | "get_claims" | "save_memory" | "get_table_reach" | "get_property_reads" | "get_external_usage" | "find_query_source" | "compare_snapshots" | "list_queries" | "get_ecosystem" | "prepare_verification" | "get_verification" | "impact_completeness" | "get_symbols_at" | "get_session_trail" | "find_stale_mentions" | "find_unused" | "find_cycles" | "find_entry_points" | "find_hubs" | "get_context_map")
 /**
  * The sealed snapshot or link file that answered; null for a catalog tool, which answers from the list of registered repositories.
  */
@@ -114,6 +114,10 @@ timed_out: boolean
  * Continues a truncated list (find_symbols, get_relationships) on the same snapshot; null when there is nothing more or the tool does not page.
  */
 next_cursor: (string | null)
+/**
+ * How many rows the search found, before max_rows, max_bytes or a page cut the list: analyze_impact's dependents and find_tests' tests. A search stopped by max_depth or its node budget found only part of what may be affected, so total then counts that part. Absent from the other tools.
+ */
+total?: number
 }
 limits: {
 requested: {
@@ -162,6 +166,14 @@ kind: string
 name: string
 qualified_name: string
 path: string
+/**
+ * The line in path of the relationship that first reached the dependent (for a call, its call site); its declaration line when dispatch alone reached it or that relationship is recorded in another file, which site then names.
+ */
+line: number
+/**
+ * That relationship's type (calls, implements, imports and so on), or dispatch when the dependent was reached only as an implementation or override of a member the walk reached.
+ */
+relationship: string
 depth: number
 /**
  * inferred when the strongest chain to the dependent has an inferred hop; the strongest chain is the shortest all-observed chain where one exists, and depth is that chain's.
@@ -169,7 +181,7 @@ depth: number
 basis: ("observed" | "inferred")
 project: (string | null)
 /**
- * For a file reached through imports (kind file): the import statement that reached it.
+ * Where the relationship that first reached the dependent is recorded, when that is not in path: a registration in another file, say (FR860). For a file reached through imports (kind file): the import statement that reached it.
  */
 site?: {
 path: string
@@ -187,6 +199,14 @@ generated?: boolean
  * The stable_key of the dependent (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file.
  */
 key?: string
+/**
+ * Present on a row of another repository of the workspace (include_workspace): that repository, and the commit its snapshot was built from. Its ids and evidence ids are of that snapshot.
+ */
+repository?: {
+id: string
+name: string
+commit: (string | null)
+}
 }[]
 totals: {
 dependents: number
@@ -218,6 +238,20 @@ stopped_by: ("max_depth" | "node_budget" | null)
  * Members nested in type subjects, included as starting points because calls reach a type through them.
  */
 subject_members: number
+/**
+ * With include_workspace: each workspace that holds this repository, its link file (null when none is sealed), and each member's side of it: the snapshot and commit the link file was built from, and whether that snapshot is still the member's current one.
+ */
+workspace?: {
+name: string
+link_file_id: (string | null)
+members: {
+id: string
+name: string
+commit: (string | null)
+snapshot_id: string
+current: boolean
+}[]
+}[]
 }
 
 /**
@@ -292,6 +326,10 @@ envelope?: ("full" | "compact" | "lean")
  * Whether the walk follows candidate edges: a call site that binds one candidate, or an ambiguous one of at most five. true follows them, false never does, auto (the default) follows them when every subject's file was analysed by the syntax tier alone. Every row reached through one is inferred; a site with more than five candidates is never followed.
  */
 include_inferred?: (boolean | "auto")
+/**
+ * true continues the walk into the other repositories of this repository's workspaces through the packages it builds (an npm package.json), read from the workspace's sealed link file: a site there that reaches a dependent is one deeper, and its own dependents follow. Each such dependent carries its repository and commit.
+ */
+include_workspace?: boolean
 }
 
 /**
@@ -411,6 +449,251 @@ max_depth?: number
 envelope?: ("full" | "compact")
 }
 
+export interface FindCyclesData {
+cycles: {
+cycle: number
+type_only: boolean
+/**
+ * True when the cycle holds only through an inferred import.
+ */
+inferred: boolean
+files: string[]
+/**
+ * Imports between its files.
+ */
+edges: number
+}[]
+/**
+ * By cycle, importing file and line.
+ */
+edges: {
+cycle: number
+from: string
+to: string
+line: number
+/**
+ * static, re_export, type_only or dynamic.
+ */
+kind: string
+inferred: boolean
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
+}[]
+totals: {
+cycles: number
+type_only: number
+files: number
+edges: number
+}
+}
+
+/**
+ * Import cycles among files (FR941): each strongly connected set of files under path_prefix once, with one row per pair of its files that import, at the first import's path:line. Runtime cycles come first; a set that is strongly connected only when type-only imports count is listed apart, marked type_only, with only the imports no runtime cycle inside it lists. A cycle that holds only through an inferred import is marked inferred. Lean over MCP: `<imported file> <importing file>:<line> cycle=<n>`, tagged with the import kind when not static (re_export, type_only, dynamic) and inferred; pages with a cursor.
+ */
+export interface FindCyclesInput {
+/**
+ * Optional when exactly one repository is registered.
+ */
+repository_id?: string
+/**
+ * Null pins the current published snapshot.
+ */
+snapshot_id?: (string | null)
+limits?: {
+timeout_ms?: number
+max_rows?: number
+max_bytes?: number
+max_depth?: number
+}
+/**
+ * snapshot (default) answers from the published snapshot. strict first checks that the working tree is exactly what the snapshot was built from; if not, it starts an index and refuses with STALE_INPUT naming the changed files.
+ */
+freshness?: ("snapshot" | "strict")
+/**
+ * lean, the default over MCP: plain text with no JSON and no structuredContent. A header `# <tool> · <n> rows · <snapshot> current` (stale when the snapshot is older than the repository's current one), one `<name> <path>:<line>` row per result, then `# ` lines for the limitations of this answer and `# more: cursor <c>` when a next page exists. The line is the call, import or reference site for relationship, impact and path rows and the declaration for symbol rows; tags follow: in or out when both directions are asked, depth=<n>, dispatch, external, candidate, ambiguous, unresolved:<reason>, and the relationship type when the query mixes types. A name or path with a space, quote or # is quoted as JSON. compact: the JSON envelope without the snapshot-wide parts an earlier answer gave (coverage, unresolved reasons, standing limitations). full: the whole JSON envelope. Ask for compact or full for ids, evidence and totals.
+ */
+envelope?: ("full" | "compact" | "lean")
+/**
+ * The next_cursor of the previous page. It continues the same query on the same snapshot; it expires after an hour.
+ */
+cursor?: string
+/**
+ * Only files whose repository-relative path starts with this, such as `src/`. Default: the whole repository.
+ */
+path_prefix?: string
+/**
+ * Default true: also list the cycles that exist only through type-only imports, marked type_only. False lists runtime cycles alone.
+ */
+include_type_only?: boolean
+/**
+ * Default true. False leaves test files out of the graph.
+ */
+include_tests?: boolean
+}
+
+export interface FindEntryPointsData {
+entries: {
+reason: ("not_imported" | "endpoint" | "job" | "main" | "bin" | "exports")
+path: string
+line: number
+name: (string | null)
+kind: (string | null)
+id: (string | null)
+key?: string
+/**
+ * The package.json that names the entry.
+ */
+manifest?: string
+/**
+ * The path as the manifest writes it; path is the indexed file it names, or the manifest when none matches.
+ */
+target?: string
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
+}[]
+totals: {
+not_imported: number
+endpoint: number
+job: number
+main: number
+bin: number
+exports: number
+}
+}
+
+/**
+ * Where execution enters (FR942): modules under path_prefix that no file under it imports (statically, dynamically or by re-export), then the framework entry points the snapshot knows (endpoints and jobs) and the entries of package.json manifests (main, module, types, exports, bin), each with its kind and path:line. Lean over MCP: a module is `<path>:1 not_imported`; another entry its name, path:line and kind; pages with a cursor.
+ */
+export interface FindEntryPointsInput {
+/**
+ * Optional when exactly one repository is registered.
+ */
+repository_id?: string
+/**
+ * Null pins the current published snapshot.
+ */
+snapshot_id?: (string | null)
+limits?: {
+timeout_ms?: number
+max_rows?: number
+max_bytes?: number
+max_depth?: number
+}
+/**
+ * snapshot (default) answers from the published snapshot. strict first checks that the working tree is exactly what the snapshot was built from; if not, it starts an index and refuses with STALE_INPUT naming the changed files.
+ */
+freshness?: ("snapshot" | "strict")
+/**
+ * lean, the default over MCP: plain text with no JSON and no structuredContent. A header `# <tool> · <n> rows · <snapshot> current` (stale when the snapshot is older than the repository's current one), one `<name> <path>:<line>` row per result, then `# ` lines for the limitations of this answer and `# more: cursor <c>` when a next page exists. The line is the call, import or reference site for relationship, impact and path rows and the declaration for symbol rows; tags follow: in or out when both directions are asked, depth=<n>, dispatch, external, candidate, ambiguous, unresolved:<reason>, and the relationship type when the query mixes types. A name or path with a space, quote or # is quoted as JSON. compact: the JSON envelope without the snapshot-wide parts an earlier answer gave (coverage, unresolved reasons, standing limitations). full: the whole JSON envelope. Ask for compact or full for ids, evidence and totals.
+ */
+envelope?: ("full" | "compact" | "lean")
+/**
+ * The next_cursor of the previous page. It continues the same query on the same snapshot; it expires after an hour.
+ */
+cursor?: string
+/**
+ * Only files whose repository-relative path starts with this, such as `src/`. Default: the whole repository.
+ */
+path_prefix?: string
+/**
+ * Default false: files the generated-code policy flags are left out, and a limitation says how many (FR299). True lists them.
+ */
+include_generated?: boolean
+/**
+ * Default false: test files are not listed as entry points (their imports still count).
+ */
+include_tests?: boolean
+}
+
+export interface FindHubsData {
+hubs: {
+id: string
+/**
+ * The stable_key of the symbol (FR280).
+ */
+key?: string
+kind: string
+name: string
+qualified_name: string
+path: string
+line: number
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
+fan_in: number
+fan_out: number
+betweenness?: number
+}[]
+by: ("fan_in" | "fan_out" | "betweenness")
+/**
+ * For betweenness: the sources it was computed from when not every node was one; null when exact.
+ */
+sampled_sources: (number | null)
+}
+
+/**
+ * The symbols the most code depends on (FR943), ranked by fan_in (distinct symbols that call, reference, import, inherit or inject it through a resolved relationship), fan_out (distinct symbols it uses) or betweenness (shortest use paths that pass through it), with both counts. Lean over MCP: `<name> <path>:<line> <kind> fan_in=<n> fan_out=<n>`.
+ */
+export interface FindHubsInput {
+/**
+ * Optional when exactly one repository is registered.
+ */
+repository_id?: string
+/**
+ * Null pins the current published snapshot.
+ */
+snapshot_id?: (string | null)
+limits?: {
+timeout_ms?: number
+max_rows?: number
+max_bytes?: number
+max_depth?: number
+}
+/**
+ * snapshot (default) answers from the published snapshot. strict first checks that the working tree is exactly what the snapshot was built from; if not, it starts an index and refuses with STALE_INPUT naming the changed files.
+ */
+freshness?: ("snapshot" | "strict")
+/**
+ * lean, the default over MCP: plain text with no JSON and no structuredContent. A header `# <tool> · <n> rows · <snapshot> current` (stale when the snapshot is older than the repository's current one), one `<name> <path>:<line>` row per result, then `# ` lines for the limitations of this answer and `# more: cursor <c>` when a next page exists. The line is the call, import or reference site for relationship, impact and path rows and the declaration for symbol rows; tags follow: in or out when both directions are asked, depth=<n>, dispatch, external, candidate, ambiguous, unresolved:<reason>, and the relationship type when the query mixes types. A name or path with a space, quote or # is quoted as JSON. compact: the JSON envelope without the snapshot-wide parts an earlier answer gave (coverage, unresolved reasons, standing limitations). full: the whole JSON envelope. Ask for compact or full for ids, evidence and totals.
+ */
+envelope?: ("full" | "compact" | "lean")
+/**
+ * The next_cursor of the previous page. It continues the same query on the same snapshot; it expires after an hour.
+ */
+cursor?: string
+/**
+ * Default 10.
+ */
+top?: number
+/**
+ * Default fan_in. betweenness is sampled from at most 1,000 evenly spaced sources on a larger graph, and says so.
+ */
+by?: ("fan_in" | "fan_out" | "betweenness")
+/**
+ * Only symbols of these kinds. Default every kind.
+ * 
+ * @minItems 1
+ */
+kinds?: [("function" | "class" | "method" | "interface" | "type_alias" | "variable" | "module" | "struct" | "enum" | "property" | "field" | "constructor" | "namespace" | "endpoint" | "job"), ...(("function" | "class" | "method" | "interface" | "type_alias" | "variable" | "module" | "struct" | "enum" | "property" | "field" | "constructor" | "namespace" | "endpoint" | "job"))[]]
+/**
+ * Only files whose repository-relative path starts with this, such as `src/`. Default: the whole repository.
+ */
+path_prefix?: string
+/**
+ * Default false: files the generated-code policy flags are left out, and a limitation says how many (FR299). True lists them.
+ */
+include_generated?: boolean
+/**
+ * Default true. False leaves test code out of the graph: neither ranked nor counted as a user.
+ */
+include_tests?: boolean
+}
+
 export interface FindQuerySourceData {
 parsed: {
 tables: {
@@ -502,6 +785,64 @@ max_depth?: number
  * snapshot (default) answers from the published snapshot. strict first checks that the working tree is exactly what the snapshot was built from; if not, it starts an index and refuses with STALE_INPUT naming the changed files.
  */
 freshness?: ("snapshot" | "strict")
+/**
+ * compact leaves out the snapshot-wide parts of the envelope (unresolved reasons, standing limitations) that an earlier answer from the same snapshot already gave; query-specific limits stay. Over MCP, answers after the first full one per snapshot are compact unless full is asked for.
+ */
+envelope?: ("full" | "compact")
+}
+
+/**
+ * Stale doc mentions by doc path and line (FR823).
+ */
+export interface FindStaleMentionsData {
+mentions: {
+/**
+ * The doc, repository-relative.
+ */
+path: string
+line: number
+/**
+ * The inline code or link target as the doc writes it.
+ */
+mention: string
+change: ("renamed" | "moved" | "moved_renamed" | "deleted")
+to: (null | {
+/**
+ * The new name, written as the mention wrote the old one, or the file's new path.
+ */
+name: string
+path: string
+/**
+ * Present and true when the new file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
+})
+}[]
+/**
+ * Stale mentions under the prefix, before max_rows.
+ */
+total: number
+}
+
+/**
+ * Doc mentions that no longer name real code: a Markdown doc's inline code or link that resolved in an earlier snapshot and names nothing now, each with its file and line, and renamed, moved or moved_renamed with the new name when the symbol was paired by body hash, else deleted.
+ */
+export interface FindStaleMentionsInput {
+repository_id?: string
+/**
+ * Default is the repository's current snapshot.
+ */
+snapshot_id?: string
+/**
+ * Only docs whose repository-relative path starts with this.
+ */
+path_prefix?: string
+limits?: {
+timeout_ms?: number
+max_rows?: number
+max_bytes?: number
+max_depth?: number
+}
 /**
  * compact leaves out the snapshot-wide parts of the envelope (unresolved reasons, standing limitations) that an earlier answer from the same snapshot already gave; query-specific limits stay. Over MCP, answers after the first full one per snapshot are compact unless full is asked for.
  */
@@ -736,6 +1077,108 @@ cursor?: string
 include_inferred?: (boolean | "auto")
 }
 
+export interface FindUnusedData {
+/**
+ * unused first, then reachable_only_by, then possibly_used; each by path and line.
+ */
+symbols: {
+id: string
+/**
+ * The stable_key of the symbol (FR280).
+ */
+key?: string
+kind: string
+name: string
+qualified_name: string
+path: string
+line: number
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
+group: ("unused" | "reachable_only_by" | "possibly_used")
+/**
+ * For reachable_only_by: what alone reaches the symbol.
+ */
+by?: ("test" | "framework" | "public_export")
+/**
+ * For possibly_used: inferred edges and unresolved calls by name that could reach it.
+ */
+sites?: number
+/**
+ * For possibly_used: true when an inferred (candidate) edge names it.
+ */
+inferred?: boolean
+}[]
+/**
+ * Over every symbol checked, before row limits.
+ */
+totals: {
+checked: number
+unused: number
+reachable_only_by: {
+test: number
+framework: number
+public_export: number
+}
+possibly_used: number
+}
+}
+
+/**
+ * Code nothing in the repository uses (FR940): symbols under path_prefix with no resolved use (call, reference, import, inheritance, injection) from another symbol, each with its path:line. Symbols only test code, a framework registration (route, job, handler, DI), or a package's public exports reach are listed apart under reachable_only_by; symbols an inferred edge or an unresolved call by their name could reach are listed under possibly_used with the count of such sites. Lean over MCP: unused rows first, tagged unused, reachable_only_by=<why> or possibly_used sites=<n>. A missing use is evidence only as far as the snapshot resolves calls: read the limitations.
+ */
+export interface FindUnusedInput {
+/**
+ * Optional when exactly one repository is registered.
+ */
+repository_id?: string
+/**
+ * Null pins the current published snapshot.
+ */
+snapshot_id?: (string | null)
+limits?: {
+timeout_ms?: number
+max_rows?: number
+max_bytes?: number
+max_depth?: number
+}
+/**
+ * snapshot (default) answers from the published snapshot. strict first checks that the working tree is exactly what the snapshot was built from; if not, it starts an index and refuses with STALE_INPUT naming the changed files.
+ */
+freshness?: ("snapshot" | "strict")
+/**
+ * lean, the default over MCP: plain text with no JSON and no structuredContent. A header `# <tool> · <n> rows · <snapshot> current` (stale when the snapshot is older than the repository's current one), one `<name> <path>:<line>` row per result, then `# ` lines for the limitations of this answer and `# more: cursor <c>` when a next page exists. The line is the call, import or reference site for relationship, impact and path rows and the declaration for symbol rows; tags follow: in or out when both directions are asked, depth=<n>, dispatch, external, candidate, ambiguous, unresolved:<reason>, and the relationship type when the query mixes types. A name or path with a space, quote or # is quoted as JSON. compact: the JSON envelope without the snapshot-wide parts an earlier answer gave (coverage, unresolved reasons, standing limitations). full: the whole JSON envelope. Ask for compact or full for ids, evidence and totals.
+ */
+envelope?: ("full" | "compact" | "lean")
+/**
+ * The next_cursor of the previous page. It continues the same query on the same snapshot; it expires after an hour.
+ */
+cursor?: string
+/**
+ * Symbol kinds to check. Default function, class, interface, type_alias, enum and variable. module checks files: a file no other file imports and none of whose symbols another file uses.
+ * 
+ * @minItems 1
+ */
+kinds?: [("function" | "class" | "method" | "interface" | "type_alias" | "variable" | "module" | "struct" | "enum" | "property" | "field" | "constructor" | "namespace" | "endpoint" | "job"), ...(("function" | "class" | "method" | "interface" | "type_alias" | "variable" | "module" | "struct" | "enum" | "property" | "field" | "constructor" | "namespace" | "endpoint" | "job"))[]]
+/**
+ * Only files whose repository-relative path starts with this, such as `src/`. Default: the whole repository.
+ */
+path_prefix?: string
+/**
+ * Default true: only symbols not nested in another symbol of their file (no members or locals).
+ */
+top_level_only?: boolean
+/**
+ * Default false: files the generated-code policy flags are left out, and a limitation says how many (FR299). True lists them.
+ */
+include_generated?: boolean
+/**
+ * Default false: symbols in test code are not checked, and a symbol only test code uses is listed under reachable_only_by test. True checks test code too and counts its uses.
+ */
+include_tests?: boolean
+}
+
 export interface GetClaimsData {
 claims: {
 id: string
@@ -902,7 +1345,7 @@ projects: number
 links: {
 source_repository_id: string
 target_repository_id: string
-type: ("calls_endpoint" | "messages" | "depends_on_package" | "calls_service" | "deploys" | "uses_resource")
+type: ("calls_endpoint" | "messages" | "depends_on_package" | "calls_service" | "deploys" | "uses_resource" | "calls" | "inherits" | "implements" | "references")
 resolved: number
 candidate: number
 min_confidence: number
@@ -937,7 +1380,7 @@ rule: string
  */
 boundaries: {
 repository_id: string
-type: ("calls_endpoint" | "messages" | "depends_on_package" | "calls_service" | "deploys" | "uses_resource")
+type: ("calls_endpoint" | "messages" | "depends_on_package" | "calls_service" | "deploys" | "uses_resource" | "calls" | "inherits" | "implements" | "references")
 count: number
 /**
  * @maxItems 5
@@ -1457,7 +1900,7 @@ envelope?: ("full" | "compact")
 export interface GetRelationshipsData {
 relationships: {
 assertion_id: string
-type: ("calls" | "imports" | "contains" | "inherits" | "implements" | "overrides" | "references" | "injects" | "registered_as" | "exposes" | "maps_to" | "runs" | "dispatches_to" | "handles" | "publishes" | "consumes" | "sends_to" | "listens_on" | "evaluates_flag" | "reads_config" | "depends_on" | "depends_on_package" | "owned_by" | "calls_service" | "renders" | "uses_hook" | "provides_context" | "uses_context")
+type: ("calls" | "imports" | "contains" | "inherits" | "implements" | "overrides" | "references" | "injects" | "registered_as" | "exposes" | "maps_to" | "runs" | "dispatches_to" | "handles" | "publishes" | "consumes" | "sends_to" | "listens_on" | "evaluates_flag" | "reads_config" | "depends_on" | "depends_on_package" | "owned_by" | "calls_service" | "renders" | "uses_hook" | "provides_context" | "uses_context" | "mentions")
 direction: ("in" | "out")
 resolution: ("resolved" | "resolved_external" | "candidate" | "ambiguous" | "unresolved")
 origin: ("syntax" | "semantic_resolver" | "configuration_adapter" | "framework_adapter" | "contract_match" | "runtime_observation" | "documentation" | "human_assertion" | "model_hypothesis")
@@ -1508,6 +1951,14 @@ qualified_name: string
  */
 key?: string
 }
+/**
+ * Present on a row of another repository of the workspace (include_workspace): that repository, and the commit its snapshot was built from. Its ids and evidence ids are of that snapshot.
+ */
+repository?: {
+id: string
+name: string
+commit: (string | null)
+}
 }[]
 boundaries: {
 assertion_id: string
@@ -1551,6 +2002,20 @@ boundaries_calling_name?: number
  */
 out_external?: number
 }
+/**
+ * With include_workspace: each workspace that holds this repository, its link file (null when none is sealed), and each member's side of it: the snapshot and commit the link file was built from, and whether that snapshot is still the member's current one.
+ */
+workspace?: {
+name: string
+link_file_id: (string | null)
+members: {
+id: string
+name: string
+commit: (string | null)
+snapshot_id: string
+current: boolean
+}[]
+}[]
 }
 
 /**
@@ -1596,7 +2061,7 @@ direction?: ("in" | "out" | "both")
 /**
  * @minItems 1
  */
-types?: [("calls" | "imports" | "contains" | "inherits" | "implements" | "overrides" | "references" | "injects" | "registered_as" | "exposes" | "maps_to" | "runs" | "dispatches_to" | "handles" | "publishes" | "consumes" | "sends_to" | "listens_on" | "evaluates_flag" | "reads_config" | "depends_on" | "depends_on_package" | "owned_by" | "calls_service" | "renders" | "uses_hook" | "provides_context" | "uses_context"), ...(("calls" | "imports" | "contains" | "inherits" | "implements" | "overrides" | "references" | "injects" | "registered_as" | "exposes" | "maps_to" | "runs" | "dispatches_to" | "handles" | "publishes" | "consumes" | "sends_to" | "listens_on" | "evaluates_flag" | "reads_config" | "depends_on" | "depends_on_package" | "owned_by" | "calls_service" | "renders" | "uses_hook" | "provides_context" | "uses_context"))[]]
+types?: [("calls" | "imports" | "contains" | "inherits" | "implements" | "overrides" | "references" | "injects" | "registered_as" | "exposes" | "maps_to" | "runs" | "dispatches_to" | "handles" | "publishes" | "consumes" | "sends_to" | "listens_on" | "evaluates_flag" | "reads_config" | "depends_on" | "depends_on_package" | "owned_by" | "calls_service" | "renders" | "uses_hook" | "provides_context" | "uses_context" | "mentions"), ...(("calls" | "imports" | "contains" | "inherits" | "implements" | "overrides" | "references" | "injects" | "registered_as" | "exposes" | "maps_to" | "runs" | "dispatches_to" | "handles" | "publishes" | "consumes" | "sends_to" | "listens_on" | "evaluates_flag" | "reads_config" | "depends_on" | "depends_on_package" | "owned_by" | "calls_service" | "renders" | "uses_hook" | "provides_context" | "uses_context" | "mentions"))[]]
 /**
  * @minItems 1
  */
@@ -1621,6 +2086,10 @@ envelope?: ("full" | "compact" | "lean")
  * Default false: outbound rows leave out calls that resolved to code outside the repository (framework and library members), and totals.out_external counts them; relationship types whose targets are external by nature, such as depends_on_package, keep them. True lists those calls too. Ignored when resolutions is given, and for an external subject.
  */
 include_external?: boolean
+/**
+ * true adds inbound calls, inherits, implements and references from the other repositories of this repository's workspaces whose sites reach the subject through a package it builds (an npm package.json), read from the workspace's sealed link file; each row carries its repository and commit. The same version installed as built is observed; another version is inferred, with the mismatch stated.
+ */
+include_workspace?: boolean
 }
 
 export interface GetSessionTrailData {
@@ -3445,6 +3914,14 @@ missing: string[]
 generated_policy: ({
 [k: string]: unknown
 } | null)
+}
+/**
+ * Markdown docs' mentions of code (FR820 to FR824): inline code and links resolved to one symbol or file, mentions of several symbols left ambiguous, and stale mentions whose code was renamed, moved or deleted since a snapshot that resolved them, which find_stale_mentions lists. All zero for a snapshot sealed before format 0.12.
+ */
+doc_mentions: {
+resolved: number
+ambiguous: number
+stale: number
 }
 }
 

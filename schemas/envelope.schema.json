@@ -59,6 +59,11 @@
         "impact_completeness",
         "get_symbols_at",
         "get_session_trail",
+        "find_stale_mentions",
+        "find_unused",
+        "find_cycles",
+        "find_entry_points",
+        "find_hubs",
         "get_context_map"
       ]
     },
@@ -463,6 +468,11 @@
             "null"
           ],
           "description": "Continues a truncated list (find_symbols, get_relationships) on the same snapshot; null when there is nothing more or the tool does not page."
+        },
+        "total": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "How many rows the search found, before max_rows, max_bytes or a page cut the list: analyze_impact's dependents and find_tests' tests. A search stopped by max_depth or its node budget found only part of what may be affected, so total then counts that part. Absent from the other tools."
         }
       }
     },

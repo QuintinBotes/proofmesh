@@ -139,3 +139,110 @@ describe('FR840 an index whose host dies by a signal or a non-zero exit is faile
     expect(job.error).toMatch(/SIGKILL/)
   }, 60000)
 })
+
+describe('FR870 status names the last index job that failed, and why (#167)', () => {
+  const KILLED = "the index host was killed by SIGKILL before it recorded the job's outcome"
+  const failJob = async (d: string, repoId: string) => {
+    const { Catalog } = await import('../src/meshstore/catalog.js')
+    const c = Catalog.open(d)
+    const id = c.createJob(repoId, 'test')
+    c.updateJob(id, { state: 'failed', started_at: new Date().toISOString(), finished_at: new Date().toISOString(), error: KILLED })
+    c.close()
+    return id
+  }
+
+  it('FR870 FR872: with no snapshot and a failed last job, status --json (its refusal as JSON on stdout) and every tool refuse naming the job and its error; with no job at all, run "proofmesh index" first', async () => {
+    const repo = tmpDir('pm-failed-')
+    fs.writeFileSync(`${repo}/a.ts`, 'export const a = 1\n')
+    const d = tmpDir()
+    cli(['--data-dir', d, 'init'])
+    const repoId = cli(['--data-dir', d, 'repo', 'add', repo]).stdout.trim()
+    const never = cli(['--data-dir', d, 'status', repoId, '--json'])
+    expect(never.status).toBe(1)
+    expect(never.stderr).toContain('SNAPSHOT_UNAVAILABLE: no published snapshot for this repository; run "proofmesh index" first')
+    const job = await failJob(d, repoId)
+    const r = cli(['--data-dir', d, 'status', repoId, '--json'])
+    expect(r.status).toBe(1)
+    expect(r.stderr).toContain(`SNAPSHOT_UNAVAILABLE: no published snapshot for this repository; last index job ${job} failed at `)
+    expect(r.stderr).toContain(KILLED)
+    expect(r.stderr).not.toContain('first')
+    const err = JSON.parse(r.stdout).error
+    expect(err.code).toBe('SNAPSHOT_UNAVAILABLE')
+    expect(err.details).toMatchObject({ job_id: job, job_state: 'failed', job_error: KILLED })
+    // The plain text status, the --fresh check the plugin reads and any snapshot tool say the same.
+    expect(cli(['--data-dir', d, 'status', repoId]).stderr).toContain(`last index job ${job} failed at `)
+    const fresh = cli(['--data-dir', d, 'status', repoId, '--fresh', '--json'])
+    expect(fresh.stderr).toContain(KILLED)
+    expect(JSON.parse(fresh.stdout).error.details).toMatchObject({ job_id: job, job_state: 'failed', job_error: KILLED })
+    expect(() => tool(d, 'find_symbols', { repository_id: repoId, text: 'a' })).toThrow(KILLED)
+    // A command with its own refusal, tests --json, prints the error JSON too.
+    expect(JSON.parse(cli(['--data-dir', d, 'tests', repoId, 'a.ts', '--json']).stdout).error.details).toMatchObject({ job_id: job, job_error: KILLED })
+    const { Catalog } = await import('../src/meshstore/catalog.js')
+    const c = Catalog.open(d)
+    // An open job is named before a failed one, by status --fresh as by the tools.
+    const open = c.createJob(repoId, 'test')
+    expect(cli(['--data-dir', d, 'status', repoId, '--fresh']).stderr).toContain(`index job ${open} is queued; poll it with get_job`)
+    // A job whose process stopped before it recorded anything reads interrupted, with that as its reason.
+    c.updateJob(open, { state: 'running', started_at: new Date().toISOString(), progress_at: new Date().toISOString(), owner: 'pid:1@nowhere' })
+    expect(cli(['--data-dir', d, 'status', repoId]).stderr).toContain(`last index job ${open} interrupted: its process stopped before it recorded an outcome; run "proofmesh index" again`)
+    c.close()
+  }, 30000)
+
+  it('FR871: a snapshot older than a failed last job still answers, with the failure named in status, its --fresh check and the workspace_status limitations', async () => {
+    const { dataDir: d, repoId, snapshotId } = await indexedDataDir(copyFixture())
+    expect(tool(d, 'workspace_status').limitations.join('\n')).not.toContain('last index job')
+    expect(JSON.parse(cli(['--data-dir', d, 'status', repoId, '--fresh', '--json']).stdout).failed_job).toBeNull()
+    const job = await failJob(d, repoId)
+    const env = tool(d, 'workspace_status')
+    expect(env.snapshot!.id).toBe(snapshotId)
+    expect(env.limitations).toContainEqual(expect.stringMatching(new RegExp(`^Warning: last index job ${job} failed at \\S+: ${KILLED}; this answer is from snapshot ${snapshotId}, which an earlier index published\\.$`)))
+    const text = cli(['--data-dir', d, 'status', repoId])
+    expect(text.status).toBe(0)
+    expect(text.stdout).toMatch(new RegExp(`^last index job ${job} failed at \\S+: ${KILLED}$`, 'm'))
+    expect(JSON.parse(cli(['--data-dir', d, 'status', repoId, '--json']).stdout).limitations.join('\n')).toContain(`last index job ${job} failed at `)
+    expect(JSON.parse(cli(['--data-dir', d, 'status', repoId, '--fresh', '--json']).stdout).failed_job).toMatchObject({ id: job, state: 'failed', error: KILLED })
+    // An index that succeeds afterwards is the last job, and the warning goes.
+    expect(cli(['--data-dir', d, 'index', repoId]).status).toBe(0)
+    expect(tool(d, 'workspace_status').limitations.join('\n')).not.toContain('last index job')
+    expect(cli(['--data-dir', d, 'status', repoId]).stdout).not.toContain('last index job')
+    // An index --no-wait refused while that index ran was requested after it but ended before it: it is not the last job.
+    const { Catalog } = await import('../src/meshstore/catalog.js')
+    const c = Catalog.open(d)
+    const refused = c.createJob(repoId, 'test')
+    c.updateJob(refused, { state: 'failed', finished_at: '2000-01-01T00:00:00.000Z', error: 'already being indexed' })
+    c.close()
+    expect(tool(d, 'workspace_status').limitations.join('\n')).not.toContain('last index job')
+  }, 60000)
+
+  it('FR1000: bundle export, discover, the galaxy, workspace link, scip run and notes accept refuse a repository with no snapshot as status does, naming a failed last job; with no job at all, run "proofmesh index" first (#173)', async () => {
+    const make = (name: string) => { const r = tmpDir(`pm-${name}-`); fs.writeFileSync(`${r}/a.ts`, 'export const a = 1\n'); return r }
+    const d = tmpDir(), repo = make('failed'), other = make('indexed')
+    cli(['--data-dir', d, 'init'])
+    const repoId = cli(['--data-dir', d, 'repo', 'add', repo]).stdout.trim()
+    const otherId = cli(['--data-dir', d, 'repo', 'add', other]).stdout.trim()
+    expect(cli(['--data-dir', d, 'index', otherId]).status).toBe(0)
+    expect(cli(['--data-dir', d, 'workspace', 'add', 'pair', repoId, otherId]).status).toBe(0)
+    expect(cli(['--data-dir', d, 'repo', 'trust', repoId, '--build-evaluation']).status).toBe(0)
+    const { galaxyFor } = await import('../src/query/galaxy.js')
+    const refusals = () => {
+      let galaxy = ''
+      try { galaxyFor(d, { repositoryId: repoId }) } catch (e) { galaxy = `${(e as { code: string }).code}: ${(e as Error).message}` }
+      return {
+        bundle: cli(['--data-dir', d, 'bundle', 'export', repoId, '--out', `${tmpDir()}/b.pmb`]).stderr,
+        discover: cli(['--data-dir', d, 'discover', '--anchor', repoId]).stderr,
+        galaxy,
+        link: cli(['--data-dir', d, 'workspace', 'link', 'pair']).stderr,
+        scip: cli(['--data-dir', d, 'scip', 'run', repoId]).stderr,
+        notes: cli(['--data-dir', d, 'notes', 'accept', 'note_x', '--repository', repoId]).stderr,
+      }
+    }
+    // Linking a workspace names the member that has no snapshot.
+    const subject = (surface: string) => (surface === 'link' ? repo.split('/').pop() : 'this repository')
+    for (const [surface, said] of Object.entries(refusals())) expect(said, surface).toContain(`SNAPSHOT_UNAVAILABLE: no published snapshot for ${subject(surface)}; run "proofmesh index" first`)
+    const job = await failJob(d, repoId)
+    for (const [surface, said] of Object.entries(refusals())) {
+      expect(said, surface).toContain(`SNAPSHOT_UNAVAILABLE: no published snapshot for ${subject(surface)}; last index job ${job} failed at `)
+      expect(said, surface).toContain(`${KILLED}; run "proofmesh index" again`)
+    }
+  }, 120000)
+})

@@ -76,14 +76,22 @@ else {
   } else if (mode === 'session') {
     const repo = repositoryOf(input.cwd ?? process.cwd())
     const r = repo && proofmesh(['status', repo.id, '--fresh', '--json'])
+    // The last index job when it failed, in the words `proofmesh status` uses (FR873), so Claude does not index as if nothing was tried.
+    const failed = (j) => (j?.state ? `last index job ${j.id} ${j.state}${j.finished_at ? ` at ${j.finished_at}` : ''}${j.error ? `: ${j.error}` : ''}` : '')
     if (!installed) say('SessionStart', `proofmesh: not installed. The Proofmesh plugin's MCP server and hooks need the proofmesh CLI on PATH; install it: ${INSTALL}`, true)
-    else if (repo && r.status !== 0) say('SessionStart', `Proofmesh has ${repo.name} registered but no published snapshot of it; run /proofmesh:index before asking it anything.`)
+    else if (repo && r.status !== 0) {
+      let d
+      try { d = JSON.parse(r.stdout).error.details } catch {}
+      const why = failed(d && { id: d.job_id, state: d.job_state, finished_at: d.job_finished_at, error: d.job_error })
+      say('SessionStart', `Proofmesh has ${repo.name} registered but no published snapshot of it${why ? `; ${why}` : ''}; run /proofmesh:index before asking it anything.`)
+    }
     else if (repo) {
       const f = JSON.parse(r.stdout)
-      if (f.current) say('SessionStart', `Proofmesh's snapshot ${f.snapshot_id} of ${repo.name} matches the working tree.`)
+      const why = failed(f.failed_job) ? ` Its ${failed(f.failed_job)}.` : ''
+      if (f.current) say('SessionStart', `Proofmesh's snapshot ${f.snapshot_id} of ${repo.name} matches the working tree.${why}`)
       else {
         touch(repo.id, Date.now() - QUIET_MS)
-        say('SessionStart', `Proofmesh's snapshot ${f.snapshot_id} of ${repo.name} is behind the working tree: ${f.changed_count} files changed. A background index has started; until it publishes, answers are as of that snapshot.`)
+        say('SessionStart', `Proofmesh's snapshot ${f.snapshot_id} of ${repo.name} is behind the working tree: ${f.changed_count} files changed. A background index has started; until it publishes, answers are as of that snapshot.${why}`)
       }
     }
   }

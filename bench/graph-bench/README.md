@@ -1,7 +1,7 @@
 # Graph benchmark: ProofMesh vs Graphify
 
-Twelve code-graph questions an agent asks (callers, implementers, importers, dependents, call paths, type users,
-dead code, cycles, entry points), asked of both tools on a copy of the Orbit repository at commit `5bd5dffa`
+Thirteen code-graph questions an agent asks (callers, implementers, importers, dependents, call paths, type users,
+dead code, cycles, entry points, hubs), asked of both tools on a copy of the Orbit repository at commit `5bd5dffa`
 (874 TypeScript files in its tsconfig program). Ground truth comes from the TypeScript compiler's own checker, not
 from either tool. Both tools run offline: Graphify code-only (`graphify update`, no model call), ProofMesh with no model.
 
@@ -28,7 +28,7 @@ sh bench/graph-bench/run-all.sh [<orbit-clone-or-url> [<copy-dir>]]
 |---|---|
 | `run-all.sh` | Clones and pins the copy, times both full builds, then runs the three steps below |
 | `truth.mjs` | Ground truth from the TypeScript checker: symbols, calls with call-site lines, references, resolved imports (static and `import()`), heritage clauses. `node truth.mjs <repo> <out.json>` |
-| `questions.json` | The 12 questions and their targets |
+| `questions.json` | The 13 questions and their targets |
 | `run.mjs` | Asks each question of Graphify (CLI over `graphify-out/graph.json`) and ProofMesh (MCP in its default lean envelope, paging to the end), scores recall and precision against the truth, reports each answer's bytes (the symbol lookup apart) and bytes per correct row, and writes `out/results.md`, `out/results.json` and every raw answer under `out/raw/` |
 | `incremental.sh` | Rebuild cost: no change, a one-function edit to a widely imported file and a leaf file, and each revert |
 | `mcp-client.mjs` | A minimal MCP stdio client that times each call |
@@ -132,6 +132,30 @@ snapshot as above; Graphify 0.9.108.
 Q8's answer names every hop as `name path:line`, so the path needs no `get_symbol` per node. Per correct item rather than
 per row, Q2 is 230 bytes against Graphify's 96 (2.4x): its 12 callers make 47 calls, and Graphify lists one site per caller
 (4% of the call sites). The other questions are within 2x either way (Q1 58 / 62, Q5 34 / 69, Q7 57 / 58).
+
+## Dead code, cycles, entry points and hubs through tools (2026-11-27, #34)
+
+`run.mjs` now asks Q10 to Q12 of `find_unused`, `find_cycles` and `find_entry_points`, and a new Q13 (the ten symbols with the
+most distinct callers and referrers in the truth) of `find_hubs`, over MCP from a second server started with `--tools extra`, so
+the default listing the first server measures is unchanged. Nothing is read from the snapshot's SQL. Graphify's answers are
+still computed from `graph.json` (Q13 the same way: distinct sources per target over its use relations). Same Orbit copy and
+sealed snapshot (`snap_7be31f93fdcb4923d3b72b56`); Graphify 0.9.108.
+
+| Q | Question (tool call) | ProofMesh R / P | ms / bytes | Graphify R / P (graph.json) |
+|---|---|---|---|---|
+| Q10 | Dead top-level functions (`find_unused` kinds function, path_prefix `src/`, rows tagged `unused`) | 100% / 100% | 831 / 4,906 | 75% / 6% |
+| Q11 | Files in an import cycle (`find_cycles` path_prefix `src/`, type-only included) | 100% / 100% | 135 / 9,713 | 78% / 100% |
+| Q12 | Modules nothing under `src/` imports (`find_entry_points`, rows tagged `not_imported`) | 100% / 80% | 188 / 991 | 100% / 100% |
+| Q13 | The ten hubs by fan-in (`find_hubs` top 10) | 7 of 10 | 285 / 910 | 5 of 10 |
+
+- Q10: the four functions the snapshot-SQL answer added (`src/isolation/srt-chromium-preload.d.mts`) are `possibly_used`: a test
+  loads the JavaScript module beside them by path and calls them on an untyped value, which an unresolved call by name could
+  reach. 48 functions only tests use are `reachable_only_by=test`, not `unused`.
+- Q12: the two extras are `src/isolation/srt-chromium-preload.mjs` and its `.d.mts`, which nothing imports (node loads the
+  preload by path). The truth's program (`src/**/*.ts`) does not hold either file, so it cannot count them.
+- Q13: the truth's top ten holds `run-store.ts` `id` and `state` and `context.ts` `run`, properties ranked by their reads; the
+  TypeScript adapter records no property read as a reference, so `find_hubs` ranks `OrbitConfig`, `Clock` and the test harness
+  `Lab` in their place.
 
 ## Symbol identity across renames and moves (issue 7, SC-2)
 

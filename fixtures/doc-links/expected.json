@@ -1,0 +1,30 @@
+{
+  "mentions": [
+    { "path": "README.md", "line": 3, "text": "Ledger.consume", "target": "symbol:src/ledger:Ledger.consume" },
+    { "path": "README.md", "line": 5, "text": "docs/design.md", "target": "file:docs/design.md" },
+    { "path": "README.md", "line": 5, "text": "docs/guide.md", "target": "file:docs/guide.md" },
+    { "path": "docs/design.md", "line": 5, "text": "Ledger.consume", "target": "symbol:src/ledger:Ledger.consume" },
+    { "path": "docs/design.md", "line": 7, "text": "../src/ledger.ts", "target": "file:src/ledger.ts" },
+    { "path": "docs/design.md", "line": 9, "text": "Ledger.refund", "target": "symbol:src/ledger:Ledger.refund" },
+    { "path": "docs/guide.md", "line": 3, "text": "Ledger", "target": "symbol:src/ledger:Ledger" },
+    { "path": "docs/guide.md", "line": 3, "text": "Wallet", "target": "symbol:src/wallet:Wallet" },
+    { "path": "docs/guide.md", "line": 5, "text": "Wallet.open(id)", "target": "symbol:src/wallet:Wallet.open" },
+    { "path": "docs/guide.md", "line": 5, "text": "Wallet.id", "target": "none" },
+    { "path": "docs/guide.md", "line": 5, "text": "id", "target": "none" },
+    { "path": "docs/guide.md", "line": 7, "text": "total()", "target": "ambiguous:src/ledger:Ledger.total,src/wallet:Wallet.total" },
+    { "path": "docs/guide.md", "line": 7, "text": "Ledger.total", "target": "symbol:src/ledger:Ledger.total" },
+    { "path": "docs/guide.md", "line": 7, "text": "Wallet.total", "target": "symbol:src/wallet:Wallet.total" },
+    { "path": "docs/guide.md", "line": 9, "text": "audit()", "target": "symbol:src/audit:audit" },
+    { "path": "docs/guide.md", "line": 9, "text": "src/audit.ts", "target": "file:src/audit.ts" },
+    { "path": "docs/guide.md", "line": 9, "text": "../src/wallet.ts#L3", "target": "file:src/wallet.ts" },
+    { "path": "docs/guide.md", "line": 9, "text": "Wallet", "target": "symbol:src/wallet:Wallet" },
+    { "path": "docs/guide.md", "line": 11, "text": "true", "target": "none" },
+    { "path": "docs/guide.md", "line": 11, "text": "null", "target": "none" },
+    { "path": "docs/guide.md", "line": 11, "text": "--verbose", "target": "none" },
+    { "path": "docs/guide.md", "line": 11, "text": "npm install", "target": "none" },
+    { "path": "docs/guide.md", "line": 11, "text": "Ledger.missing", "target": "none" },
+    { "path": "docs/guide.md", "line": 11, "text": "https://example.com/ledger", "target": "none" },
+    { "path": "docs/guide.md", "line": 18, "text": "tsconfig.json", "target": "file:tsconfig.json" },
+    { "path": "docs/guide.md", "line": 18, "text": "Wallet.open", "target": "symbol:src/wallet:Wallet.open" }
+  ]
+}

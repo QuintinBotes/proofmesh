@@ -22,7 +22,7 @@ export type SnapshotSummary = {
 /** The most-referenced symbols; generated files are left out unless asked for (FR298). */
 export function hubsOf(db: Database.Database, includeGenerated: boolean): SnapshotSummary['hubs'] {
   return db.prepare(`select e.dst as id, s.kind, s.name, s.qualified_name, f.path, count(*) as inbound from edge e
-    join symbol s on s.id = e.dst join file f on f.id = s.file_id where e.resolution = 'resolved'${includeGenerated ? '' : ` and ${excludeGeneratedSql()}`}
+    join symbol s on s.id = e.dst join file f on f.id = s.file_id where e.resolution = 'resolved' and e.type <> 'mentions'${includeGenerated ? '' : ` and ${excludeGeneratedSql()}`}
     group by e.dst order by inbound desc, s.qualified_name, f.path, s.start_byte, e.dst limit 12`).all() as SnapshotSummary['hubs']
 }
 

@@ -1,0 +1,3 @@
+# Provenance
+
+Project-authored for Proofmesh. Apache-2.0. No third-party code. `repo/` is a small TypeScript repository whose Markdown docs name its code in inline code and links. `overlay/` holds the files one change writes over `repo/`: `Ledger.consume` renamed to `Ledger.spend` with the same body, and `Ledger.refund` deleted. `expected.json` lists every inline-code span and link in the docs of `repo/`, written by hand, with the symbol or file it should resolve to, `ambiguous` with its candidates, or `none` when it names no code. The tests are in `packages/proofmesh/test/doc-links.test.ts` (FR820 to FR826).

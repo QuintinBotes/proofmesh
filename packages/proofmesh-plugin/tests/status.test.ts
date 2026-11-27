@@ -11,7 +11,7 @@ const STATUS = [
 ].join('\n')
 
 type Run = { exitCode: number; stdout: string; stderr: string }
-type World = { list?: Run | string | ((n: number) => Run | string); fresh?: (n: number) => Run | string; jobs?: () => unknown[]; snapshot?: () => { id: string; published: number }; slow?: number; surface?: 'terminal' | null; cwd?: string }
+type World = { list?: Run | string | ((n: number) => Run | string); fresh?: (n: number) => Run | string; jobs?: () => unknown[]; snapshot?: () => { id: string; published: number }; status?: string; slow?: number; surface?: 'terminal' | null; cwd?: string }
 
 const ok = (stdout: string): Run => ({ exitCode: 0, stdout, stderr: '' })
 const fresh = (current: boolean, snapshot = 'snap_1', changed = 0) => ok(JSON.stringify({ repository_id: 'repo_app', name: 'app', snapshot_id: snapshot, current, changed_count: changed, changed: [] }))
@@ -31,7 +31,7 @@ function world(on: Parameters<Parameters<typeof test>[1]>[1], w: World = {}) {
     try {
       if (w.slow) await clock.sleep(w.slow)
       const [, cmd, , flag] = e.argv
-      const r = cmd === 'repo' ? (typeof w.list === 'function' ? w.list(listCalls++) : w.list ?? ok(LIST)) : flag === '--fresh' ? (w.fresh ?? (() => fresh(true)))(freshCalls++) : ok(STATUS)
+      const r = cmd === 'repo' ? (typeof w.list === 'function' ? w.list(listCalls++) : w.list ?? ok(LIST)) : flag === '--fresh' ? (w.fresh ?? (() => fresh(true)))(freshCalls++) : ok(w.status ?? STATUS)
       return typeof r === 'string' ? { deny: r } : { value: r }
     } finally { running-- }
   })
@@ -111,6 +111,28 @@ test('FR482: a registered repository with no published snapshot reads missing', 
   await start($, w)
   expect(w.line()).toBe('missing')
   expect(w.mcp).toEqual([])
+})
+
+test('FR873: with no snapshot and a failed last index job, the line reads missing and names the failure and its error', async ($, on) => {
+  const error = { code: 'SNAPSHOT_UNAVAILABLE', message: 'no published snapshot for this repository; last index job job_1 failed at 2026-11-27T10:00:00.000Z: the index host was killed by SIGKILL; run "proofmesh index" again', details: { detail: 'none', job_id: 'job_1', job_state: 'failed', job_finished_at: '2026-11-27T10:00:00.000Z', job_error: 'the index host was killed by SIGKILL' } }
+  const w = world(on, { fresh: () => ({ exitCode: 1, stdout: JSON.stringify({ error }), stderr: `proofmesh: SNAPSHOT_UNAVAILABLE: ${error.message}\n` }) })
+  await start($, w)
+  expect(w.line()).toBe('missing; last index job failed: the index host was killed by SIGKILL')
+  expect(w.mcp).toEqual([])
+})
+
+test('FR873: a snapshot older than a failed last index job reads current or behind with the failure after it, and /pm-status shows the job line', async ($, on) => {
+  const failedJob = { id: 'job_2', state: 'failed', finished_at: '2026-11-27T10:04:00.000Z', error: 'the index host exited with code 3' }
+  const withFailure = (current: boolean, changed = 0) => ok(JSON.stringify({ ...JSON.parse(fresh(current, 'snap_1', changed).stdout), failed_job: failedJob }))
+  const w = world(on, { fresh: (n) => (n === 0 ? withFailure(true) : n === 1 ? withFailure(false, 2) : fresh(true)), status: `last index job job_2 failed at 2026-11-27T10:04:00.000Z: the index host exited with code 3\n${STATUS}` })
+  await start($, w)
+  expect(w.line()).toBe('current snap_1 (5m); last index job failed: the index host exited with code 3')
+  await w.clock.advance(60_000)
+  expect(w.line()).toBe('behind (2 files changed); last index job failed: the index host exited with code 3')
+  expect((await $.command.run({ command: 'pm-status', args: '' })).text.split('\n')).toContain('last index job job_2 failed at 2026-11-27T10:04:00.000Z: the index host exited with code 3')
+  // A later index that succeeded is the last job: the failure goes from the line.
+  await w.clock.advance(5000)
+  expect(w.line()).toBe('current snap_1 (6m)')
 })
 
 test('FR483 scenario 4: outside every registered repository the line reads not registered here, and no other hook calls ProofMesh', async ($, on) => {

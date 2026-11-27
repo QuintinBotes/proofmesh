@@ -1,5 +1,5 @@
 // Answers recorded from fixtures/ts-invoicing (#115): a copy indexed (snap_ecab...), formatAmount's toFixed(2) edited to toFixed(3) and indexed
-// again (snap_fe58...), then each tool asked over `proofmesh mcp` as the hooks module asks it, on the second snapshot. impact.test.ts serves them.
+// again (snap_fe58...), then each tool asked over `proofmesh mcp` as the hooks module asks it, on the second snapshot. impact.test.ts serves them. `impact` was asked again, compact, once rows carried line and relationship (#159).
 export const RECORDED = {
   "symbolsAt": {
     "schema_version": "0.1",
@@ -216,7 +216,139 @@ export const RECORDED = {
     "limitations": [],
     "envelope": "compact"
   },
-  "impactLean": "# analyze_impact \u00b7 2 rows \u00b7 snap_fe5883e5a2f3e34be3610da7 current\ninvoiceTotal packages/billing/src/invoice.ts:9 depth=1 calls\nhandleInvoice packages/api/src/handler.ts:5 depth=2 calls\n# 1 unresolved call site in this snapshot has an unknown target and could also reach these symbols.",
+  "impact": {
+    "schema_version": "0.1",
+    "query_id": "q_dn7kawokvzfsbkiz",
+    "tool": "analyze_impact",
+    "snapshot": {
+      "id": "snap_fe5883e5a2f3e34be3610da7",
+      "repository_id": "repo_39445429d857",
+      "analysis_mode": "no_execution",
+      "published_at": "2026-11-27T10:19:02.586Z",
+      "commit": null,
+      "ref": null,
+      "behind_remote": null,
+      "behind_ref": null,
+      "fetched_at": null
+    },
+    "freshness": {
+      "mode": "snapshot",
+      "status": "as_of_snapshot"
+    },
+    "coverage": null,
+    "data": {
+      "subjects": [
+        "sym_af2600a282f3149e81bc772f"
+      ],
+      "types": [
+        "calls",
+        "inherits",
+        "implements",
+        "overrides",
+        "injects",
+        "registered_as",
+        "handles",
+        "dispatches_to",
+        "evaluates_flag",
+        "maps_to",
+        "exposes",
+        "consumes",
+        "reads_config",
+        "runs",
+        "calls_service",
+        "renders",
+        "uses_hook",
+        "provides_context",
+        "uses_context"
+      ],
+      "dependents": [
+        {
+          "id": "sym_670aa7a6366d972543cc975a",
+          "kind": "function",
+          "name": "invoiceTotal",
+          "qualified_name": "packages/billing/src/invoice:invoiceTotal",
+          "path": "packages/billing/src/invoice.ts",
+          "project": null,
+          "depth": 1,
+          "basis": "observed",
+          "line": 9,
+          "relationship": "calls",
+          "key": "packages/billing/src/invoice.ts#packages/billing/src/invoice:invoiceTotal#function"
+        },
+        {
+          "id": "sym_e92cf3bbedde7baf0927f5f6",
+          "kind": "function",
+          "name": "handleInvoice",
+          "qualified_name": "packages/api/src/handler:handleInvoice",
+          "path": "packages/api/src/handler.ts",
+          "project": null,
+          "depth": 2,
+          "basis": "observed",
+          "line": 5,
+          "relationship": "calls",
+          "key": "packages/api/src/handler.ts#packages/api/src/handler:handleInvoice#function"
+        }
+      ],
+      "totals": {
+        "dependents": 2,
+        "by_basis": {
+          "observed": 2,
+          "inferred": 0
+        },
+        "by_depth": {
+          "1": 1,
+          "2": 1
+        },
+        "by_project": [
+          {
+            "name": "(no project)",
+            "count": 2
+          }
+        ],
+        "by_area": [
+          {
+            "name": "packages/api/src",
+            "count": 1
+          },
+          {
+            "name": "packages/billing/src",
+            "count": 1
+          }
+        ],
+        "by_team": []
+      },
+      "stopped_by": null,
+      "subject_members": 0
+    },
+    "evidence_ids": [],
+    "unresolved": {
+      "count": 1,
+      "scope": "snapshot",
+      "sample": [],
+      "by_reason": {}
+    },
+    "completion": {
+      "truncated": false,
+      "stop_reasons": [],
+      "timed_out": false,
+      "next_cursor": null,
+      "total": 2
+    },
+    "limits": {
+      "requested": {},
+      "applied": {
+        "timeout_ms": 10000,
+        "max_rows": 100,
+        "max_bytes": 65536,
+        "max_depth": 6
+      }
+    },
+    "limitations": [
+      "Potential impact, not a safety proof: only resolved relationships of the listed types are followed.",
+      "1 unresolved call site in this snapshot has an unknown target and could also reach these symbols."
+    ],
+    "envelope": "compact"
+  },
   "tests": {
     "schema_version": "0.1",
     "query_id": "q_u4fnptglsuo7bmru",

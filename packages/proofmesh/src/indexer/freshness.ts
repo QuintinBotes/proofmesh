@@ -5,6 +5,7 @@ import { ProofmeshError } from '../core/errors.js'
 import { EXCLUDED_DIRS, discover, type Discovered } from './discovery.js'
 import { BUILT_IN_REGISTRY, type Registry } from './languages.js'
 import { CENSUS_VERSION } from './census.js'
+import { isDoc } from './doc-links.js'
 
 /** Files excluded for where they sit, under a path git ignores or a default excluded directory, are build output and local state (A21). */
 const LOCATION_RULES = new Set<string | null>(['gitignore', ...EXCLUDED_DIRS.map((d) => `**/${d}/**`)])
@@ -18,7 +19,7 @@ const isLocationRule = (detail: string | null) => LOCATION_RULES.has(detail) || 
 export const manifestHash = (discovered: Discovered[], hashOf: (p: string) => string | undefined, censusVersion: string = CENSUS_VERSION): string =>
   sha256(`census ${censusVersion}\n` + discovered.filter((d) => !(d.status === 'excluded' && isLocationRule(d.detail)))
     // A file flagged generated is a different snapshot from the same file unflagged: a .gitattributes edit changes no captured content (FR299).
-    .map((d) => `${d.path}\t${hashOf(d.path) ?? '-'}\t${d.status === 'capture' ? (d.detail?.startsWith('scip_revoked:') ? `capture:${d.detail}` : 'capture') + (d.generated ? ':generated' : '') : `${d.status}:${d.detail}`}`).join('\n'))
+    .map((d) => `${d.path}\t${hashOf(d.path) ?? '-'}\t${d.status === 'capture' ? (d.detail?.startsWith('scip_revoked:') ? `capture:${d.detail}` : 'capture') + (d.generated ? ':generated' : '') : `${d.status}:${d.detail}${d.generated ? ':generated' : ''}`}`).join('\n'))
 
 export type Change = { path: string; change: 'added' | 'modified' | 'deleted' }
 
@@ -27,7 +28,7 @@ export function workingTree(root: string, registry: Registry = BUILT_IN_REGISTRY
   const discovered = discover(root, registry)
   const hashes = new Map<string, string>()
   for (const d of discovered) {
-    if (d.status !== 'capture') continue
+    if (d.status !== 'capture' && !isDoc(d)) continue
     try {
       hashes.set(d.path, sha256(fs.readFileSync(path.join(root, d.path))))
     } catch {

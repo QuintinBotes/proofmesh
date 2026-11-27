@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "find_hubs.data.schema.json",
+  "title": "find_hubs data",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "hubs",
+    "by",
+    "sampled_sources"
+  ],
+  "properties": {
+    "hubs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "kind",
+          "name",
+          "qualified_name",
+          "path",
+          "line",
+          "fan_in",
+          "fan_out"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string",
+            "description": "The stable_key of the symbol (FR280)."
+          },
+          "kind": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "qualified_name": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "line": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "generated": {
+            "type": "boolean",
+            "description": "Present and true when the file is generated (FR292); absent otherwise."
+          },
+          "fan_in": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "fan_out": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "betweenness": {
+            "type": "number",
+            "minimum": 0
+          }
+        }
+      }
+    },
+    "by": {
+      "enum": [
+        "fan_in",
+        "fan_out",
+        "betweenness"
+      ]
+    },
+    "sampled_sources": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0,
+      "description": "For betweenness: the sources it was computed from when not every node was one; null when exact."
+    }
+  }
+}

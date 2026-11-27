@@ -357,18 +357,20 @@ describe('FR231 FR232 FR233 the syntax tier records imports and heritage in Swif
 })
 
 describe('FR850 FR851 FR852 the syntax tier records a PHP call by a plain or qualified name and a new', () => {
-  it('FR850 FR851 helper(), \\App\\helper(), \\strlen(), new Mailer(), new \\App\\Mailer(), Mailer::make(), parent::boot() and $this->send() each give one unresolved calls row, with the qualifier as written and form new on a creation', async () => {
+  it('FR850 FR851 helper(), \\App\\helper(), \\strlen(), new Mailer(), new \\App\\Mailer(), Mailer::make(), parent::boot() and $this->send() each give one calls row, with the qualifier as written and form new on a creation, unresolved unless constrained name matching binds it (FR883 to FR885)', async () => {
     const { dataDir } = await indexedRepo({
       'src/a.php': '<?php\nnamespace App;\n\nfunction helper() {}\n\nclass Mailer {\n    public function send() {\n        helper();\n        \\App\\helper();\n        new Mailer();\n        $this->send();\n        new \\App\\Mailer();\n        Mailer::make();\n        \\strlen(\'\');\n        parent::boot();\n    }\n}\n',
     })
     const php = withSnapshot(dataDir, (db) => rows(db, 'calls')).map((r) => [r.from, r.line, r.resolution, r.reason, r.detail?.callee, r.detail?.qualifier, r.detail?.form])
     const call = (line: number, callee: string, qualifier?: string, form?: string) => ['App.Mailer.send', line, 'unresolved', 'outside_capability', callee, qualifier, form]
+    // The function and the class are in the file's namespace, and send is the class's own method: bound since FR883 to FR885.
+    const bound = (line: number, callee: string, qualifier?: string, form?: string) => ['App.Mailer.send', line, 'candidate', 'candidate', callee, qualifier, form]
     expect(php).toEqual([
-      call(8, 'helper'),
-      call(9, 'helper', '\\App'),
-      call(10, 'Mailer', undefined, 'new'),
-      call(11, 'send'),
-      call(12, 'Mailer', '\\App', 'new'),
+      bound(8, 'helper'),
+      bound(9, 'helper', '\\App'),
+      bound(10, 'Mailer', undefined, 'new'),
+      bound(11, 'send'),
+      bound(12, 'Mailer', '\\App', 'new'),
       call(13, 'make', 'Mailer'),
       call(14, 'strlen', '\\'),
       call(15, 'boot', 'parent'),

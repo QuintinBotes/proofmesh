@@ -1,0 +1,123 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "find_cycles.data.schema.json",
+  "title": "find_cycles data",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "cycles",
+    "edges",
+    "totals"
+  ],
+  "properties": {
+    "cycles": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "cycle",
+          "type_only",
+          "inferred",
+          "files",
+          "edges"
+        ],
+        "properties": {
+          "cycle": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "type_only": {
+            "type": "boolean"
+          },
+          "inferred": {
+            "type": "boolean",
+            "description": "True when the cycle holds only through an inferred import."
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "edges": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Imports between its files."
+          }
+        }
+      }
+    },
+    "edges": {
+      "type": "array",
+      "description": "By cycle, importing file and line.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "cycle",
+          "from",
+          "to",
+          "line",
+          "kind",
+          "inferred"
+        ],
+        "properties": {
+          "cycle": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          },
+          "line": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "kind": {
+            "type": "string",
+            "description": "static, re_export, type_only or dynamic."
+          },
+          "inferred": {
+            "type": "boolean"
+          },
+          "generated": {
+            "type": "boolean",
+            "description": "Present and true when the file is generated (FR292); absent otherwise."
+          }
+        }
+      }
+    },
+    "totals": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cycles",
+        "type_only",
+        "files",
+        "edges"
+      ],
+      "properties": {
+        "cycles": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "type_only": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "files": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "edges": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

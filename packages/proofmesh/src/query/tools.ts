@@ -4,7 +4,7 @@ import { queryId } from '../core/hash.js'
 import { applyLimits, type AppliedLimits } from '../core/limits.js'
 import { BUNDLE_FORMAT_VERSION, check, ENVELOPE_VERSION } from '../core/schemas.js'
 import type { Envelope, Limits, ListQueriesData } from '../core/generated.js'
-import { CATALOG_VERSION, Catalog, LEASE_OWNER, type PropertyRead, type SnapshotRow } from '../meshstore/catalog.js'
+import { CATALOG_VERSION, Catalog, LEASE_OWNER, lastIndexFailure, noSnapshot, type PropertyRead, type SnapshotRow } from '../meshstore/catalog.js'
 import { FORMAT_VERSION, openSnapshot } from '../meshstore/snapshot.js'
 import { PROTOCOL_VERSION } from '../indexer/adapter-host.js'
 import { LINK_FORMAT_VERSION } from '../links/index.js'
@@ -19,7 +19,8 @@ import type { ModuleCycle } from '../indexer/module-cycles.js'
 import { overview } from './overview.js'
 import { getEcosystem } from './ecosystem.js'
 import { type Basis, basisOf, byBasis, inferredSql } from './basis.js'
-import { analyzeImpact, IMPACT_TYPES, type Impact } from './impact.js'
+import { analyzeImpact, IMPACT_TYPES, structure, type Impact } from './impact.js'
+import { mismatchNotes, repoTag, withWorkspace, workspaceDependents, type Inbound, type WorkspaceDependent } from './workspace.js'
 import { CANDIDATE_TYPES, candidatesFrom, inferredNotes, resolveFollow, sitesNaming } from './inferred.js'
 import { ADAPTER_LANGUAGE_NAMES } from '../indexer/language-detect.js'
 import { hasRoles, isTestCode, isTestPath, parseRoles, roleTest, rolesSql } from './tests.js'
@@ -35,6 +36,7 @@ import { addKeys } from './keys.js'
 import { leanName, leanRow, leanText, quote } from './lean.js'
 import { generatedLeftOut, generatedPaths, markGenerated, withGeneratedPaths } from './generated-policy.js'
 import { innermost } from './symbol-at.js'
+import { findCycles, findEntryPoints, findHubs, findUnused, type CycleEdge, type EntryPoint, type Hub, type UnusedRow } from './structure.js'
 import { contextMap } from './context-map.js'
 import { compare, hasBodyHash, unreadableFiles } from './compare.js'
 import { loadSchema } from '../core/schemas.js'
@@ -46,10 +48,10 @@ import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 
-export const TOOLS = ['workspace_status', 'list_repositories', 'list_snapshots', 'list_workspaces', 'find_symbols', 'get_symbol', 'get_relationships', 'trace_paths', 'read_evidence', 'get_overview', 'analyze_impact', 'find_tests', 'search_sources', 'get_memory', 'verify_claim', 'request_index', 'get_job', 'get_claims', 'save_memory', 'get_table_reach', 'get_property_reads', 'get_external_usage', 'find_query_source', 'compare_snapshots', 'list_queries', 'get_ecosystem', 'prepare_verification', 'get_verification', 'impact_completeness', 'get_symbols_at', 'get_session_trail', 'get_context_map'] as const
+export const TOOLS = ['workspace_status', 'list_repositories', 'list_snapshots', 'list_workspaces', 'find_symbols', 'get_symbol', 'get_relationships', 'trace_paths', 'read_evidence', 'get_overview', 'analyze_impact', 'find_tests', 'search_sources', 'get_memory', 'verify_claim', 'request_index', 'get_job', 'get_claims', 'save_memory', 'get_table_reach', 'get_property_reads', 'get_external_usage', 'find_query_source', 'compare_snapshots', 'list_queries', 'get_ecosystem', 'prepare_verification', 'get_verification', 'impact_completeness', 'get_symbols_at', 'get_session_trail', 'find_stale_mentions', 'find_unused', 'find_cycles', 'find_entry_points', 'find_hubs', 'get_context_map'] as const
 export type ToolName = (typeof TOOLS)[number]
 /** The query tools whose results are code locations: they answer in the lean envelope on request, and by default over MCP (FR099). */
-export const LEAN = new Set<string>(['find_symbols', 'get_symbol', 'get_symbols_at', 'get_relationships', 'trace_paths', 'analyze_impact', 'find_tests', 'get_session_trail', 'get_context_map'])
+export const LEAN = new Set<string>(['find_symbols', 'get_symbol', 'get_symbols_at', 'get_relationships', 'trace_paths', 'analyze_impact', 'find_tests', 'get_session_trail', 'find_unused', 'find_cycles', 'find_entry_points', 'find_hubs', 'get_context_map'])
 /** A lean answer is its text; the envelope beside it is what the text was rendered from, for in-process callers. */
 export type Answer = Envelope & { text?: string }
 
@@ -63,7 +65,8 @@ export const CAPABILITY: Record<ToolName, ListQueriesData['tools'][number]['capa
   read_evidence: 'read', get_overview: 'read', analyze_impact: 'read', find_tests: 'read', search_sources: 'read', get_memory: 'read',
   verify_claim: 'read', request_index: 'management', get_job: 'read', get_claims: 'read', save_memory: 'management', get_table_reach: 'read',
   get_property_reads: 'read', get_external_usage: 'read', find_query_source: 'read', compare_snapshots: 'read', list_queries: 'read',
-  get_ecosystem: 'read', prepare_verification: 'management', get_verification: 'read', impact_completeness: 'management', get_symbols_at: 'read', get_session_trail: 'read', get_context_map: 'read',
+  get_ecosystem: 'read', prepare_verification: 'management', get_verification: 'read', impact_completeness: 'management', get_symbols_at: 'read', get_session_trail: 'read', find_stale_mentions: 'read',
+  find_unused: 'read', find_cycles: 'read', find_entry_points: 'read', find_hubs: 'read', get_context_map: 'read',
 }
 
 /**
@@ -76,7 +79,9 @@ export const PROFILE: Record<ToolName, ListQueriesData['tools'][number]['profile
   get_table_reach: 'data', get_property_reads: 'data', get_external_usage: 'data', find_query_source: 'data', get_session_trail: 'data', get_context_map: 'data',
   verify_claim: 'claims', get_claims: 'claims', prepare_verification: 'claims', get_verification: 'claims',
   list_snapshots: 'extra', list_workspaces: 'extra', get_ecosystem: 'extra', compare_snapshots: 'extra', impact_completeness: 'extra', request_index: 'extra',
-  get_job: 'extra', get_memory: 'extra', save_memory: 'extra',
+  // A maintainer's question after a refactor, like compare_snapshots; workspace_status (core) counts the stale mentions and says how to list them.
+  get_job: 'extra', get_memory: 'extra', save_memory: 'extra', find_stale_mentions: 'extra',
+  find_unused: 'extra', find_cycles: 'extra', find_entry_points: 'extra', find_hubs: 'extra',
 }
 /** How a client loads the tools of another profile, said by list_queries, which lists them all (FR422). */
 const PROFILES_NOTE = 'Over MCP, proofmesh mcp lists the core profile; start it with --tools <profile[,profile]> (core, data, claims, extra) or --tools all to list the others. A tool outside the profiles it was started with answers INVALID_ARGUMENT naming its profile.'
@@ -120,12 +125,14 @@ type Partial = {
   more?: boolean
   /** A continuation the tool computed itself, in its own units (search_sources: whole files scanned); null when the scan finished. */
   next_offset?: number | null
+  /** The rows the shrink list holds uncut, sent as completion.total. */
+  total?: number
   /** The lean rows of `data` as it stands after any cut, one per item of the first shrink list (FR096). */
   lean?: (data: Record<string, unknown>) => string[]
 }
 
 /** Tools whose shrink list has a total order and honours ctx.page.offset, so a cursor continues it with no omission or duplicate. */
-const PAGED = new Set<ToolName>(['get_symbols_at', 'find_symbols', 'get_relationships', 'search_sources', 'workspace_status', 'find_tests', 'impact_completeness', 'get_context_map'])
+const PAGED = new Set<ToolName>(['get_symbols_at', 'find_symbols', 'get_relationships', 'search_sources', 'workspace_status', 'find_tests', 'impact_completeness', 'find_unused', 'find_cycles', 'find_entry_points', 'get_context_map'])
 /** Tools that answer over a workspace's link file rather than one repository snapshot (A28). None yet in this file; get_ecosystem joins at integration. */
 const WORKSPACE_SCOPED = new Set<ToolName>([])
 
@@ -241,10 +248,7 @@ function runRepositoryTool(dataDir: string, tool: string, input: Record<string, 
       const owner = catalog.repositories().find((r) => r.id === snapshot.repository_id)
       throw new ProofmeshError('SNAPSHOT_UNAVAILABLE', `snapshot ${snapshot.id} belongs to repository ${snapshot.repository_id}${owner ? ` (${owner.name})` : ''}, not ${repo.id} (${repo.name}); pass that repository_id, or a snapshot of ${repo.name}`, { detail: 'other_repository', repository_id: snapshot.repository_id })
     }
-    if (!snapshot) {
-      const job = catalog.openJobs(repo.id).at(-1)
-      throw new ProofmeshError('SNAPSHOT_UNAVAILABLE', `no published snapshot for this repository; ${job ? `index job ${job.id} is ${job.state}${job.phase ? ` (${job.phase}${job.total ? ` ${job.done}/${job.total}` : job.done ? ` ${job.done} files found` : ''})` : ''}; poll it with get_job` : 'run "proofmesh index" first'}`, { detail: 'none', ...(job ? { job_id: job.id } : {}) })
-    }
+    if (!snapshot) throw noSnapshot(catalog, repo.id)
     const db = openSnapshot(catalog, snapshot)
     try {
       const { applied, limitations } = applyLimits(input.limits as Limits | undefined)
@@ -278,6 +282,13 @@ function runRepositoryTool(dataDir: string, tool: string, input: Record<string, 
 
 const SNAPSHOT_FRESHNESS: Envelope['freshness'] = { mode: 'snapshot', status: 'as_of_snapshot' }
 
+/** Doc mentions by resolution: one target, or several candidates (FR820). */
+const mentionCounts = (db: Database.Database): { resolved: number; ambiguous: number } => {
+  const c = { resolved: 0, ambiguous: 0 }
+  for (const r of db.prepare("select resolution, count(*) as n from assertion where type = 'mentions' group by resolution").all() as Array<{ resolution: 'resolved' | 'ambiguous'; n: number }>) c[r.resolution] = r.n
+  return c
+}
+
 /**
  * Strict freshness: the snapshot answers only if the working tree, read now, is exactly what it was built from. Otherwise an index
  * job starts (or the open one is reused) and the call is refused with the changed files, so no answer passes for current when it is not.
@@ -289,6 +300,9 @@ export function treeFreshness(db: Database.Database, dataDir: string, root: stri
   const identity = JSON.parse((db.prepare("select value from meta where key = 'identity'").get() as { value: string }).value) as { manifest_hash: string }
   if (tree.manifest === identity.manifest_hash) return { current: true, changed: [] }
   const captured = new Map((db.prepare("select path, content_hash from file where disposition in ('indexed', 'failed')").all() as Array<{ path: string; content_hash: string | null }>).map((f) => [f.path, f.content_hash]))
+  // The docs whose text the snapshot kept for their mentions (FR826) are files the tree is compared on too.
+  const docs = db.prepare("select value from meta where key = 'doc_links'").get() as { value: string } | undefined
+  for (const [p, h] of Object.entries(docs ? (JSON.parse(docs.value) as { docs: Record<string, string> }).docs : {})) captured.set(p, h)
   return { current: false, changed: changes(captured, tree.hashes) }
 }
 
@@ -379,7 +393,7 @@ function envelope(ctx: Ctx, tool: ToolName, requested: Limits | undefined, r: Pa
       : null
     // A lean answer's last line carries the cursor, in place of the note pointing at completion.next_cursor.
     const notes = stop.size && !(ctx.lean && next_cursor) ? [...limitations, next_cursor ? CONTINUED : PAGED.has(tool) ? NARROW : TRUNCATED] : limitations
-    const done: Envelope = { ...env, limitations: notes, completion: { truncated: stop.size > 0, stop_reasons: order.filter((o) => stop.has(o)), timed_out: stop.has('timeout'), next_cursor } }
+    const done: Envelope = { ...env, limitations: notes, completion: { truncated: stop.size > 0, stop_reasons: order.filter((o) => stop.has(o)), timed_out: stop.has('timeout'), next_cursor, ...(r.total === undefined ? {} : { total: r.total }) } }
     return ctx.lean ? { ...done, envelope: 'lean', text: leanText(tool, ctx.snapshot.id, current === ctx.snapshot.id, r.lean!(r.data), notes, next_cursor) } : done
   }
   const size = (a: Answer) => Buffer.byteLength(ctx.lean ? a.text! : JSON.stringify(a))
@@ -493,22 +507,17 @@ function siteOf(db: Database.Database, assertionId: string): { path: string; sta
 }
 
 /**
- * Impact rows: each dependent at the site of the edge that first reached it, or at its declaration when dispatch reached it (FR097).
- * Each row is rendered once and kept, since the byte budget renders the answer again for every row it drops.
+ * Each dependent at the site of the edge that first reached it, or at its declaration when dispatch reached it (FR097, FR860): the
+ * row's line in its own file and the relationship, and `site` when that edge is recorded in another file (a registration, say).
  */
-const impactRows = (ctx: Ctx, reached: Impact['reached_by'], mixed: boolean) => {
-  const rendered = new Map<string, string>()
-  return (list: Impact['dependents']) => list.map((x) => {
-    const kept = rendered.get(x.id)
-    if (kept !== undefined) return kept
-    const via = reached.get(x.id), site = via ? siteOf(ctx.db, via) : null
-    const line = site?.start_line ?? (ctx.db.prepare('select start_line from symbol where id = ?').get(x.id) as { start_line: number }).start_line
-    const type = via && mixed ? (ctx.db.prepare('select type from assertion where id = ?').get(via) as { type: string }).type : null
-    const row = leanRow(leanName(x), site?.path ?? x.path, line, [`depth=${x.depth}`, ...(!via ? ['dispatch'] : type ? [type] : []), ...(x.basis === 'inferred' ? ['inferred'] : [])])
-    rendered.set(x.id, row)
-    return row
-  })
-}
+const impactRows = (ctx: Ctx, dependents: Array<Impact['dependents'][number] & { repository?: WorkspaceDependent['repository'] }>, reached: Impact['reached_by']) => dependents.map((x) => {
+  // A dependent in another repository already holds its line, relationship and site, read from its own snapshot.
+  if (x.repository) return x as WorkspaceDependent
+  const via = reached.get(x.id), site = via ? siteOf(ctx.db, via) : null
+  const line = site?.path === x.path ? site.start_line : (ctx.db.prepare('select start_line from symbol where id = ?').get(x.id) as { start_line: number }).start_line
+  const relationship = via ? (ctx.db.prepare('select type from assertion where id = ?').get(via) as { type: string }).type : 'dispatch'
+  return { ...x, line, relationship, ...(site && site.path !== x.path ? { site: { path: site.path, start_line: site.start_line } } : {}) }
+})
 
 type Boundaries = { items: Boundary[]; count: number; by_reason: Record<string, number> }
 const NO_BOUNDARIES: Boundaries & { name_matched: number } = { items: [], count: 0, by_reason: {}, name_matched: 0 }
@@ -631,6 +640,13 @@ const fileAlias = (db: Database.Database, id: string): string | undefined => id.
   ? (db.prepare("select id from symbol where file_id = ? and kind = 'module' order by id limit 1").get(id) as { id: string } | undefined)?.id
   : (db.prepare("select file_id as id from symbol where id = ? and kind = 'module'").get(id) as { id: string } | undefined)?.id
 
+/** The note a structure listing carries when it left generated files under its prefix out (FR299). */
+const generatedNote = (ctx: Ctx, listing: string, input: Record<string, unknown>): string[] => {
+  const prefix = String(input.path_prefix ?? '')
+  const note = generatedLeftOut(listing, [...generatedPaths(ctx.db)].filter((p) => p.startsWith(prefix)).length, input.include_generated === true)
+  return note ? [note] : []
+}
+
 /** get_context_map's default budget_bytes and max_depth (FR920). */
 const CONTEXT_BUDGET = 4096, CONTEXT_DEPTH = 2
 
@@ -668,7 +684,9 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     const censusRows = meta.census ? (JSON.parse(meta.census) as Array<{ kind: string; language: string; files: number }>) : []
     const languages = censusRows
     const cycles = (meta.module_cycles ? JSON.parse(meta.module_cycles) : []) as ModuleCycle[]
+    const docMentions = { ...mentionCounts(ctx.db), stale: meta.doc_links ? (JSON.parse(meta.doc_links) as { stale: unknown[] }).stale.length : 0 }
     const fileSummary = [...groups.values()].sort((a, b) => b.files - a.files || (a.extension < b.extension ? -1 : 1)).slice(0, 50)
+    const failed = lastIndexFailure(ctx.catalog, ctx.repo.id)
     return {
       data: {
         repository: { id: ctx.repo.id, name: ctx.repo.name, git: JSON.parse(meta.git ?? '{"available":false}') },
@@ -691,6 +709,7 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
         languages,
         // The FFI seams by mechanism (FR467); empty for a snapshot sealed before the FFI rules, or with none.
         ffi_seams: (meta.ffi_seams ? JSON.parse(meta.ffi_seams) : {}) as Record<string, number>,
+        doc_mentions: docMentions,
         hubs: input.include_generated === true ? hubsOf(ctx.db, true) : snapshotSummary(ctx.db, ctx.snapshot.id).hubs,
         module_cycles: cycles,
         jobs: ctx.catalog.openJobs(ctx.repo.id),
@@ -700,6 +719,8 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
       shrink: ['files', 'hubs'],
       more: all.length > ctx.limits.max_rows,
       limitations: [
+        ...(failed ? [`Warning: ${failed.note}; this answer is from snapshot ${ctx.snapshot.id}, which an earlier index published.`] : []),
+        ...(docMentions.stale ? [`${docMentions.stale} doc mention${docMentions.stale === 1 ? '' : 's'} name code that was renamed, moved or deleted; find_stale_mentions (profile extra) lists ${docMentions.stale === 1 ? 'it' : 'them'} with ${docMentions.stale === 1 ? 'its' : 'their'} file and line.`] : []),
         ...cycles.map((c) => `Warning: build modules ${c.modules.join(', ')} form a cycle through syntax-tier name matches, and ${c.ecosystem} forbids module cycles; the edges are ${c.edges.map((e) => `${e.from} to ${e.to} (${e.type}, ${e.sites} site${e.sites === 1 ? '' : 's'}, first ${e.path}:${e.line})`).join(', ')}.`),
         ...[generatedLeftOut('hubs', (ctx.db.prepare("select count(*) as n from file where json_extract(capabilities, '$.generated') = 'true'").get() as { n: number }).n, input.include_generated === true)].filter((n): n is string => !!n),
         ...(ask ? [] : ['No file rows were asked for: file_summary groups the files by disposition, reason and extension; pass files to list rows.']),
@@ -739,7 +760,23 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     for (const id of subjects) if (!ctx.db.prepare(`select 1 from ${id.startsWith('ext_') ? 'external_symbol' : id.startsWith('file_') ? 'file' : 'symbol'} where id = ?`).get(id)) throw new ProofmeshError('NOT_FOUND', `symbol ${id} is not in snapshot ${ctx.snapshot.id}`)
     const types = (input.types as string[] | undefined) ?? [...IMPACT_TYPES]
     const follow = resolveFollow(ctx.db, input.include_inferred, subjects)
-    const { reached_by, sites, ...r } = analyzeImpact(ctx.db, ctx.snapshot.id, subjects, types, ctx.limits.max_depth, ctx.limits.max_rows, undefined, follow.on)
+    const across = input.include_workspace === true
+    const { reached_by, sites, ...r } = analyzeImpact(ctx.db, ctx.snapshot.id, subjects, types, ctx.limits.max_depth, across ? Number.MAX_SAFE_INTEGER : ctx.limits.max_rows, undefined, follow.on)
+    // FR903: dependents in the other members of this repository's workspaces, through the packages it builds, after the local walk.
+    const ws = across ? withWorkspace(ctx.catalog, ctx.repo, ctx.snapshot, ctx.db, (w) => {
+      const reached = new Map<string, number>(), { membersOf } = structure(ctx.db, ctx.snapshot.id)
+      for (const id of subjects) for (const m of [id, ...(membersOf.get(id) ?? [])]) reached.set(m, 0)
+      for (const d of r.dependents) if (!reached.has(d.id)) reached.set(d.id, d.depth)
+      return { header: w.header, limitations: w.limitations, ...workspaceDependents(w, reached, types, ctx.limits.max_depth) }
+    }) : null
+    if (ws) {
+      const all: Array<Impact['dependents'][number] & { repository?: WorkspaceDependent['repository'] }> = [...r.dependents, ...ws.dependents]
+      all.sort((a, b) => a.depth - b.depth || (a.repository?.name ?? '').localeCompare(b.repository?.name ?? '') || a.qualified_name.localeCompare(b.qualified_name) || a.path.localeCompare(b.path))
+      r.dependents = all.slice(0, ctx.limits.max_rows)
+      r.totals.dependents += ws.dependents.length
+      for (const d of ws.dependents) { r.totals.by_basis[d.basis]++; r.totals.by_depth[String(d.depth)] = (r.totals.by_depth[String(d.depth)] ?? 0) + 1 }
+      if (ws.stopped && !r.stopped_by) r.stopped_by = 'max_depth'
+    }
     const calls = snapshotSummary(ctx.db, ctx.snapshot.id).unresolved_calls
     // Lean states only what applies to this answer; the tool description carries the standing caveat.
     const limitations = [
@@ -749,10 +786,14 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
       ...inferredNotes(follow, sites, subjects.length),
       ...(!types.includes('imports') && subjects.some((id) => id.startsWith('file_') || fileAlias(ctx.db, id) !== undefined) ? ['A file is reached only through imports; add imports to types for the files that depend on it.'] : []),
       ...leanReferencesNote(ctx, types),
+      ...(ws ? [...ws.limitations, ...mismatchNotes(ws.notes, ctx.repo.name), ...(ws.dependents.length ? ['Dependents in other repositories carry their repository; by_project, by_area and by_team count this repository\'s dependents only.'] : [])] : []),
     ]
     const stop: Array<'max_depth' | 'max_rows'> = [...(r.stopped_by === 'max_depth' ? ['max_depth' as const] : []), ...(r.stopped_by === 'node_budget' || r.totals.dependents > ctx.limits.max_rows ? ['max_rows' as const] : [])]
-    const rows = impactRows(ctx, reached_by, types.length > 1)
-    return { data: { subjects, types, ...r }, stop_reasons: stop, limitations, shrink: 'dependents', lean: (data) => rows(data.dependents as Impact['dependents']) }
+    const rows = impactRows(ctx, r.dependents, reached_by)
+    return {
+      data: { subjects, types, ...r, dependents: rows, ...(ws ? { workspace: ws.header } : {}) }, stop_reasons: stop, limitations, shrink: 'dependents', total: r.totals.dependents,
+      lean: (data) => (data.dependents as typeof rows).map((x) => leanRow(leanName(x), x.site?.path ?? x.path, x.site?.start_line ?? x.line, [`depth=${x.depth}`, ...(x.relationship === 'dispatch' ? ['dispatch'] : types.length > 1 ? [x.relationship] : []), ...('repository' in x && x.repository ? [repoTag(x.repository)] : []), ...(x.basis === 'inferred' ? ['inferred'] : [])])),
+    }
   },
 
   request_index(ctx) {
@@ -916,6 +957,19 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     const job = ctx.catalog.job(String(input.job_id))
     if (!job || job.repository_id !== ctx.repo.id) throw new ProofmeshError('NOT_FOUND', `no index job ${String(input.job_id)} for this repository`)
     return { data: { job }, limitations: job.state === 'interrupted' ? ['The process running this job stopped before finishing; request a new index.'] : [] }
+  },
+
+  find_stale_mentions(ctx, input) {
+    const prefix = String(input.path_prefix ?? '')
+    const meta = ctx.db.prepare("select value from meta where key = 'doc_links'").get() as { value: string } | undefined
+    const all = (meta ? (JSON.parse(meta.value) as { stale: Array<{ path: string }> }).stale : []).filter((m) => m.path.startsWith(prefix))
+    return {
+      data: { mentions: all.slice(0, ctx.limits.max_rows), total: all.length }, stop_reasons: all.length > ctx.limits.max_rows ? ['max_rows'] : [], shrink: 'mentions',
+      limitations: [
+        'A mention is a Markdown doc\'s inline code or link matched to code by name, never proved, so every one is inferred. It is stale when it resolved in an earlier snapshot and names nothing now: renamed, moved or moved_renamed when one removed and one added symbol share a body hash, as compare_snapshots pairs them, else deleted. It stays listed until the doc is changed to name real code.',
+        ...(meta ? [] : ['This snapshot was sealed before doc mentions were recorded (format 0.12); index again to find them.']),
+      ],
+    }
   },
 
   compare_snapshots(ctx, input) {
@@ -1134,11 +1188,78 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
         totals: { tests: r.rows.length, executing, not_executing: r.rows.length - executing, by_basis: byBasis(r.rows), by_project: [...byProject].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)).map(([name, count]) => ({ name, count })) },
         observed: { available: false, reason: 'No coverage data has been imported for this snapshot.' }, stopped_by: r.stopped_by,
       },
-      stop_reasons: [...(r.stopped_by === 'max_depth' ? ['max_depth' as const] : []), ...(r.rows.length > end ? ['max_rows' as const] : [])], more: r.rows.length > end, limitations, shrink: 'tests',
+      stop_reasons: [...(r.stopped_by === 'max_depth' ? ['max_depth' as const] : []), ...(r.rows.length > end ? ['max_rows' as const] : [])], more: r.rows.length > end, limitations, shrink: 'tests', total: r.rows.length,
       // A lean row is the test at its first call toward the subject, as an impact row is; a call is depth=1, a transitive call deeper (FR097, FR101).
       lean: (data) => (data.tests as Array<TestRow & { chain: Array<{ path: string; line: number }> }>).map((t) => t.evidence === 'import_only'
         ? leanRow(null, t.path, t.line, ['import_only', ...(t.basis === 'inferred' ? ['inferred'] : [])])
         : leanRow(leanName(t), t.chain[0]!.path, t.chain[0]!.line, [`depth=${t.depth}`, ...(t.evidence === 'dispatch' || t.evidence === 'reference' ? [t.evidence] : []), ...(t.basis === 'inferred' ? ['inferred'] : [])])),
+    }
+  },
+
+  find_unused(ctx, input) {
+    const kinds = (input.kinds as string[] | undefined) ?? ['function', 'class', 'interface', 'type_alias', 'enum', 'variable']
+    const { rows, checked } = findUnused(ctx.db, ctx.store, { kinds, pathPrefix: input.path_prefix as string | undefined, topLevelOnly: input.top_level_only !== false, includeTests: input.include_tests === true, includeGenerated: input.include_generated === true })
+    const count = (f: (r: UnusedRow) => boolean) => rows.filter(f).length
+    const by = (b: UnusedRow['by']) => count((r) => r.by === b)
+    const totals = { checked, unused: count((r) => r.group === 'unused'), reachable_only_by: { test: by('test'), framework: by('framework'), public_export: by('public_export') }, possibly_used: count((r) => r.group === 'possibly_used') }
+    const refs = referencesNote(snapshotSummary(ctx.db, ctx.snapshot.id).capabilities.references)
+    const end = ctx.page.offset + ctx.limits.max_rows
+    const limitations = [
+      'A symbol is unused when no resolved relationship from another symbol uses it (a call, reference, import, inheritance or injection). A use by reflection, configuration, a string or a call that did not resolve is not seen, so read possibly_used and the unresolved calls before deleting anything.',
+      ...(refs ? [refs] : []),
+      ...(totals.reachable_only_by.public_export ? ['public_export: exported (export, or an export list) from a file that a package.json main, module, types or exports names, or that such a file re-exports; a file re-exported by name counts whole.'] : []),
+      ...(input.include_tests === true ? [] : ['Test code was not checked; a symbol only test code uses is listed under reachable_only_by test.']),
+      ...generatedNote(ctx, 'dead code', input),
+    ]
+    return {
+      data: { symbols: rows.slice(ctx.page.offset, end), totals }, more: rows.length > end, stop_reasons: rows.length > end ? ['max_rows'] : [], limitations, shrink: 'symbols',
+      lean: (data) => (data.symbols as UnusedRow[]).map((r) => leanRow(leanName(r), r.path, r.line, [r.kind, r.group === 'reachable_only_by' ? `reachable_only_by=${r.by}` : r.group, ...(r.sites ? [`sites=${r.sites}`] : []), ...(r.inferred ? ['inferred'] : [])])),
+    }
+  },
+
+  find_cycles(ctx, input) {
+    const r = findCycles(ctx.db, { pathPrefix: input.path_prefix as string | undefined, includeTypeOnly: input.include_type_only !== false, includeTests: input.include_tests !== false, isTest: isTestPath })
+    const end = ctx.page.offset + ctx.limits.max_rows
+    const typeOnly = r.cycles.filter((c) => c.type_only).length
+    const totals = { cycles: r.cycles.length, type_only: typeOnly, files: new Set(r.cycles.flatMap((c) => c.files)).size, edges: r.edges.length }
+    const limitations = [
+      `${totals.cycles} cycle${totals.cycles === 1 ? '' : 's'} over ${totals.files} file${totals.files === 1 ? '' : 's'}: ${totals.cycles - typeOnly} runtime, ${typeOnly} only through type-only imports (type_only); ${totals.edges} import${totals.edges === 1 ? '' : 's'} inside them.`,
+      'Only imports that resolved to a file of the repository, or that bind one module by name (inferred), are edges; an import that did not resolve can hide a cycle.',
+    ]
+    return {
+      data: { cycles: r.cycles, edges: r.edges.slice(ctx.page.offset, end), totals }, more: r.edges.length > end, stop_reasons: r.edges.length > end ? ['max_rows'] : [], limitations, shrink: 'edges',
+      lean: (data) => (data.edges as CycleEdge[]).map((e) => leanRow(e.to, e.from, e.line, [`cycle=${e.cycle}`, ...(e.kind === 'static' ? [] : [e.kind]), ...(e.inferred ? ['inferred'] : [])])),
+    }
+  },
+
+  find_entry_points(ctx, input) {
+    const rows = findEntryPoints(ctx.db, ctx.store, { pathPrefix: input.path_prefix as string | undefined, includeTests: input.include_tests === true, includeGenerated: input.include_generated === true, isTest: isTestPath })
+    const end = ctx.page.offset + ctx.limits.max_rows
+    const totals = { not_imported: 0, endpoint: 0, job: 0, main: 0, bin: 0, exports: 0 }
+    for (const e of rows) totals[e.reason]++
+    const limitations = [
+      'A module is not_imported when no file under the prefix imports it through a resolved import (static, dynamic or re-export): an entry point, a script, or a file nothing uses. A file loaded by path at run time (a worker, a preload, a config) is listed too.',
+      'Framework entry points are the endpoints and jobs the snapshot records; package entries come from package.json main, module, types, exports and bin, mapped to the indexed file they name (a .js path to its .ts source), else shown at the manifest as not_indexed.',
+      ...generatedNote(ctx, 'entry points', input),
+    ]
+    return {
+      data: { entries: rows.slice(ctx.page.offset, end), totals }, more: rows.length > end, stop_reasons: rows.length > end ? ['max_rows'] : [], limitations, shrink: 'entries',
+      lean: (data) => (data.entries as EntryPoint[]).map((e) => e.reason === 'not_imported' ? leanRow(null, e.path, e.line, ['not_imported'])
+        : e.kind ? leanRow(e.name, e.path, e.line, [e.kind]) : e.name === null ? leanRow(null, e.path, e.line, [e.reason]) : leanRow(e.name, e.path, e.line, [e.reason, 'not_indexed'])),
+    }
+  },
+
+  find_hubs(ctx, input) {
+    const by = (input.by as 'fan_in' | 'fan_out' | 'betweenness' | undefined) ?? 'fan_in'
+    const r = findHubs(ctx.db, { top: Math.min(Number(input.top ?? 10), ctx.limits.max_rows), by, kinds: input.kinds as string[] | undefined, pathPrefix: input.path_prefix as string | undefined, includeTests: input.include_tests !== false, includeGenerated: input.include_generated === true, deadline: ctx.started + ctx.limits.timeout_ms })
+    const limitations = [
+      'fan_in counts the distinct symbols that use one through a resolved relationship (a call, reference, import, inheritance or injection); fan_out the distinct symbols it uses. Unresolved calls count for neither, nor do imports between files, so a module ranks by uses of its module symbol alone.',
+      ...generatedNote(ctx, 'hubs', input),
+      ...(r.sampled !== null ? [`betweenness was computed from ${r.sampled} evenly spaced source symbols, not every one, and scaled up${r.timedOut ? ', stopping at timeout_ms' : ''}: an estimate.`] : []),
+    ]
+    return {
+      data: { hubs: r.hubs, by, sampled_sources: r.sampled }, stop_reasons: [...(Number(input.top ?? 10) > ctx.limits.max_rows && r.hubs.length === ctx.limits.max_rows ? ['max_rows' as const] : []), ...(r.timedOut ? ['timeout' as const] : [])], limitations, shrink: 'hubs',
+      lean: (data) => (data.hubs as Hub[]).map((h) => leanRow(leanName(h), h.path, h.line, [h.kind, `fan_in=${h.fan_in}`, `fan_out=${h.fan_out}`, ...(h.betweenness !== undefined ? [`betweenness=${h.betweenness}`] : [])])),
     }
   },
 
@@ -1321,6 +1442,12 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
       return names.includes(subject) ? undefined : names.find((n) => via.has(n))
     }
     const rows = all.slice(offset, offset + ctx.limits.max_rows + 1)
+    // FR902: inbound sites in the other members of this repository's workspaces, through the packages it builds. They follow every local row
+    // in the total order, so a page reaches them only once the local rows are all listed.
+    const ws = input.include_workspace === true && !isFile && !isExternal && direction !== 'out'
+      ? withWorkspace(ctx.catalog, ctx.repo, ctx.snapshot, ctx.db, (w) => ({ header: w.header, limitations: w.limitations, rows: w.inbound(ids, types).filter((r) => resolutions.includes(r.resolution) && !(input.include_tests === false && isTestPath(r.source.path))) }))
+      : null
+    const across = ws ? ws.rows.slice(Math.max(0, offset - all.length), Math.max(0, offset + ctx.limits.max_rows + 1 - all.length)) : []
     const describe = (kind: string | null, id: string | null) => {
       if (!kind || !id) return { kind: 'none' }
       if (kind === 'symbol') { const s = ctx.db.prepare(`${SYMBOL_SQL} where s.id = ?`).get(id) as SymbolRow; return { kind: 'symbol', id, symbol_kind: s.kind, name: s.name, qualified_name: s.qualified_name, path: s.path, start_line: s.start_line } }
@@ -1335,8 +1462,12 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
         other: a.direction === 'out' ? describe(a.target_kind, a.target_id) : describe(a.source_kind, a.source_id),
         site: { path: site.path, start_line: site.start_line, end_line: site.end_line }, reason: a.reason, detail: a.detail ? (JSON.parse(a.detail) as Record<string, string>) : null, evidence_ids: site.evidence,
         ...(viaOf(a) ? { via: { id: viaOf(a)!, qualified_name: (ctx.db.prepare('select qualified_name from symbol where id = ?').get(viaOf(a)) as { qualified_name: string }).qualified_name } } : {}),
-      }
-    })
+      } as { via?: { id: string; qualified_name: string }; repository?: Inbound['repository'] } & Record<string, unknown> & { assertion_id: string; type: string; direction: 'in' | 'out'; resolution: string; basis?: Basis; other: Record<string, unknown>; site: { path: string; start_line: number; end_line: number }; reason: string | null; detail: Record<string, string> | null; evidence_ids: string[] }
+    }).concat(across.map((r) => ({
+      assertion_id: r.assertion_id, type: r.type, direction: 'in' as const, resolution: r.resolution, origin: r.origin, basis: r.basis,
+      other: { kind: 'symbol', id: r.source.id, symbol_kind: r.source.kind, name: r.source.name, qualified_name: r.source.qualified_name, path: r.source.path, start_line: r.source.start_line, key: r.source.key },
+      site: r.site, reason: null, detail: r.detail, evidence_ids: r.evidence_ids, repository: r.repository,
+    })))
     const boundaries = !isFile && !isExternal && direction !== 'out' && types.includes('calls')
       ? incomingBoundaries(ctx, subject, via)
       : NO_BOUNDARIES
@@ -1355,7 +1486,8 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     const inCount = direction === 'out' ? null : counted(inbound, inboundParams)
     const inheritedBasis = byBasis(inherited.map((a) => ({ basis: basisOf(a) })))
     const outExternal = hideExternal ? (ctx.db.prepare(`select count(*) as n from assertion where source_id in (${sp}) and type = 'calls' and resolution = 'resolved_external'`).get(...ids) as { n: number }).n : 0
-    const totals = { in: inCount?.total ?? 0, out: outCount ? outCount.total + inherited.length : 0, by_basis: { observed: (outCount?.observed ?? 0) + (inCount?.observed ?? 0) + (outCount ? inheritedBasis.observed : 0), inferred: (outCount?.inferred ?? 0) + (inCount?.inferred ?? 0) + (outCount ? inheritedBasis.inferred : 0) }, ...(boundaries !== NO_BOUNDARIES ? { boundaries_calling_name: boundaries.name_matched } : {}), ...(outExternal ? { out_external: outExternal } : {}) }
+    const wsBasis = byBasis(ws?.rows ?? [])
+    const totals = { in: (inCount?.total ?? 0) + (ws?.rows.length ?? 0), out: outCount ? outCount.total + inherited.length : 0, by_basis: { observed: (outCount?.observed ?? 0) + (inCount?.observed ?? 0) + (outCount ? inheritedBasis.observed : 0) + wsBasis.observed, inferred: (outCount?.inferred ?? 0) + (inCount?.inferred ?? 0) + (outCount ? inheritedBasis.inferred : 0) + wsBasis.inferred }, ...(boundaries !== NO_BOUNDARIES ? { boundaries_calling_name: boundaries.name_matched } : {}), ...(outExternal ? { out_external: outExternal } : {}) }
     for (const g of outGroups) byReason[g.reason] = (byReason[g.reason] ?? 0) + g.n
     const truncated = relationships.length > ctx.limits.max_rows
     const limitations = [
@@ -1367,10 +1499,12 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
       ...(isExternal ? ['The subject is an external symbol: only resolved calls into it are listed, and a closed generic is a separate external symbol from its open definition.'] : []),
       ...(input.include_tests === false ? [`Rows whose other side is test code were left out: ${TEST_RECOGNISED}.`] : []),
       ...leanReferencesNote(ctx, types),
+      ...(ws ? [...ws.limitations, ...mismatchNotes(ws.rows, ctx.repo.name), ...(ws.rows.length ? ['Rows from other repositories carry their repository and commit; their ids and evidence ids are of that repository\'s snapshot.'] : [])] : []),
     ]
     return {
-      data: { relationships: relationships.slice(0, ctx.limits.max_rows), boundaries: boundaries.items, totals },
-      evidence_ids: [...new Set(relationships.slice(0, ctx.limits.max_rows).flatMap((r) => r.evidence_ids))].sort(byKey((i) => evidenceKey(ctx.db, i))),
+      data: { relationships: relationships.slice(0, ctx.limits.max_rows), boundaries: boundaries.items, totals, ...(ws ? { workspace: ws.header } : {}) },
+      // The envelope's evidence is this snapshot's; a row of another repository lists its own.
+      evidence_ids: [...new Set(relationships.slice(0, ctx.limits.max_rows).filter((r) => !r.repository).flatMap((r) => r.evidence_ids))].sort(byKey((i) => evidenceKey(ctx.db, i))),
       unresolved: { scope: 'query', items: [...boundaries.items, ...outUnresolved], count: boundaries.count + outGroups.reduce((n, g) => n + g.n, 0), by_reason: byReason },
       stop_reasons: truncated ? ['max_rows'] : [], more: relationships.length > ctx.limits.max_rows, limitations, shrink: ['relationships', 'boundaries'],
       // One row per site: the other side's name at the call, import or reference line, tagged with what a plain row would hide (FR096).
@@ -1381,7 +1515,7 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
           // A query that mixes directions or types says which each row is, as the JSON rows' direction and type fields do.
           ...(direction === 'both' ? [r.direction] : []), ...(types.length > 1 ? [r.type] : []), ...(r.via ? ['dispatch'] : []), ...(o.kind === 'external' ? ['external'] : []),
           ...(r.resolution === 'unresolved' ? [`unresolved:${r.reason}`] : r.resolution === 'candidate' || r.resolution === 'ambiguous' ? [r.resolution] : []),
-          ...(r.basis === 'inferred' ? ['inferred'] : []),
+          ...(r.basis === 'inferred' ? ['inferred'] : []), ...(r.repository ? [repoTag(r.repository)] : []),
         ])
       }),
     }

@@ -5,7 +5,7 @@ import { pathToFileURL } from 'node:url'
 import path from 'node:path'
 import { asProofmeshError, ProofmeshError, storedMessage } from '../core/errors.js'
 import { resolveDataDir } from '../core/paths.js'
-import { Catalog, initDataDir, LEASE_OWNER, type IndexJob } from '../meshstore/catalog.js'
+import { Catalog, initDataDir, lastIndexFailure, LEASE_OWNER, noSnapshot, type IndexJob } from '../meshstore/catalog.js'
 import { runVerificationCommand } from './verification.js'
 import { indexCoverage } from '../scip/coverage.js'
 import { runScip } from '../scip/run.js'
@@ -127,7 +127,7 @@ export async function main(argv: string[]): Promise<number> {
           if (rest[0] === 'accept' && rest[1]) {
             const repo = catalog.resolveRepository(take([...rest.slice(2)], '--repository'))
             const snapshot = catalog.currentSnapshot(repo.id)
-            if (!snapshot) throw new ProofmeshError('SNAPSHOT_UNAVAILABLE', 'index the repository before accepting a note')
+            if (!snapshot) throw noSnapshot(catalog, repo.id)
             const note = catalog.notes().find((n) => n.id === rest[1])
             if (!note) throw new ProofmeshError('NOT_FOUND', `no note ${rest[1]}; run proofmesh notes sync first`)
             const db = openSnapshot(catalog, snapshot)
@@ -531,12 +531,13 @@ export async function main(argv: string[]): Promise<number> {
           try {
             const repo = catalog.resolveRepository(opts[0])
             const snapshot = catalog.currentSnapshot(repo.id)
-            if (!snapshot) throw new ProofmeshError('SNAPSHOT_UNAVAILABLE', 'no published snapshot for this repository; run "proofmesh index" first', { detail: 'none' })
+            if (!snapshot) throw noSnapshot(catalog, repo.id)
             const db = openSnapshot(catalog, snapshot)
             const t = (() => { try { return treeFreshness(db, dataDir, repo.root) } finally { db.close() } })()
-            const out = { repository_id: repo.id, name: repo.name, snapshot_id: snapshot.id, current: t.current, changed_count: t.changed.length, changed: t.changed.slice(0, 20), trail_recording: catalog.trailRecording(repo.id) }
+            const failed = lastIndexFailure(catalog, repo.id)
+            const out = { repository_id: repo.id, name: repo.name, snapshot_id: snapshot.id, current: t.current, changed_count: t.changed.length, changed: t.changed.slice(0, 20), trail_recording: catalog.trailRecording(repo.id), failed_job: failed && { id: failed.job.id, state: failed.job.state, finished_at: failed.job.finished_at, error: failed.job.error } }
             if (json) console.log(JSON.stringify(out, null, 2))
-            else console.log(t.current ? `${repo.name}: snapshot ${snapshot.id} matches the working tree` : `${repo.name}: the working tree differs from snapshot ${snapshot.id}: ${t.changed.length} files changed${t.changed.length ? `, such as ${t.changed.slice(0, 3).map((c) => `${c.path} (${c.change})`).join(', ')}` : ''}`)
+            else console.log(`${t.current ? `${repo.name}: snapshot ${snapshot.id} matches the working tree` : `${repo.name}: the working tree differs from snapshot ${snapshot.id}: ${t.changed.length} files changed${t.changed.length ? `, such as ${t.changed.slice(0, 3).map((c) => `${c.path} (${c.change})`).join(', ')}` : ''}`}${failed ? `; ${failed.note}` : ''}`)
             return 0
           } finally {
             catalog.close()
@@ -548,6 +549,8 @@ export async function main(argv: string[]): Promise<number> {
         if (json) console.log(JSON.stringify(env, null, 2))
         else {
           for (const j of (env.data.jobs as IndexJob[] | undefined) ?? []) console.log(`index job ${j.id} ${j.state}${j.started_at ? ` since ${j.started_at}` : `, requested ${j.requested_at}`} by ${j.requested_by}${j.phase ? `: ${j.phase}${countLabel(j.done, j.total)}` : ''}`)
+          const failed = (() => { const c = Catalog.open(dataDir); try { return lastIndexFailure(c, (env.data.repository as { id: string }).id) } finally { c.close() } })()
+          if (failed) console.log(failed.note)
           // Which adapters this install can run now, and why the others cannot (FR387).
           const specs = registryFor(dataDir, named).specs, down = specs.filter((s) => !s.entry())
           console.log(`adapters available: ${specs.filter((s) => !down.includes(s)).map((s) => s.id).join(', ')}${down.length ? `; unavailable: ${down.map((s) => `${s.id} (${s.missing?.() ?? s.unavailable()})`).join(', ')}` : ''}`)
@@ -657,6 +660,8 @@ export async function main(argv: string[]): Promise<number> {
   } catch (e) {
     const err = asProofmeshError(e)
     process.stderr.write(`proofmesh: ${err.code}: ${err.message}\n`)
+    // Asked for JSON, the refusal comes as JSON too, with its details (FR872).
+    if (argv.includes('--json')) console.log(JSON.stringify(err.toJSON(), null, 2))
     return 1
   }
 }
