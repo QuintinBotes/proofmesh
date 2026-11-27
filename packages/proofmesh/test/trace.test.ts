@@ -53,6 +53,15 @@ describe('trace_paths conclusions', () => {
     expect(env.limitations).toContain('No path was found within the limits. This is not evidence that no path exists.')
   })
 
+  it('FR1500 depth 1 from a function whose only callee calls nothing lists no horizon and claims no depth stop', () => {
+    const input = { source_id: id('packages/billing/src/invoice:invoiceTotal'), target_id: id('packages/api/src/handler:handleInvoice') }
+    const env = tool(d, 'trace_paths', { ...input, limits: { max_depth: 1 } })
+    expect((env.data.search as any).horizon).toEqual([])
+    expect((env.data.search as any).stopped_by).toBeNull()
+    expect(env.completion.stop_reasons).not.toContain('max_depth')
+    expect(env.data.conclusion).toBe(tool(d, 'trace_paths', input).data.conclusion)
+  })
+
   it('AC15 FR022 an unresolved boundary blocks an exhaustive negative', () => {
     const env = tool(d, 'trace_paths', { source_id: id('packages/api/src/handler:dispatch'), target_id: id('packages/legacy/src/format:formatAmount') })
     expect(env.data.conclusion).toBe('no_resolved_path')
