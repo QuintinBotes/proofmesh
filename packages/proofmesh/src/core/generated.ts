@@ -490,7 +490,7 @@ edges: number
 }
 
 /**
- * Import cycles among files (FR941): each strongly connected set of files under path_prefix once, with one row per import between its files at that import's path:line. Runtime cycles come first; a set that is a cycle only through type-only imports is listed apart, marked type_only. A cycle that holds only through an inferred import is marked inferred. Lean over MCP: `<imported file> <importing file>:<line> cycle=<n>`, tagged with the import kind when not static (re_export, type_only, dynamic) and inferred; pages with a cursor.
+ * Import cycles among files (FR941): each strongly connected set of files under path_prefix once, with one row per import between its files at that import's path:line. Runtime cycles come first; a set that is strongly connected only when type-only imports count is listed apart, marked type_only, with only the imports no runtime cycle inside it lists. A cycle that holds only through an inferred import is marked inferred. Lean over MCP: `<imported file> <importing file>:<line> cycle=<n>`, tagged with the import kind when not static (re_export, type_only, dynamic) and inferred; pages with a cursor.
  */
 export interface FindCyclesInput {
 /**

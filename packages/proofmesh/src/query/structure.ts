@@ -110,24 +110,35 @@ export function findCycles(db: Database.Database, o: { pathPrefix?: string; incl
     for (const e of edges) push(adj, e.from, e.to)
     return components([...new Set(edges.flatMap((e) => [e.from, e.to]))].sort(), adj)
   }
-  const runtime = sccs(all.filter((e) => e.kind !== 'type_only'))
+  const runtimeEdges = all.filter((e) => e.kind !== 'type_only')
+  const runtime = sccs(runtimeEdges)
   const key = (c: string[]) => c.join('\n')
   const seen = new Set(runtime.map(key))
+  // A set type-only imports make strongly connected, or join to a runtime cycle, is listed apart; its imports already listed under a
+  // runtime cycle are not listed again.
   const typed = o.includeTypeOnly ? sccs(all).filter((c) => !seen.has(key(c))) : []
-  // The component of each file when inferred imports are left out: a cycle whose files fall apart without them needs one.
-  const precise = new Map<string, number>()
-  for (const [i, c] of sccs(all.filter((e) => !e.inferred)).entries()) for (const f of c) precise.set(f, i)
+  const runtimeOf = new Map<string, number>()
+  for (const [i, c] of runtime.entries()) for (const f of c) runtimeOf.set(f, i)
+  const listed = (e: ImportEdge) => e.kind !== 'type_only' && runtimeOf.has(e.from) && runtimeOf.get(e.from) === runtimeOf.get(e.to)
+  // The component of each file when inferred imports are left out, over the same kinds of import: a cycle whose files fall apart
+  // without them needs one.
+  const componentOf = (edges: ImportEdge[]) => {
+    const m = new Map<string, number>()
+    for (const [i, c] of sccs(edges.filter((e) => !e.inferred)).entries()) for (const f of c) m.set(f, i)
+    return m
+  }
+  const precise = { runtime: componentOf(runtimeEdges), all: componentOf(all) }
   const bySize = (a: string[], b: string[]) => b.length - a.length || (a[0]! < b[0]! ? -1 : 1)
   const cycles: Cycle[] = [], edges: CycleEdge[] = []
   for (const [typeOnly, list] of [[false, runtime.sort(bySize)], [true, typed.sort(bySize)]] as const) {
     for (const files of list) {
       const n = cycles.length + 1, inside = new Set(files)
-      const own = all.filter((e) => inside.has(e.from) && inside.has(e.to) && (typeOnly || e.kind !== 'type_only'))
+      const own = all.filter((e) => inside.has(e.from) && inside.has(e.to) && (typeOnly ? !listed(e) : e.kind !== 'type_only'))
         .sort((a, b) => (a.from < b.from ? -1 : a.from > b.from ? 1 : a.line - b.line || (a.to < b.to ? -1 : a.to > b.to ? 1 : 0)))
       // One row per import site: a file importing another twice on one line is one edge.
       const unique = own.filter((e, i) => i === 0 || e.from !== own[i - 1]!.from || e.to !== own[i - 1]!.to || e.line !== own[i - 1]!.line)
-      const p = precise.get(files[0]!)
-      cycles.push({ cycle: n, type_only: typeOnly, inferred: p === undefined || files.some((f) => precise.get(f) !== p), files, edges: unique.length })
+      const map = typeOnly ? precise.all : precise.runtime, p = map.get(files[0]!)
+      cycles.push({ cycle: n, type_only: typeOnly, inferred: p === undefined || files.some((f) => map.get(f) !== p), files, edges: unique.length })
       for (const e of unique) edges.push({ cycle: n, from: e.from, to: e.to, line: e.line, kind: e.kind, inferred: e.inferred })
     }
   }
@@ -180,14 +191,15 @@ export function findUnused(db: Database.Database, store: EvidenceStore, o: { kin
   const pub = publicFiles(db, store)
   const declaration = db.prepare('select object_hash, start_byte, end_byte from evidence where id = ?')
   const texts = new Map<string, string>()
-  // The modifiers before a declaration's name, read from the captured file.
+  // The text of a declaration before the keyword that declares its name (`function f`, `const f`), read from the captured file: its
+  // decorators and modifiers. The name is found after its keyword, never inside `export` or a decorator's argument.
   const modifiers = (c: { name: string; evidence_id: string }) => {
     const e = declaration.get(c.evidence_id) as { object_hash: string; start_byte: number; end_byte: number } | undefined
     if (!e) return ''
     if (!texts.has(e.object_hash)) texts.set(e.object_hash, store.read(e.object_hash)?.toString('latin1') ?? '')
     const head = texts.get(e.object_hash)!.slice(e.start_byte, Math.min(e.end_byte, e.start_byte + 400))
-    const at = head.indexOf(c.name)
-    return at >= 0 ? head.slice(0, at) : head
+    const at = new RegExp(`\\b(?:function\\*?|class|interface|type|enum|const|let|var|namespace|module)\\s+${c.name.replace(/[$]/g, '\\$&')}(?![\\w$])`).exec(head)
+    return at ? head.slice(0, at.index) : ''
   }
   const usersOf = (id: string) => users.all(id, ...USE_TYPES) as Array<{ src: string; test: number }>
   const rows: UnusedRow[] = []

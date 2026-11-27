@@ -12,12 +12,16 @@ const FILES: Record<string, string> = {
   'package.json': JSON.stringify({ name: 'shapes', version: '1.0.0', main: './src/index.js', bin: { shapes: './bin/cli.js' } }, null, 2),
   'tsconfig.json': JSON.stringify({ compilerOptions: { target: 'es2022', module: 'esnext', moduleResolution: 'bundler', strict: true, noEmit: true }, include: ['src', 'test'] }),
   'src/index.ts': "export * from './api'\n",
-  'src/api.ts': 'export function publicApi(): number {\n  return 1\n}\n',
+  'src/api.ts': 'export function publicApi(): number {\n  return 1\n}\nexport const port = 3000\n',
   'src/log.ts': 'export function log(message: string): void {\n  console.log(message)\n}\n',
   'src/a.ts': "import { b } from './b'\nimport { log } from './log'\nexport function a(): number {\n  log('a')\n  return b()\n}\n",
   'src/b.ts': "import { a } from './a'\nimport { log } from './log'\nexport function b(): number {\n  log('b')\n  return 1\n}\nexport function callsA(): number {\n  return a()\n}\n",
   'src/c.ts': "import type { D } from './d'\nexport type C = { d?: D }\n",
   'src/d.ts': "import type { C } from './c'\nexport type D = { c?: C }\n",
+  // A runtime cycle g <-> h that a type-only import h -> i, and i -> g, join into a larger set.
+  'src/g.ts': "import './h'\nexport type G = number\n",
+  'src/h.ts': "import './g'\nimport type { I } from './i'\nexport type H = I\n",
+  'src/i.ts': "import './g'\nexport type I = number\n",
   'src/util.ts': 'export function dead(): void {}\nexport function onlyTests(): number {\n  return 2\n}\nexport function byName(): number {\n  return 3\n}\n',
   'src/lazy.ts': 'export const loaded = true\n',
   'src/main.ts': "import { callsA } from './b'\nimport { log } from './log'\nconst anything: any = {}\nlog(String(callsA()))\nanything.byName()\nvoid import('./lazy')\n",
@@ -57,6 +61,11 @@ describe('FR940 find_unused: code nothing uses, and what only tests, frameworks 
     ])
   })
 
+  it('FR940 an export whose name is inside the word export is still read as exported', () => {
+    const rows = (data('find_unused', { kinds: ['variable'], path_prefix: 'src/api' }).data.symbols as Row[]).map((r) => [r.name, r.group, r.by ?? null])
+    expect(rows).toEqual([['port', 'reachable_only_by', 'public_export']])
+  })
+
   it('FR940 a member only a framework route reaches is listed under reachable_only_by framework, with top_level_only false', () => {
     const rows = (data('find_unused', { kinds: ['class', 'method'], path_prefix: 'src/items', top_level_only: false }).data.symbols as Row[]).map((r) => [r.qualified_name, r.group, r.by ?? null])
     expect(rows).toEqual([['src/items.controller:ItemsController', 'unused', null], ['src/items.controller:ItemsController.list', 'reachable_only_by', 'framework']])
@@ -79,20 +88,25 @@ describe('FR941 find_cycles: each strongly connected set of files once, with eve
     const env = data('find_cycles', { path_prefix: 'src/' })
     expect(env.data.cycles).toEqual([
       { cycle: 1, type_only: false, inferred: false, files: ['src/a.ts', 'src/b.ts'], edges: 2 },
-      { cycle: 2, type_only: true, inferred: false, files: ['src/c.ts', 'src/d.ts'], edges: 2 },
+      { cycle: 2, type_only: false, inferred: false, files: ['src/g.ts', 'src/h.ts'], edges: 2 },
+      { cycle: 3, type_only: true, inferred: false, files: ['src/g.ts', 'src/h.ts', 'src/i.ts'], edges: 2 },
+      { cycle: 4, type_only: true, inferred: false, files: ['src/c.ts', 'src/d.ts'], edges: 2 },
     ])
+    // The larger set lists only the imports the runtime cycle inside it did not: each import is one row.
     expect((env.data.edges as Row[]).map((e) => [e.cycle, e.from, e.to, e.line, e.kind])).toEqual([
       [1, 'src/a.ts', 'src/b.ts', 1, 'static'], [1, 'src/b.ts', 'src/a.ts', 1, 'static'],
-      [2, 'src/c.ts', 'src/d.ts', 1, 'type_only'], [2, 'src/d.ts', 'src/c.ts', 1, 'type_only'],
+      [2, 'src/g.ts', 'src/h.ts', 1, 'static'], [2, 'src/h.ts', 'src/g.ts', 1, 'static'],
+      [3, 'src/h.ts', 'src/i.ts', 2, 'type_only'], [3, 'src/i.ts', 'src/g.ts', 1, 'static'],
+      [4, 'src/c.ts', 'src/d.ts', 1, 'type_only'], [4, 'src/d.ts', 'src/c.ts', 1, 'type_only'],
     ])
-    expect((data('find_cycles', { include_type_only: false }).data.cycles as Row[]).map((c) => c.files)).toEqual([['src/a.ts', 'src/b.ts']])
+    expect((data('find_cycles', { include_type_only: false }).data.cycles as Row[]).map((c) => c.files)).toEqual([['src/a.ts', 'src/b.ts'], ['src/g.ts', 'src/h.ts']])
   })
 
   it('FR941 a large cycle pages: max_rows bounds the edges, the totals stay whole and a cursor continues', () => {
-    const first = data('find_cycles', { limits: { max_rows: 3 } })
-    expect((first.data.edges as Row[]).length).toBe(3)
-    expect(first.data.totals).toEqual({ cycles: 2, type_only: 1, files: 4, edges: 4 })
-    const next = data('find_cycles', { limits: { max_rows: 3 }, cursor: first.completion.next_cursor })
+    const first = data('find_cycles', { limits: { max_rows: 7 } })
+    expect((first.data.edges as Row[]).length).toBe(7)
+    expect(first.data.totals).toEqual({ cycles: 4, type_only: 2, files: 7, edges: 8 })
+    const next = data('find_cycles', { limits: { max_rows: 7 }, cursor: first.completion.next_cursor })
     expect((next.data.edges as Row[]).map((e) => e.from)).toEqual(['src/d.ts'])
   })
 
@@ -148,7 +162,7 @@ describe('FR944 FR945 the structure tools are in the extra profile and answer le
       'dead src/util.ts:1 function unused', 'publicApi src/api.ts:1 function reachable_only_by=public_export',
       'onlyTests src/util.ts:2 function reachable_only_by=test', 'byName src/util.ts:5 function possibly_used sites=1',
     ])
-    expect((await text('find_cycles', { path_prefix: 'src/' })).split('\n').slice(1, 5)).toEqual(['src/b.ts src/a.ts:1 cycle=1', 'src/a.ts src/b.ts:1 cycle=1', 'src/d.ts src/c.ts:1 cycle=2 type_only', 'src/c.ts src/d.ts:1 cycle=2 type_only'])
+    expect((await text('find_cycles', { path_prefix: 'src/' })).split('\n').slice(5, 9)).toEqual(['src/i.ts src/h.ts:2 cycle=3 type_only', 'src/g.ts src/i.ts:1 cycle=3', 'src/d.ts src/c.ts:1 cycle=4 type_only', 'src/c.ts src/d.ts:1 cycle=4 type_only'])
     expect((await text('find_entry_points', { path_prefix: 'src/' })).split('\n').slice(1, 3)).toEqual(['src/index.ts:1 not_imported', 'src/items.controller.ts:1 not_imported'])
     expect((await text('find_hubs', { top: 1 })).split('\n')[1]).toBe('log src/log.ts:1 function fan_in=4 fan_out=0')
   })
