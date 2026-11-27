@@ -32,8 +32,8 @@ describe('AC20 FR015 limits', () => {
     expect(() => tool(d, 'find_symbols', { query: 'x' } as any)).toThrow(/must have required property 'text'; find_symbols accepts repository_id, /)
   })
 
-  it('every envelope states the reference limitation of its snapshot', () => {
-    expect(tool(d, 'workspace_status').limitations).toContain('References other than calls and imports are recorded only where an adapter supports them (C# uses of repository declarations, TypeScript uses of repository types); elsewhere a missing reference is not evidence of no use.')
+  it('FR1540 every envelope states the reference limitation of its snapshot', () => {
+    expect(tool(d, 'workspace_status').limitations).toContain('References other than calls and imports are recorded only where an adapter supports them (C# uses of repository declarations, TypeScript uses of repository types, Python uses of repository classes and functions); elsewhere a missing reference is not evidence of no use.')
   })
 })
 
