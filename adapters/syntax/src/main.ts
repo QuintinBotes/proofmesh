@@ -11,7 +11,7 @@ import { prismaFacts } from './prisma.js'
 import { callFacts } from './scope.js'
 import { gtestName, isRubySpec, rubyBlocks, scanRepository, testRoles, unitDependencies, withoutCycles } from './tests.js'
 
-const VERSION = '0.2.0'
+const VERSION = '0.3.0'
 const SYNTAX_LANGUAGES = Object.keys(manifest).filter((l) => l !== 'hcl')
 // Tags kinds this tier keeps; variables, fields and properties are mostly locals and parameters, so they are left out. Proofmesh's
 // own queries name a property declared in a type's body `member`, and a database table or view `table`.
