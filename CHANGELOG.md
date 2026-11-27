@@ -4,6 +4,12 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 ## Unreleased
 
+`PROOFMESH_PYRIGHT_UNANNOTATED=off` reaches the Python adapter (closes #135; FR670, FR671):
+
+- The setting had no effect: the core starts every adapter with an allowlisted environment that did not carry it, so the adapter always analysed unannotated bodies. The core now reads it and passes it as `pyright_unannotated` in the configuration of initialize; the adapter's environment is still an allowlist.
+- The Python adapter's toolchain names the setting, so an index with it on and one with it off no longer share a snapshot or cached facts.
+- Upgrade note: the Python adapter's toolchain gains `pyright_unannotated`, so the first index of a Python repository after upgrading builds a new snapshot and analyses its Python files again.
+
 Every call of a chain is its own `calls` row (closes #134; FR650, FR651):
 
 - In `(0..3).map(f).collect()` (Rust), `b().C().D()` (Go), `x.a().b()` (TypeScript) or `new AuditClient().Send(total)` (C#), only the first call had a row: the core keyed a relationship row by its source, the site's start byte and its target, every call of a chain starts at the receiver, and an unresolved call has no target to tell them apart, so the later calls became extra evidence of the first and their callee names were lost. The key now holds the site's start and end byte, so each call is its own row with one evidence row, in every language and both tiers. A call or reference reported twice at the same span is still one row.

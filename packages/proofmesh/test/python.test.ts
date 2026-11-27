@@ -85,3 +85,29 @@ describe('FR077 the Python adapter: Pyright resolves every call, and nothing run
     expect(dump(d)).toBe(dump(clean))
   }, 240000)
 })
+
+describe('FR670 FR671 PROOFMESH_PYRIGHT_UNANNOTATED reaches the Python adapter', () => {
+  it('FR670 FR671 UNANNOTATED=off is passed in the configuration of initialize, the toolchain names it, and the other setting builds its own snapshot', () => {
+    const spec = BUILT_IN.find((x) => x.id === 'python')!, before = process.env.PROOFMESH_PYRIGHT_UNANNOTATED
+    try {
+      process.env.PROOFMESH_PYRIGHT_UNANNOTATED = 'off'
+      expect(spec.config?.()).toEqual({ pyright_unannotated: 'off' })
+      delete process.env.PROOFMESH_PYRIGHT_UNANNOTATED
+      expect(spec.config?.()).toEqual({ pyright_unannotated: 'on' })
+    } finally { if (before === undefined) delete process.env.PROOFMESH_PYRIGHT_UNANNOTATED; else process.env.PROOFMESH_PYRIGHT_UNANNOTATED = before }
+
+    const d = tmpDir(), repo = project()
+    for (const args of [['init'], ['repo', 'add', repo]]) expect(cli(['--data-dir', d, ...args]).status).toBe(0)
+    const index = (value: string) => {
+      const r = cli(['--data-dir', d, 'index', repo], { PROOFMESH_PYRIGHT_UNANNOTATED: value })
+      expect(r.status).toBe(0)
+      const adapters = withSnapshot(d, (db) => JSON.parse((db.prepare("select value from meta where key = 'adapters'").get() as { value: string }).value)) as Array<{ id: string; toolchain: Record<string, string> }>
+      return { published: /snapshot (snap_\w+) published/.exec(r.stdout)?.[1], toolchain: adapters.find((a) => a.id === 'python')!.toolchain }
+    }
+    const off = index('off'), on = index('')
+    expect(off.toolchain.pyright_unannotated).toBe('off')
+    expect(on.toolchain.pyright_unannotated).toBe('on')
+    expect(on.published).toBeDefined()
+    expect(on.published).not.toBe(off.published)
+  }, 240000)
+})

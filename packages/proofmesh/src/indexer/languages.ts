@@ -77,6 +77,8 @@ export const BUILT_IN: AdapterSpec[] = [
     isConfig: () => false,
     entry: () => createRequire(import.meta.url).resolve('@proofmesh/adapter-syntax/python'),
     unavailable: () => 'adapter_unavailable:python',
+    // The adapter's environment is an allowlist without this variable, so the core reads it and passes it at initialize (FR670).
+    config: () => ({ pyright_unannotated: process.env.PROOFMESH_PYRIGHT_UNANNOTATED === 'off' ? 'off' : 'on' }),
   },
   // Terraform (A8, A25): static HCL, never terraform init.
   {
