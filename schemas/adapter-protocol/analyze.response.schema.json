@@ -257,6 +257,38 @@
               }
             }
           },
+          "sites": {
+            "type": "array",
+            "description": "Optional (protocol 1.3). Further sites of the same relationship in the same file, such as every later use of a type a function names more than once: each is evidence of the one relationship, which site still names and orders. Absent: site alone.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "start_byte",
+                "end_byte",
+                "start_line",
+                "end_line"
+              ],
+              "properties": {
+                "start_byte": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "end_byte": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "start_line": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "end_line": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            }
+          },
           "resolution": {
             "enum": [
               "resolved",

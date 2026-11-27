@@ -7,7 +7,7 @@ import type * as TS from 'typescript'
 import { graphqlDocument } from '../../syntax/src/contracts.js'
 
 const ts = createRequire(import.meta.url)('typescript') as typeof TS
-const VERSION = '0.2.1'
+const VERSION = '0.2.2'
 type Range = { start_byte: number; end_byte: number; start_line: number; end_line: number }
 type Ref = { symbol: string } | { file: string } | { external: { module: string; name: string } }
 
@@ -502,12 +502,30 @@ function literalFacts(d: TS.VariableDeclaration, p: string, sf: TS.SourceFile): 
 }
 
 /**
+ * The repository function, method or variable a shorthand destructuring binds (`const { escape } = driver` binds `Driver.escape`):
+ * the local is that member under its own name, so the language service renames both together.
+ */
+function boundMember(decl: TS.Node | undefined): string | undefined {
+  if (!decl || !ts.isBindingElement(decl) || decl.propertyName || !ts.isIdentifier(decl.name) || !ts.isObjectBindingPattern(decl.parent)) return undefined
+  for (const d of checker.getTypeAtLocation(decl.parent).getProperty(decl.name.text)?.declarations ?? []) {
+    const local = declLocal.get(keyOf(d))
+    if (local && /^(variable|function|method)#/.test(local.slice(rel(d.getSourceFile().fileName).length + 1))) return local
+  }
+  return undefined
+}
+
+/**
  * A use of a repository class, interface, enum or type alias other than its declaration or an import or export specifier, and how
  * it is used: a heritage clause (`implements`, `extends`), `typeof`, a type (annotations, generics, `satisfies`, `as`), `new`, or a value.
  * Also a use of a repository variable, read or assigned, or a function or method used as a value without being called, as a `value` use.
  */
 function referenceOf(id: TS.Identifier): { target: string; use: string } | undefined {
   const p = id.parent
+  // A shorthand destructuring (`const { escape } = driver`) names the member it reads, as a value use of that member.
+  if (ts.isBindingElement(p) && p.name === id) {
+    const member = refNames.has(id.text) ? boundMember(p) : undefined
+    return member ? { target: member, use: 'value' } : undefined
+  }
   // A shorthand property's name is also its value, a use of what it names.
   if (!refNames.has(id.text) || ((p as { name?: TS.Node }).name === id && !ts.isPropertyAccessExpression(p) && !ts.isShorthandPropertyAssignment(p))) return undefined
   if (ts.isImportSpecifier(p) || ts.isExportSpecifier(p) || ts.isExportAssignment(p)) return undefined
@@ -520,6 +538,8 @@ function referenceOf(id: TS.Identifier): { target: string; use: string } | undef
     : ts.isTypeQueryNode(at) ? 'typeof' : ts.isTypeReferenceNode(at) || ts.isImportTypeNode(at) ? 'type' : ts.isNewExpression(at) && at.expression === n ? 'create' : 'value'
   // A name that is both a value and a type (a constant and the type inferred from it) means the value outside type positions.
   const sym = aliased(ts.isShorthandPropertyAssignment(p) ? checker.getShorthandAssignmentValueSymbol(p) : checker.getSymbolAtLocation(id))
+  const member = use === 'value' ? boundMember(sym?.valueDeclaration) : undefined
+  if (member) return { target: member, use }
   const decls = use === 'value' || use === 'create' || use === 'typeof' ? [sym?.valueDeclaration] : sym?.declarations ?? []
   const decl = decls.find((d) => !!d && (ts.isClassDeclaration(d) || ts.isInterfaceDeclaration(d) || ts.isEnumDeclaration(d) || ts.isTypeAliasDeclaration(d)))
   const target = decl && declLocal.get(keyOf(decl))
@@ -887,6 +907,8 @@ function resolveCall(callee: TS.Expression): { resolution: string; target?: Ref;
   }
   const decls = sym?.declarations ?? []
   if (!sym || !decls.length) return { resolution: 'unresolved', reason: classify(callee) }
+  const member = boundMember(sym.valueDeclaration)
+  if (member) return { resolution: 'resolved', target: { symbol: member } }
   const first = decls[0]!
   if (!inWorkspace(first.getSourceFile().fileName)) {
     return { resolution: 'resolved_external', target: externalRef(sym, first) }
@@ -1019,8 +1041,8 @@ function analyze(paths: string[]) {
     symbols.push(...(symbolsByFile.get(p) ?? []))
     let unresolvedCalls = 0, unresolvedImports = 0, graphqlUnread = 0
     const endpoints = new Set<string>(), clientEndpoints: Array<Record<string, unknown>> = []
-    /** One reference per user and target, cited at its first site, with every way the user uses the target. */
-    const references = new Map<string, { from: string; target: string; site: TS.Node; uses: Set<string> }>()
+    /** One reference per user and target, cited at its first site, with every way the user uses the target and every further site (protocol 1.3). */
+    const references = new Map<string, { from: string; target: string; site: TS.Node; more: TS.Node[]; uses: Set<string> }>()
     const visit = (node: TS.Node) => {
       // Every import carries its kind (FR092): import, import type, export ... from, and import() with a literal specifier.
       const kind = ts.isImportDeclaration(node) ? (node.importClause?.isTypeOnly ? 'type_only' : 'static')
@@ -1076,7 +1098,7 @@ function analyze(paths: string[]) {
       const user = reference && (owner(node) ?? declLocal.get(keyOf(sf)))
       if (reference && user && user !== reference.target) {
         const key = `${user}|${reference.target}`
-        if (!references.has(key)) references.set(key, { from: user, target: reference.target, site: node, uses: new Set() })
+        if (!references.has(key)) references.set(key, { from: user, target: reference.target, site: node, more: [], uses: new Set() }); else references.get(key)!.more.push(node)
         references.get(key)!.uses.add(reference.use)
       }
       const resource = ts.isNewExpression(node) ? resourceLocal.get(keyOf(node)) : undefined
@@ -1089,7 +1111,7 @@ function analyze(paths: string[]) {
       ts.forEachChild(node, visit)
     }
     visit(sf)
-    for (const r of references.values()) relationships.push({ type: 'references', origin: 'semantic_resolver', source: { symbol: r.from }, site: { path: p, range: range(sf, r.site.getStart(sf), r.site.getEnd()) }, resolution: 'resolved', target: { symbol: r.target }, detail: { use: [...r.uses].sort().join(',') } })
+    for (const r of references.values()) relationships.push({ type: 'references', origin: 'semantic_resolver', source: { symbol: r.from }, site: { path: p, range: range(sf, r.site.getStart(sf), r.site.getEnd()) }, ...(r.more.length ? { sites: r.more.map((n) => range(sf, n.getStart(sf), n.getEnd())) } : {}), resolution: 'resolved', target: { symbol: r.target }, detail: { use: [...r.uses].sort().join(',') } })
     relationships.push(...(routeFacts.get(p) ?? []))
     symbols.push(...clientEndpoints)
     file_results.push({
@@ -1112,7 +1134,7 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
       // Built now, not at the first analyze, so the manifest lists exactly the packages the analysis reads.
       buildProjects()
       send({ jsonrpc: '2.0', id: req.id, result: {
-        adapter: { id: 'typescript', version: VERSION, protocol_version: '1.0', languages: ['typescript', 'javascript'], toolchain: { typescript: ts.version } },
+        adapter: { id: 'typescript', version: VERSION, protocol_version: '1.3', languages: ['typescript', 'javascript'], toolchain: { typescript: ts.version } },
         capabilities: { syntax: true, symbols: true, imports: true, resolved_calls: true, references: true, framework: false },
         external_inputs: externalInputs,
       } })

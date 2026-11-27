@@ -73,7 +73,7 @@ const after = (ms: number): Promise<void> & { cancel: () => void } => {
 
 /** One adapter subprocess speaking JSON-RPC 2.0, one JSON object per line. */
 /** The adapter protocol version this core speaks; it accepts any adapter that speaks 1.x (A22). */
-export const PROTOCOL_VERSION = '1.2'
+export const PROTOCOL_VERSION = '1.3'
 
 export class AdapterProcess {
   private child!: ChildProcess

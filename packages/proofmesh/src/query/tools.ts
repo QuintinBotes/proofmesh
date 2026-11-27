@@ -29,6 +29,7 @@ import { changedSymbols, complete, touched, completenessRows, diffLines, inTestC
 import { gitInfo } from '../indexer/discovery.js'
 import { findTables, tableReach } from './table-reach.js'
 import { searchSources } from './sources.js'
+import { planRename, publicEntry } from './rename.js'
 import { NOTE_KINDS, notesMatching, resolveRef, resolveRefs, staleness } from './notes.js'
 import { verify, type Proposition } from './claims.js'
 import { openCursor, queryHash, sealCursor } from './cursor.js'
@@ -48,7 +49,7 @@ import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 
-export const TOOLS = ['workspace_status', 'list_repositories', 'list_snapshots', 'list_workspaces', 'find_symbols', 'get_symbol', 'get_relationships', 'trace_paths', 'read_evidence', 'get_overview', 'analyze_impact', 'find_tests', 'search_sources', 'get_memory', 'verify_claim', 'request_index', 'get_job', 'get_claims', 'save_memory', 'get_table_reach', 'get_property_reads', 'get_external_usage', 'find_query_source', 'compare_snapshots', 'list_queries', 'get_ecosystem', 'prepare_verification', 'get_verification', 'impact_completeness', 'get_symbols_at', 'get_session_trail', 'find_stale_mentions', 'find_unused', 'find_cycles', 'find_entry_points', 'find_hubs', 'get_context_map'] as const
+export const TOOLS = ['workspace_status', 'list_repositories', 'list_snapshots', 'list_workspaces', 'find_symbols', 'get_symbol', 'get_relationships', 'trace_paths', 'read_evidence', 'get_overview', 'analyze_impact', 'find_tests', 'search_sources', 'get_memory', 'verify_claim', 'request_index', 'get_job', 'get_claims', 'save_memory', 'get_table_reach', 'get_property_reads', 'get_external_usage', 'find_query_source', 'compare_snapshots', 'list_queries', 'get_ecosystem', 'prepare_verification', 'get_verification', 'impact_completeness', 'get_symbols_at', 'get_session_trail', 'find_stale_mentions', 'find_unused', 'find_cycles', 'find_entry_points', 'find_hubs', 'get_context_map', 'plan_rename'] as const
 export type ToolName = (typeof TOOLS)[number]
 /** The query tools whose results are code locations: they answer in the lean envelope on request, and by default over MCP (FR099). */
 export const LEAN = new Set<string>(['find_symbols', 'get_symbol', 'get_symbols_at', 'get_relationships', 'trace_paths', 'analyze_impact', 'find_tests', 'get_session_trail', 'find_unused', 'find_cycles', 'find_entry_points', 'find_hubs', 'get_context_map'])
@@ -66,7 +67,7 @@ export const CAPABILITY: Record<ToolName, ListQueriesData['tools'][number]['capa
   verify_claim: 'read', request_index: 'management', get_job: 'read', get_claims: 'read', save_memory: 'management', get_table_reach: 'read',
   get_property_reads: 'read', get_external_usage: 'read', find_query_source: 'read', compare_snapshots: 'read', list_queries: 'read',
   get_ecosystem: 'read', prepare_verification: 'management', get_verification: 'read', impact_completeness: 'management', get_symbols_at: 'read', get_session_trail: 'read', find_stale_mentions: 'read',
-  find_unused: 'read', find_cycles: 'read', find_entry_points: 'read', find_hubs: 'read', get_context_map: 'read',
+  find_unused: 'read', find_cycles: 'read', find_entry_points: 'read', find_hubs: 'read', get_context_map: 'read', plan_rename: 'read',
 }
 
 /**
@@ -82,6 +83,8 @@ export const PROFILE: Record<ToolName, ListQueriesData['tools'][number]['profile
   // A maintainer's question after a refactor, like compare_snapshots; workspace_status (core) counts the stale mentions and says how to list them.
   get_job: 'extra', get_memory: 'extra', save_memory: 'extra', find_stale_mentions: 'extra',
   find_unused: 'extra', find_cycles: 'extra', find_entry_points: 'extra', find_hubs: 'extra',
+  // Asked before a rename, not for most questions: core's tools/list has little room left, and analyze_impact (core) covers what a change reaches.
+  plan_rename: 'extra',
 }
 /** How a client loads the tools of another profile, said by list_queries, which lists them all (FR422). */
 const PROFILES_NOTE = 'Over MCP, proofmesh mcp lists the core profile; start it with --tools <profile[,profile]> (core, data, claims, extra) or --tools all to list the others. A tool outside the profiles it was started with answers INVALID_ARGUMENT naming its profile.'
@@ -468,7 +471,7 @@ function withNamedIds(db: Database.Database, tool: string, input: Record<string,
   const id = (v: unknown) => (v !== null && typeof v === 'object' ? symbolNamed(db, v as { name: string; path: string }) : v)
   const out = { ...input }
   // A `key` is a stable_key, the same in every tier (FR149): it stands in for the id the tool takes.
-  const ids: Record<string, [string, string]> = { get_symbol: ['key', 'symbol_id'], get_memory: ['key', 'symbol_id'], get_relationships: ['key', 'subject_id'], analyze_impact: ['key', 'subject_ids'], find_tests: ['key', 'subject_ids'] }
+  const ids: Record<string, [string, string]> = { get_symbol: ['key', 'symbol_id'], get_memory: ['key', 'symbol_id'], get_relationships: ['key', 'subject_id'], analyze_impact: ['key', 'subject_ids'], find_tests: ['key', 'subject_ids'], plan_rename: ['key', 'subject_id'] }
   const keyed = (name: string, into: string) => {
     if (!(name in out)) return
     // A key is one way to name the subject: with an id or a path as well, the call does not say which it means.
@@ -957,6 +960,46 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     const job = ctx.catalog.job(String(input.job_id))
     if (!job || job.repository_id !== ctx.repo.id) throw new ProofmeshError('NOT_FOUND', `no index job ${String(input.job_id)} for this repository`)
     return { data: { job }, limitations: job.state === 'interrupted' ? ['The process running this job stopped before finishing; request a new index.'] : [] }
+  },
+
+  plan_rename(ctx, input) {
+    if (input.subject_id === undefined) throw new ProofmeshError('INVALID_ARGUMENT', 'give subject_id or key')
+    const id = String(input.subject_id)
+    if (!ctx.db.prepare("select 1 from symbol where id = ? and kind <> 'module'").get(id)) throw new ProofmeshError('NOT_FOUND', `${id} is no symbol of snapshot ${ctx.snapshot.id}; plan_rename takes a symbol, not a file`)
+    const p = planRename(ctx.db, ctx.store, id, ctx.started + ctx.limits.timeout_ms)
+    const s = p.subject, newName = String(input.new_name)
+    const row = (x: typeof s) => ({ id: x.id, key: x.key, name: x.name, kind: x.kind, path: x.path, line: p.declared.get(x.id) ?? x.start_line })
+    // A name the new one would collide with: a symbol of that name in the container of the subject or of a member renamed with it,
+    // or at the top of the same file.
+    const named = ctx.db.prepare('select f.path, s.start_line as line, s.kind from symbol s join file f on f.id = s.file_id where s.qualified_name = ? order by f.path, s.start_line')
+    const clash = [s, ...p.group].flatMap((m) => named.all(`${m.qualified_name.slice(0, (m.qualified_name.includes('.') ? m.qualified_name.lastIndexOf('.') : m.qualified_name.indexOf(':')) + 1)}${newName}`) as Array<{ path: string; line: number; kind: string }>)
+    const entry = publicEntry(ctx.db, ctx.store, [...(p.exported ? [s.path] : []), ...p.carriers])
+    // FR985: with include_workspace, the sites in the other repositories of this repository's workspaces that reach it through a package
+    // it builds, from the sealed link file (FR902), each with its repository; observed when the installed version is the built one.
+    const across = input.include_workspace === true
+      ? withWorkspace(ctx.catalog, ctx.repo, ctx.snapshot, ctx.db, (w) => ({ linked: w.header.some((h) => h.link_file_id), limitations: w.limitations, rows: w.inbound([s.id, ...p.group.map((g) => g.id)], ['calls', 'references', 'inherits', 'implements']) }))
+      : null
+    for (const r of across?.rows ?? []) p.sites.push({ path: r.site.path, line: r.site.start_line, kind: r.type === 'calls' ? 'call' : 'reference', basis: r.basis === 'observed' ? 'observed' : 'inferred', key: r.target === s.id ? s.key : p.group.find((g) => g.id === r.target)?.key ?? s.key, repository: r.repository })
+    const observed = p.sites.filter((x) => x.basis === 'observed').length
+    const sites = p.sites.slice(0, ctx.limits.max_rows)
+    return {
+      data: {
+        subject: row(s), new_name: newName, sites, must_rename_together: p.group.map((g) => ({ ...row(g), relationship: g.relationship })),
+        possibly_affected: p.possibly.slice(0, ctx.limits.max_rows),
+        counts: { observed, inferred: p.sites.length - observed, must_rename_together: p.group.length, possibly_affected: p.possibly.length },
+      },
+      stop_reasons: [...(p.sites.length > sites.length || p.possibly.length > ctx.limits.max_rows ? ['max_rows' as const] : []), ...(p.stopped ? ['timeout' as const] : [])],
+      shrink: ['possibly_affected', 'sites'],
+      limitations: [
+        'A plan only: no file is changed. An observed site is one the compiler or the syntax bound to the symbol; an inferred site is a seam a rule or a string binds by name (route, rpc, graphql, ffi, di_key, serialised_key, doc_mention) and needs review before it is changed.',
+        ...(p.possibly.length ? [`${p.possibly.length} call${p.possibly.length === 1 ? '' : 's'} that did not resolve, or resolved to several candidates, might reach ${s.name}; they are listed under possibly_affected, not as sites.`] : []),
+        ...(entry && !across?.linked ? ['public export: consumers outside this repository are not listed', `${s.name} is exported from ${entry}, a public entry of its package; with include_workspace, a linked workspace's other repositories that call or name it are listed too.`] : []),
+        ...(entry && across?.linked ? [`${s.name} is exported from ${entry}; the sites listed with a repository are its calls and references in this repository's workspaces, from their sealed link file. Their import specifiers are not listed, nor any consumer outside the workspaces.`] : []),
+        ...(across?.limitations ?? []),
+        ...(clash.length ? [`${newName} already names ${clash.map((c) => `a ${c.kind} at ${c.path}:${c.line}`).join(', ')} in the same scope.`] : []),
+        ...(p.stopped ? ['The scan of string literals stopped at the time limit; string seams in later files are not listed.'] : []),
+      ],
+    }
   },
 
   find_stale_mentions(ctx, input) {

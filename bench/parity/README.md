@@ -42,6 +42,7 @@ sh bench/parity/run.sh          # then read bench/parity/out/parity.md
 | `questions.json` | The twelve questions and their targets in the fixture |
 | `aider-map.py` | aider's `RepoMap.get_repo_map`, run by aider's own Python |
 | `install.sh` | Installs the pinned comparators in user space |
+| `rename.mjs` | After `run.sh` built the fixture: scores `plan_rename`'s code sites for ten pinned symbols against the TypeScript language service's `findRenameLocations`, at `file:line` (#38); exits 1 on any miss or extra |
 | `../graph-bench/lib.mjs` | Truth per question, scoring, and the Graphify and ProofMesh adapters, shared with `bench/graph-bench` |
 
 ## The comparators
