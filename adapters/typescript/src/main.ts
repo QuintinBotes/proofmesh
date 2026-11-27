@@ -7,7 +7,7 @@ import type * as TS from 'typescript'
 import { graphqlDocument } from '../../syntax/src/contracts.js'
 
 const ts = createRequire(import.meta.url)('typescript') as typeof TS
-const VERSION = '0.2.2'
+const VERSION = '0.2.3'
 type Range = { start_byte: number; end_byte: number; start_line: number; end_line: number }
 type Ref = { symbol: string } | { file: string } | { external: { module: string; name: string } }
 
@@ -517,7 +517,8 @@ function boundMember(decl: TS.Node | undefined): string | undefined {
 /**
  * A use of a repository class, interface, enum or type alias other than its declaration or an import or export specifier, and how
  * it is used: a heritage clause (`implements`, `extends`), `typeof`, a type (annotations, generics, `satisfies`, `as`), `new`, or a value.
- * Also a use of a repository variable, read or assigned, or a function or method used as a value without being called, as a `value` use.
+ * Also a use of a repository variable, read or assigned, or a function or method used as a value without being called, as a `value` use,
+ * or named in a type query, as a `typeof` use.
  */
 function referenceOf(id: TS.Identifier): { target: string; use: string } | undefined {
   const p = id.parent
@@ -545,7 +546,7 @@ function referenceOf(id: TS.Identifier): { target: string; use: string } | undef
   const target = decl && declLocal.get(keyOf(decl))
   if (target) return { target, use }
   // A function component's JSX tag is a `renders`, not a reference.
-  if (use !== 'value' || ((ts.isJsxOpeningLikeElement(at) || ts.isJsxClosingElement(at)) && at.tagName === n)) return undefined
+  if ((use !== 'value' && use !== 'typeof') || ((ts.isJsxOpeningLikeElement(at) || ts.isJsxClosingElement(at)) && at.tagName === n)) return undefined
   for (const d of sym?.declarations ?? []) {
     const local = declLocal.get(keyOf(d))
     if (local && /^(variable|function|method)#/.test(local.slice(rel(d.getSourceFile().fileName).length + 1))) return { target: local, use }
