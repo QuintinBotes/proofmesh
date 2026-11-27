@@ -226,6 +226,7 @@ Acceptance: CI runs my pull request without secrets or release credentials; lice
 - FR020: MUST bound traversal depth, time, rows, and output bytes independently.
 - FR021: MUST return truncation, timeouts, unresolved boundaries, and continuation constraints.
 - FR022: MUST distinguish shortest paths, bounded discovered paths, and exhaustive claims; a negative path result MUST state whether limits, unresolved boundaries, or exhaustion of the resolved graph ended the search.
+- FR1500: MUST list in a path search's horizon only the frontier nodes the search stopped at with an edge of the traced types left to follow, each with that count (never `0`); a frontier node with none counts as expanded, and when no frontier node has one the search is complete, so `stopped_by` is null and the conclusion is the one an unbounded search gives (#211).
 - FR023: MUST NOT infer executable relationships from name similarity or embeddings alone.
 - FR024: MUST keep static test links separate from observed execution coverage.
 - FR089: MUST let every tool that takes `subject_id`, `subject_ids`, `source_id`, `target_id` or `symbol_id` also take a file by its repository-relative path (`path`, `paths`, `source_path`, `target_path`), meaning the file itself; at least `get_relationships`, `analyze_impact`, `trace_paths`, `get_symbol`, `get_memory` and `find_tests`. `..`, absolute paths inside the repository and backslashes are normalised to repository-relative forward slashes; a path leaving the repository is refused.
