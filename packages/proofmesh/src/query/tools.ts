@@ -30,6 +30,7 @@ import { gitInfo } from '../indexer/discovery.js'
 import { findTables, tableReach } from './table-reach.js'
 import { searchSources } from './sources.js'
 import { planRename, publicEntry } from './rename.js'
+import { planMove } from './move.js'
 import { MAX_TERMS, searchConcepts } from './concepts.js'
 import { NOTE_KINDS, notesMatching, resolveRef, resolveRefs, staleness } from './notes.js'
 import { verify, type Proposition } from './claims.js'
@@ -51,7 +52,7 @@ import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 
-export const TOOLS = ['workspace_status', 'list_repositories', 'list_snapshots', 'list_workspaces', 'find_symbols', 'get_symbol', 'get_relationships', 'trace_paths', 'read_evidence', 'get_overview', 'analyze_impact', 'find_tests', 'search_sources', 'get_memory', 'verify_claim', 'request_index', 'get_job', 'get_claims', 'save_memory', 'get_table_reach', 'get_property_reads', 'get_external_usage', 'find_query_source', 'compare_snapshots', 'list_queries', 'get_ecosystem', 'prepare_verification', 'get_verification', 'impact_completeness', 'get_symbols_at', 'get_session_trail', 'find_stale_mentions', 'find_unused', 'find_cycles', 'find_entry_points', 'find_hubs', 'get_context_map', 'plan_rename', 'search_structure', 'search_concepts', 'get_symbol_card'] as const
+export const TOOLS = ['workspace_status', 'list_repositories', 'list_snapshots', 'list_workspaces', 'find_symbols', 'get_symbol', 'get_relationships', 'trace_paths', 'read_evidence', 'get_overview', 'analyze_impact', 'find_tests', 'search_sources', 'get_memory', 'verify_claim', 'request_index', 'get_job', 'get_claims', 'save_memory', 'get_table_reach', 'get_property_reads', 'get_external_usage', 'find_query_source', 'compare_snapshots', 'list_queries', 'get_ecosystem', 'prepare_verification', 'get_verification', 'impact_completeness', 'get_symbols_at', 'get_session_trail', 'find_stale_mentions', 'find_unused', 'find_cycles', 'find_entry_points', 'find_hubs', 'get_context_map', 'plan_rename', 'plan_move', 'search_structure', 'search_concepts', 'get_symbol_card'] as const
 export type ToolName = (typeof TOOLS)[number]
 /** The query tools whose results are code locations: they answer in the lean envelope on request, and by default over MCP (FR099). */
 export const LEAN = new Set<string>(['find_symbols', 'search_concepts', 'get_symbol', 'get_symbols_at', 'get_relationships', 'trace_paths', 'analyze_impact', 'find_tests', 'get_session_trail', 'find_unused', 'find_cycles', 'find_entry_points', 'find_hubs', 'get_context_map', 'search_structure'])
@@ -69,7 +70,7 @@ export const CAPABILITY: Record<ToolName, ListQueriesData['tools'][number]['capa
   verify_claim: 'read', request_index: 'management', get_job: 'read', get_claims: 'read', save_memory: 'management', get_table_reach: 'read',
   get_property_reads: 'read', get_external_usage: 'read', find_query_source: 'read', compare_snapshots: 'read', list_queries: 'read',
   get_ecosystem: 'read', prepare_verification: 'management', get_verification: 'read', impact_completeness: 'management', get_symbols_at: 'read', get_session_trail: 'read', find_stale_mentions: 'read',
-  find_unused: 'read', find_cycles: 'read', find_entry_points: 'read', find_hubs: 'read', get_context_map: 'read', plan_rename: 'read', search_structure: 'read', search_concepts: 'read', get_symbol_card: 'read',
+  find_unused: 'read', find_cycles: 'read', find_entry_points: 'read', find_hubs: 'read', get_context_map: 'read', plan_rename: 'read', plan_move: 'read', search_structure: 'read', search_concepts: 'read', get_symbol_card: 'read',
 }
 
 /**
@@ -86,7 +87,7 @@ export const PROFILE: Record<ToolName, ListQueriesData['tools'][number]['profile
   get_job: 'extra', get_memory: 'extra', save_memory: 'extra', find_stale_mentions: 'extra',
   find_unused: 'extra', find_cycles: 'extra', find_entry_points: 'extra', find_hubs: 'extra',
   // Asked before a rename, not for most questions: core's tools/list has little room left, and analyze_impact (core) covers what a change reaches.
-  plan_rename: 'extra',
+  plan_rename: 'extra', plan_move: 'extra',
   // Structural search runs a matcher process over captured source: a question for a pattern, not most questions (#37).
   search_structure: 'extra',
   // What Observatory opens a symbol with (FR1180); an assistant asks get_symbol and get_relationships, so core's list stays as it is.
@@ -500,7 +501,7 @@ function withNamedIds(db: Database.Database, tool: string, input: Record<string,
   const id = (v: unknown) => (v !== null && typeof v === 'object' ? symbolNamed(db, v as { name: string; path: string }) : v)
   const out = { ...input }
   // A `key` is a stable_key, the same in every tier (FR149): it stands in for the id the tool takes.
-  const ids: Record<string, [string, string]> = { get_symbol: ['key', 'symbol_id'], get_memory: ['key', 'symbol_id'], get_relationships: ['key', 'subject_id'], analyze_impact: ['key', 'subject_ids'], find_tests: ['key', 'subject_ids'], plan_rename: ['key', 'subject_id'], get_symbol_card: ['key', 'symbol_id'] }
+  const ids: Record<string, [string, string]> = { get_symbol: ['key', 'symbol_id'], get_memory: ['key', 'symbol_id'], get_relationships: ['key', 'subject_id'], analyze_impact: ['key', 'subject_ids'], find_tests: ['key', 'subject_ids'], plan_rename: ['key', 'subject_id'], plan_move: ['key', 'subject_id'], get_symbol_card: ['key', 'symbol_id'] }
   const keyed = (name: string, into: string) => {
     if (!(name in out)) return
     // A key is one way to name the subject: with an id or a path as well, the call does not say which it means.
@@ -1145,6 +1146,34 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
         ...(across?.limitations ?? []),
         ...(clash.length ? [`${newName} already names ${clash.map((c) => `a ${c.kind} at ${c.path}:${c.line}`).join(', ')} in the same scope.`] : []),
         ...(p.stopped ? ['The scan of string literals stopped at the time limit; string seams in later files are not listed.'] : []),
+      ],
+    }
+  },
+
+  plan_move(ctx, input) {
+    const to = String(input.to_path)
+    if (path.posix.isAbsolute(to) || to.includes('\\') || path.posix.normalize(to) !== to || to === '..' || to.startsWith('../')) throw new ProofmeshError('INVALID_ARGUMENT', `to_path ${to} must be a repository-relative path, written with / and normalized`, { detail: 'path_outside_repository', path: to })
+    const one = (id: string) => ctx.db.prepare('select s.id, s.name, s.kind, s.file_id, s.start_byte, s.end_byte, s.start_line, s.stable_key as key, f.path from symbol s join file f on f.id = s.file_id where s.id = ?').get(id) as { id: string; name: string; kind: string; file_id: string; start_byte: number; end_byte: number; start_line: number; key: string; path: string } | undefined
+    if (input.path === undefined && input.subject_id === undefined) throw new ProofmeshError('INVALID_ARGUMENT', 'give path for a file, or subject_id or key for a symbol')
+    if (input.path !== undefined && input.subject_id !== undefined) throw new ProofmeshError('INVALID_ARGUMENT', 'give path or subject_id, not both')
+    const sym = input.subject_id !== undefined ? one(String(input.subject_id)) : undefined
+    if (input.subject_id !== undefined && (!sym || /^(module|method|property|field|constructor|parameter)$/.test(sym.kind))) throw new ProofmeshError('INVALID_ARGUMENT', `${String(input.subject_id)} is no top-level symbol of snapshot ${ctx.snapshot.id}; plan_move moves a file, or a top-level symbol to another file`)
+    const file = sym ? { id: sym.file_id, path: sym.path } : fileAt(ctx, String(input.path))
+    if (!sym && ctx.db.prepare('select 1 from file where path = ?').get(to)) throw new ProofmeshError('INVALID_ARGUMENT', `${to} already exists; a file moves to a path no file has`, { detail: 'path_exists', path: to })
+    if (sym && to === sym.path) throw new ProofmeshError('INVALID_ARGUMENT', `${sym.name} is already in ${to}`)
+    const p = planMove(ctx.db, ctx.store, { fileId: file.id, path: file.path, ...(sym ? { symbol: sym } : {}) }, to, ctx.started + ctx.limits.timeout_ms)
+    const entry = publicEntry(ctx.db, ctx.store, [file.path, ...p.carriers])
+    const observed = p.sites.filter((x) => x.basis === 'observed').length, unspelled = p.sites.filter((x) => x.specifier !== undefined && x.new_specifier === undefined).length
+    const sites = p.sites.slice(0, ctx.limits.max_rows)
+    return {
+      data: { subject: sym ? { kind: sym.kind, id: sym.id, key: sym.key, name: sym.name, path: sym.path, line: sym.start_line } : { kind: 'file', path: file.path }, to_path: to, sites, counts: { observed, inferred: p.sites.length - observed } },
+      stop_reasons: [...(p.sites.length > sites.length ? ['max_rows' as const] : []), ...(p.stopped ? ['timeout' as const] : [])], shrink: 'sites',
+      limitations: [
+        'A plan only: no file is changed. An observed site is an import, a re-export or a use the snapshot resolved; an inferred site is a string or a doc mention that names the path (seam path or doc_mention) and needs review before it is changed. Apply each new_specifier at its line, then move the code.',
+        ...(sym ? [`A dependency declared in ${sym.path} must be exported from it for ${to} to import it, and imports of packages ${sym.name} uses are not listed: carry them over. A namespace import of ${sym.path} (import * as m) that reaches ${sym.name} is not listed.`] : []),
+        ...(unspelled ? [`${unspelled} specifier${unspelled === 1 ? ' is' : 's are'} written through a path alias, a package name or a relative Python import, which the plan does not rewrite: change ${unspelled === 1 ? 'it' : 'them'} by hand.`] : []),
+        ...(entry ? ['public export: consumers outside this repository are not listed', `${file.path} is exported from ${entry}, a public entry of its package; a consumer that imports it by a deep path breaks too.`] : []),
+        ...(p.stopped ? ['The scan of string literals stopped at the time limit; path seams in later files are not listed.'] : []),
       ],
     }
   },

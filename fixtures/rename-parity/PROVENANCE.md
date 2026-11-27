@@ -6,3 +6,4 @@ It exercises the rename plan of FR980 to FR987 (`packages/proofmesh/test/rename-
 
 - `src/driver/postgres/PostgresDriver.ts`, `src/driver/mysql/MysqlDriver.ts` (two: `MysqlDriver` and `MariaDriver`, which overrides it) and `src/driver/sqlite/SqliteDriver.ts` each declare `escape`; `AuroraDriver` implements `Driver` through what it inherits and declares none, so no site of it changes.
 - `src/repository/Repository.ts` imports through the barrel (`from ".."`) and imports `camelCase` under an alias; `src/globals.ts` exports `getMetadataStorage` under another name; `src/data-source/DataSource.ts` destructures `escape`.
+- `src/index.ts`, the entry, imports `bracketed` under an alias and exports the alias, so `bracketed` is public (FR1288); `quoteBy` in `src/connect.ts` calls `escape` on a receiver of the same name written on the line above (FR1289).

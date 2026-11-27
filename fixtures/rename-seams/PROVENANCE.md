@@ -9,5 +9,6 @@ One repository with a TypeScript service (`src/*.ts`), a C# wire type (`src/Wire
 - `serialised_key`: `src/Wire/OrderDto.cs` reads and writes the property `CustomerName` under the dictionary key `"CustomerName"`.
 - `doc_mention`: `docs/orders.md` names `listOrders()`, `Mailer` and `OrderDto.CustomerName`.
 - Not seams: `console.log("Mailer")` and a template that holds the name among other text.
+- `tools/report.py` imports `Totals` and `add` from `tools/totals.py`, names `Totals` as a type and `add` as a value besides calling them, and `totals.py` names `Totals` twice on one line (FR1287). `OrderWire.Describe` reads `CustomerName` on two lines (FR1286).
 
 The expected seams are written by hand in `expected.json`.
