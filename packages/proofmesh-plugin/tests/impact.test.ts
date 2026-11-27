@@ -40,7 +40,7 @@ const editCurrency = ($: Dollar) => $.tool.call({ tool: 'Edit', file_path: `${RO
  * Stubs Claude Code and ProofMesh for a session in /work/app: `w.snapshot` is the current snapshot and `w.current` whether it matches the tree;
  * the MCP tools answer as recorded on fixtures/ts-invoicing, the symbol at a currency.ts line being formatAmount and any other file not indexed.
  */
-function world(on: On, o: { recording?: boolean; symbolsAt?: (locations: string[]) => unknown[]; fail?: string; headHash?: string; writeLines?: number } = {}) {
+function world(on: On, o: { recording?: boolean; symbolsAt?: (locations: string[]) => unknown[]; fail?: string; failures?: number; headHash?: string; writeLines?: number; listFailures?: number } = {}) {
   const clock = mock.clock(on, { now: NOW })
   const w = { snapshot: BASE as string, current: true, clock, mcp: [] as Array<{ tool: string; args: Record<string, unknown> }>, log: [] as string[], copied: [] as Array<{ text: string; surface?: string }>, opened: [] as string[], closed: [] as string[], panes: [] as string[], tools: 0, turns: 0 }
   on('session.start', () => ({ cwd: ROOT }))
@@ -59,7 +59,7 @@ function world(on: On, o: { recording?: boolean; symbolsAt?: (locations: string[
   on('process.run', ($, e) => {
     w.log.push('proofmesh')
     const [, cmd, , flag] = e.argv
-    if (cmd === 'repo') return { value: { exitCode: 0, stdout: LIST, stderr: '' } }
+    if (cmd === 'repo') return (o.listFailures ?? 0) > 0 && o.listFailures!-- ? { value: { exitCode: 1, stdout: '', stderr: 'proofmesh: catalog busy' } } : { value: { exitCode: 0, stdout: LIST, stderr: '' } }
     if (cmd === 'trail') return { value: { exitCode: 0, stdout: 'recorded\n', stderr: '' } }
     if (flag === '--fresh') return { value: { exitCode: 0, stdout: JSON.stringify({ repository_id: REPO, name: 'app', snapshot_id: w.snapshot, current: w.current, changed_count: w.current ? 0 : 1, changed: [], trail_recording: o.recording ?? false }), stderr: '' } }
     return { value: { exitCode: 0, stdout: '', stderr: '' } }
@@ -70,7 +70,7 @@ function world(on: On, o: { recording?: boolean; symbolsAt?: (locations: string[
     const args = e.args as Record<string, unknown>
     w.mcp.push({ tool: e.tool, args })
     const snap = (args.snapshot_id as string | undefined) ?? w.snapshot
-    if (o.fail && e.tool === o.fail) return { value: { content: [{ type: 'text', text: '{"code":"TIMEOUT","message":"analyze_impact: the query timed out after 10000 ms"}' }], isError: true, structuredContent: { code: 'TIMEOUT', message: 'analyze_impact: the query timed out after 10000 ms' } } }
+    if (o.fail && e.tool === o.fail && (o.failures === undefined || o.failures-- > 0)) return { value: { content: [{ type: 'text', text: '{"code":"TIMEOUT","message":"analyze_impact: the query timed out after 10000 ms"}' }], isError: true, structuredContent: { code: 'TIMEOUT', message: 'analyze_impact: the query timed out after 10000 ms' } } }
     if (e.tool === 'workspace_status') return answer({ snapshot: { id: w.snapshot, analysis_mode: 'no_execution', published_at: new Date(NOW).toISOString(), commit: null }, data: { jobs: [] } })
     if (e.tool === 'get_symbols_at') {
       const locations = args.locations as string[]
@@ -150,8 +150,8 @@ test('FR700 FR701 scenario 1 SC-001: after Claude edits formatAmount, the pane l
     expect(lines).toEqual([`impact as of ${HEAD} (current)`, ...FORMAT_AMOUNT])
     await ui.unmount()
   }
-  // get_symbols_at for the edited lines, then the body hash of each symbol before the edit and now, all on the pinned snapshot.
-  expect(w.calls('get_symbols_at').map((c) => c.args)).toEqual([{ repository_id: REPO, snapshot_id: HEAD, locations: [`${CURRENCY}:1`, `${CURRENCY}:2`, `${CURRENCY}:3`], envelope: 'compact' }])
+  // get_symbols_at for the changed line alone, the hunk's context lines left out, then the body hash of each symbol before the edit and now, all on the pinned snapshot.
+  expect(w.calls('get_symbols_at').map((c) => c.args)).toEqual([{ repository_id: REPO, snapshot_id: HEAD, locations: [`${CURRENCY}:2`], envelope: 'compact' }])
   const key = RECORDED.symbolsAt.data.results[0]!.symbol.stable_key
   expect(w.calls('analyze_impact').map((c) => c.args)).toEqual([{ repository_id: REPO, snapshot_id: HEAD, key, envelope: 'lean' }])
   expect(w.calls('find_tests').map((c) => c.args)).toEqual([{ repository_id: REPO, snapshot_id: HEAD, key, envelope: 'compact' }])
@@ -340,4 +340,46 @@ test('FR706 edge case: a symbol whose edit was undone, its body hash the snapsho
   const { lines } = await pane($, w, 'terminal')
   expect(lines).toEqual([`impact as of ${HEAD} (current)`, 'no changed symbols'])
   expect(w.calls('analyze_impact')).toEqual([])
+})
+
+test('FR700 edge case: an edit undone before the next index brings the snapshot before the edit back, and the symbol leaves the list with no further call', async ($, on) => {
+  const w = world(on)
+  await start($, w)
+  await editCurrency($)
+  await publish(w, HEAD)
+  await pane($, w, 'terminal').then(({ ui }) => ui.unmount())
+  // Snapshot ids are content-addressed, so the tree as it was before the edit is published under its old id again.
+  await editCurrency($)
+  await publish(w, BASE)
+  const { lines } = await pane($, w, 'terminal')
+  expect(lines).toEqual([`impact as of ${BASE} (current)`, 'no changed symbols'])
+  expect(w.calls('get_symbol').map((c) => c.args.snapshot_id).filter((s) => s !== HEAD && s !== BASE)).toEqual([])
+  expect(w.calls('analyze_impact')).toHaveLength(1)
+})
+
+test('FR706 edge case: after a failed call, opening the pane again asks again', async ($, on) => {
+  const w = world(on, { fail: 'analyze_impact', failures: 1 })
+  await start($, w)
+  await editCurrency($)
+  await publish(w, HEAD)
+  for (let i = 0; i < 2; i++) {
+    // A redraw does not ask again; /pm-impact, closing and opening the pane, does.
+    const { ui, lines } = await pane($, w, 'terminal')
+    expect(lines).toEqual([`impact as of ${HEAD} (current)`, 'impact: unknown (the query timed out after 10000 ms)'])
+    await ui.unmount()
+  }
+  await $.command.run({ command: 'pm-impact', args: '' })
+  await $.command.run({ command: 'pm-impact', args: '' })
+  const { lines } = await pane($, w, 'terminal')
+  expect(lines).toEqual([`impact as of ${HEAD} (current)`, ...FORMAT_AMOUNT])
+})
+
+test('FR706 edge case: an edit made while a failed repository lookup waits for its retry is listed once the lookup succeeds', async ($, on) => {
+  const w = world(on, { listFailures: 1 })
+  await start($, w)
+  await editCurrency($)
+  await publish(w, HEAD)
+  await w.clock.advance(5000)
+  const { lines } = await pane($, w, 'terminal')
+  expect(lines.slice(0, 3)).toEqual([`impact as of ${HEAD} (current)`, CURRENCY, 'changed formatAmount line 1'])
 })

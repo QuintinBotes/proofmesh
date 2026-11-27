@@ -146,8 +146,8 @@ async function inRepository($, target) {
 async function noteEdit($, e, result) {
   const target = e.file_path ?? e.notebook_path
   if (typeof target !== 'string') return
-  // shortcut: at most 1,000 edits wait for the repository lookup, which a session with no surface makes only when a command asks.
-  if (!repo) return void (!kind && early.length < 1000 && early.push([{ tool: e.tool, file_path: target }, { result: hunksOf(result.result) }]))
+  // shortcut: at most 1,000 edits wait for the repository lookup, or its retry, which a session with no surface makes only when a command asks.
+  if (!repo) return void ((!kind || kind === 'unknown') && early.length < 1000 && early.push([{ tool: e.tool, file_path: target }, { result: hunksOf(result.result) }]))
   const path = await inRepository($, target)
   // Listed as it is, with no ProofMesh call, so it moves no answer out of date.
   if (path === null) return void (outside.add(target), draws && $.ui.invalidate('ui.render'))
@@ -159,13 +159,21 @@ async function noteEdit($, e, result) {
 }
 
 /**
- * The hunks an edit tool's result names, as line numbers alone: the patch Edit and Write give, a new file's whole content, or else the
- * first line (shortcut: a NotebookEdit or MultiEdit result carries no patch, so only the symbol at line 1 is looked up).
+ * The hunks an edit tool's result names, as line numbers alone: the patch Edit and Write give, its context lines left out by their
+ * first character, a new file's whole content, or else the first line (shortcut: a NotebookEdit or MultiEdit result carries no
+ * patch, so only the symbol at line 1 is looked up).
  */
 function hunksOf(r) {
   if (Array.isArray(r)) return r
   if (r?.staged === true) return []
-  if (Array.isArray(r?.structuredPatch) && r.structuredPatch.length) return r.structuredPatch.map((h) => ({ oldStart: h.oldStart, oldLines: h.oldLines, newStart: h.newStart, newLines: h.newLines }))
+  if (Array.isArray(r?.structuredPatch) && r.structuredPatch.length) {
+    return r.structuredPatch.map((h) => {
+      const lines = Array.isArray(h.lines) ? h.lines : []
+      const lead = lines.findIndex((l) => !l.startsWith(' ')), tail = [...lines].reverse().findIndex((l) => !l.startsWith(' '))
+      const [a, b] = lead < 0 ? [0, 0] : [lead, tail]
+      return { oldStart: h.oldStart + a, oldLines: h.oldLines - a - b, newStart: h.newStart + a, newLines: h.newLines - a - b }
+    })
+  }
   const lines = typeof r?.content === 'string' ? r.content.split('\n').length : 1
   return [{ oldStart: 1, oldLines: r?.originalFile ? r.originalFile.split('\n').length : 0, newStart: 1, newLines: lines }]
 }
@@ -288,8 +296,10 @@ async function analyse($) {
     const changed = []
     for (const s of [...found.values()].sort((x, y) => (x.path < y.path ? -1 : x.path > y.path ? 1 : x.start_line - y.start_line))) {
       const base = touched.get(s.path)?.base
-      // The same body as before the session's first edit of its file: an edit beside it, or one undone.
-      if (base && base !== at) {
+      // The same body as before the session's first edit of its file: one undone. Snapshot ids are content-addressed, so a tree put
+      // back as it was is its base snapshot again.
+      if (base === at) continue
+      if (base) {
         const was = await hash(s.stable_key, base)
         if (was !== null && was === (await hash(s.stable_key, at))) continue
       }
@@ -328,7 +338,7 @@ function impactRows() {
   if (!touched.size && !outside.size) return [{ depth: 0, text: 'no changes in this session' }]
   const away = [...outside].map((p) => ({ depth: 0, text: `${p}: not indexed (outside the repository)` }))
   if (!touched.size) return away
-  if (!answer) return [{ depth: 0, text: `impact: waiting for a snapshot with the session's edits (${kind || 'unknown'})` }, ...away]
+  if (!answer) return [{ depth: 0, text: kind === 'current' ? `impact: asking about ${snapshot}` : `impact: waiting for a snapshot with the session's edits (${kind || 'unknown'})` }, ...away]
   const out = [{ depth: 0, text: `impact as of ${answer.snapshot} (${answer.of === asOf() && kind === 'current' ? 'current' : 'behind'})` }]
   if (answer.error) return [...out, { depth: 0, text: `impact: unknown (${answer.error})` }]
   // shortcut: an opened symbol id never matches, since a lean impact row names no id; a Read of the file, or get_symbol by name and path, does.
@@ -457,6 +467,8 @@ export function register(on) {
 
   on('command.run', { command: 'pm-impact' }, async ($) => {
     idle = 0
+    // A failed answer is kept, so a redraw does not ask again in a loop; the person asks again here.
+    if (answer?.error) answer.of = null
     try {
       if (draws) {
         const open = (await $.ui.panes()).some((p) => p.id === PANE)
