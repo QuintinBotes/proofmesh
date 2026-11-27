@@ -1,0 +1,22 @@
+name: Review Voice
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+permissions:
+  contents: read
+  pull-requests: write
+concurrency:
+  group: review-voice-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      # Without the ANTHROPIC_API_KEY secret the action skips. post: false keeps the review in the job summary until posting is chosen.
+      - uses: QuintinBotes/review-voice@6fcd6d47b2e72c8b403a4ca789438f379ee0734d # review-voice--v1.29.2
+        with:
+          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+          post: false
