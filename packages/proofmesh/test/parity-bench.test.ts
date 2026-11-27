@@ -95,7 +95,8 @@ describe('FR510 to FR516 the parity benchmark scores every tool on one truth, an
     // A snapshot id names the repository, so it differs between the two copies; an error cell may quote it.
     const rows = (md: string) => md.split('\n').filter((l) => /^\| Q\d+ \| /.test(l)).map((l) => l.replace(/snap_[0-9a-f]+/g, 'snap_'))
     for (const r of runs) expect(r.stdout).toContain('Fixture after the edit step: clean (tool caches graphify-out/, .serena/, .aider.tags.cache.v4/ are in .git/info/exclude)')
-    expect(rows(runs[0].stdout).length).toBe(16)
+    // 16 score rows plus the 8 rows of the context map table (#33, FR924), which also start with a question.
+    expect(rows(runs[0].stdout).length).toBe(24)
     expect(rows(runs[1].stdout)).toEqual(rows(runs[0].stdout))
     const md = fs.readFileSync(path.join(out, 'parity.md'), 'utf8')
     expect(runs.map((r) => r.stdout.replace(/\n$/, ''))).toContain(md)
