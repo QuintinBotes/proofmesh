@@ -1505,6 +1505,9 @@
     "FR730": [
       "packages/proofmesh/test/tool-profiles.test.ts"
     ],
+    "FR780": [
+      "packages/proofmesh/test/python.test.ts"
+    ],
     "FR400": [
       "packages/proofmesh/test/seams-schema.test.ts"
     ],

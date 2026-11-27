@@ -4,6 +4,12 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 ## Unreleased
 
+One source file that is not UTF-8 fails alone, not the whole index (closes #139; FR780):
+
+- A Latin-1 file, or any file with an invalid UTF-8 sequence, ended the index with `INTERNAL_ERROR: range ... does not fit <file>` and published no snapshot. Every adapter (TypeScript, the syntax tier and Python, C#, SCIP import) decodes a file as UTF-8 and counts byte offsets on the decoded text, where each invalid byte became U+FFFD and counted as three bytes, so the ranges after it pointed at the wrong bytes or past the end of the file. pylint keeps such a file on purpose (`tests/functional/i/implicit/implicit_str_concat_latin1.py`), so no snapshot of it could be built.
+- The core now checks each captured file once: a file that is not valid UTF-8 is captured but given to no adapter, and recorded `failed` with detail `not_utf8`, which `workspace_status` and `proofmesh status --json` show in the file summary and the language census. Every other file is indexed as before, with its ranges on the right bytes. A file with a NUL byte in its first 8 KiB, UTF-16 text included, is still `unsupported` as `binary`.
+- No upgrade step: no snapshot holding such a file could be published before.
+
 `proofmesh mcp` exits 0 when its client closes stdin (closes #147; FR720):
 
 - Closing stdin is how an MCP client stops a stdio server, but `proofmesh mcp` then exited 13 with Node's `Warning: Detected unsettled top-level await`: after starting the server it waited on a promise that never settled, so once stdin ended nothing kept Node running. It now waits for stdin to end and exits 0, after answering what it was sent; an error on stdin still exits non-zero. Stopped by SIGTERM or SIGINT, over stdio or `--http`, it still ends by the signal (143 and 130 under a shell), as before.
