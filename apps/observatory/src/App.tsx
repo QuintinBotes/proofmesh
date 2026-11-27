@@ -121,7 +121,10 @@ export function App() {
   const searchTimer = useRef<number | undefined>(undefined)
   const [focus, setFocus] = useState<Sym | null>(null)
   const [hood, setHood] = useState<RelationshipsEnvelope | null>(null)
-  const [loading, setLoading] = useState(false)
+  // Counts queries in flight: the first to finish must not show the view idle while another still loads (FR640).
+  const [inFlight, setInFlight] = useState(0)
+  const loading = inFlight > 0
+  const setLoading = (on: boolean) => setInFlight((n) => n + (on ? 1 : -1))
   // Counts finished queries, so tests and assistive tech can tell a new answer from the previous one.
   const [answered, setAnswered] = useState(0)
   const [trace, setTrace] = useState<TraceEnvelope & Record<string, any> | null>(null)
@@ -240,7 +243,8 @@ export function App() {
     } catch (e) {
       if (ticket === mapTicket.current) report(e)
     } finally {
-      if (ticket === mapTicket.current) { setLoading(false); setAnswered((n) => n + 1) }
+      setLoading(false)
+      if (ticket === mapTicket.current) setAnswered((n) => n + 1)
     }
   }, [report])
   const search = (text: string, now = false) => {

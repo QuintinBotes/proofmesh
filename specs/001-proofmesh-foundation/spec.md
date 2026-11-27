@@ -723,6 +723,7 @@ The capture half of Claims & trace (#50), from #114. Recording subjects is #50's
 - FR066: MUST authenticate the browser session to the local installation and reject cross-origin and DNS-rebinding requests.
 - FR067: MUST offer a non-visual equivalent for every view and honor reduced-motion, color-scheme, and contrast preferences.
 - FR068: MUST keep layout derived and non-evidential; spatial proximity is never presented as a relationship.
+- FR640: MUST keep the Observatory's conclusion bar busy (`aria-busy` true, `Loading…`) until every query in flight has answered, so a query a person starts while another still loads, such as a click on a starting point during the first load, is not shown as answered when the other one finishes (#136).
 
 ### Open source and extensibility
 
