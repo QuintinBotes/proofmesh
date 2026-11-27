@@ -1,6 +1,6 @@
 import { Graph } from '@cosmos.gl/graph'
 import { useEffect, useRef, useState } from 'react'
-import { areaFog, areaLabel, ghostAreas, graphPositions, placeLabels, matchIndices, shortName, type GalaxyData } from './galaxyData'
+import { areaFog, areaLabel, fogText, ghostAreas, graphPositions, manyLinks, placeLabels, matchIndices, shortName, type GalaxyData } from './galaxyData'
 import { OVERLAY_RGB } from './diff'
 import { areaColor } from './map'
 import { visible } from './visible'
@@ -11,24 +11,9 @@ type Props = { data: GalaxyData; query: string; focusArea: number | null; onOpen
 const BASE: Record<string, number> = { project: 9, class: 3.2, interface: 3.2, struct: 3, enum: 2.6, type_alias: 2.6, endpoint: 6, job: 6, table: 8, feature_flag: 5.5, message: 7, channel: 7, config_key: 4.5 }
 const MINOR = new Set(['method', 'function', 'property', 'field', 'constructor', 'variable'])
 const rgb = (hex: string) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255) as [number, number, number]
-/** Above this many links the galaxy draws them only while the camera is still. */
-export const MOVING_LINK_LIMIT = 200_000
-export const manyLinks = (d: { links: Uint32Array }) => d.links.length / 2 > MOVING_LINK_LIMIT
 const LINKS_BACK_MS = 400
 
 type Fog = { name: string; x: number; y: number; r: number; haze: number; ring: boolean; empty: boolean; text: string; label?: string }
-
-/** What an area's fog says in words, for its tooltip and, for an area with no symbols, its label. */
-export function fogText(a: GalaxyData['areas'][number], reasons = true): string {
-  const f = areaFog(a)
-  const parts = [
-    ...(f.unanalysed ? [`${f.unanalysed.toLocaleString('en')} file${f.unanalysed === 1 ? '' : 's'} not analysed`] : []),
-    ...(f.excluded ? [`${f.excluded.toLocaleString('en')} excluded`] : []),
-    ...(f.unresolvedShare !== null && f.ring ? [`${Math.round(f.unresolvedShare * 100)}% of calls unresolved`] : []),
-  ]
-  const why = reasons ? a.gaps.map(([reason, n]) => `${reason} ${n.toLocaleString('en')}`).join(', ') : ''
-  return `${a.name}: ${parts.join(', ')}${why ? ` (${why})` : ''}`
-}
 
 /**
  * Fog over the areas the graph cannot fully see (FR059). An area with symbols gets haze in proportion to its unanalysed files
@@ -73,6 +58,13 @@ function fogOf(d: GalaxyData, sum: Float64Array, sq: Float64Array, g: Graph): Fo
 }
 const GHOSTS = 10
 
+/** The two corners of the box round x, y pairs. */
+function corners(pos: Float32Array): Float32Array {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity
+  for (let i = 0; i < pos.length; i += 2) { const x = pos[i]!, y = pos[i + 1]!; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y }
+  return new Float32Array([x0, y0, x1, y1])
+}
+
 export function Galaxy({ data, query, focusArea, onOpen, onHover, onClear, overlay }: Props) {
   const box = useRef<HTMLDivElement>(null)
   const graph = useRef<Graph | null>(null)
@@ -100,15 +92,16 @@ export function Galaxy({ data, query, focusArea, onOpen, onHover, onClear, overl
     for (let i = 0; i < d.n; i++) {
       const kind = d.kinds[d.kind[i]!]!, minor = MINOR.has(kind)
       // A Diff overlay tints added and changed symbols; everything else keeps its area's hue (FR019).
-      const [r, g, b] = (overlay?.[i] ? OVERLAY_RGB[overlay[i]!] : undefined) ?? palette[d.area[i]!]!
-      colours.set([r * (minor ? 0.82 : 1), g * (minor ? 0.82 : 1), b * (minor ? 0.82 : 1), minor ? 0.8 : 1], i * 4)
+      const c = (overlay?.[i] ? OVERLAY_RGB[overlay[i]!] : undefined) ?? palette[d.area[i]!]!, dim = minor ? 0.82 : 1
+      // Written in place, not through a new array per point: at 250,000 symbols that allocation alone was a long task (#208).
+      colours[i * 4] = c[0] * dim; colours[i * 4 + 1] = c[1] * dim; colours[i * 4 + 2] = c[2] * dim; colours[i * 4 + 3] = minor ? 0.8 : 1
       sizes[i] = (BASE[kind] ?? (minor ? 1.6 : 3)) + Math.log2(d.degree[i]! + 1) * (minor ? 0.7 : 1.5)
     }
     const L = d.links.length / 2
     const linkColours = new Float32Array(L * 4), linkWidths = new Float32Array(L)
     for (let j = 0; j < L; j++) {
-      const a = d.links[j * 2]!, b = d.links[j * 2 + 1]!, [r, g, bl] = palette[d.area[a]!]!
-      linkColours.set([r, g, bl, d.area[a] === d.area[b] ? 0.06 : 0.1], j * 4)
+      const a = d.links[j * 2]!, b = d.links[j * 2 + 1]!, c = palette[d.area[a]!]!
+      linkColours[j * 4] = c[0]; linkColours[j * 4 + 1] = c[1]; linkColours[j * 4 + 2] = c[2]; linkColours[j * 4 + 3] = d.area[a] === d.area[b] ? 0.06 : 0.1
       linkWidths[j] = 0.7
     }
     // Every symbol's final place came with the snapshot, so nothing is simulated and nothing moves but the camera (FR1223).
@@ -165,15 +158,26 @@ export function Galaxy({ data, query, focusArea, onOpen, onHover, onClear, overl
     ;(async () => {
       await g.ready
       if (disposed) return
+      // The first draw is cut into tasks that each stay inside the main thread's budget (#208): the shaders compile on one
+      // transparent point, then the points go up, then the links.
+      const yieldTask = () => new Promise((r) => setTimeout(r, 0))
+      g.setPointPositions(new Float32Array(2)); g.setPointColors(new Float32Array(4)); g.setPointSizes(new Float32Array([1]))
+      g.render(0, 0)
+      await yieldTask()
+      if (disposed) return
       g.setPointPositions(positions)
       g.setPointColors(colours)
       g.setPointSizes(sizes)
+      g.render(0, 0)
+      // Fitted to the positions' corners, known here, rather than read back from the GPU (#208).
+      if (d.n) g.setZoomTransformByPointPositions(corners(positions), 0, undefined, 0.1)
+      scheduleLabels()
+      await yieldTask()
+      if (disposed) return
       g.setLinks(new Float32Array(d.links))
       g.setLinkColors(linkColours)
       g.setLinkWidths(linkWidths)
       g.render(0, 0)
-      g.fitView(0)
-      scheduleLabels()
       setReady(true)
     })().catch((e) => console.error('Galaxy failed to start', e))
     return () => { disposed = true; cancelAnimationFrame(frame); clearTimeout(linksBack); g.destroy(); graph.current = null; viewMap.current = null; viewPositions.current = null; setReady(false) }

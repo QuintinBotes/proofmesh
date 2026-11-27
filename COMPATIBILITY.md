@@ -30,4 +30,6 @@ Added to the MCP envelope (#39): `snapshot.imported` (`origin`, `imported_at`, `
 
 Changed between `proofmesh view` and its browser (#44): the Galaxy payload (`/api/v1/galaxy`) is format 4, which adds a positions section and names `format` in its header. It is not a public contract: the server and the Observatory it serves ship together. The snapshot file format does not change, because positions are derived from the snapshot's paths and names and are not stored in it; a data directory keeps its snapshots, rebuilds each Galaxy payload once as `cache/galaxy-v4-<snapshot>`, and no longer reads the `galaxy-v3` files, which can be deleted. A browser's old `proofmesh-galaxy` IndexedDB database is no longer read or written.
 
+Changed between `proofmesh view` and its browser (#47): the Observatory reads a snapshot's Galaxy from `GET /api/v1/galaxy/v4/<snapshot id>`, behind the session, cached by the browser as `private, max-age=31536000, immutable`, and a snapshot that is not published there answers 404. `POST /api/v1/galaxy` is unchanged. Every other API answer now carries `Cache-Control: no-store` instead of `no-cache`; hashed assets are cached for good and the page is revalidated. No data directory changes.
+
 Deprecations are listed in CHANGELOG.md under the release that announces them.

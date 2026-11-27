@@ -4,6 +4,16 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 ## Unreleased
 
+The Observatory is sent compressed and cached, split by renderer, parsed off the main thread, and its long tables are virtual (part of #47, closes #208; FR1450 to FR1455):
+
+- `proofmesh view` sends each asset Brotli- or gzip-compressed from copies the build writes beside it (`.br`, `.gz`), as `Accept-Encoding` allows. Hashed assets carry `Cache-Control: public, max-age=31536000, immutable` and the page `no-cache`; every API answer and refusal now carries `no-store`.
+- A snapshot's Galaxy has an address of its own, `GET /api/v1/galaxy/v4/<snapshot id>`, behind the session and cached `private, max-age=31536000, immutable`, so a reload takes it from the HTTP cache. A snapshot gc retired, or another format, is 404, and the page asks again for the current snapshot. `POST /api/v1/galaxy` is unchanged.
+- The Galaxy's renderer (cosmos.gl) and the graph renderer of the other views (sigma) are separate chunks, loaded when their view is first shown; the Galaxy's comes while its data does.
+- The Galaxy payload is parsed, and its names lowered for search, in a Web Worker that hands the page its typed arrays by transfer. Without Web Workers it is parsed on the page in slices of at most 16 ms.
+- The Galaxy draws its first frame in tasks that each stay under the 100 ms budget: shaders, then points, then links, and it fits the view to positions it already holds instead of reading them back from the GPU. At 250,000 symbols the longest main-thread task of a cold load was 137 ms (median of 3) and is now within budget; `pnpm bench:observatory --fixture synthetic --nodes 250000 --check` exits 0 (#208).
+- The Galaxy's symbol and area tables and the Diff table are virtual: every row is reachable by scrolling, a few hundred are in the page, and the 200-row cut is gone. The caption keeps the full count.
+- Not done yet (#47): the Terrain's progressive loading by area (scenario 4), which belongs to the Terrain (#46); initial scripts of 150 KB gzip, out of reach while the default view's renderer chunk alone is 190 KB gzip (#42); a Galaxy payload within 1.0 MB and 5 MB gzip (SC-004, front-coded names); browser memory targets (SC-005).
+
 The Galaxy's layout is computed with the snapshot, and every symbol keeps its place (part of #44; FR1220 to FR1225):
 
 - Positions are a pure function of the snapshot's path tree and symbol names: ordered strips of directories, then files, then symbols, each in name order, every symbol the same area, overloads ordered by declaration line. Edges never move a node. The server computes them when it builds the Galaxy payload, in 0.1 s at 250,000 symbols, and the same snapshot gives byte-identical positions in every browser, on every machine and on every run.

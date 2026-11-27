@@ -2209,6 +2209,26 @@
     ],
     "FR1244": [
       "packages/proofmesh/test/cold-build.test.ts"
+    ],
+    "FR1450": [
+      "packages/proofmesh/test/http.test.ts",
+      "e2e/security.spec.ts",
+      "e2e/build.spec.ts"
+    ],
+    "FR1451": [
+      "e2e/budgets.spec.ts"
+    ],
+    "FR1452": [
+      "apps/observatory/test/galaxy.test.ts",
+      "e2e/budgets.spec.ts"
+    ],
+    "FR1453": [
+      "packages/proofmesh/test/http.test.ts",
+      "apps/observatory/test/api.test.ts",
+      "e2e/security.spec.ts"
+    ],
+    "FR1454": [
+      "e2e/budgets.spec.ts"
     ]
   },
   "manual": {
@@ -2218,6 +2238,7 @@
     "SC006": "A maintainer registers Proofmesh in Claude Code and in Codex with proofmesh mcp-config, asks both the same snapshot-pinned questions (bench/eval/samples/invoicing-questions.json), records the sessions, scores them with bench/eval/run.mjs, and confirms both cite the same snapshot id. Last run on 2026-11-12 on the final build, over fixtures/ts-invoicing (snapshot snap_7278727f7dee33d0928b30e7): headless Claude Code 2.1.322 (claude -p, only the Proofmesh MCP server and its tools) and Codex 0.163.0 (codex exec, read-only sandbox, the server passed with -c and its tools approved for that server only) answered the same three snapshot-pinned questions identically, citing the same snapshot id, and both answers equal the fixture oracle.",
     "FR049.publication": "A maintainer publishes the signed npm packages and the OCI image, with checksums, SBOM, signatures, provenance and release notes, to the registries; publication is never automated.",
     "SC016.tag": "A maintainer tags the release commit of the public fresh-history repository; CI builds, signs (keyless) and attests the artifacts from that tag, including the C# adapter.",
-    "FR1187": "A maintainer indexes the TypeORM parity fixture (bench/parity/run.sh builds it at commit 3d55188c) into a fresh data directory and runs node bench/observatory/evidence.mjs --data-dir <dir> --symbol src/data-source/DataSource:DataSource.initialize --runs 10 --check, which exits 0 when the warm and first-open p95 and the requests per open are within SC-001 and SC-002 of #45, and records the machine and its load beside the times."
+    "FR1187": "A maintainer indexes the TypeORM parity fixture (bench/parity/run.sh builds it at commit 3d55188c) into a fresh data directory and runs node bench/observatory/evidence.mjs --data-dir <dir> --symbol src/data-source/DataSource:DataSource.initialize --runs 10 --check, which exits 0 when the warm and first-open p95 and the requests per open are within SC-001 and SC-002 of #45, and records the machine and its load beside the times.",
+    "FR1455": "A maintainer runs pnpm bench:observatory --fixture synthetic --nodes 50000 --check and pnpm bench:observatory --fixture synthetic --nodes 250000 --check (bench/observatory/README.md); both exit 0 and both tables show Longest main-thread task, cold within its 100 ms budget. The results for #208 are in bench/observatory/README.md."
   }
 }

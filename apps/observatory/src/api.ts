@@ -1,3 +1,5 @@
+import { parseGalaxySliced, rememberNames, type GalaxyData, type LoweredNames } from './galaxyData'
+
 export class ToolError extends Error {
   constructor(readonly code: string, message: string, readonly status: number) { super(message) }
 }
@@ -31,11 +33,31 @@ export async function establishSession(): Promise<void> {
   if (!r.ok) throw new ToolError('UNAUTHORIZED', 'This launch link was already used or has expired. Run "proofmesh view" again.', r.status)
 }
 
-/** The whole snapshot as the binary Galaxy payload; the browser undoes the gzip transfer encoding. */
-export async function fetchGalaxy(): Promise<ArrayBuffer> {
-  const r = await fetch('/api/v1/galaxy', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(scoped(replay ? { snapshot_id: replay } : {})) })
+/** The Galaxy payload format this page reads (packages/proofmesh/src/query/galaxy.ts); it is part of the payload's address. */
+const GALAXY_FORMAT = 4
+const galaxyAt = (snapshotId: string) => fetch(`/api/v1/galaxy/v${GALAXY_FORMAT}/${encodeURIComponent(snapshotId)}`, { credentials: 'same-origin' })
+
+/**
+ * A snapshot's binary Galaxy payload, from the address that changes only with the snapshot and the format, so a reload is
+ * served from the HTTP cache; the browser undoes the gzip transfer encoding (FR1453).
+ */
+export async function fetchGalaxy(snapshotId: string): Promise<ArrayBuffer> {
+  let r = await galaxyAt(snapshotId)
+  // gc retired the snapshot since the page learnt it was current: ask again for the current one. A replayed one is simply gone.
+  if (r.status === 404 && !replay) r = await galaxyAt((await callTool('workspace_status', { limits: { max_rows: 1 } })).snapshot.id)
   if (!r.ok) { const body = await r.json().catch(() => ({})); throw new ToolError(body?.error?.code ?? 'INTERNAL_ERROR', body?.error?.message ?? `HTTP ${r.status}`, r.status) }
   return r.arrayBuffer()
+}
+
+/** The payload parsed, with its names lowered for search, in a worker (FR1452); a page without workers parses it in slices. */
+export function loadGalaxy(buf: ArrayBuffer): Promise<GalaxyData> {
+  if (typeof Worker === 'undefined') return parseGalaxySliced(buf)
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(new URL('./galaxyWorker.ts', import.meta.url), { type: 'module' })
+    worker.onmessage = ({ data }: MessageEvent<{ galaxy: GalaxyData; names: LoweredNames }>) => { worker.terminate(); rememberNames(data.galaxy, data.names); resolve(data.galaxy) }
+    worker.onerror = (e) => { worker.terminate(); reject(new Error(`the Galaxy could not be read: ${e.message}`)) }
+    worker.postMessage(buf, [buf])
+  })
 }
 
 export async function galaxySymbolId(index: number): Promise<string> {

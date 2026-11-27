@@ -12,6 +12,21 @@ export type GalaxyData = {
   kinds: string[]; areas: GalaxyArea[]; names: string[]; files: string[]
 }
 
+/** Above this many links the galaxy draws them only while the camera is still. */
+export const MOVING_LINK_LIMIT = 200_000
+export const manyLinks = (d: { links: Uint32Array }) => d.links.length / 2 > MOVING_LINK_LIMIT
+/** What an area's fog says in words, for its tooltip and, for an area with no symbols, its label. */
+export function fogText(a: GalaxyArea, reasons = true): string {
+  const f = areaFog(a)
+  const parts = [
+    ...(f.unanalysed ? [`${f.unanalysed.toLocaleString('en')} file${f.unanalysed === 1 ? '' : 's'} not analysed`] : []),
+    ...(f.excluded ? [`${f.excluded.toLocaleString('en')} excluded`] : []),
+    ...(f.unresolvedShare !== null && f.ring ? [`${Math.round(f.unresolvedShare * 100)}% of calls unresolved`] : []),
+  ]
+  const why = reasons ? a.gaps.map(([reason, n]) => `${reason} ${n.toLocaleString('en')}`).join(', ') : ''
+  return `${a.name}: ${parts.join(', ')}${why ? ` (${why})` : ''}`
+}
+
 /** An unresolved share at or above this draws a ring round the area. */
 export const RING_SHARE = 0.2
 
@@ -27,10 +42,13 @@ export function areaFog(a: GalaxyArea): { unanalysed: number; excluded: number; 
   return { unanalysed, excluded: a.files.excluded, unresolvedShare, haze, ring: unresolvedShare !== null && unresolvedShare >= RING_SHARE }
 }
 
-export function parseGalaxy(buf: ArrayBuffer): GalaxyData {
+function header(buf: ArrayBuffer) {
   const headerLength = new DataView(buf).getUint32(0, true)
-  const h = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, 4, headerLength)))
-  const base = 4 + headerLength + ((4 - ((4 + headerLength) % 4)) % 4)
+  return { h: JSON.parse(new TextDecoder().decode(new Uint8Array(buf, 4, headerLength))), base: 4 + headerLength + ((4 - ((4 + headerLength) % 4)) % 4) }
+}
+
+export function parseGalaxy(buf: ArrayBuffer, withNames = true): GalaxyData {
+  const { h, base } = header(buf)
   return {
     snapshotId: h.snapshot_id, n: h.nodes, kinds: h.kinds, areas: h.areas, files: h.files ?? [],
     links: new Uint32Array(buf, base + h.offsets.links, h.links * 2),
@@ -38,8 +56,26 @@ export function parseGalaxy(buf: ArrayBuffer): GalaxyData {
     area: new Uint16Array(buf, base + h.offsets.area, h.nodes),
     kind: new Uint8Array(buf, base + h.offsets.kind, h.nodes),
     positions: new Uint16Array(buf, base + h.offsets.positions, h.nodes * 2),
-    names: h.nodes ? new TextDecoder().decode(new Uint8Array(buf, base + h.offsets.names, h.names_bytes)).split('\n') : [],
+    names: h.nodes && withNames ? new TextDecoder().decode(new Uint8Array(buf, base + h.offsets.names, h.names_bytes)).split('\n') : [],
   }
+}
+
+/**
+ * parseGalaxy for a page without a Web Worker (FR1452): only the names take long, so they are decoded a block at a time,
+ * each block ending at a newline, with a pause whenever a slice has run for half the budget.
+ */
+export async function parseGalaxySliced(buf: ArrayBuffer, budgetMs = 16, pause = () => new Promise<void>((r) => setTimeout(r, 0))): Promise<GalaxyData> {
+  const d = parseGalaxy(buf, false), { h, base } = header(buf)
+  if (!h.nodes) return d
+  const bytes = new Uint8Array(buf, base + h.offsets.names, h.names_bytes), decoder = new TextDecoder(), BLOCK = 1 << 16
+  let at = 0, since = performance.now()
+  while (at <= bytes.length) {
+    const next = at + BLOCK < bytes.length ? bytes.indexOf(10, at + BLOCK) : -1, end = next < 0 ? bytes.length : next
+    for (const name of decoder.decode(bytes.subarray(at, end)).split('\n')) d.names.push(name)
+    at = end + 1
+    if (performance.now() - since >= budgetMs / 2) { await pause(); since = performance.now() }
+  }
+  return d
 }
 
 export type LoweredNames = { text: string; starts: Int32Array }
@@ -66,6 +102,8 @@ export function scanNames({ text: all, starts }: LoweredNames, q: string, hit: (
 }
 
 const lowered = new WeakMap<GalaxyData, LoweredNames>()
+/** Keeps names lowered elsewhere, by the worker that parsed the galaxy (FR1452), so the first search does not lower them here. */
+export const rememberNames = (d: GalaxyData, names: LoweredNames) => { lowered.set(d, names) }
 /** Indices of points whose qualified name contains the text, case-insensitively, in ascending order; the names are lowered and joined once per galaxy (NFR005). */
 export function matchIndices(d: GalaxyData, text: string): number[] {
   const q = text.trim().toLowerCase()

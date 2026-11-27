@@ -3,7 +3,7 @@ import zlib from 'node:zlib'
 import fc from 'fast-check'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { buildIndex, LIMIT, searchIndex } from '../src/paletteIndex'
-import { areaFog, areaLabel, ghostAreas, graphPositions, legendAreas, placeLabels, matchIndices, parseGalaxy, rankMatches, shortName, type GalaxyData } from '../src/galaxyData'
+import { areaFog, areaLabel, ghostAreas, graphPositions, legendAreas, placeLabels, matchIndices, parseGalaxy, parseGalaxySliced, rankMatches, shortName, type GalaxyData } from '../src/galaxyData'
 import { galaxyFor } from '../../../packages/proofmesh/src/query/galaxy.js'
 import { indexedDataDir } from '../../../packages/proofmesh/test/helpers.js'
 
@@ -149,3 +149,19 @@ describe('FR1200 search maps each match to its own name when lowering changes th
   })
 })
 
+
+describe('FR1452 without a Web Worker the payload is parsed on the page in slices', () => {
+  const GENERATOR: string = '../../../bench/observatory/gen-galaxy.mjs'
+  const buffer = (gz: Buffer) => { const raw = zlib.gunzipSync(gz); return raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength) }
+  it('FR1452 gives the galaxy parseGalaxy gives, yielding between blocks of names', async () => {
+    const small = buffer(galaxyFor(d).gz)
+    expect(await parseGalaxySliced(small)).toEqual(parseGalaxy(small))
+    const { generateGalaxy } = await import(GENERATOR)
+    const big = buffer(generateGalaxy({ nodes: 20000, seed: 1, snapshotId: 'snap_sliced', ids: galaxyFor(d).ids }).gz)
+    let pauses = 0
+    const sliced = await parseGalaxySliced(big, 0, async () => { pauses++ })
+    expect(sliced).toEqual(parseGalaxy(big))
+    expect(sliced.names).toHaveLength(20000)
+    expect(pauses).toBeGreaterThan(1)
+  })
+})

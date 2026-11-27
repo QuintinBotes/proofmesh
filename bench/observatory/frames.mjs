@@ -146,19 +146,22 @@ async function loadMetrics(page, cdp, pid) {
   }
 }
 
+/** A snapshot's Galaxy address (FR1453) with its snapshot id left out, so the tables name the route once. */
+const route = (pathname) => pathname.replace(/^(\/api\/v1\/galaxy\/v\d+\/)[\w-]+$/, '$1:snapshot')
 /**
- * The layout the page receives: the Galaxy payload fetched again in the page, with the request body the Galaxy itself sent, so it
- * names the same repository and snapshot. Its key is the snapshot id; positions are x, y pairs and names the symbols' names (#44).
+ * The layout the page receives: the Galaxy payload at the address the page itself fetched last, so it is the same repository and
+ * snapshot. Its key is the snapshot id; positions are x, y pairs and names the symbols' names (#44).
  */
-async function shownLayout(page, body, notKey) {
+async function shownLayout(page, notKey) {
   for (let i = 0; i < 100; i++) {
-    const l = await page.evaluate(async (body) => {
-      const r = await fetch('/api/v1/galaxy', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body })
-      if (!r.ok) return null
+    const l = await page.evaluate(async () => {
+      const at = performance.getEntriesByType('resource').map((e) => e.name).filter((n) => /\/api\/v1\/galaxy\/v\d+\/[\w-]+$/.test(n)).at(-1)
+      const r = at && await fetch(at, { credentials: 'same-origin' })
+      if (!r?.ok) return null
       const buf = await r.arrayBuffer(), hl = new DataView(buf).getUint32(0, true), h = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, 4, hl)))
       const base = 4 + hl + ((4 - ((4 + hl) % 4)) % 4)
       return { key: h.snapshot_id, positions: Array.from(new Uint16Array(buf, base + h.offsets.positions, h.nodes * 2)), names: new TextDecoder().decode(new Uint8Array(buf, base + h.offsets.names, h.names_bytes)).split('\n') }
-    }, body)
+    })
     if (l && l.key !== notKey) return l
     await page.waitForTimeout(100)
   }
@@ -211,11 +214,11 @@ const responses = (page) => {
     const sizes = await res.request().sizes().catch(() => null)
     const transferred = sizes && sizes.responseBodySize + sizes.responseHeadersSize
     const body = await res.body().catch(() => null)
-    if (body) return list.push({ url: u.pathname, type: kind, raw: body.length, gzip: zlib.gzipSync(body).length, transferred })
+    if (body) return list.push({ url: route(u.pathname), type: kind, raw: body.length, gzip: zlib.gzipSync(body).length, transferred })
     // A body larger than the browser's network buffer (the galaxy at 250,000 symbols) cannot be read back: its decoded size comes
     // from resource timing, and its gzip size is the size sent when it was sent gzipped.
     const raw = await page.evaluate((url) => performance.getEntriesByName(url).at(-1)?.decodedBodySize ?? null, res.url()).catch(() => null)
-    list.push({ url: u.pathname, type: kind, raw, gzip: res.headers()['content-encoding'] === 'gzip' ? sizes?.responseBodySize ?? null : null, transferred })
+    list.push({ url: route(u.pathname), type: kind, raw, gzip: res.headers()['content-encoding'] === 'gzip' ? sizes?.responseBodySize ?? null : null, transferred })
   })
   return list
 }
@@ -227,7 +230,6 @@ async function coldRun(i, { keepFor } = {}) {
   const context = await browser.newContext({ viewport: VIEWPORT, deviceScaleFactor: 1 })
   await context.addInitScript(INIT)
   const page = await context.newPage()
-  const galaxyRequest = page.waitForRequest((r) => new URL(r.url()).pathname === '/api/v1/galaxy', { timeout: 900000 })
   // A page error means the view is broken; stop at once rather than wait out a timeout.
   page.on('pageerror', (e) => { console.error(`page error: ${e.message}`); server.close().finally(() => process.exit(1)) })
   const cdp = await context.newCDPSession(page)
@@ -238,8 +240,7 @@ async function coldRun(i, { keepFor } = {}) {
   const run = await loadMetrics(page, cdp, server.process().pid)
   const loadBytes = [...bytes]
   const summary = (await page.getByTestId('conclusion').textContent()).trim()
-  const galaxyBody = (await galaxyRequest).postData() ?? '{}'
-  const layout = await shownLayout(page, galaxyBody)
+  const layout = await shownLayout(page)
   const renderer = await page.evaluate(() => {
     const gl = document.createElement('canvas').getContext('webgl2') ?? document.createElement('canvas').getContext('webgl')
     const ext = gl?.getExtension('WEBGL_debug_renderer_info')
@@ -328,7 +329,7 @@ async function coldRun(i, { keepFor } = {}) {
   const edge = await timedClick(page, () => document.querySelector('[aria-label="Proof lens"] [role=listbox][aria-label=Callees] [role=option]') ?? document.querySelector('[aria-label="Proof lens"] [role=listbox][aria-label=Callers] [role=option]'),
     () => document.querySelector('[data-testid=cited]')?.textContent)
   await page.getByLabel('Search').fill('')
-  const calls = await page.evaluate(() => performance.getEntriesByType('resource').filter((e) => e.name.includes('/api/')).map((e) => ({ call: new URL(e.name).pathname, ms: e.duration })))
+  const calls = (await page.evaluate(() => performance.getEntriesByType('resource').filter((e) => e.name.includes('/api/')).map((e) => ({ call: new URL(e.name).pathname, ms: e.duration })))).map((c) => ({ ...c, call: route(c.call) }))
   Object.assign(run, {
     frame_idle_p50_ms: pct(idle, 0.5), frame_idle_p95_ms: pct(idle, 0.95), frame_idle_max_ms: pct(idle, 1),
     frame_pan_zoom_p50_ms: pct(panZoom, 0.5), frame_pan_zoom_p95_ms: pct(panZoom, 0.95), frame_pan_zoom_max_ms: pct(panZoom, 1),
@@ -345,7 +346,7 @@ async function coldRun(i, { keepFor } = {}) {
   const galaxyUrl = v.origin + (workspace && repository ? new URL(v.url).search : '/')
   await page.goto(galaxyUrl)
   const warm = await loadMetrics(page, cdp, server.process().pid)
-  const result = { run, warm, layout, galaxyBody, renderer, summary, bytes: loadBytes, calls, browserVersion: browser.version(), symbol: evidenceNames.join(', '), galaxyUrl }
+  const result = { run, warm, layout, renderer, summary, bytes: loadBytes, calls, browserVersion: browser.version(), symbol: evidenceNames.join(', '), galaxyUrl }
   if (keepFor) { result.keep = { page, close: async () => { await server.close(); v.stop() } }; return result }
   await server.close()
   v.stop()
@@ -370,7 +371,7 @@ if (last.keep) {
   const page = last.keep.page
   await page.goto(last.galaxyUrl)
   await page.waitForFunction(() => window.__obs?.marks.settled, null, { timeout: 900000, polling: 100 })
-  const b = await shownLayout(page, last.galaxyBody, last.layout.key)
+  const b = await shownLayout(page, last.layout.key)
   stability.a_to_b = { ...displacement(last.layout, b), files }
   await last.keep.close()
 } else stability.a_to_b = { reason: fixtureName === 'synthetic' ? 'a synthetic galaxy has no commit to change' : 'needs a fixture (--fixture typeorm)' }

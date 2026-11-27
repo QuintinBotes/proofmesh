@@ -117,8 +117,9 @@ bytes in every run of one build.
 
 What the tables say against the targets of the Observatory specs:
 
-- **Over budget:** the longest main-thread task at 50,000 symbols (116 ms) and at 250,000 (280 ms), against 100 ms
-  (#208). On the TypeORM sample it is 81 ms, within budget; `--check` exits 0 there and 1 on the slowed build.
+- **Over budget then, within it now:** the longest main-thread task at 50,000 symbols (116 ms) and at 250,000 (280 ms),
+  against 100 ms (#208); after #47 and #208 it is 0 ms and 59 ms (the first section below). On the TypeORM sample it is
+  81 ms, within budget; `--check` exits 0 there and 1 on the slowed build.
 - **Within budget, new since the merge:** symbol to evidence in 1 request, 62 ms warm and 53 ms on a page's first open
   (#45 asks ≤ 150 ms and ≤ 400 ms); edge to evidence in 0 requests; the palette's query to matches 17.9 ms at p95 and no
   long task while typing (budgets 50 ms).
@@ -127,6 +128,34 @@ What the tables say against the targets of the Observatory specs:
   sheets transferred on a cold load, before data (#47 asks 150 KB and 250 KB); browser memory 558 MB at 50,000 and 819 MB
   at 250,000 (#47 asks 300 and 600 MB); the A-to-B commit moves 62% of the TypeORM sample's shared symbols more than 2% of
   the map's width, and one snapshot in two fresh profiles is not identical (#44).
+
+### After compression, caching, the parsing worker and a first draw in tasks (#47, #208)
+
+Measured on 2026-11-27 on the same machine and browser (ANGLE on Metal), ProofMesh commit d483c83 with the change
+uncommitted, 3 cold runs each, under heavier load than any run above (one-minute load average 26 to 101; each run's
+table names its own). The Galaxy now loads from `GET /api/v1/galaxy/v4/<snapshot>`, which the tables list as
+`/api/v1/galaxy/v4/:snapshot`. The "before" column is the same command on main (d483c83) a few minutes earlier, at load
+19 to 37.
+
+| Measure, median of 3 cold runs | 50,000 before | 50,000 after | 250,000 before | 250,000 after | TypeORM after |
+|---|---|---|---|---|---|
+| Longest main-thread task, cold (budget 100 ms) | 68 ms | 0 ms | 137 ms, over budget | 59 ms | 52 ms |
+| Total blocking time, cold | 18 ms | 0 ms | 109 ms | 10 ms | - |
+| First drawn map, cold | 343 ms | 278 ms | 412 ms | 1,073 ms (load 91 to 101) | 714 ms (load 80 to 94) |
+| Final positions, cold | 452 ms | 392 ms | - | 1,289 ms (load 91 to 101) | 835 ms |
+| First drawn map, warm | 102 ms | 46 ms | 181 ms | 291 ms | - |
+| Initial JavaScript, gzip | 408 KB | 303 KB | 408 KB | 303 KB | 303 KB |
+| Transferred on a cold load, before data | 1,536 KB | 261 KB | 1,536 KB | 261 KB | 261 KB |
+| `--check` | exits 0 | exits 0 | exits 1 | exits 0 | exits 0 |
+
+The 250,000 and TypeORM times to first draw were taken at a load average near 100 and do not compare with the column
+before them. Run back to back at one load (about 34) on the same 250,000-symbol data, main and this change reach the
+drawn, ready Galaxy at the same time (627 to 668 ms against 605 to 741 ms); the first draw comes 60 to 90 ms later,
+the round trip to the parsing worker, and main's two long tasks (about 90 and 160 ms) are gone.
+
+Still short of the #47 targets: initial JavaScript is 303 KB gzip against 150 KB, because the Galaxy's renderer chunk
+(cosmos.gl) alone is 190 KB gzip; 261 KB transferred before data against 250 KB; browser memory 475 MB at 50,000 and
+720 MB at 250,000 against 300 MB and 600 MB.
 
 ### After the path-tree layout (#44)
 

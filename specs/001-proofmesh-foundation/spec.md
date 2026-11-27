@@ -970,6 +970,12 @@ From #39: a fresh clone starts from the snapshot a teammate or CI built for the 
 - FR1223: MUST run no layout simulation in the browser: the Galaxy's first frame shows every symbol at its final position, and it has no pause or resume control, no IndexedDB layout cache and no warm start.
 - FR1224: MUST say in the Galaxy's legend that position shows containment (directory, then file, then name), that nearness is not a relationship, and that only drawn lines are relationships (FR068).
 - FR1225: MUST lay out 250,000 symbols on the server in at most one second on the reference machine (#44 SC-002).
+- FR1450: MUST send each static asset Brotli- or gzip-compressed, as the request's `Accept-Encoding` allows, from copies the build writes beside it, and MUST mark the assets a content hash names `Cache-Control: public, max-age=31536000, immutable` and the page itself `no-cache` (#47 FR-001).
+- FR1451: MUST split the Observatory's code by view: the Galaxy's renderer and the graph renderer of the Map and other graph views each load when their view is first shown, and the Galaxy's code is fetched while its data is (#47 FR-002).
+- FR1452: MUST parse the Galaxy payload and lower its names for search in a Web Worker that hands the page the payload's typed arrays by transfer; a page without Web Workers MUST parse it on the main thread in slices of at most 16 ms (#47 FR-003).
+- FR1453: MUST serve a published snapshot's Galaxy at `GET /api/v1/galaxy/v<format>/<snapshot id>`, behind the session, with `Cache-Control: private, max-age=31536000, immutable`, and answer 404 for a snapshot that is not published (gc retired it) or for another format, after which the page asks for the current snapshot again; every other API answer and refusal MUST carry `Cache-Control: no-store` (#47 FR-004, FR065, FR066).
+- FR1454: MUST virtualise the Galaxy's symbol and area tables and the Diff table: only the rows near the scroll position are in the page, every row is reachable by scrolling, no row limit cuts the list, and the caption keeps the full count (FR058) (#47 FR-005).
+- FR1455: MUST keep every main-thread task of a cold Galaxy load within the 100 ms budget of `bench/observatory/budgets.json` at 50,000 and at 250,000 symbols: the Galaxy compiles its shaders, uploads its points and uploads its links in separate tasks, and fits the view to positions it already holds rather than reading them back from the GPU (#208).
 
 ### Open source and extensibility
 

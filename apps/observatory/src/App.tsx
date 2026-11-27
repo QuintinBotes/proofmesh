@@ -1,11 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { callTool, establishSession, fetchGalaxy, fetchWorkspaces, galaxySymbol, listSnapshots, replaying, setReplay, setRepository, ToolError, type SnapshotInfo, type Workspace } from './api'
-import { DiffView } from './DiffView'
+import { createElement, useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from 'react'
+import { callTool, establishSession, fetchGalaxy, fetchWorkspaces, galaxySymbol, listSnapshots, loadGalaxy, replaying, setReplay, setRepository, ToolError, type SnapshotInfo, type Workspace } from './api'
 import { overlay as diffOverlay, type CompareData } from './diff'
-import { fogText, Galaxy, manyLinks, MOVING_LINK_LIMIT } from './Galaxy'
+import { DiffView } from './DiffView'
 import { ClaimsView } from './ClaimsView'
-import { areaFog, legendAreas, matchIndices, parseGalaxy, rankMatches, shortName, type GalaxyData } from './galaxyData'
-import { GraphView } from './GraphView'
+import { areaFog, fogText, legendAreas, manyLinks, matchIndices, MOVING_LINK_LIMIT, rankMatches, shortName, type GalaxyData } from './galaxyData'
 import { Palette, type Command } from './Palette'
 import { toNeighbourhood, type RelationshipsEnvelope } from './explore'
 import { appendSide, CARD_ROWS, cardHood, declarationEvidence, rowEvidence, type Card, type Evidence } from './card'
@@ -14,9 +12,27 @@ import { areaColor, toMap, type Overview } from './map'
 import { defaultSelection, evidenceFor, LINK_WORDS, pairs, RELATION_COLOURS, RELATION_WORDS, relations, toEcosystem, type Ecosystem, type Relation } from './ecosystem'
 import { FRAMEWORK_TYPES, glyph, toScene, type TraceEnvelope } from './scene'
 import { visible } from './visible'
+import { VirtualTable } from './virtual'
 import { share } from './share'
 import { plural } from './plural'
 import { areasSvg, caveatLines, CONTAINMENT, NO_MEANING, offlineHtml, pngWithText, sceneSvg, sceneTable, type Caveats, type Source } from './exporting'
+
+/**
+ * A renderer's view, whose library loads on first use, so the first screen fetches only its own (FR1451); it draws nothing until
+ * the module is in, then the view itself. Not React.lazy: its Suspense holds a view back for about 300 ms after its module arrives.
+ */
+function lazyView<P extends object>(load: () => Promise<ComponentType<P>>): ComponentType<P> & { preload: () => Promise<unknown> } {
+  let loaded: ComponentType<P> | undefined, pending: Promise<unknown> | undefined
+  const preload = () => (pending ??= load().then((c) => { loaded = c }))
+  function View(props: P) {
+    const [, arrived] = useState(false)
+    useEffect(() => { if (!loaded) void preload().then(() => arrived(true)) }, [])
+    return loaded ? createElement(loaded, props) : null
+  }
+  return Object.assign(View, { preload })
+}
+const Galaxy = lazyView(() => import('./Galaxy').then((m) => m.Galaxy))
+const GraphView = lazyView(() => import('./GraphView').then((m) => m.GraphView))
 
 type Sym = { id: string; kind: string; name: string; qualified_name: string; path: string; start_line: number; signature: string | null }
 type Hub = { id: string; kind: string; name: string; qualified_name: string; inbound: number }
@@ -379,9 +395,12 @@ export function App() {
     if ((mode !== 'galaxy' && !palette) || !status || galaxyAsked.current) return
     galaxyAsked.current = true
     setLoading(true)
-    fetchGalaxy().then((b) => { setGalaxy(parseGalaxy(b)); setError(null) }).catch(report).finally(() => { setLoading(false); setAnswered((n) => n + 1) })
+    // The Galaxy's code comes while its data does.
+    if (mode === 'galaxy') void Galaxy.preload()
+    fetchGalaxy(replaying() ?? status.snapshot.id).then(loadGalaxy).then((g) => { setGalaxy(g); setError(null) }).catch(report).finally(() => { setLoading(false); setAnswered((n) => n + 1) })
   }, [mode, palette, status, report])
   const galaxyMatches = useMemo(() => (galaxy && mode === 'galaxy' ? matchIndices(galaxy, query) : []), [galaxy, mode, query])
+  const rankedMatches = useMemo(() => (galaxy && (tableView || noWebGl) ? rankMatches(galaxy, galaxyMatches, query) : []), [galaxy, galaxyMatches, query, tableView, noWebGl])
   const [overlayShown, setOverlayShown] = useState(true)
   const galaxyOverlay = useMemo(() => (overlayShown && galaxy && diff && diff.data.head.snapshot_id === galaxy.snapshotId ? diffOverlay(galaxy, diff.data) : null), [overlayShown, galaxy, diff])
 
@@ -633,31 +652,23 @@ export function App() {
         {mode === 'galaxy' && galaxyOverlay && <p className="dim diff-legend" role="note"><span><i className="sw added" />added since {diff!.data.base.snapshot_id.slice(0, 13)}</span><span><i className="sw changed" />changed</span><span>removed symbols are in the Diff table</span><span><kbd>d</kbd> hides this overlay</span></p>}
         {mode === 'galaxy' && galaxy && (tableView || noWebGl) && (
           <section className="table-view" aria-label="Galaxy table">
-            <table>
-              <caption>{query.trim().length >= 2 ? `Symbols matching “${query.trim()}”${galaxyMatches.length > 200 ? ', first 200' : ''}` : 'Areas'}</caption>
-              {query.trim().length >= 2 ? (
-                <tbody>
-                  {rankMatches(galaxy, galaxyMatches, query).slice(0, 200).map((i) => (
-                    <tr key={i}><td>{visible(shortName(galaxy.names[i]!))}</td><td>{galaxy.kinds[galaxy.kind[i]!]}</td><td>{visible(galaxy.names[i]!)}</td><td><button type="button" onClick={() => openPoint(i)}>Explore</button></td></tr>
-                  ))}
-                </tbody>
-              ) : (
-                <>
-                  <thead><tr><th>Area</th><th>Symbols</th><th>Files analysed</th><th>Not analysed</th><th>Excluded</th><th>Unresolved calls</th><th>Why not analysed</th><th /></tr></thead>
-                  <tbody>
-                    {galaxy.areas.map((a, i) => (
-                      <tr key={a.name}>
-                        <td>{visible(a.name)}</td><td>{a.count.toLocaleString('en')}</td><td>{a.files.indexed.toLocaleString('en')}</td>
-                        <td>{areaFog(a).unanalysed.toLocaleString('en')}</td><td>{a.files.excluded.toLocaleString('en')}</td>
-                        <td>{a.calls.sites ? `${share(a.calls.unresolved, a.calls.sites)} of ${a.calls.sites.toLocaleString('en')}` : 'no call sites'}</td>
-                        <td>{visible(a.gaps.map(([reason, n]) => `${reason} ${n.toLocaleString('en')}`).join(', '))}</td>
-                        <td>{a.count > 0 && <button type="button" onClick={() => { setGalaxyArea(i); setTableView(false) }}>Show</button>}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </>
-              )}
-            </table>
+            {query.trim().length >= 2 ? (
+              <VirtualTable count={rankedMatches.length} columns={4} caption={`Symbols matching “${query.trim()}”: ${plural(rankedMatches.length, 'symbol')}`}
+                head={<thead><tr><th>Name</th><th>Kind</th><th>Qualified name</th><th /></tr></thead>}
+                row={(k) => { const i = rankedMatches[k]!; return <tr key={i}><td>{visible(shortName(galaxy.names[i]!))}</td><td>{galaxy.kinds[galaxy.kind[i]!]}</td><td>{visible(galaxy.names[i]!)}</td><td><button type="button" onClick={() => openPoint(i)}>Explore</button></td></tr> }} />
+            ) : (
+              <VirtualTable count={galaxy.areas.length} columns={8} caption="Areas"
+                head={<thead><tr><th>Area</th><th>Symbols</th><th>Files analysed</th><th>Not analysed</th><th>Excluded</th><th>Unresolved calls</th><th>Why not analysed</th><th /></tr></thead>}
+                row={(i) => { const a = galaxy.areas[i]!; return (
+                  <tr key={a.name}>
+                    <td>{visible(a.name)}</td><td>{a.count.toLocaleString('en')}</td><td>{a.files.indexed.toLocaleString('en')}</td>
+                    <td>{areaFog(a).unanalysed.toLocaleString('en')}</td><td>{a.files.excluded.toLocaleString('en')}</td>
+                    <td>{a.calls.sites ? `${share(a.calls.unresolved, a.calls.sites)} of ${a.calls.sites.toLocaleString('en')}` : 'no call sites'}</td>
+                    <td>{visible(a.gaps.map(([reason, n]) => `${reason} ${n.toLocaleString('en')}`).join(', '))}</td>
+                    <td>{a.count > 0 && <button type="button" onClick={() => { setGalaxyArea(i); setTableView(false) }}>Show</button>}</td>
+                  </tr>
+                ) }} />
+            )}
           </section>
         )}
         {mode !== 'galaxy' && mode !== 'explore' && scene && !noWebGl && !tableView && <GraphView scene={scene} reducedMotion={reducedMotion} onNode={onNode} onWebGlFailure={() => setNoWebGl(true)} />}
