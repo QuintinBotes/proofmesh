@@ -86,7 +86,7 @@ test('SC012 FR065 hostile names and paths show as visible text in Galaxy, Map, E
   await expect(areas).toContainText('zero⟨U+200B⟩width')
   await injected('Map')
 
-  // Trace: pickers and the traced table.
+  // Trace, in the lens (FR1300): the palette, the Path to picker and the traced table.
   await traceIt(page, ['start', 'start⟨U+200D⟩here'], ['zero', '⟨U+3164⟩'])
   await expect(conclusion).toHaveText('Path found: 2 steps.')
   await page.getByRole('button', { name: 'Table', exact: true }).click()

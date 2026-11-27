@@ -2133,6 +2133,52 @@
     ],
     "FR1186": [
       "e2e/lens.spec.ts"
+    ],
+    "FR1260": [
+      "packages/proofmesh/test/xrepo-symbols.test.ts"
+    ],
+    "FR1261": [
+      "packages/proofmesh/test/xrepo-symbols.test.ts"
+    ],
+    "FR1262": [
+      "packages/proofmesh/test/xrepo-symbols.test.ts"
+    ],
+    "FR1263": [
+      "packages/proofmesh/test/xrepo-symbols.test.ts"
+    ],
+    "FR1264": [
+      "packages/proofmesh/test/xrepo-symbols.test.ts"
+    ],
+    "FR1265": [
+      "packages/proofmesh/test/xrepo-symbols.test.ts"
+    ],
+    "FR1300": [
+      "e2e/lens.spec.ts",
+      "e2e/accessibility.spec.ts",
+      "e2e/palette.spec.ts",
+      "e2e/hostile.spec.ts"
+    ],
+    "FR1301": [
+      "e2e/diff.spec.ts",
+      "apps/observatory/test/diff.test.ts"
+    ],
+    "FR1302": [
+      "e2e/diff.spec.ts"
+    ],
+    "FR1240": [
+      "packages/proofmesh/test/cold-build.test.ts"
+    ],
+    "FR1241": [
+      "packages/proofmesh/test/cold-build.test.ts"
+    ],
+    "FR1242": [
+      "packages/proofmesh/test/cold-build.test.ts"
+    ],
+    "FR1243": [
+      "packages/proofmesh/test/cold-build.test.ts"
+    ],
+    "FR1244": [
+      "packages/proofmesh/test/cold-build.test.ts"
     ]
   },
   "manual": {

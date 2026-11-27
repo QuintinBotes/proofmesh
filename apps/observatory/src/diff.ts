@@ -1,7 +1,8 @@
 // Pure functions behind the Diff view: what compare_snapshots reports, as tiles, as an ordered table, and as a tint over the Galaxy.
 import type { GalaxyData } from './galaxyData'
 
-export type ChangedSymbol = { qualified_name: string; kind: string; path: string; what?: string[] }
+/** id is the symbol's id in that side's snapshot: the head's for added and changed symbols, so a row opens with no name lookup (FR1301). */
+export type ChangedSymbol = { id: string; qualified_name: string; kind: string; path: string; what?: string[] }
 export type CompareData = {
   base: { snapshot_id: string; published_at: string; symbols: number; relationships: number; unresolved: number }
   head: { snapshot_id: string; published_at: string; symbols: number; relationships: number; unresolved: number }
@@ -10,7 +11,7 @@ export type CompareData = {
   files: { added: string[]; removed: string[]; changed: string[]; disposition_changes: Array<{ path: string; from: string; to: string }> }
 }
 export type Change = 'added' | 'removed' | 'changed'
-export type DiffRow = { change: Change; qualified_name: string; kind: string; path: string; what: string }
+export type DiffRow = { change: Change; id: string; qualified_name: string; kind: string; path: string; what: string }
 
 /** The summary tiles, in reading order. */
 export function tiles(d: CompareData): Array<{ label: string; value: string }> {
@@ -28,9 +29,9 @@ export function tiles(d: CompareData): Array<{ label: string; value: string }> {
 /** Symbol changes as one table, ordered by path, then name, then change, so the order never depends on the answer's order. */
 export function rows(d: CompareData, filter: { kinds?: Set<string>; changes?: Set<Change> } = {}): DiffRow[] {
   const all: DiffRow[] = [
-    ...d.symbols.added.map((s) => ({ change: 'added' as const, qualified_name: s.qualified_name, kind: s.kind, path: s.path, what: '' })),
-    ...d.symbols.removed.map((s) => ({ change: 'removed' as const, qualified_name: s.qualified_name, kind: s.kind, path: s.path, what: '' })),
-    ...d.symbols.changed.map((s) => ({ change: 'changed' as const, qualified_name: s.qualified_name, kind: s.kind, path: s.path, what: (s.what ?? []).join(', ') })),
+    ...d.symbols.added.map((s) => ({ change: 'added' as const, id: s.id, qualified_name: s.qualified_name, kind: s.kind, path: s.path, what: '' })),
+    ...d.symbols.removed.map((s) => ({ change: 'removed' as const, id: s.id, qualified_name: s.qualified_name, kind: s.kind, path: s.path, what: '' })),
+    ...d.symbols.changed.map((s) => ({ change: 'changed' as const, id: s.id, qualified_name: s.qualified_name, kind: s.kind, path: s.path, what: (s.what ?? []).join(', ') })),
   ]
   return all
     .filter((r) => (!filter.kinds?.size || filter.kinds.has(r.kind)) && (!filter.changes?.size || filter.changes.has(r.change)))

@@ -23,13 +23,40 @@ A reproducible Observatory benchmark with published budgets (part of #41; FR1160
 - Not done yet: a run on a quiet machine to show three cold runs agree within 10% (SC-002); a click on a point of the canvas (evidence is opened from the Galaxy table's Explore button, which runs the same code); a software-renderer run.
 - The benchmark also times the command palette (#43), as `frames.mjs` did before, and opens evidence through the Proof lens (#45).
 
+Tests and paths across repositories, chains through a third, and a public pair (part of #28; FR1260 to FR1264):
+
+- `find_tests` takes `include_workspace: true`: the tests in the other repositories of a workspace that reach the subjects through a package this repository builds are listed after its own, each with `repository`, one deeper than the site that crosses in, and a chain in its own repository that ends at that site. Without it, nothing changes.
+- `trace_paths` takes `include_workspace: true`: `source_id` or `target_id` may be a symbol of another repository of the workspace, by its id there, and a path crosses a `package_symbol` link from its call site. Nodes of another repository carry `repository`, a crossing hop has the rule `package_symbol` and the link's basis, and a lean row ends `repo=<name>@<commit>`. Dispatch is not followed across repositories.
+- A chain continues through any number of repositories: `analyze_impact` and `find_tests` follow from what they reach in one member into the members that use a package that member builds (a library, an application that publishes a package, and an application of that), and `trace_paths` follows a path through each.
+- `sh bench/parity/xrepo.sh` measures scenario 4 on a public pair, Excalibur 0.32.0 and its sample game sample-tactics, pinned by commit and never committed: 400 of 400 application call sites into the library that the TypeScript checker counts resolve to the library's symbol (100%), with no extra rows.
+- A package published from a subdirectory of a monorepository (`packages/geo/package.json`) resolves to that package's symbols alone, now tested (FR1265).
+- The core `tools/list` is 19,758 bytes (14 tools), at most 20,000.
+- Not done yet: ecosystems other than npm, and dispatch across repositories.
+
+The Proof lens replaces the Trace a path tab, and a Diff row opens with one request (part of #45; FR1300 to FR1302):
+
+- The Trace a path tab and its Source and Target form are gone; a path is traced inside Explore's lens. Open the source (search, the palette, the Map, a lens row), pick the target in Path to, and the lens shows the path as a chain of hops, each at its call site and labelled by its weakest hop. Depth and Follow framework relationships sit beside Path to, and Trace again reruns the search with them. With no path, the lens says where the search stopped (`+1 unexplored · stopped by max_depth`) and the conclusion bar why this is not evidence that no path exists. Clear path returns to the neighbourhood.
+- The path's table equivalent is unchanged: Table lists the traced nodes in order, its edges and unresolved boundaries, each with Show evidence. The palette's Trace a path command opens Explore with the keyboard in Path to. The views' number keys are now `1` to `6`.
+- A Diff row opened by name: a `find_symbols` request, then the card. `compare_snapshots` already names each head symbol's id, so a row now opens with the card's one request.
+- After a symbol was explored, Diff drew Explore's neighbourhood graph over its own controls, which took the clicks meant for Compare and the rows, and the conclusion bar spoke of that symbol. Diff now draws no scene of another view.
+
+A cold build in less memory and time, with the same facts (part of #32; FR1240 to FR1244):
+
+- The index host and every JavaScript adapter start with `--max-semi-space-size=4 --heap-growing-percent=25`, ahead of their heap limit. V8's defaults let each hold about 490 MB on the parity fixture for 60 to 160 MB of live data. A heap flag given to the CLI still wins.
+- Capture no longer fsyncs each object as it writes it. The objects are fsynced on the thread pool while the adapters run, and the index waits for that before it seals the snapshot, so they are durable before anything published cites them. One fsync per file was most of capture's time.
+- The TypeScript adapter (0.2.6) keeps a byte-offset map only for files with non-ASCII text (it kept 4 bytes per character for every file), turns each file's facts into JSON text as soon as the file is read, and writes a reply a megabyte at a time. Its facts are byte for byte the same.
+- A staging snapshot keeps up to 64 MB of SQLite pages in memory (it kept 2 MB), so writing relationships rereads fewer index pages. The sealed file is byte for byte the same.
+- Parity fixture (`bench/parity`, medians of 3): full build 8.8 s to 5.3 s, peak memory of the largest process 522 MB to 358 MB. Graphify took 3.5 s and 3.3 s in the same runs, so ProofMesh is still slower.
+- Graph benchmark (Orbit, 874 files, medians of 3 on a loaded machine): the largest process peaks at 1.3 GB, down from 1.7 GB, still over the 600 MB bar; `tsc --noEmit` alone needs 1.2 GB for that program. A cold build at load 9 took 24 s, down from 30 s. Q1 to Q13 are unchanged.
+- Not done: the store size bar (the snapshot holds rows and indexes, not source text, so it needs a format change), and bounding TypeScript memory per program below what the checker needs.
+- Upgrade note: the TypeScript adapter is 0.2.6, so the next index of a TypeScript repository reanalyses every file once.
+
 Evidence in one request: the Proof lens (part of #45; FR1180 to FR1187):
 
 - Opening a symbol made four requests in series (`galaxy/symbol`, `get_symbol`, `get_relationships`, `read_evidence`), and an edge's evidence a second `get_relationships`. `get_symbol_card` (the `extra` MCP profile) now answers a symbol's card in one read-only request: the symbol, its verified declaration, and the first rows of each side, each with its call site's lines, the cited span, its basis, resolution and reason, and each side's total. It is bounded like every tool: `max_rows` per side, `max_bytes` for the whole answer, and `direction` with `offset` for the next rows. A Galaxy point's `galaxy/symbol` request carries its card, so a point also opens with one request.
 - Explore's drawn neighbourhood is replaced by the Proof lens: callers, the focus and callees as rows, each at its call site and marked `observed`, `inferred` or `unresolved · <reason>` in words, glyph and marker style. Opening a row's evidence asks the server nothing; the code panel highlights the cited span. Evidence that fails its integrity check keeps its row, and the panel says the source is unavailable. A hub shows its first 24 rows per side with the count, and pages the rest in as the list scrolls.
 - Keyboard: an opened symbol takes the focus; ↑ ↓ move between rows, ← → between columns, Enter opens the evidence, `f` explores from the row. Resting the pointer on a row or a Galaxy point for 80 ms prefetches its card, one at a time. The lens asks for a path from the focus and shows it as a chain of hops, each with its call site (`trace_paths` now gives each hop of a path its `site`), labelled by its weakest hop.
 - `bench/observatory/evidence.mjs` times the click to the evidence text, warm and on a page's first open, counts the requests, and records the machine's load; `--check` holds it to 150 ms warm and 400 ms first open at p95, and one request per open.
-- The Trace a path tab and its form are unchanged; replacing them with the lens is left to a later change.
 
 A count of one is said in the singular (closes #202; FR1210):
 

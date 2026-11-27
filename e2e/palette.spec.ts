@@ -71,7 +71,7 @@ test.describe('the command palette on the TypeORM sample', () => {
   test('FR1143 typing view or overlay lists the matching commands with their keys, and Enter runs the highlighted one', async () => {
     await page.keyboard.press('Control+K')
     await page.keyboard.type('view')
-    await expect(options(page)).toHaveText(['Galaxy view1', 'Map view2', 'Explore view3', 'Trace a path view4', 'Claims view5', 'Diff view6', 'Ecosystem view7', 'Table or graph viewt'])
+    await expect(options(page)).toHaveText(['Galaxy view1', 'Map view2', 'Explore view3', 'Claims view4', 'Diff view5', 'Ecosystem view6', 'Table or graph viewt'])
     await expect(options(page).first()).toHaveAttribute('aria-selected', 'true')
     await page.keyboard.press('ArrowDown')
     await expect(options(page).nth(1)).toHaveAttribute('aria-selected', 'true')
@@ -86,7 +86,8 @@ test.describe('the command palette on the TypeORM sample', () => {
   })
 
   test('FR1144 with no input focused, the number keys open the views, each tab shows its key, and ? lists every key', async () => {
-    const views = ['Galaxy', 'Map', 'Explore', 'Trace a path', 'Claims', 'Diff', 'Ecosystem']
+    // Paths are traced in Explore's lens, so there is no Trace a path tab (FR1300).
+    const views = ['Galaxy', 'Map', 'Explore', 'Claims', 'Diff', 'Ecosystem']
     for (const [i, name] of views.entries()) {
       const key = String(i + 1)
       await page.keyboard.press(key)
@@ -96,17 +97,17 @@ test.describe('the command palette on the TypeORM sample', () => {
       expect(await tab.evaluate((e) => getComputedStyle(e, '::after').content)).toContain(`"${key}"`)
     }
     // A key typed into a field is text, never a shortcut.
-    await page.keyboard.press('4')
-    await page.locator('#picker-source').focus()
+    await page.keyboard.press('1')
+    await page.locator('#search').focus()
     await page.keyboard.press('2')
-    await expect(page.getByRole('tab', { name: 'Trace a path' })).toHaveAttribute('aria-selected', 'true')
-    await expect(page.locator('#picker-source')).toHaveValue('2')
-    await page.locator('#picker-source').fill('')
+    await expect(page.getByRole('tab', { name: 'Galaxy' })).toHaveAttribute('aria-selected', 'true')
+    await expect(page.locator('#search')).toHaveValue('2')
+    await page.locator('#search').fill('')
     await blur(page)
     await page.keyboard.press('1')
     await page.keyboard.press('?')
     await expect(input(page)).toHaveValue('')
-    await expect(options(page).locator('kbd')).toHaveText(['1', '2', '3', '4', '5', '6', '7', 't', 'd'])
+    await expect(options(page).locator('kbd')).toHaveText(['1', '2', '3', '4', '5', '6', 't', 'd'])
     await expect(note(page)).toContainText('Control+K, ⌘K or / opens this palette, ? lists every key, Escape closes it')
     await page.keyboard.press('Escape')
   })
@@ -127,8 +128,10 @@ test.describe('the command palette on the TypeORM sample', () => {
     await page.keyboard.type('trace a path from')
     await expect(options(page)).toHaveText(['Trace a path from src/data-source:DataSource.initialize'])
     await page.keyboard.press('Enter')
-    await expect(page.getByRole('tab', { name: 'Trace a path' })).toHaveAttribute('aria-selected', 'true')
-    await expect(page.getByTestId('picker-source-value')).toHaveText('src/data-source:DataSource.initialize')
+    // The lens traces from its focus (FR1300): the command puts the keyboard in its Path to field.
+    await expect(page.getByRole('tab', { name: 'Explore' })).toHaveAttribute('aria-selected', 'true')
+    await expect(page.getByRole('region', { name: 'Focus' })).toContainText('src/data-source:DataSource.initialize')
+    await expect(page.locator('#picker-path-to')).toBeFocused()
   })
 })
 

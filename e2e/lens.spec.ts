@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { expect, test, type Page } from '@playwright/test'
-import { answered, startView } from './view'
+import { answered, openInLens, startView, traceTo } from './view'
 
 // A hub with 30 callers (more than one page of 24) that calls four functions and one name nothing declares.
 function hubRepo(): string {
@@ -126,6 +126,35 @@ test.describe('the Proof lens on the invoicing fixture', () => {
     await expect(hops.nth(1)).toContainText('calls the next at packages/billing/src/invoice.ts:9')
     await expect(hops.nth(2)).toContainText('formatAmount')
     await expect(page.getByTestId('path-basis')).toHaveText('observed')
+  })
+
+  test('FR1300 the lens replaces the Trace a path tab: it traces from the focus at a chosen depth, says where the search stopped, keeps the table, and clears back to the neighbourhood', async ({ page }) => {
+    await page.goto(view.launchUrl)
+    await expect(page.getByTestId('conclusion')).toContainText('symbols in', { timeout: 60000 })
+    await expect(page.getByRole('tab', { name: 'Trace a path' })).toHaveCount(0)
+    await openInLens(page, 'handleInvoice', 'packages/api/src/handler:handleInvoice')
+    // Depth 1 stops one hop short: the lens says no path was found and names the horizon, in words.
+    await traceTo(page, ['formatAmount', 'packages/format/src/currency'], 1)
+    const path = page.getByRole('region', { name: 'Path' })
+    await expect(page.getByTestId('path-basis')).toHaveText('no path')
+    await expect(path.getByRole('list', { name: 'Horizon' })).toContainText('packages/billing/src/invoice:invoiceTotal: +1 unexplored · stopped by max_depth')
+    await expect(page.getByTestId('conclusion')).toContainText('this is not evidence that no path exists')
+    // A deeper search of the same pair, from the lens, finds the path; its table equivalent lists the hops in order.
+    await page.focus('#depth')
+    await page.keyboard.press('End')
+    await answered(page, () => page.getByRole('button', { name: 'Trace again' }).click())
+    await expect(page.getByTestId('path-basis')).toHaveText('observed')
+    await expect(path.getByRole('listitem')).toHaveCount(3)
+    await page.getByRole('button', { name: 'Table', exact: true }).click()
+    await expect(page.getByRole('table', { name: 'Traced nodes in order' }).locator('tbody tr td:nth-child(3)')).toHaveText([
+      'packages/api/src/handler:handleInvoice', 'packages/billing/src/invoice:invoiceTotal', 'packages/format/src/currency:formatAmount',
+    ])
+    // Clearing the path returns the lens, and its table, to the focus's neighbourhood.
+    await page.getByRole('button', { name: 'Graph', exact: true }).click()
+    await path.getByRole('button', { name: 'Clear path' }).click()
+    await expect(page.getByRole('region', { name: 'Path' })).toHaveCount(0)
+    await page.getByRole('button', { name: 'Table', exact: true }).click()
+    await expect(page.getByRole('table', { name: 'Symbol and its neighbours' })).toBeVisible()
   })
 })
 
