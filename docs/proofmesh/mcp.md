@@ -4,7 +4,7 @@ Proofmesh serves its tools over MCP on stdio (`proofmesh mcp`) and over Streamab
 
 ## Tool profiles (FR420 to FR423)
 
-A client that does not defer tool loading puts every listed tool's name, description and input schema into the model's context before the first question. So `proofmesh mcp` lists only the `core` profile, whose `tools/list` stays under 20,000 bytes (a test asserts it; 19,680 bytes for 14 tools since `search_concepts` joined it, against 118,593 for all 39):
+A client that does not defer tool loading puts every listed tool's name, description and input schema into the model's context before the first question. So `proofmesh mcp` lists only the `core` profile, whose `tools/list` stays under 20,000 bytes (a test asserts it; 19,680 bytes for 14 tools since `search_concepts` joined it, against 124,960 for all 40):
 
 | Profile | Tools |
 |---|---|
