@@ -51,13 +51,15 @@ export function generateGalaxy({ nodes: n, seed, snapshotId, ids: real }) {
     files: { indexed: Math.ceil(m.length / 8), unsupported: 0, excluded: 0, failed: 0, pending: 0 },
     calls: { sites: m.length * 2, unresolved: Math.floor(m.length / 5) }, gaps: [],
   }))
+  // The analysed files the palette lists: each area's, named in order.
+  const files = areas.flatMap((a) => Array.from({ length: a.files.indexed }, (_, k) => `${a.name}/file${k}.ts`)).sort()
   const nameBytes = Buffer.from(names.join('\n'), 'utf8')
   const sections = [Buffer.from(pairs.buffer, 0, made * 8), Buffer.from(degree.buffer), Buffer.from(area.buffer), Buffer.from(kind.buffer), nameBytes]
   const offsets = []
   let at = 0
   for (const s of sections) { offsets.push(at); at += s.length; at += (4 - (at % 4)) % 4 }
   const header = Buffer.from(JSON.stringify({
-    snapshot_id: snapshotId, nodes: n, links: made, areas, kinds, names_bytes: nameBytes.length,
+    snapshot_id: snapshotId, nodes: n, links: made, areas, kinds, files, names_bytes: nameBytes.length,
     offsets: { links: offsets[0], degree: offsets[1], area: offsets[2], kind: offsets[3], names: offsets[4] },
   }), 'utf8')
   const parts = [Buffer.from(new Uint32Array([header.length]).buffer), header, Buffer.alloc((4 - ((4 + header.length) % 4)) % 4)]

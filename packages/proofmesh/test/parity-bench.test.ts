@@ -112,6 +112,92 @@ describe('FR510 to FR516 the parity benchmark scores every tool on one truth, an
     expect(fs.readdirSync(dir)).toEqual(['keep.txt'])
   })
 
+  // aider-map.py run by python3 against a stub of the aider and litellm modules it uses. The stub keeps aider 0.86.2's rule:
+  // Model() downloads the model prices when ~/.aider/caches holds no file of them younger than a day.
+  function aiderStub(): string {
+    const dir = tmpDir('pm-parity-aider-stub-')
+    const write = (rel: string, text: string) => { fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true }); fs.writeFileSync(path.join(dir, rel), text) }
+    write('litellm/__init__.py', '')
+    write('litellm/model_prices_and_context_window_backup.json', '{"gpt-4o": {"max_input_tokens": 128000}}')
+    write('aider/__init__.py', '')
+    write('aider/io.py', 'class InputOutput:\n    def __init__(self, **kw):\n        pass\n')
+    write('aider/models.py', [
+      'import os, socket, time',
+      'from pathlib import Path',
+      'CACHE = Path.home() / ".aider" / "caches" / "model_prices_and_context_window.json"',
+      'class Model:',
+      '    def __init__(self, name):',
+      '        if os.environ.get("STUB_FETCH") or not CACHE.exists() or time.time() - CACHE.stat().st_mtime > 86400:',
+      '            try:',
+      '                socket.create_connection(("raw.githubusercontent.com", 443), timeout=1)',
+      '            except Exception as ex:',
+      '                print(ex)',
+      '        self.prices = CACHE.read_text() if CACHE.exists() else None',
+      '',
+    ].join('\n'))
+    write('aider/repomap.py', [
+      'import json, os',
+      'class Node:',
+      '    def __init__(self, at):',
+      '        self.start_byte, self.end_byte = at, at + 1',
+      'class RepoMap:',
+      '    def __init__(self, map_tokens, root, main_model, io):',
+      '        self.model = main_model',
+      '    def _run_captures(self, query, node):',
+      '        return {"name.reference.class": [Node(30), Node(10), Node(20)]}',
+      '    def get_repo_map(self, chat, other, mentioned_fnames, mentioned_idents):',
+      '        order = [n.start_byte for n in self._run_captures(None, None)["name.reference.class"]]',
+      '        return json.dumps({"home": os.environ["HOME"], "prices": self.model.prices, "order": order, "chat": chat, "other": other})',
+      '',
+    ].join('\n'))
+    return dir
+  }
+  const AIDER_MAP = path.join(ROOT, 'bench/parity/aider-map.py')
+  function aiderMap(env: NodeJS.ProcessEnv) {
+    const root = fixture()
+    const input = JSON.stringify([{ file: 'src/globals.ts', ident: 'fail', tokens: 1024 }]) + '\nsrc/error/TypeORMError.ts\nsrc/globals.ts\n'
+    // A HOME whose model prices are two days old, so aider would download them if it read them.
+    const home = tmpDir('pm-parity-home-')
+    const stale = path.join(home, '.aider/caches/model_prices_and_context_window.json')
+    fs.mkdirSync(path.dirname(stale), { recursive: true })
+    fs.writeFileSync(stale, '{}')
+    const old = new Date(Date.now() - 2 * 86400000)
+    fs.utimesSync(stale, old, old)
+    const r = spawnSync('python3', ['-s', '-P', AIDER_MAP, root], { cwd: root, input, encoding: 'utf8', env: { PATH: process.env.PATH, TMPDIR: tmpDir('pm-parity-pytmp-'), HOME: home, PYTHONPATH: aiderStub(), ...env } })
+    return { r, root, stale, old }
+  }
+
+  it('FR1100 FR1101 FR1110 the aider step reads model prices from litellm\'s bundled copy in a HOME of its own, removed at exit, and gives aider names relative to the root with tree-sitter captures in source order', () => {
+    const { r, root, stale, old } = aiderMap({ PYTHONHASHSEED: '0' })
+    expect(r.status, r.stderr).toBe(0)
+    const m = JSON.parse(JSON.parse(r.stdout.trim().split('\n').at(-1)!)[0].map)
+    // FR1100: aider's HOME is the step's own, holding litellm's copy written fresh, so it downloads nothing (no attempt reached the guard).
+    expect(m.prices).toBe('{"gpt-4o": {"max_input_tokens": 128000}}')
+    expect(path.basename(m.home)).toMatch(/^aider-home-/)
+    // FR1101: that HOME is removed when the step ends, and the HOME it was given is left as it was.
+    expect(fs.existsSync(m.home)).toBe(false)
+    expect(fs.readFileSync(stale, 'utf8')).toBe('{}')
+    expect(fs.statSync(stale).mtimeMs).toBe(old.getTime())
+    // FR1110: captures in source order, and no name holds the path of the copy.
+    expect(m.order).toEqual([10, 20, 30])
+    expect(m.chat).toEqual(['src/globals.ts'])
+    expect(m.other).toEqual(['src/error/TypeORMError.ts'])
+    expect(r.stdout).not.toContain(root)
+  })
+
+  it('FR1102 an aider step that tries to reach the network fails, naming the host, and prints no maps', () => {
+    const { r } = aiderMap({ PYTHONHASHSEED: '0', STUB_FETCH: '1' })
+    expect(r.status).toBe(1)
+    expect(r.stderr).toContain('aider-map.py: aider tried to reach the network (raw.githubusercontent.com); bench/parity runs offline')
+    expect(r.stdout).not.toContain('"map"')
+  })
+
+  it('FR1111 the aider step refuses to run without PYTHONHASHSEED=0, as its maps would then differ between runs', () => {
+    const { r } = aiderMap({})
+    expect(r.status).toBe(1)
+    expect(r.stderr).toContain('aider-map.py: run with PYTHONHASHSEED=0, so aider\'s maps are the same each run (#191)')
+  })
+
   it('FR516 comparators are benchmark-only: no package depends on one, results are ignored, and the README names each licence', () => {
     const manifests = execFileSync('git', ['-C', ROOT, 'ls-files', '*package.json'], { encoding: 'utf8' }).split('\n').filter(Boolean)
     for (const m of manifests) expect(fs.readFileSync(path.join(ROOT, m), 'utf8'), m).not.toMatch(/graphify|scip-typescript|serena|aider/)

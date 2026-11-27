@@ -12,6 +12,8 @@
     "cold.symbol_to_evidence_first_ms": { "label": "Symbol to evidence, first open", "gpu": null, "software": null, "target": "≤ 400 ms (#45 SC-001)" },
     "cold.symbol_to_evidence_requests": { "label": "Symbol to evidence, requests", "gpu": null, "software": null, "target": "1 (#45 SC-002)" },
     "cold.edge_to_evidence_ms": { "label": "Edge to evidence", "gpu": null, "software": null, "target": "≤ 150 ms p95 warm (#45 SC-001)" },
+    "cold.palette_p95_ms": { "label": "Command palette, query to matches, p95", "gpu": 50, "software": 50, "target": null },
+    "cold.palette_typing_longest_task_ms": { "label": "Command palette, longest task while typing", "gpu": 50, "software": 50, "target": null },
     "cold.map_switch_ms": { "label": "Map switch", "gpu": 2000, "software": 2000, "target": null },
     "cold.script_gzip_kb": { "label": "Initial JavaScript, gzip", "gpu": null, "software": null, "target": "≤ 150 KB (#47 SC-001)" },
     "cold.transferred_kb": { "label": "Transferred on a cold load, before data", "gpu": null, "software": null, "target": "≤ 250 KB before data (#47 SC-001)" },

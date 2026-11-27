@@ -59,6 +59,8 @@ const LABELS = {
   frame_pan_zoom_p50_ms: 'Pan and zoom frame, p50', frame_pan_zoom_p95_ms: 'Pan and zoom frame, p95', frame_pan_zoom_max_ms: 'Pan and zoom frame, max',
   search_ms: 'Search', symbol_to_evidence_ms: 'Symbol to evidence', symbol_to_evidence_requests: 'Symbol to evidence, requests',
   edge_to_evidence_ms: 'Edge to evidence', edge_to_evidence_requests: 'Edge to evidence, requests', map_switch_ms: 'Map switch', map_switch_cold_ms: 'Map switch, first',
+  palette_p50_ms: 'Command palette, query to matches, p50', palette_p95_ms: 'Command palette, query to matches, p95', palette_max_ms: 'Command palette, query to matches, max',
+  palette_typing_longest_task_ms: 'Command palette, longest task while typing',
 }
 export const labelOf = (key) => { const [phase, k] = key.split('.'); return `${LABELS[k] ?? k}${phase === 'warm' ? ', warm' : phase === 'cold' && /^(fcp|first_draw|settled|tti|tbt|longest_task)_/.test(k) ? ', cold' : ''}` }
 const kb = (n) => `${Math.round(n / 1024).toLocaleString('en')} KB`
@@ -69,7 +71,7 @@ export function markdown(r, rows) {
   const m = r.machine
   const lines = [
     `# Observatory benchmark: ${r.fixture.name}${r.fixture.nodes ? ` (${r.fixture.nodes.toLocaleString('en')} symbols, seed ${r.fixture.seed})` : ''}`, '',
-    `Measured on ${r.measured_at}. Fixture: ${r.fixture.nodes ? `synthetic galaxy (sha256 ${r.fixture.galaxy_sha256.slice(0, 12)}), its points mapped to the TypeORM sample` : r.fixture.name}${r.fixture.commit ? ` @ ${r.fixture.commit}` : ''}${r.fixture.licence ? ` (${r.fixture.licence})` : ''}${r.fixture.symbols ? `, ${r.fixture.symbols.toLocaleString('en')} symbols` : ''}. ProofMesh commit ${r.proofmesh_commit ?? 'unknown'}.`,
+    `Measured on ${r.measured_at}. Fixture: ${r.fixture.nodes ? `synthetic galaxy (sha256 ${r.fixture.galaxy_sha256.slice(0, 12)}), its points mapped to the TypeORM sample` : r.fixture.name}${r.fixture.commit ? ` @ ${r.fixture.commit}` : ''}${r.fixture.licence ? ` (${r.fixture.licence})` : ''}${r.fixture.symbols ? `, ${r.fixture.symbols.toLocaleString('en')} symbols` : ''}. ProofMesh commit ${r.proofmesh_commit ?? 'unknown'}${r.proofmesh_dirty ? ' with uncommitted changes' : ''}.`,
     `Machine: ${m.hardware}; load average ${m.load_avg_start.map((x) => x.toFixed(2)).join(' ')} at start, ${m.load_avg_end.map((x) => x.toFixed(2)).join(' ')} at end${m.free_memory_gb != null ? `; ${m.free_memory_gb} GB free` : ''}.`,
     `Browser: Chromium ${r.browser.version} (${r.browser.build})${r.browser.headless === false ? '' : ', headless'}, viewport ${r.viewport ? `${r.viewport.width}×${r.viewport.height} @${r.viewport.device_scale_factor}x` : '-'}. WebGL renderer: ${r.webgl_renderer}${r.software_renderer ? ' (software renderer: frame budgets use the software column)' : ''}.`,
     `Medians of ${r.runs} cold run${r.runs === 1 ? '' : 's'}, each in a fresh browser profile and a fresh \`proofmesh view\`; warm is the Galaxy opened again in the same tab, its layout and HTTP cache kept. The first run on the machine is reported apart.${r.injected_task_ms ? ` A ${r.injected_task_ms} ms main-thread task was injected after the first draw (--inject-task-ms).` : ''}`,

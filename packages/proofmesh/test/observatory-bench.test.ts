@@ -53,18 +53,18 @@ describe('FR1160 to FR1169 the Observatory benchmark measures what a reader wait
     // FR1161: every field of FR-002, cold and warm, each the median of the measured runs with its spread.
     const LOAD = ['fcp_ms', 'first_draw_ms', 'settled_ms', 'tti_ms', 'tbt_ms', 'longest_task_ms', 'js_heap_mb', 'browser_rss_mb']
     const AFTER = ['frame_idle_p50_ms', 'frame_idle_p95_ms', 'frame_idle_max_ms', 'frame_pan_zoom_p50_ms', 'frame_pan_zoom_p95_ms', 'frame_pan_zoom_max_ms',
-      'search_ms', 'symbol_to_evidence_ms', 'symbol_to_evidence_requests', 'edge_to_evidence_ms', 'edge_to_evidence_requests', 'map_switch_ms', 'map_switch_cold_ms']
+      'search_ms', 'palette_p50_ms', 'palette_p95_ms', 'palette_max_ms', 'palette_typing_longest_task_ms', 'symbol_to_evidence_ms', 'symbol_to_evidence_requests', 'edge_to_evidence_ms', 'edge_to_evidence_requests', 'map_switch_ms', 'map_switch_cold_ms']
     for (const k of [...LOAD, ...AFTER]) {
       expect(res.cold[k], `cold.${k}`).toMatchObject({ median: expect.any(Number), min: expect.any(Number), max: expect.any(Number), values: [expect.any(Number)] })
       expect(res.first_run[k], `first_run.${k}`).toEqual(expect.any(Number))
     }
     for (const k of LOAD) expect(res.warm[k], `warm.${k}`).toMatchObject({ median: expect.any(Number) })
-    expect(res.cold.symbol_to_evidence_requests.median).toBeGreaterThanOrEqual(2)
+    expect(res.cold.symbol_to_evidence_requests.median).toBeGreaterThanOrEqual(1)
     for (const type of ['script', 'stylesheet', 'api']) expect(res.bytes_total[type]).toMatchObject({ raw: expect.any(Number), gzip: expect.any(Number), transferred: expect.any(Number) })
     expect(res.bytes_total.script.raw).toBeGreaterThan(res.bytes_total.script.gzip)
     expect(res.bytes.some((b: { url: string }) => b.url === '/api/v1/galaxy')).toBe(true)
     expect(JSON.stringify(res)).not.toMatch(/#t=|pm_session/)
-    expect(res.calls.map((c: { call: string }) => c.call)).toEqual(expect.arrayContaining(['/api/v1/galaxy', '/api/v1/tools/read_evidence']))
+    expect(res.calls.map((c: { call: string }) => c.call)).toEqual(expect.arrayContaining(['/api/v1/galaxy', '/api/v1/galaxy/symbol']))
     // FR1163: same snapshot in two fresh profiles, and A followed by B, a commit touching four files.
     for (const s of [res.stability.same_snapshot, res.stability.a_to_b]) expect(s).toMatchObject({ shared: expect.any(Number), median: expect.any(Number), p90: expect.any(Number), max: expect.any(Number), moved_2pct: expect.any(Number), moved_5pct: expect.any(Number) })
     expect(res.stability.a_to_b.files).toHaveLength(4)

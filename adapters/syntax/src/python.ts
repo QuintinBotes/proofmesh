@@ -34,7 +34,10 @@ const pending = new Map<number, (v: unknown) => void>()
 // inside them for bounded time.
 let unannotated: 'on' | 'off' = 'on'
 const settings = () => ({ typeCheckingMode: 'off', diagnosticMode: 'openFilesOnly', autoSearchPaths: false, extraPaths, analyzeUnannotatedFunctions: unannotated !== 'off' })
-function write(m: unknown) { const s = JSON.stringify(m); server.stdin!.write(`Content-Length: ${Buffer.byteLength(s)}\r\n\r\n${s}`) }
+// `pyright: off` in the configuration (PROOFMESH_PYRIGHT=off for the core): Pyright never starts. Declarations and imports still come
+// from Tree-sitter, bases and overrides from the imports alone; every call stays unresolved, and the adapter says it resolves none.
+let PYRIGHT_OFF = false
+function write(m: unknown) { if (PYRIGHT_OFF) return; const s = JSON.stringify(m); server.stdin!.write(`Content-Length: ${Buffer.byteLength(s)}\r\n\r\n${s}`) }
 /** How long one Pyright request may take before its call is reported unresolved; a stuck request must not stall the whole index. */
 const REQUEST_MS = 60000
 let timedOut = 0
@@ -298,6 +301,7 @@ async function nameAt(file: string, line: number, character: number): Promise<st
 type Found = { file: string; start: { line: number; character: number } }
 /** Where Pyright says a name is defined, or null when it answered nothing in time. The file must be open: Pyright answers nothing in a closed one. */
 async function definitionsOf(file: string, name: Node): Promise<Found[] | null> {
+  if (PYRIGHT_OFF) return []
   const before = timedOut
   const raw = await request<Location | Location[] | null>('textDocument/definition', { textDocument: { uri: `file://${path.join(workspace, file)}` }, position: { line: name.startPosition.row, character: name.startPosition.column } })
   if (timedOut > before) return null
@@ -331,6 +335,7 @@ async function resolveCall(file: string, f: FileFacts, call: Node): Promise<Reso
     const inner = fn.type === 'call' ? fn.childForFieldName('function') : null
     return { resolution: 'unresolved', reason: inner?.text === 'getattr' ? 'dynamic_element_access' : 'chained_callee' }
   }
+  if (PYRIGHT_OFF) return { resolution: 'unresolved', reason: 'outside_capability', detail: { why: 'pyright_off' } }
   const locations = await definitionsOf(file, name)
   if (!locations) return { resolution: 'unresolved', reason: 'outside_capability', detail: { why: 'pyright_timeout' } }
   if (!locations.length) return { resolution: 'unresolved', reason: fn.type === 'attribute' ? 'untyped_receiver' : 'unknown_name' }
@@ -821,6 +826,7 @@ async function entryPoints(): Promise<{ symbols: Sym[]; relationships: unknown[]
 
 /** Starts Pyright and completes the LSP handshake; called at initialize and again at every restart. */
 async function startSession() {
+  if (PYRIGHT_OFF) return
   startPyright()
   const root = `file://${workspace}`
   await request('initialize', { processId: process.pid, rootUri: root, workspaceFolders: [{ uri: root, name: 'workspace' }], capabilities: { workspace: { configuration: true }, textDocument: { definition: {} } } })
@@ -833,7 +839,7 @@ const SESSION_FILES = 40
 let sessionFiles = 0
 
 async function analyse(file: string) {
-  if (sessionFiles >= SESSION_FILES) {
+  if (!PYRIGHT_OFF && sessionFiles >= SESSION_FILES) {
     server.kill(); buffer = Buffer.alloc(0); pending.clear(); openFiles.clear(); sessionFiles = 0
     await startSession()
     send({ jsonrpc: '2.0', method: 'log', params: { level: 'debug', message: `Pyright restarted before ${file}` } })
@@ -951,6 +957,7 @@ readline.createInterface({ input: process.stdin }).on('line', async (line) => {
       await Parser.init()
       workspace = req.params.workspace
       unannotated = req.params.config?.pyright_unannotated === 'off' ? 'off' : 'on'
+      PYRIGHT_OFF = req.params.config?.pyright === 'off'
       pythonFiles = new Set((req.params.files as Array<{ path: string; language: string }>).filter((x) => x.language === 'python').map((x) => x.path))
       sitePackages = findSitePackages(req.params.repository_root)
       const distributions = sitePackages ? fs.readdirSync(sitePackages).filter((d) => d.endsWith('.dist-info')).map((d) => d.replace(/\.dist-info$/, '')).sort() : []
@@ -958,8 +965,8 @@ readline.createInterface({ input: process.stdin }).on('line', async (line) => {
       extraPaths = sitePackages ? searchPaths(sitePackages, req.params.repository_root) : []
       await startSession()
       reply({
-        adapter: { id: 'python', version: VERSION, protocol_version: '1.1', languages: ['python'], toolchain: { ...toolchain(['python']), pyright: pyrightVersion, pyright_unannotated: unannotated } },
-        capabilities: { symbols: true, imports: true, resolved_calls: true }, external_inputs: distributions.map((d) => `pypi:${d.replace(/-(?=[^-]*$)/, '/')}`), units: await units(),
+        adapter: { id: 'python', version: VERSION, protocol_version: '1.1', languages: ['python'], toolchain: { ...toolchain(['python']), pyright: PYRIGHT_OFF ? 'off' : pyrightVersion, pyright_unannotated: unannotated } },
+        capabilities: { symbols: true, imports: true, resolved_calls: !PYRIGHT_OFF }, external_inputs: distributions.map((d) => `pypi:${d.replace(/-(?=[^-]*$)/, '/')}`), units: await units(),
       })
     } else if (req.method === 'workspace') {
       // A mistake in the table or entry-point rules costs their facts, not the index.

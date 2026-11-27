@@ -16,5 +16,8 @@ PATH="$TOOLS/bin:$TOOLS/npm/node_modules/.bin:$PATH"
 unset ANTHROPIC_API_KEY GEMINI_API_KEY GOOGLE_API_KEY OPENAI_API_KEY DEEPSEEK_API_KEY KIMI_API_KEY OPENROUTER_API_KEY 2>/dev/null || true
 export PATH SERENA_HOME="$TOOLS/serena-home" SERENA_USAGE_REPORTING=false
 
+# The fixture (fixture.sh, shared with bench/observatory): built once by an atomic rename, refused without its PROVENANCE.
 FIXTURE="$(sh "$HERE/fixture.sh")"
+# --fixture-only builds the fixture and stops, for bench/structure.
+[ "${1:-}" = "--fixture-only" ] && exit 0
 node "$HERE/run.mjs" --fixture "$FIXTURE"

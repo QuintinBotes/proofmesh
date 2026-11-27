@@ -1,5 +1,7 @@
 import zlib from 'node:zlib'
+import fc from 'fast-check'
 import { beforeAll, describe, expect, it } from 'vitest'
+import { buildIndex, LIMIT, searchIndex } from '../src/paletteIndex'
 import { JITTER, areaFog, areaLabel, ghostAreas, legendAreas, placeLabels, seeds, layoutKey, matchIndices, nameHashes, parseGalaxy, rankMatches, shortName, warmStart, type GalaxyData } from '../src/galaxyData'
 import { galaxyFor } from '../../../packages/proofmesh/src/query/galaxy.js'
 import { indexedDataDir } from '../../../packages/proofmesh/test/helpers.js'
@@ -13,23 +15,23 @@ describe('A11 the Galaxy payload: every symbol of the snapshot in one compact bi
     const g = load()
     expect(g.names.slice().sort()).toEqual([
       'packages/api/src/handler:dispatch', 'packages/api/src/handler:handleInvoice', 'packages/api/src/handler:handlers',
-      'packages/billing/src/invoice:Line', 'packages/billing/src/invoice:invoiceTotal',
+      'packages/billing/src/invoice:Line', 'packages/billing/src/invoice:Line.cents', 'packages/billing/src/invoice:invoiceTotal',
       'packages/format/src/currency:formatAmount', 'packages/legacy/src/format:formatAmount',
     ])
     const name = (i: number) => g.names[i]!
     const links = Array.from({ length: g.links.length / 2 }, (_, j) => `${name(g.links[j * 2]!)} -> ${name(g.links[j * 2 + 1]!)}`).sort()
-    // invoiceTotal's use of the Line type is a TypeScript reference (FR086), and dispatch's read of the handlers variable is one too
-    // (FR102), so each is a resolved link.
-    expect(links).toEqual(['packages/api/src/handler:dispatch -> packages/api/src/handler:handlers', 'packages/api/src/handler:handleInvoice -> packages/billing/src/invoice:invoiceTotal', 'packages/billing/src/invoice:invoiceTotal -> packages/billing/src/invoice:Line', 'packages/billing/src/invoice:invoiceTotal -> packages/format/src/currency:formatAmount'])
-    expect(g.areas.map((a) => [a.name, a.count])).toEqual([['packages/api/src', 3], ['packages/billing/src', 2], ['packages/format/src', 1], ['packages/legacy/src', 1], ['(root)', 0], ['packages/api', 0], ['packages/billing/dist', 0]])
+    // invoiceTotal's use of the Line type is a TypeScript reference (FR086), its read of line.cents is one too (FR1021), and dispatch's
+    // read of the handlers variable is one (FR102), so each is a resolved link.
+    expect(links).toEqual(['packages/api/src/handler:dispatch -> packages/api/src/handler:handlers', 'packages/api/src/handler:handleInvoice -> packages/billing/src/invoice:invoiceTotal', 'packages/billing/src/invoice:invoiceTotal -> packages/billing/src/invoice:Line', 'packages/billing/src/invoice:invoiceTotal -> packages/billing/src/invoice:Line.cents', 'packages/billing/src/invoice:invoiceTotal -> packages/format/src/currency:formatAmount'])
+    expect(g.areas.map((a) => [a.name, a.count])).toEqual([['packages/billing/src', 3], ['packages/api/src', 3], ['packages/format/src', 1], ['packages/legacy/src', 1], ['(root)', 0], ['packages/api', 0], ['packages/billing/dist', 0]])
     expect(g.names.map((n, i) => [n.split(':')[0]!.split('/').slice(0, 3).join('/'), g.areas[g.area[i]!]!.name]).every(([a, b]) => a === b)).toBe(true)
   })
 
   it('FR059 each area carries its coverage: files by disposition, call sites, unresolved calls, and why files were not analysed', () => {
     const none = { indexed: 0, unsupported: 0, excluded: 0, failed: 0, pending: 0 }
     expect(load().areas).toEqual([
+      { name: 'packages/billing/src', count: 3, files: { ...none, indexed: 2 }, calls: { sites: 2, unresolved: 0 }, gaps: [] },
       { name: 'packages/api/src', count: 3, files: { ...none, indexed: 1 }, calls: { sites: 2, unresolved: 1 }, gaps: [] },
-      { name: 'packages/billing/src', count: 2, files: { ...none, indexed: 2 }, calls: { sites: 2, unresolved: 0 }, gaps: [] },
       { name: 'packages/format/src', count: 1, files: { ...none, indexed: 2 }, calls: { sites: 1, unresolved: 0 }, gaps: [] },
       { name: 'packages/legacy/src', count: 1, files: { ...none, indexed: 1 }, calls: { sites: 1, unresolved: 0 }, gaps: [] },
       { name: '(root)', count: 0, files: { ...none, indexed: 1, unsupported: 1 }, calls: { sites: 0, unresolved: 0 }, gaps: [['no_adapter:.md', 1]] },
@@ -59,7 +61,7 @@ describe('A11 the Galaxy payload: every symbol of the snapshot in one compact bi
     const g = load()
     expect(matchIndices(g, 'FORMAT').map((i) => g.names[i]).sort()).toEqual(['packages/format/src/currency:formatAmount', 'packages/legacy/src/format:formatAmount'])
     expect(matchIndices(g, 'f')).toEqual([])
-    expect(rankMatches(g, matchIndices(g, 'invoice'), 'invoice').map((i) => g.names[i])).toEqual(['packages/billing/src/invoice:invoiceTotal', 'packages/api/src/handler:handleInvoice', 'packages/billing/src/invoice:Line'])
+    expect(rankMatches(g, matchIndices(g, 'invoice'), 'invoice').map((i) => g.names[i])).toEqual(['packages/billing/src/invoice:invoiceTotal', 'packages/api/src/handler:handleInvoice', 'packages/billing/src/invoice:Line', 'packages/billing/src/invoice:Line.cents'])
     expect(shortName('Demo.Garden.Watering.Schedules.SprinklerScheduleDiagnostics')).toBe('SprinklerScheduleDiagnostics')
   })
 })
@@ -130,6 +132,30 @@ describe('B13 B14 points never collapse onto one place, and labels never pile up
       const plain = names.flatMap((n, i) => (n.toLowerCase().includes(q.toLowerCase()) ? [i] : []))
       expect(matchIndices(g, q), q).toEqual(plain)
     }
+  })
+})
+
+describe('FR1200 search maps each match to its own name when lowering changes the length of a name before it', () => {
+  // İ lowers to two code units; ẞ, ß, combining marks, final sigma and an emoji are case-folding traps of their own.
+  const units = ['İ', 'i', '\u0307', 'ẞ', 'ß', 's', 'S', 'e', '\u0301', 'é', '🚀', 'Σ', 'ς', 'a', 'b', ':', '/']
+  const galaxy = (names: string[]) => ({ n: names.length, names }) as unknown as GalaxyData
+
+  it('finds the name the text is in, after a name holding İ, in the Galaxy and the palette', () => {
+    const names = ['src/a:' + 'İ'.repeat(20), 'src/b:ab', 'src/c:xy']
+    expect(matchIndices(galaxy(names), 'src/b:ab').map((i) => names[i])).toEqual(['src/b:ab'])
+    expect(searchIndex(buildIndex(names, []), 'src/b:ab').items.map((i) => names[i])).toEqual(['src/b:ab'])
+  })
+
+  it('agrees with a plain filter on any names and query built from case-folding traps', () => {
+    const text = (min: number, max: number) => fc.array(fc.constantFrom(...units), { minLength: min, maxLength: max }).map((a) => a.join(''))
+    fc.assert(fc.property(fc.array(text(1, 12), { maxLength: 40 }), text(2, 4), (names, q) => {
+      const want = names.flatMap((n, i) => (n.toLowerCase().includes(q.toLowerCase()) ? [i] : []))
+      expect(matchIndices(galaxy(names), q)).toEqual(want)
+      const r = searchIndex(buildIndex(names, []), q)
+      expect(r.total).toBe(want.length)
+      expect(r.items.length).toBe(Math.min(want.length, LIMIT))
+      for (const i of r.items) expect(want).toContain(i)
+    }), { numRuns: 500 })
   })
 })
 

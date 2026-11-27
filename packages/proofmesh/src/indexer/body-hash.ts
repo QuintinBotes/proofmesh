@@ -25,9 +25,32 @@ export function normaliseDeclaration(text: string, name: string, kind: string): 
   let out = lines.map((l) => l.slice(Number.isFinite(indent) ? indent : 0)).join('\n')
   if (kind !== 'module') {
     if (out.trim() === name) return null
-    if (name) out = out.replace(new RegExp(`(?<![.${WORD.slice(1, -1)}])${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?!${WORD})`, 'gu'), PLACEHOLDER)
+    if (name) out = replaceName(out, name)
   }
   return out === '' ? null : out
+}
+
+const WORD_CHAR = new RegExp(`^${WORD}$`, 'u')
+const isWord = (c: string | undefined) => c !== undefined && WORD_CHAR.test(c)
+/** Whether `at` falls between the two halves of a surrogate pair, where a `u` regular expression never starts or ends a match. */
+const splitsPair = (s: string, at: number) => at > 0 && at < s.length && /[\uD800-\uDBFF]/.test(s[at - 1]!) && /[\uDC00-\uDFFF]/.test(s[at]!)
+/** The code point ending just before `at`, and the one starting at `at`, as a `u` regular expression sees them. */
+const before = (s: string, at: number) => (at > 0 ? s.slice(splitsPair(s, at - 1) ? at - 2 : at - 1, at) : undefined)
+const after = (s: string, at: number) => (at < s.length ? String.fromCodePoint(s.codePointAt(at)!) : undefined)
+
+/**
+ * `out.replace(/(?<![.WORD])name(?!WORD)/gu, PLACEHOLDER)` without compiling a Unicode expression per name, which cost seconds a
+ * rebuild (#31).
+ */
+function replaceName(out: string, name: string): string {
+  let result = '', from = 0
+  for (let at = out.indexOf(name); at >= 0; at = out.indexOf(name, at + 1)) {
+    const end = at + name.length, prev = before(out, at)
+    if (at < from || splitsPair(out, at) || splitsPair(out, end) || prev === '.' || isWord(prev) || isWord(after(out, end))) continue
+    result += out.slice(from, at) + PLACEHOLDER
+    from = at + name.length
+  }
+  return result + out.slice(from)
 }
 
 export function hashDeclaration(text: string, name: string, kind: string): string | null {

@@ -9,7 +9,7 @@ describe('FR056 FR019 get_overview: the repository as a graph of areas', () => {
   it('the root collapses single-child chains and aggregates resolved calls and imports between areas', () => {
     const o = view({})
     expect(o.path).toBe('packages')
-    expect(o.children.map((c) => [c.name, c.kind, c.symbols])).toEqual([['api/src', 'directory', 3], ['billing/src', 'directory', 2], ['format/src', 'directory', 1], ['legacy/src', 'directory', 1]])
+    expect(o.children.map((c) => [c.name, c.kind, c.symbols])).toEqual([['api/src', 'directory', 3], ['billing/src', 'directory', 3], ['format/src', 'directory', 1], ['legacy/src', 'directory', 1]])
     expect(o.links).toEqual([
       { from: 'packages/api/src', to: 'packages/billing/src', count: 2, by_type: { calls: 1, imports: 1 } },
       { from: 'packages/billing/src', to: 'packages/format/src', count: 2, by_type: { calls: 1, imports: 1 } },
@@ -18,14 +18,14 @@ describe('FR056 FR019 get_overview: the repository as a graph of areas', () => {
 
   it('a directory lists its files, a barrel file included, with the imports between them', () => {
     const o = view({ path: 'packages/billing/src' })
-    expect(o.children.map((c) => [c.name, c.kind, c.symbols])).toEqual([['invoice.ts', 'file', 2], ['index.ts', 'file', 0]])
+    expect(o.children.map((c) => [c.name, c.kind, c.symbols])).toEqual([['invoice.ts', 'file', 3], ['index.ts', 'file', 0]])
     expect(o.links).toEqual([{ from: 'packages/billing/src/index.ts', to: 'packages/billing/src/invoice.ts', count: 1, by_type: { imports: 1 } }])
   })
 
   it('a file lists its symbols', () => {
     const o = view({ path: 'packages/billing/src/invoice.ts' })
     expect(o.scope).toBe('file')
-    expect(o.children.map((c) => [c.name, c.symbol_kind])).toEqual([['Line', 'interface'], ['invoiceTotal', 'function']])
+    expect(o.children.map((c) => [c.name, c.symbol_kind])).toEqual([['Line', 'interface'], ['cents', 'property'], ['invoiceTotal', 'function']])
   })
 
   it('a search keeps only the areas holding a match, with their match counts', () => {

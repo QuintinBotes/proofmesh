@@ -1759,6 +1759,21 @@
     "FR1032": [
       "packages/proofmesh/test/parity-bench.test.ts"
     ],
+    "FR1100": [
+      "packages/proofmesh/test/parity-bench.test.ts"
+    ],
+    "FR1101": [
+      "packages/proofmesh/test/parity-bench.test.ts"
+    ],
+    "FR1102": [
+      "packages/proofmesh/test/parity-bench.test.ts"
+    ],
+    "FR1110": [
+      "packages/proofmesh/test/parity-bench.test.ts"
+    ],
+    "FR1111": [
+      "packages/proofmesh/test/parity-bench.test.ts"
+    ],
     "FR600": [
       "packages/proofmesh/test/syntax-rust-turbofish-calls.test.ts"
     ],
@@ -1964,6 +1979,140 @@
     ],
     "FR1169": [
       "packages/proofmesh/test/observatory-bench.test.ts"
+    ],
+    "FR1010": [
+      "packages/proofmesh/test/typescript-references.test.ts"
+    ],
+    "FR1020": [
+      "packages/proofmesh/test/typescript-property-references.test.ts"
+    ],
+    "FR1021": [
+      "packages/proofmesh/test/typescript-property-references.test.ts"
+    ],
+    "FR1060": [
+      "packages/proofmesh/test/search-structure.test.ts"
+    ],
+    "FR1061": [
+      "packages/proofmesh/test/search-structure.test.ts"
+    ],
+    "FR1062": [
+      "packages/proofmesh/test/search-structure.test.ts"
+    ],
+    "FR1063": [
+      "packages/proofmesh/test/search-structure.test.ts"
+    ],
+    "FR1064": [
+      "packages/proofmesh/test/search-structure.test.ts",
+      "bench/structure/run.mjs"
+    ],
+    "FR1065": [
+      "packages/proofmesh/test/search-structure.test.ts"
+    ],
+    "FR1066": [
+      "packages/proofmesh/test/search-structure.test.ts"
+    ],
+    "FR1067": [
+      "packages/proofmesh/test/search-structure.test.ts"
+    ],
+    "FR1140": [
+      "e2e/palette.spec.ts",
+      "e2e/accessibility.spec.ts"
+    ],
+    "FR1141": [
+      "apps/observatory/test/palette.test.ts",
+      "e2e/palette.spec.ts"
+    ],
+    "FR1142": [
+      "apps/observatory/test/palette.test.ts",
+      "e2e/palette.spec.ts"
+    ],
+    "FR1143": [
+      "e2e/palette.spec.ts"
+    ],
+    "FR1144": [
+      "e2e/palette.spec.ts"
+    ],
+    "FR1145": [
+      "e2e/accessibility.spec.ts",
+      "e2e/palette.spec.ts"
+    ],
+    "FR1146": [
+      "e2e/a11y.spec.ts",
+      "e2e/palette.spec.ts"
+    ],
+    "FR1200": [
+      "apps/observatory/test/galaxy.test.ts",
+      "e2e/casefold.spec.ts"
+    ],
+    "FR1210": [
+      "apps/observatory/test/plural.test.ts",
+      "e2e/galaxy.spec.ts"
+    ],
+    "FR580": [
+      "packages/proofmesh/test/concepts.test.ts"
+    ],
+    "FR581": [
+      "packages/proofmesh/test/concepts.test.ts"
+    ],
+    "FR582": [
+      "packages/proofmesh/test/concepts.test.ts"
+    ],
+    "FR583": [
+      "packages/proofmesh/test/concepts.test.ts"
+    ],
+    "FR584": [
+      "packages/proofmesh/test/concepts.test.ts"
+    ],
+    "FR585": [
+      "packages/proofmesh/test/concepts.test.ts"
+    ],
+    "FR1120": [
+      "packages/proofmesh/test/fast-rebuild.test.ts"
+    ],
+    "FR1121": [
+      "packages/proofmesh/test/fast-rebuild.test.ts"
+    ],
+    "FR1122": [
+      "packages/proofmesh/test/fast-rebuild.test.ts"
+    ],
+    "FR1123": [
+      "packages/proofmesh/test/fast-rebuild.test.ts"
+    ],
+    "FR1124": [
+      "packages/proofmesh/test/fast-rebuild.test.ts"
+    ],
+    "FR1125": [
+      "packages/proofmesh/test/fast-rebuild.test.ts"
+    ],
+    "FR1126": [
+      "packages/proofmesh/test/fast-rebuild.test.ts"
+    ],
+    "FR1180": [
+      "packages/proofmesh/test/symbol-card.test.ts",
+      "apps/observatory/test/card.test.ts",
+      "e2e/lens.spec.ts"
+    ],
+    "FR1181": [
+      "packages/proofmesh/test/symbol-card.test.ts",
+      "e2e/lens.spec.ts"
+    ],
+    "FR1182": [
+      "packages/proofmesh/test/symbol-card.test.ts",
+      "e2e/lens.spec.ts"
+    ],
+    "FR1183": [
+      "apps/observatory/test/card.test.ts",
+      "e2e/lens.spec.ts"
+    ],
+    "FR1184": [
+      "e2e/lens.spec.ts"
+    ],
+    "FR1185": [
+      "packages/proofmesh/test/symbol-card.test.ts",
+      "e2e/lens.spec.ts"
+    ],
+    "FR1186": [
+      "e2e/lens.spec.ts"
     ]
   },
   "manual": {
@@ -1972,6 +2121,7 @@
     "FR074": "No CI exists in this repository. When CI is added, a maintainer reviews that pull-request workflows run on pull_request (not pull_request_target), with read-only permissions and no secrets or release credentials; release signing runs only on tags (docs/proofmesh/release.md).",
     "SC006": "A maintainer registers Proofmesh in Claude Code and in Codex with proofmesh mcp-config, asks both the same snapshot-pinned questions (bench/eval/samples/invoicing-questions.json), records the sessions, scores them with bench/eval/run.mjs, and confirms both cite the same snapshot id. Last run on 2026-11-12 on the final build, over fixtures/ts-invoicing (snapshot snap_7278727f7dee33d0928b30e7): headless Claude Code 2.1.322 (claude -p, only the Proofmesh MCP server and its tools) and Codex 0.163.0 (codex exec, read-only sandbox, the server passed with -c and its tools approved for that server only) answered the same three snapshot-pinned questions identically, citing the same snapshot id, and both answers equal the fixture oracle.",
     "FR049.publication": "A maintainer publishes the signed npm packages and the OCI image, with checksums, SBOM, signatures, provenance and release notes, to the registries; publication is never automated.",
-    "SC016.tag": "A maintainer tags the release commit of the public fresh-history repository; CI builds, signs (keyless) and attests the artifacts from that tag, including the C# adapter."
+    "SC016.tag": "A maintainer tags the release commit of the public fresh-history repository; CI builds, signs (keyless) and attests the artifacts from that tag, including the C# adapter.",
+    "FR1187": "A maintainer indexes the TypeORM parity fixture (bench/parity/run.sh builds it at commit 3d55188c) into a fresh data directory and runs node bench/observatory/evidence.mjs --data-dir <dir> --symbol src/data-source/DataSource:DataSource.initialize --runs 10 --check, which exits 0 when the warm and first-open p95 and the requests per open are within SC-001 and SC-002 of #45, and records the machine and its load beside the times."
   }
 }

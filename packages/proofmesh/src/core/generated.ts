@@ -4,7 +4,7 @@
 export interface Envelope {
 schema_version: "0.1"
 query_id: string
-tool: ("workspace_status" | "list_repositories" | "list_snapshots" | "list_workspaces" | "find_symbols" | "get_symbol" | "get_relationships" | "trace_paths" | "read_evidence" | "get_overview" | "analyze_impact" | "find_tests" | "search_sources" | "get_memory" | "verify_claim" | "request_index" | "get_job" | "get_claims" | "save_memory" | "get_table_reach" | "get_property_reads" | "get_external_usage" | "find_query_source" | "compare_snapshots" | "list_queries" | "get_ecosystem" | "prepare_verification" | "get_verification" | "impact_completeness" | "get_symbols_at" | "get_session_trail" | "find_stale_mentions" | "find_unused" | "find_cycles" | "find_entry_points" | "find_hubs" | "get_context_map" | "plan_rename")
+tool: ("workspace_status" | "list_repositories" | "list_snapshots" | "list_workspaces" | "find_symbols" | "get_symbol" | "get_relationships" | "trace_paths" | "read_evidence" | "get_overview" | "analyze_impact" | "find_tests" | "search_sources" | "get_memory" | "verify_claim" | "request_index" | "get_job" | "get_claims" | "save_memory" | "get_table_reach" | "get_property_reads" | "get_external_usage" | "find_query_source" | "compare_snapshots" | "list_queries" | "get_ecosystem" | "prepare_verification" | "get_verification" | "impact_completeness" | "get_symbols_at" | "get_session_trail" | "find_stale_mentions" | "find_unused" | "find_cycles" | "find_entry_points" | "find_hubs" | "get_context_map" | "plan_rename" | "search_structure" | "search_concepts" | "get_symbol_card")
 /**
  * The sealed snapshot or link file that answered; null for a catalog tool, which answers from the list of registered repositories.
  */
@@ -2294,6 +2294,328 @@ freshness?: ("snapshot" | "strict")
 envelope?: ("full" | "compact" | "lean")
 }
 
+export interface GetSymbolCardData {
+symbol: {
+id: string
+kind: ("function" | "class" | "method" | "interface" | "type_alias" | "variable" | "module" | "struct" | "enum" | "property" | "field" | "constructor" | "namespace" | "project" | "package" | "endpoint" | "table" | "message" | "channel" | "job" | "feature_flag" | "config_key" | "team" | "service")
+name: string
+qualified_name: string
+path: string
+start_line: number
+end_line: number
+signature: (string | null)
+evidence_id: string
+/**
+ * path#qualified_name#kind, as this snapshot stores it.
+ */
+stable_key: string
+/**
+ * SHA-256 of the declaration text with line endings, common indentation, trailing whitespace and the symbol's own name normalised (a module: its file text); null when the span is no more than the name, or the snapshot was sealed before hashes existed.
+ */
+body_hash: (string | null)
+/**
+ * The roles the adapter gave the symbol, when it gave any: test (a test entry point) or test_support (test code that is no entry point).
+ */
+roles?: ("test" | "test_support")[]
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
+/**
+ * What the adapter recorded beside the symbol's name, when it recorded any: scip, the SCIP index's own symbol for a definition the SCIP importer declared (FR441). Absent when the adapter sent none (no built-in adapter but the SCIP importer sends it), and in a snapshot sealed before format 0.11.
+ */
+detail?: {
+/**
+ * The SCIP index's own symbol for this definition, as the index wrote it (FR441).
+ */
+scip?: string
+}
+}
+/**
+ * The declaration's evidence, as read_evidence answers it; text is null when the object fails its integrity check or is missing.
+ */
+declaration: {
+id: string
+path: string
+start_line: number
+end_line: number
+object_hash: string
+extractor: string
+extractor_version: string
+analysis_mode: ("no_execution" | "trusted_build")
+integrity: {
+status: ("verified" | "failed" | "unavailable")
+actual_hash?: string
+}
+text: (string | null)
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
+}
+/**
+ * Null when direction asks only for the other side.
+ */
+incoming: ({
+rows: {
+assertion_id: string
+type: ("calls" | "imports" | "contains" | "inherits" | "implements" | "overrides" | "references" | "injects" | "registered_as" | "exposes" | "maps_to" | "runs" | "dispatches_to" | "handles" | "publishes" | "consumes" | "sends_to" | "listens_on" | "evaluates_flag" | "reads_config" | "depends_on" | "depends_on_package" | "owned_by" | "calls_service" | "renders" | "uses_hook" | "provides_context" | "uses_context" | "mentions")
+direction: ("in" | "out")
+resolution: ("resolved" | "resolved_external" | "candidate" | "ambiguous" | "unresolved")
+origin: ("syntax" | "semantic_resolver" | "configuration_adapter" | "framework_adapter" | "contract_match" | "runtime_observation" | "documentation" | "human_assertion" | "model_hypothesis")
+/**
+ * observed: a compiler, an index or a declared configuration proves it. inferred: a convention, a name match or a contract match suggests it. Derived when the answer is built. Absent on an unresolved boundary, which is not a relationship.
+ */
+basis?: ("observed" | "inferred")
+other: {
+kind: ("symbol" | "file" | "external" | "none")
+id?: string
+name?: string
+qualified_name?: string
+path?: string
+module?: string
+symbol_kind?: string
+start_line?: number
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
+/**
+ * The stable_key of the symbol on the far side (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file.
+ */
+key?: string
+}
+site: {
+path: string
+start_line: number
+end_line: number
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
+}
+reason: (string | null)
+evidence_ids: string[]
+detail: ({
+[k: string]: string
+} | null)
+/**
+ * On an inbound row: the member the subject implements or overrides that the call or reference names, through which it may dispatch to the subject.
+ */
+via?: {
+id: string
+qualified_name: string
+/**
+ * The stable_key of the member the call or reference names (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file.
+ */
+key?: string
+}
+/**
+ * Present on a row of another repository of the workspace (include_workspace): that repository, and the commit its snapshot was built from. Its ids and evidence ids are of that snapshot.
+ */
+repository?: {
+id: string
+name: string
+commit: (string | null)
+}
+/**
+ * The call site's evidence: its span and integrity, and the whole lines of the site (at most 8) with the cited span as character offsets in them. context is null when the object fails its integrity check or is missing. Null when the row has no evidence.
+ */
+evidence: ({
+id: string
+path: string
+start_line: number
+end_line: number
+integrity: {
+status: ("verified" | "failed" | "unavailable")
+actual_hash?: string
+}
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
+context: ({
+start_line: number
+text: string
+/**
+ * The cited span's start and end, as character offsets in text.
+ * 
+ * @minItems 2
+ * @maxItems 2
+ */
+highlight: [number, number, ...(number)[]]
+} | null)
+} | null)
+}[]
+/**
+ * Every row of this side, listed or not.
+ */
+total: number
+/**
+ * Pass as offset, with direction, for the next rows of this side; null when every row is listed.
+ */
+next_offset: (number | null)
+} | null)
+/**
+ * Null when direction asks only for the other side.
+ */
+outgoing: ({
+rows: {
+assertion_id: string
+type: ("calls" | "imports" | "contains" | "inherits" | "implements" | "overrides" | "references" | "injects" | "registered_as" | "exposes" | "maps_to" | "runs" | "dispatches_to" | "handles" | "publishes" | "consumes" | "sends_to" | "listens_on" | "evaluates_flag" | "reads_config" | "depends_on" | "depends_on_package" | "owned_by" | "calls_service" | "renders" | "uses_hook" | "provides_context" | "uses_context" | "mentions")
+direction: ("in" | "out")
+resolution: ("resolved" | "resolved_external" | "candidate" | "ambiguous" | "unresolved")
+origin: ("syntax" | "semantic_resolver" | "configuration_adapter" | "framework_adapter" | "contract_match" | "runtime_observation" | "documentation" | "human_assertion" | "model_hypothesis")
+/**
+ * observed: a compiler, an index or a declared configuration proves it. inferred: a convention, a name match or a contract match suggests it. Derived when the answer is built. Absent on an unresolved boundary, which is not a relationship.
+ */
+basis?: ("observed" | "inferred")
+other: {
+kind: ("symbol" | "file" | "external" | "none")
+id?: string
+name?: string
+qualified_name?: string
+path?: string
+module?: string
+symbol_kind?: string
+start_line?: number
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
+/**
+ * The stable_key of the symbol on the far side (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file.
+ */
+key?: string
+}
+site: {
+path: string
+start_line: number
+end_line: number
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
+}
+reason: (string | null)
+evidence_ids: string[]
+detail: ({
+[k: string]: string
+} | null)
+/**
+ * On an inbound row: the member the subject implements or overrides that the call or reference names, through which it may dispatch to the subject.
+ */
+via?: {
+id: string
+qualified_name: string
+/**
+ * The stable_key of the member the call or reference names (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file.
+ */
+key?: string
+}
+/**
+ * Present on a row of another repository of the workspace (include_workspace): that repository, and the commit its snapshot was built from. Its ids and evidence ids are of that snapshot.
+ */
+repository?: {
+id: string
+name: string
+commit: (string | null)
+}
+/**
+ * The call site's evidence: its span and integrity, and the whole lines of the site (at most 8) with the cited span as character offsets in them. context is null when the object fails its integrity check or is missing. Null when the row has no evidence.
+ */
+evidence: ({
+id: string
+path: string
+start_line: number
+end_line: number
+integrity: {
+status: ("verified" | "failed" | "unavailable")
+actual_hash?: string
+}
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
+context: ({
+start_line: number
+text: string
+/**
+ * The cited span's start and end, as character offsets in text.
+ * 
+ * @minItems 2
+ * @maxItems 2
+ */
+highlight: [number, number, ...(number)[]]
+} | null)
+} | null)
+}[]
+/**
+ * Every row of this side, listed or not.
+ */
+total: number
+/**
+ * Pass as offset, with direction, for the next rows of this side; null when every row is listed.
+ */
+next_offset: (number | null)
+} | null)
+}
+
+/**
+ * A symbol's card in one request (FR1180): the symbol, its declaration evidence with integrity and text, and the first page of its incoming and outgoing relationships, each with its call site's evidence (span, integrity, the site's lines and the cited span within them), basis, resolution and reason, and totals. Read-only, and bounded by limits: max_rows applies to each side, max_bytes to the whole answer.
+ */
+export interface GetSymbolCardInput {
+/**
+ * Optional when exactly one repository is registered.
+ */
+repository_id?: string
+/**
+ * Null pins the current published snapshot.
+ */
+snapshot_id?: (string | null)
+limits?: {
+timeout_ms?: number
+max_rows?: number
+max_bytes?: number
+max_depth?: number
+}
+/**
+ * Or { name, path }: the symbol of that name in that file. Give symbol_id or key.
+ */
+symbol_id?: (string | {
+/**
+ * The name a lean row shows (BudgetLedger.consume), or the plain name (consume); it must name one symbol in the file.
+ */
+name: string
+/**
+ * The repository-relative path of the file that declares the symbol.
+ */
+path: string
+})
+/**
+ * A symbol by its stable_key (FR149): the key get_symbol and every other row names it with, unique in a snapshot and the same in every tier. An unknown key is NOT_FOUND. In place of the id.
+ */
+key?: string
+/**
+ * The relationship types listed on each side; default calls.
+ * 
+ * @minItems 1
+ */
+types?: [("calls" | "imports" | "contains" | "inherits" | "implements" | "overrides" | "references" | "injects" | "registered_as" | "exposes" | "maps_to" | "runs" | "dispatches_to" | "handles" | "publishes" | "consumes" | "sends_to" | "listens_on" | "evaluates_flag" | "reads_config" | "depends_on" | "depends_on_package" | "owned_by" | "calls_service" | "renders" | "uses_hook" | "provides_context" | "uses_context" | "mentions"), ...(("calls" | "imports" | "contains" | "inherits" | "implements" | "overrides" | "references" | "injects" | "registered_as" | "exposes" | "maps_to" | "runs" | "dispatches_to" | "handles" | "publishes" | "consumes" | "sends_to" | "listens_on" | "evaluates_flag" | "reads_config" | "depends_on" | "depends_on_package" | "owned_by" | "calls_service" | "renders" | "uses_hook" | "provides_context" | "uses_context" | "mentions"))[]]
+/**
+ * Only this side, to page it with offset; both sides when absent.
+ */
+direction?: ("in" | "out")
+/**
+ * The row each side starts at: a side's next_offset.
+ */
+offset?: number
+/**
+ * compact: the JSON envelope without the snapshot-wide parts an earlier answer gave. full (default): the whole envelope.
+ */
+envelope?: ("full" | "compact")
+}
+
 export interface GetSymbolsAtData {
 results: {
 location: string
@@ -3359,6 +3681,108 @@ freshness?: ("snapshot" | "strict")
 envelope?: ("full" | "compact")
 }
 
+export interface SearchConceptsData {
+symbols: {
+id: string
+kind: ("function" | "class" | "method" | "interface" | "type_alias" | "variable" | "module" | "struct" | "enum" | "property" | "field" | "constructor" | "namespace" | "project" | "package" | "endpoint" | "table" | "message" | "channel" | "job" | "feature_flag" | "config_key" | "team" | "service")
+name: string
+qualified_name: string
+path: string
+start_line: number
+/**
+ * The rank score: lexical relevance plus any graph-proximity boost (docs/proofmesh/mcp.md states the formula).
+ */
+score: number
+/**
+ * Up to five query terms that matched, the heaviest first.
+ * 
+ * @maxItems 5
+ */
+terms: string[]
+/**
+ * The best lexical match this symbol is one or two resolved relationships from, when that proximity raised its score.
+ */
+via?: string
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
+/**
+ * The stable_key of the symbol (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file.
+ */
+key?: string
+}[]
+files: {
+path: string
+/**
+ * Where to start reading: the declaration of the file's best symbol, else the first line a term occurs on.
+ */
+line: number
+/**
+ * The rank score: lexical relevance plus any graph-proximity boost (docs/proofmesh/mcp.md states the formula).
+ */
+score: number
+/**
+ * Up to five query terms that matched, the heaviest first.
+ * 
+ * @maxItems 5
+ */
+terms: string[]
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
+}[]
+/**
+ * The query terms ranked by, the heaviest first: the words of the text the index holds, stop words left out.
+ */
+terms: string[]
+/**
+ * Present when the text had more indexed terms than the 32 kept: how many lighter ones were left out.
+ */
+terms_dropped?: number
+}
+
+/**
+ * Rank the symbols and files that match a description (an issue, a task in prose), with no model; each row has file:line, a score and the words that matched.
+ */
+export interface SearchConceptsInput {
+/**
+ * Optional when exactly one repository is registered.
+ */
+repository_id?: string
+/**
+ * Null pins the current published snapshot.
+ */
+snapshot_id?: (string | null)
+limits?: {
+timeout_ms?: number
+max_rows?: number
+max_bytes?: number
+max_depth?: number
+}
+/**
+ * The description, up to a whole issue body. Its heaviest terms are kept, at most 32, and the answer says when it was cut.
+ */
+text: string
+/**
+ * Only symbols of these kinds; files are ranked all the same.
+ */
+kinds?: ("function" | "class" | "method" | "interface" | "type_alias" | "variable" | "module" | "struct" | "enum" | "property" | "field" | "constructor" | "namespace" | "project" | "package" | "endpoint" | "table" | "message" | "channel" | "job" | "feature_flag" | "config_key" | "team" | "service")[]
+/**
+ * Only symbols and files under this path prefix.
+ */
+path_prefix?: string
+/**
+ * true ranks test code by its score alone; by default it ranks below production code, recognised as find_symbols recognises it.
+ */
+include_tests?: boolean
+/**
+ * lean, the default over MCP: plain text. Each row is `<name> <path>:<line> <kind>` for a symbol, then `<path>:<line> file` for a file, tagged score=<n>, terms=<a,b> (up to five) and via=<name> when graph proximity raised it. compact or full: the JSON envelope, with ids.
+ */
+envelope?: ("full" | "compact" | "lean")
+}
+
 export interface SearchSourcesData {
 hits: {
 path: string
@@ -3428,6 +3852,145 @@ cursor?: string
  * compact leaves out the snapshot-wide parts of the envelope (unresolved reasons, standing limitations) that an earlier answer from the same snapshot already gave; query-specific limits stay. Over MCP, answers after the first full one per snapshot are compact unless full is asked for.
  */
 envelope?: ("full" | "compact")
+}
+
+export interface SearchStructureData {
+/**
+ * By path, then by position in the file; a match inside another is listed after it.
+ */
+matches: {
+path: string
+/**
+ * The first line of the match.
+ */
+line: number
+end_line: number
+/**
+ * The first line of the matched code, cut at 120 characters.
+ */
+text: string
+/**
+ * The innermost symbol that holds the match whole, its module when nothing smaller does; null only in a file with no symbol.
+ */
+symbol: (null | {
+id: string
+/**
+ * The stable_key of the symbol (FR280).
+ */
+key: string
+kind: string
+name: string
+qualified_name: string
+})
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
+}[]
+totals: {
+/**
+ * Every match in scope, before row limits; when the search stopped at timeout_ms, those found before it.
+ */
+matches: number
+/**
+ * Files in the pattern's language under the prefix and scope.
+ */
+files_searched: number
+/**
+ * Symbols in the reachable_from and reaching scope, when one is given.
+ */
+scope_symbols?: number
+/**
+ * Files importing the importing files, when given.
+ */
+scope_files?: number
+}
+}
+
+/**
+ * Code found by its shape, with ast-grep's pattern syntax over the syntax tier's Tree-sitter grammars (FR1060): every await in a loop, every call of escape with a string, every catch that swallows its error. Optionally only inside the symbols reachable from or reaching a symbol, or the files importing a file (scope). Read-only, over the snapshot's captured content, not the working tree. Lean over MCP: one `<enclosing name> <path>:<line> "<first line of the match>"` row per match, the text cut at 120 characters; pages with a cursor, and completion.total counts every match. Time, matches and bytes are the usual limits; files over 1 MiB are not parsed.
+ */
+export interface SearchStructureInput {
+/**
+ * Optional when exactly one repository is registered.
+ */
+repository_id?: string
+/**
+ * Null pins the current published snapshot.
+ */
+snapshot_id?: (string | null)
+limits?: {
+timeout_ms?: number
+max_rows?: number
+max_bytes?: number
+max_depth?: number
+}
+/**
+ * snapshot (default) answers from the published snapshot. strict first checks that the working tree is exactly what the snapshot was built from; if not, it starts an index and refuses with STALE_INPUT naming the changed files.
+ */
+freshness?: ("snapshot" | "strict")
+/**
+ * lean, the default over MCP: plain text with no JSON and no structuredContent. A header `# <tool> · <n> rows · <snapshot> current` (stale when the snapshot is older than the repository's current one), one `<name> <path>:<line>` row per result, then `# ` lines for the limitations of this answer and `# more: cursor <c>` when a next page exists. The line is the call, import or reference site for relationship, impact and path rows and the declaration for symbol rows; tags follow: in or out when both directions are asked, depth=<n>, dispatch, external, candidate, ambiguous, unresolved:<reason>, and the relationship type when the query mixes types. A name or path with a space, quote or # is quoted as JSON. compact: the JSON envelope without the snapshot-wide parts an earlier answer gave (coverage, unresolved reasons, standing limitations). full: the whole JSON envelope. Ask for compact or full for ids, evidence and totals.
+ */
+envelope?: ("full" | "compact" | "lean")
+/**
+ * The next_cursor of the previous page. It continues the same query on the same snapshot; it expires after an hour.
+ */
+cursor?: string
+/**
+ * Code in the language, with ast-grep's metavariables: $X matches one node, $$$X (or $$$) any number of nodes, $_ one node without capturing, $$X an unnamed node too. A repeated metavariable must match equal code. Matching is ast-grep's default (smart): comments and punctuation the pattern leaves out are skipped. A pattern that does not parse is refused with the parse error and its syntax tree.
+ */
+pattern: string
+/**
+ * The pattern's language: only files with its extensions are searched, as ast-grep chooses them (typescript: .ts .cts .mts; tsx; javascript, read with the TSX grammar; python; go; ...). Omitted: every file whose extension has a grammar here, with the pattern parsed in each file's language; a language it does not parse in is skipped and named, and files with no grammar are counted.
+ */
+language?: ("typescript" | "tsx" | "javascript" | "python" | "go" | "rust" | "java" | "c" | "cpp" | "csharp" | "ruby" | "kotlin" | "scala" | "swift" | "bash" | "hcl")
+/**
+ * Only files whose repository-relative path starts with this. Default: the whole repository.
+ */
+path_prefix?: string
+/**
+ * Only matches inside what the graph names; several keys intersect. A match counts when a symbol of the scope holds it whole.
+ */
+scope?: {
+/**
+ * Symbols, each with every symbol trace_paths reaches from it (resolved calls, and dispatch both ways through implements and overrides), within max_depth.
+ * 
+ * @minItems 1
+ * @maxItems 20
+ * 
+ * Items: A symbol id (sym_...), a name the snapshot holds once (`DataSource.initialize`, as a lean row shows it, or a plain name), or { name, path }.
+ */
+reachable_from?: [(string | {
+name: string
+path: string
+}), ...((string | {
+name: string
+path: string
+}))[]]
+/**
+ * Symbols, each with every symbol that reaches it the same way, within max_depth.
+ * 
+ * @minItems 1
+ * @maxItems 20
+ * 
+ * Items: A symbol id (sym_...), a name the snapshot holds once (`DataSource.initialize`, as a lean row shows it, or a plain name), or { name, path }.
+ */
+reaching?: [(string | {
+name: string
+path: string
+}), ...((string | {
+name: string
+path: string
+}))[]]
+/**
+ * Repository-relative file paths: only matches in the files whose resolved imports name one of them.
+ * 
+ * @minItems 1
+ * @maxItems 20
+ */
+importing?: [string, ...(string)[]]
+}
 }
 
 export interface TracePathsData {
@@ -3521,6 +4084,17 @@ origin: string
  */
 basis: ("observed" | "inferred")
 rule: (string | null)
+/**
+ * On a hop of a path: where the relationship is written, its first evidence's file and line. Absent on an edge the search only explored.
+ */
+site?: {
+path: string
+start_line: number
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
+}
 }
 }
 }

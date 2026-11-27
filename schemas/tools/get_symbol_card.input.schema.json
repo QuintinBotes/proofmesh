@@ -1,0 +1,142 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "get_symbol_card.input.schema.json",
+  "title": "get_symbol_card input",
+  "description": "A symbol's card in one request (FR1180): the symbol, its declaration evidence with integrity and text, and the first page of its incoming and outgoing relationships, each with its call site's evidence (span, integrity, the site's lines and the cited span within them), basis, resolution and reason, and totals. Read-only, and bounded by limits: max_rows applies to each side, max_bytes to the whole answer.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "repository_id": {
+      "type": "string",
+      "pattern": "^repo_[0-9a-z]+$",
+      "description": "Optional when exactly one repository is registered."
+    },
+    "snapshot_id": {
+      "oneOf": [
+        {
+          "type": "string",
+          "pattern": "^snap_[0-9a-z]+$"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Null pins the current published snapshot."
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "timeout_ms": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_rows": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_depth": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "symbol_id": {
+      "oneOf": [
+        {
+          "type": "string",
+          "pattern": "^sym_[0-9a-z]+$"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "path"
+          ],
+          "description": "A symbol by name and file, in place of its id.",
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The name a lean row shows (BudgetLedger.consume), or the plain name (consume); it must name one symbol in the file."
+            },
+            "path": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The repository-relative path of the file that declares the symbol."
+            }
+          }
+        }
+      ],
+      "description": "Or { name, path }: the symbol of that name in that file. Give symbol_id or key."
+    },
+    "key": {
+      "type": "string",
+      "minLength": 1,
+      "description": "A symbol by its stable_key (FR149): the key get_symbol and every other row names it with, unique in a snapshot and the same in every tier. An unknown key is NOT_FOUND. In place of the id."
+    },
+    "types": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "calls",
+          "imports",
+          "contains",
+          "inherits",
+          "implements",
+          "overrides",
+          "references",
+          "injects",
+          "registered_as",
+          "exposes",
+          "maps_to",
+          "runs",
+          "dispatches_to",
+          "handles",
+          "publishes",
+          "consumes",
+          "sends_to",
+          "listens_on",
+          "evaluates_flag",
+          "reads_config",
+          "depends_on",
+          "depends_on_package",
+          "owned_by",
+          "calls_service",
+          "renders",
+          "uses_hook",
+          "provides_context",
+          "uses_context",
+          "mentions"
+        ]
+      },
+      "uniqueItems": true,
+      "minItems": 1,
+      "description": "The relationship types listed on each side; default calls."
+    },
+    "direction": {
+      "enum": [
+        "in",
+        "out"
+      ],
+      "description": "Only this side, to page it with offset; both sides when absent."
+    },
+    "offset": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "The row each side starts at: a side's next_offset."
+    },
+    "envelope": {
+      "enum": [
+        "full",
+        "compact"
+      ],
+      "description": "compact: the JSON envelope without the snapshot-wide parts an earlier answer gave. full (default): the whole envelope."
+    }
+  }
+}

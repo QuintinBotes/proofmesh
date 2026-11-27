@@ -38,6 +38,7 @@
     ".": "./dist/main.mjs",
     "./terraform": "./dist/terraform.mjs",
     "./python": "./dist/python.mjs",
-    "./build": "./dist/build.mjs"
+    "./build": "./dist/build.mjs",
+    "./pattern": "./dist/pattern.mjs"
   }
 }

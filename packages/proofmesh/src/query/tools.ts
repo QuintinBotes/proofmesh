@@ -30,6 +30,7 @@ import { gitInfo } from '../indexer/discovery.js'
 import { findTables, tableReach } from './table-reach.js'
 import { searchSources } from './sources.js'
 import { planRename, publicEntry } from './rename.js'
+import { MAX_TERMS, searchConcepts } from './concepts.js'
 import { NOTE_KINDS, notesMatching, resolveRef, resolveRefs, staleness } from './notes.js'
 import { verify, type Proposition } from './claims.js'
 import { openCursor, queryHash, sealCursor } from './cursor.js'
@@ -40,6 +41,7 @@ import { innermost } from './symbol-at.js'
 import { findCycles, findEntryPoints, findHubs, findUnused, type CycleEdge, type EntryPoint, type Hub, type UnusedRow } from './structure.js'
 import { contextMap } from './context-map.js'
 import { compare, hasBodyHash, unreadableFiles } from './compare.js'
+import { importersOf, MAX_FILE_BYTES, MAX_SOURCE_BYTES, reachSet, searchStructure, type StructureMatch } from './structure-search.js'
 import { loadSchema } from '../core/schemas.js'
 import { changes, workingTree } from '../indexer/freshness.js'
 import { registryFor } from '../indexer/languages.js'
@@ -49,10 +51,10 @@ import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 
-export const TOOLS = ['workspace_status', 'list_repositories', 'list_snapshots', 'list_workspaces', 'find_symbols', 'get_symbol', 'get_relationships', 'trace_paths', 'read_evidence', 'get_overview', 'analyze_impact', 'find_tests', 'search_sources', 'get_memory', 'verify_claim', 'request_index', 'get_job', 'get_claims', 'save_memory', 'get_table_reach', 'get_property_reads', 'get_external_usage', 'find_query_source', 'compare_snapshots', 'list_queries', 'get_ecosystem', 'prepare_verification', 'get_verification', 'impact_completeness', 'get_symbols_at', 'get_session_trail', 'find_stale_mentions', 'find_unused', 'find_cycles', 'find_entry_points', 'find_hubs', 'get_context_map', 'plan_rename'] as const
+export const TOOLS = ['workspace_status', 'list_repositories', 'list_snapshots', 'list_workspaces', 'find_symbols', 'get_symbol', 'get_relationships', 'trace_paths', 'read_evidence', 'get_overview', 'analyze_impact', 'find_tests', 'search_sources', 'get_memory', 'verify_claim', 'request_index', 'get_job', 'get_claims', 'save_memory', 'get_table_reach', 'get_property_reads', 'get_external_usage', 'find_query_source', 'compare_snapshots', 'list_queries', 'get_ecosystem', 'prepare_verification', 'get_verification', 'impact_completeness', 'get_symbols_at', 'get_session_trail', 'find_stale_mentions', 'find_unused', 'find_cycles', 'find_entry_points', 'find_hubs', 'get_context_map', 'plan_rename', 'search_structure', 'search_concepts', 'get_symbol_card'] as const
 export type ToolName = (typeof TOOLS)[number]
 /** The query tools whose results are code locations: they answer in the lean envelope on request, and by default over MCP (FR099). */
-export const LEAN = new Set<string>(['find_symbols', 'get_symbol', 'get_symbols_at', 'get_relationships', 'trace_paths', 'analyze_impact', 'find_tests', 'get_session_trail', 'find_unused', 'find_cycles', 'find_entry_points', 'find_hubs', 'get_context_map'])
+export const LEAN = new Set<string>(['find_symbols', 'search_concepts', 'get_symbol', 'get_symbols_at', 'get_relationships', 'trace_paths', 'analyze_impact', 'find_tests', 'get_session_trail', 'find_unused', 'find_cycles', 'find_entry_points', 'find_hubs', 'get_context_map', 'search_structure'])
 /** A lean answer is its text; the envelope beside it is what the text was rendered from, for in-process callers. */
 export type Answer = Envelope & { text?: string }
 
@@ -67,7 +69,7 @@ export const CAPABILITY: Record<ToolName, ListQueriesData['tools'][number]['capa
   verify_claim: 'read', request_index: 'management', get_job: 'read', get_claims: 'read', save_memory: 'management', get_table_reach: 'read',
   get_property_reads: 'read', get_external_usage: 'read', find_query_source: 'read', compare_snapshots: 'read', list_queries: 'read',
   get_ecosystem: 'read', prepare_verification: 'management', get_verification: 'read', impact_completeness: 'management', get_symbols_at: 'read', get_session_trail: 'read', find_stale_mentions: 'read',
-  find_unused: 'read', find_cycles: 'read', find_entry_points: 'read', find_hubs: 'read', get_context_map: 'read', plan_rename: 'read',
+  find_unused: 'read', find_cycles: 'read', find_entry_points: 'read', find_hubs: 'read', get_context_map: 'read', plan_rename: 'read', search_structure: 'read', search_concepts: 'read', get_symbol_card: 'read',
 }
 
 /**
@@ -76,7 +78,7 @@ export const CAPABILITY: Record<ToolName, ListQueriesData['tools'][number]['capa
  */
 export const PROFILE: Record<ToolName, ListQueriesData['tools'][number]['profile']> = {
   workspace_status: 'core', list_repositories: 'core', find_symbols: 'core', get_symbol: 'core', get_symbols_at: 'core', get_relationships: 'core', trace_paths: 'core',
-  read_evidence: 'core', get_overview: 'core', analyze_impact: 'core', find_tests: 'core', search_sources: 'core', list_queries: 'core',
+  read_evidence: 'core', get_overview: 'core', analyze_impact: 'core', find_tests: 'core', search_sources: 'core', search_concepts: 'core', list_queries: 'core',
   get_table_reach: 'data', get_property_reads: 'data', get_external_usage: 'data', find_query_source: 'data', get_session_trail: 'data', get_context_map: 'data',
   verify_claim: 'claims', get_claims: 'claims', prepare_verification: 'claims', get_verification: 'claims',
   list_snapshots: 'extra', list_workspaces: 'extra', get_ecosystem: 'extra', compare_snapshots: 'extra', impact_completeness: 'extra', request_index: 'extra',
@@ -85,6 +87,10 @@ export const PROFILE: Record<ToolName, ListQueriesData['tools'][number]['profile
   find_unused: 'extra', find_cycles: 'extra', find_entry_points: 'extra', find_hubs: 'extra',
   // Asked before a rename, not for most questions: core's tools/list has little room left, and analyze_impact (core) covers what a change reaches.
   plan_rename: 'extra',
+  // Structural search runs a matcher process over captured source: a question for a pattern, not most questions (#37).
+  search_structure: 'extra',
+  // What Observatory opens a symbol with (FR1180); an assistant asks get_symbol and get_relationships, so core's list stays as it is.
+  get_symbol_card: 'extra',
 }
 /** How a client loads the tools of another profile, said by list_queries, which lists them all (FR422). */
 const PROFILES_NOTE = 'Over MCP, proofmesh mcp lists the core profile; start it with --tools <profile[,profile]> (core, data, claims, extra) or --tools all to list the others. A tool outside the profiles it was started with answers INVALID_ARGUMENT naming its profile.'
@@ -135,7 +141,7 @@ type Partial = {
 }
 
 /** Tools whose shrink list has a total order and honours ctx.page.offset, so a cursor continues it with no omission or duplicate. */
-const PAGED = new Set<ToolName>(['get_symbols_at', 'find_symbols', 'get_relationships', 'search_sources', 'workspace_status', 'find_tests', 'impact_completeness', 'find_unused', 'find_cycles', 'find_entry_points', 'get_context_map'])
+const PAGED = new Set<ToolName>(['get_symbols_at', 'find_symbols', 'get_relationships', 'search_sources', 'workspace_status', 'find_tests', 'impact_completeness', 'find_unused', 'find_cycles', 'find_entry_points', 'get_context_map', 'search_structure'])
 /** Tools that answer over a workspace's link file rather than one repository snapshot (A28). None yet in this file; get_ecosystem joins at integration. */
 const WORKSPACE_SCOPED = new Set<ToolName>([])
 
@@ -476,12 +482,25 @@ function symbolNamed(db: Database.Database, named: { name: string; path: string 
   throw new ProofmeshError('INVALID_ARGUMENT', `${named.name} names ${hits.length} symbols in ${named.path}; pass one by id:\n${candidates.join('\n')}`, { detail: 'ambiguous_name', candidates })
 }
 
+/** Source text in a lean row, control and bidirectional characters escaped, so the code cannot reorder or hide what the row shows. */
+const visible = (t: string) => t.replace(/[\u0000-\u001f\u007f-\u009f\u200E\u200F\u202A-\u202E\u2066-\u2069]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`)
+/** The one symbol a name names in the whole snapshot: its lean name (`DataSource.initialize`), else its plain name. */
+function symbolByName(db: Database.Database, name: string): string {
+  const rows = db.prepare(`${SYMBOL_SQL} where s.name = ? and s.kind <> 'module' order by f.path, s.start_line, s.id`).all(name.slice(name.lastIndexOf('.') + 1)) as SymbolRow[]
+  const exact = rows.filter((s) => leanName(s) === name)
+  const hits = exact.length ? exact : rows.filter((s) => s.name === name)
+  if (hits.length === 1) return hits[0]!.id
+  if (!hits.length) throw new ProofmeshError('NOT_FOUND', `no symbol named ${name} in this snapshot`)
+  const candidates = hits.slice(0, 10).map((s) => symbolRow(s, true))
+  throw new ProofmeshError('INVALID_ARGUMENT', `${name} names ${hits.length} symbols; pass one by id or as { name, path }:\n${candidates.join('\n')}`, { detail: 'ambiguous_name', candidates })
+}
+
 /** The input with every `{ name, path }` given in place of a symbol id replaced by that id. */
 function withNamedIds(db: Database.Database, tool: string, input: Record<string, unknown>): Record<string, unknown> {
   const id = (v: unknown) => (v !== null && typeof v === 'object' ? symbolNamed(db, v as { name: string; path: string }) : v)
   const out = { ...input }
   // A `key` is a stable_key, the same in every tier (FR149): it stands in for the id the tool takes.
-  const ids: Record<string, [string, string]> = { get_symbol: ['key', 'symbol_id'], get_memory: ['key', 'symbol_id'], get_relationships: ['key', 'subject_id'], analyze_impact: ['key', 'subject_ids'], find_tests: ['key', 'subject_ids'], plan_rename: ['key', 'subject_id'] }
+  const ids: Record<string, [string, string]> = { get_symbol: ['key', 'symbol_id'], get_memory: ['key', 'symbol_id'], get_relationships: ['key', 'subject_id'], analyze_impact: ['key', 'subject_ids'], find_tests: ['key', 'subject_ids'], plan_rename: ['key', 'subject_id'], get_symbol_card: ['key', 'symbol_id'] }
   const keyed = (name: string, into: string) => {
     if (!(name in out)) return
     // A key is one way to name the subject: with an id or a path as well, the call does not say which it means.
@@ -1197,6 +1216,30 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     return result
   },
 
+  search_concepts(ctx, input) {
+    // A snapshot sealed before format 0.13 has no term index: said, not answered as if nothing matched.
+    if (!ctx.db.prepare("select 1 from sqlite_master where name = 'term'").get()) {
+      return { data: { symbols: [], files: [], terms: [] }, limitations: [`Snapshot ${ctx.snapshot.id} was built before concept search had a term index (snapshot format 0.13); index the repository again.`], shrink: 'symbols', lean: () => [] }
+    }
+    // A ranking, not a listing: 20 rows of each unless max_rows asks for more or fewer.
+    const rows = (input.limits as Limits | undefined)?.max_rows ?? Math.min(20, ctx.limits.max_rows)
+    const prefix = input.path_prefix as string | undefined
+    const r = searchConcepts(ctx.db, { text: String(input.text), kinds: input.kinds as string[] | undefined, pathPrefix: prefix, includeTests: input.include_tests === true, rows: Math.min(rows, ctx.limits.max_rows), generated: generatedPaths(ctx.db) })
+    const limitations = [
+      ...(r.terms.length ? [] : ['no indexed term matched: no word of the text occurs in the indexed files of this snapshot, so nothing is ranked.']),
+      ...(r.terms.length && !r.matched ? [`No indexed file${prefix ? ` under path_prefix ${prefix}` : ''} holds a term of the text, so nothing is ranked.`] : []),
+      ...(r.dropped ? [`The text has ${r.terms.length + r.dropped} indexed terms; only the ${MAX_TERMS} heaviest were ranked by, and ${r.dropped} lighter ones were left out.`] : []),
+    ]
+    const tags = (x: { score: number; terms: string[]; via?: string }) => [`score=${x.score}`, ...(x.terms.length ? [`terms=${x.terms.join(',')}`] : []), ...(x.via ? [`via=${x.via}`] : [])]
+    return {
+      data: { symbols: r.symbols, files: r.files, terms: r.terms, ...(r.dropped ? { terms_dropped: r.dropped } : {}) }, limitations, shrink: ['files', 'symbols'], keep: 1,
+      lean: (data) => [
+        ...(data.symbols as typeof r.symbols).map((s) => leanRow(leanName(s), s.path, s.start_line, [s.kind, ...tags(s)])),
+        ...(data.files as typeof r.files).map((f) => leanRow(null, f.path, f.line, ['file', ...tags(f)])),
+      ],
+    }
+  },
+
   find_tests(ctx, input) {
     const ids = [...((input.subject_ids as string[] | undefined) ?? [])]
     for (const id of ids) if (!ctx.db.prepare('select 1 from symbol where id = ?').get(id)) throw new ProofmeshError('NOT_FOUND', `symbol ${id} is not in snapshot ${ctx.snapshot.id}`)
@@ -1313,6 +1356,49 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     return {
       data: { hubs: r.hubs, by, sampled_sources: r.sampled }, stop_reasons: [...(Number(input.top ?? 10) > ctx.limits.max_rows && r.hubs.length === ctx.limits.max_rows ? ['max_rows' as const] : []), ...(r.timedOut ? ['timeout' as const] : [])], limitations, shrink: 'hubs',
       lean: (data) => (data.hubs as Hub[]).map((h) => leanRow(leanName(h), h.path, h.line, [h.kind, `fan_in=${h.fan_in}`, `fan_out=${h.fan_out}`, ...(h.betweenness !== undefined ? [`betweenness=${h.betweenness}`] : [])])),
+    }
+  },
+
+  search_structure(ctx, input) {
+    const scope = (input.scope ?? {}) as { reachable_from?: unknown[]; reaching?: unknown[]; importing?: string[] }
+    const deadline = ctx.started + ctx.limits.timeout_ms
+    const symbolRef = (r: unknown): string => {
+      if (r !== null && typeof r === 'object') return symbolNamed(ctx.db, r as { name: string; path: string })
+      const s = String(r)
+      if (!/^sym_[0-9a-z]+$/.test(s)) return symbolByName(ctx.db, s)
+      if (!ctx.db.prepare('select 1 from symbol where id = ?').get(s)) throw new ProofmeshError('NOT_FOUND', `symbol ${s} is not in snapshot ${ctx.snapshot.id}`)
+      return s
+    }
+    // Each scope given narrows the search; together they intersect (FR1062).
+    let symbols = null as Set<string> | null
+    const walkNotes: string[] = []
+    for (const [key, direction] of [['reachable_from', 'out'], ['reaching', 'in']] as const) {
+      if (!scope[key]) continue
+      const r = reachSet(ctx.db, scope[key].map(symbolRef), direction, ctx.limits.max_depth, deadline)
+      symbols = symbols ? new Set([...symbols].filter((id) => r.ids.has(id))) : r.ids
+      if (r.stopped) walkNotes.push(`The ${key} walk stopped at ${r.stopped === 'max_depth' ? `max_depth ${ctx.limits.max_depth}` : 'the time limit'}; symbols further away are outside the scope.`)
+    }
+    const files = scope.importing ? importersOf(ctx.db, scope.importing.map((p) => fileAt(ctx, p).id)) : null
+    const r = searchStructure(ctx.db, ctx.store, { pattern: String(input.pattern), language: input.language as string | undefined, pathPrefix: input.path_prefix as string | undefined, symbols, files, offset: ctx.page.offset, maxRows: ctx.limits.max_rows, deadline })
+    const git = JSON.parse((ctx.db.prepare("select value from meta where key = 'git'").get() as { value: string } | undefined)?.value ?? '{}') as { commit?: string }
+    const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
+    const noGrammar = Object.entries(r.skipped.no_grammar).sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))
+    const skippedFiles = noGrammar.reduce((n, [, c]) => n + c, 0)
+    const limitations = [
+      // The snapshot's captured content, never the working tree: a stale snapshot answers for what it captured (FR1065).
+      `Matched against the content snapshot ${ctx.snapshot.id} captured${git.commit ? ` at commit ${git.commit.slice(0, 12)}` : ''}, not the working tree.`,
+      ...walkNotes,
+      ...(skippedFiles ? [`${plural(skippedFiles, 'file')} in a language with no grammar here ${skippedFiles === 1 ? 'was' : 'were'} not searched: ${noGrammar.slice(0, 5).map(([e, n]) => `${e} ${n}`).join(', ')}${noGrammar.length > 5 ? ', ...' : ''}.`] : []),
+      ...Object.entries(r.failed_languages).map(([lang, why]) => `The pattern does not parse as ${lang} (${why.split('\n')[0]}), so ${lang} files were not searched.`),
+      ...(r.skipped.too_large ? [`${plural(r.skipped.too_large, 'file')} over ${MAX_FILE_BYTES / 1024 / 1024} MiB ${r.skipped.too_large === 1 ? 'was' : 'were'} not parsed.`] : []),
+      ...(r.skipped.over_budget ? [`${plural(r.skipped.over_budget, 'file')} past the ${MAX_SOURCE_BYTES / 1024 / 1024} MiB one search reads ${r.skipped.over_budget === 1 ? 'was' : 'were'} not searched; narrow path_prefix or the scope.`] : []),
+      ...(r.stopped ? [`The search stopped at timeout_ms ${ctx.limits.timeout_ms}; total counts the matches found before it.`] : []),
+    ]
+    const end = ctx.page.offset + r.matches.length
+    return {
+      data: { matches: r.matches, totals: { matches: r.total, files_searched: r.files_searched, ...(symbols ? { scope_symbols: symbols.size } : {}), ...(files ? { scope_files: files.size } : {}) } },
+      total: r.total, more: r.total > end, stop_reasons: [...(r.total > end ? ['max_rows' as const] : []), ...(r.stopped ? ['timeout' as const] : [])], limitations, shrink: 'matches',
+      lean: (data) => (data.matches as StructureMatch[]).map((m) => leanRow(m.symbol ? leanName({ ...m.symbol, path: m.path }) : null, m.path, m.line, [quote(visible(m.text))])),
     }
   },
 
@@ -1625,11 +1711,14 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     }
     const relationships: Record<string, unknown> = {}
     const hopBasis = new Map<string, Basis>()
+    // A hop of a path carries its call site, so a reader sees each hop's proof with no request per hop (FR1185).
+    const onPath = new Set(t.paths.flatMap((p) => p.assertions))
     for (const id of [...new Set([...t.paths.flatMap((p) => p.assertions), ...t.explored.map((e) => e.assertion_id)])].sort(byKey((i) => assertionKey(ctx.db, i)))) {
       const a = ctx.db.prepare('select type, origin, resolution, detail from assertion where id = ?').get(id) as { type: string; origin: string; resolution: string; detail: string | null }
       const basis = basisOf(a) ?? 'observed'
       hopBasis.set(id, basis)
-      relationships[id] = { type: a.type, origin: a.origin, basis, rule: a.detail ? ((JSON.parse(a.detail) as { rule?: string }).rule ?? null) : null }
+      const site = onPath.has(id) ? siteOf(ctx.db, id) : null
+      relationships[id] = { type: a.type, origin: a.origin, basis, rule: a.detail ? ((JSON.parse(a.detail) as { rule?: string }).rule ?? null) : null, ...(site ? { site: { path: site.path, start_line: site.start_line } } : {}) }
     }
     // A path is inferred when any hop is.
     const paths = t.paths.map((p) => ({ ...p, basis: p.assertions.some((a) => hopBasis.get(a) === 'inferred') ? 'inferred' as const : 'observed' as const }))
@@ -1677,7 +1766,61 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     })
     return { data: { evidence }, evidence_ids: ids, shrink: 'evidence' }
   },
+
+  // FR1180: a symbol's card in one request, so a reader sees its proof without four round trips. Read-only; every part is what
+  // get_symbol, get_relationships and read_evidence answer, each object verified once per request.
+  get_symbol_card(ctx, input) {
+    const symbol = IMPL.get_symbol(ctx, { symbol_id: input.symbol_id }).data.symbol as SymbolRow & Record<string, unknown>
+    const verified = new Map<string, ReturnType<EvidenceStore['verify']>>()
+    const verify = (hash: string) => { if (!verified.has(hash)) verified.set(hash, ctx.store.verify(hash)); return verified.get(hash)! }
+    const evidenceRow = (id: string) => ctx.db.prepare('select e.*, f.path from evidence e join file f on f.id = e.file_id where e.id = ?').get(id) as Record<string, any>
+    const decl = evidenceRow((ctx.db.prepare('select evidence_id from symbol where id = ?').get(symbol.id) as { evidence_id: string }).evidence_id)
+    const d = verify(decl.object_hash)
+    const declaration = {
+      id: decl.id, path: decl.path, start_line: decl.start_line, end_line: decl.end_line, object_hash: decl.object_hash, extractor: decl.extractor, extractor_version: decl.extractor_version,
+      analysis_mode: decl.analysis_mode, integrity: d.integrity, text: d.integrity.status === 'verified' && d.content ? d.content.subarray(decl.start_byte, decl.end_byte).toString('utf8') : null,
+    }
+    // A row's call site: the whole lines of the cited span, at most CARD_CONTEXT_LINES, with the span's character offsets in them;
+    // no text when the object fails its integrity check, so the lens says why rather than showing unverified source.
+    const cited = (id: string | undefined) => {
+      if (!id) return null
+      const e = evidenceRow(id), v = verify(e.object_hash)
+      const site = { id, path: e.path as string, start_line: e.start_line as number, end_line: e.end_line as number, integrity: v.integrity }
+      if (v.integrity.status !== 'verified' || !v.content) return { ...site, context: null }
+      // Buffer.lastIndexOf counts a negative offset from the end, so a span at the file's first byte starts its line there.
+      const c = v.content, from = e.start_byte === 0 ? 0 : c.lastIndexOf(10, e.start_byte - 1) + 1
+      let to = e.end_byte, lines = 0
+      while (to < c.length && c[to] !== 10) to++
+      for (let i = from; i < to; i++) if (c[i] === 10 && ++lines >= CARD_CONTEXT_LINES) { to = i; break }
+      const before = c.subarray(from, e.start_byte).toString('utf8'), span = c.subarray(e.start_byte, Math.min(e.end_byte, to)).toString('utf8')
+      return { ...site, context: { start_line: e.start_line as number, text: c.subarray(from, to).toString('utf8'), highlight: [before.length, before.length + span.length] } }
+    }
+    const types = (input.types as string[] | undefined) ?? ['calls']
+    const offset = (input.offset as number | undefined) ?? 0
+    const notes = new Set<string>()
+    let more = false
+    const side = (direction: 'in' | 'out') => {
+      if (input.direction && input.direction !== direction) return null
+      const r = IMPL.get_relationships({ ...ctx, page: { ...ctx.page, offset } }, { subject_id: symbol.id, direction, types, include_external: true })
+      for (const l of r.limitations ?? []) notes.add(l)
+      more ||= !!r.more
+      const d = r.data as { relationships: Array<Record<string, unknown> & { evidence_ids: string[] }>; totals: { in: number; out: number } }
+      const total = d.totals[direction]
+      return { rows: d.relationships.map((row) => ({ ...row, evidence: cited(row.evidence_ids[0]) })), total, next_offset: offset + d.relationships.length < total ? offset + d.relationships.length : null }
+    }
+    const incoming = side('in'), outgoing = side('out')
+    return {
+      data: { symbol, declaration, incoming, outgoing },
+      evidence_ids: [decl.id, ...[incoming, outgoing].flatMap((s) => s?.rows.flatMap((r) => r.evidence_ids) ?? [])],
+      stop_reasons: more ? ['max_rows'] : [], limitations: [...notes, ...(more ? ['Each side lists its first rows; pass direction and its next_offset as offset for the rest.'] : [])],
+      // A row that does not fit max_bytes is cut from the end of each side; next_offset still counts from what was listed.
+      shrink: ['outgoing.rows', 'incoming.rows'],
+      prune: (data) => { for (const s of [data.incoming, data.outgoing] as Array<{ rows: unknown[]; total: number; next_offset: number | null } | null>) if (s) s.next_offset = offset + s.rows.length < s.total ? offset + s.rows.length : null },
+    }
+  },
 }
+/** Most lines of source a card row carries of its call site. */
+const CARD_CONTEXT_LINES = 8
 
 /** What impact_completeness says about candidate edges: for the changed symbols that followed them, and for those that did not (FR209). */
 const inferredNotesFor = (done: Array<{ follow: { on: boolean; asked: boolean }; sites: { followable: number; capped: number } }>): string[] => {

@@ -319,18 +319,26 @@ function runAider() {
   const py = aiderPython()
   if (!py) throw new Error('aider has no Python interpreter to run its RepoMap')
   const files = git('ls-files').stdout
-  const maps = (jobs) => {
-    const r = run(py, ['-I', path.join(HERE, 'aider-map.py'), FIX], { cwd: FIX, input: JSON.stringify(jobs) + '\n' + files })
+  // As -I isolates, but with string hashing fixed, which aider's maps need to be the same each run (#191; aider-map.py).
+  const env = { ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('PYTHON'))), PYTHONHASHSEED: '0' }
+  const aiderMap = (root, jobs) => [py, ['-s', '-P', path.join(HERE, 'aider-map.py'), root], { cwd: root, env, input: JSON.stringify(jobs) + '\n' + files }]
+  const maps = (root, jobs) => {
+    const r = run(...aiderMap(root, jobs))
     if (r.status !== 0) throw new Error(`aider-map.py exited ${r.status}: ${r.stderr.trim().split('\n').slice(-2).join(' ')}`)
     return lastJson(r.stdout)
   }
   const store = path.join(FIX, '.aider.tags.cache.v4')
   const job = [{ file: EDIT_FILE, ident: 'TypeORMError', tokens: 1024 }]
   // The map's own time, read from the run; Python start-up is not index building.
-  const cost = costs({ store, cold: () => fs.rmSync(store, { recursive: true, force: true }), build: () => [py, ['-I', path.join(HERE, 'aider-map.py'), FIX], { input: JSON.stringify(job) + '\n' + files }], ms: (r) => lastJson(r.stdout)[0].ms })
+  const cost = costs({ store, cold: () => fs.rmSync(store, { recursive: true, force: true }), build: () => aiderMap(FIX, job), ms: (r) => lastJson(r.stdout)[0].ms })
   const asked = CONTEXT_ASKED
   const jobs = asked.flatMap((q) => AIDER_TOKENS.map((tokens) => ({ file: q.target.file, ident: q.target.qname ? last(q.target.qname) : path.basename(q.target.file).replace(/\.\w+$/, ''), tokens })))
-  const res = maps(jobs)
+  const res = maps(FIX, jobs)
+  // #191: every map again, in a second copy at another path with a fresh tags cache; parity.md says whether each is the same.
+  const again = path.join(WORK, 'fixture-again')
+  fs.cpSync(FIX, again, { recursive: true, filter: (f) => path.basename(f) !== '.aider.tags.cache.v4' })
+  const res2 = maps(again, jobs)
+  const varying = jobs.flatMap((j, i) => (res2[i].map === res[i].map ? [] : [`${asked[Math.floor(i / AIDER_TOKENS.length)].id} at ${j.tokens} tokens`]))
   const answers = {}
   for (const q of Q) {
     const i = asked.indexOf(q)
@@ -343,7 +351,7 @@ function runAider() {
     })
     answers[q.id] = { context: ctx, ms: ctx[0].ms, bytes: ctx[0].bytes }
   }
-  return { cost, answers, tools_list_bytes: null, transport: 'Python API' }
+  return { cost, answers, tools_list_bytes: null, transport: 'Python API', repeat: { maps: jobs.length, varying } }
 }
 
 // ---------- run every tool ----------
@@ -442,6 +450,7 @@ const md = [
   `| Q | focus | ${PM_BUDGETS.map((b) => `ProofMesh get_context_map ${b} bytes`).join(' | ')} | ${AIDER_TOKENS.map((t) => `aider ${t / 1024}k tokens`).join(' | ')} |`, `|---|---|${[...PM_BUDGETS, ...AIDER_TOKENS].map(() => '---|').join('')}`, ...contextRows,
   '',
   'Each map is asked with the question\'s target file as its focus (aider: in the chat, its file and name mentioned). Inbound: the files of the truth\'s callers, importers, implementers, dependents or type users; outbound: the files the target file imports.',
+  ...(results.aider.repeat ? ['', `aider's ${results.aider.repeat.maps} maps, made again in a second copy of the fixture at another path with a fresh tags cache: ${results.aider.repeat.varying.length ? `they differ for ${results.aider.repeat.varying.join(', ')}` : 'every one is the same'}.`] : []),
   '',
   '## Callers at three levels: items · `file:line` sites · files',
   '',

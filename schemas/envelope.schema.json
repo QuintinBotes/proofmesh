@@ -65,7 +65,10 @@
         "find_entry_points",
         "find_hubs",
         "get_context_map",
-        "plan_rename"
+        "plan_rename",
+        "search_structure",
+        "search_concepts",
+        "get_symbol_card"
       ]
     },
     "snapshot": {

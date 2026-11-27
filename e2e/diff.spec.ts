@@ -29,7 +29,7 @@ test('FR019 Diff compares a chosen base with the head and shows every change as 
 
   const tiles = page.getByRole('list', { name: 'Summary' }).locator('li')
   await expect(tiles).toHaveText([/Symbols added2/, /Symbols removed1/, /Symbols changed2/, /Relationships\+5 −2/, /Files1 added, 0 removed, 2 changed/, /Unresolved4 → 3/])
-  const table = page.getByRole('table').filter({ hasText: 'symbol changes' })
+  const table = page.getByRole('table').filter({ hasText: /symbol changes?, by path/ })
   await expect(table.locator('tbody tr td:nth-child(3)')).toHaveText([
     'packages/api/src/handler:Rates', 'packages/api/src/handler:handleInvoice', 'packages/billing/src/invoice:invoiceTax', 'packages/billing/src/invoice:invoiceTotal', 'packages/format/src/currency:legacyFormat',
   ])
@@ -38,6 +38,7 @@ test('FR019 Diff compares a chosen base with the head and shows every change as 
   // Filters narrow the table; keyboard alone reaches them and the rows' controls.
   await page.getByRole('group', { name: 'Filters' }).getByRole('combobox').selectOption('class')
   await expect(table.locator('tbody tr')).toHaveCount(1)
+  await expect(table.locator('caption')).toHaveText('1 symbol change, by path then name')
   await page.getByRole('group', { name: 'Filters' }).getByRole('combobox').selectOption('')
   await page.getByRole('checkbox', { name: 'removed' }).focus()
   await page.keyboard.press('Space')

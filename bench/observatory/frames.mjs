@@ -2,7 +2,7 @@
 // and viewport, over several cold runs, and checks the medians against the published budgets (budgets.json). README.md says how.
 //
 // Usage: node bench/observatory/frames.mjs --fixture typeorm|synthetic [--nodes N] [--seed S] [--runs N] [--out out/obs.json]
-//          [--budgets file] [--check] [--query text] [--inject-task-ms N] [--headed]
+//          [--budgets file] [--check] [--query text] [--palette-query text] [--inject-task-ms N] [--headed]
 //        node bench/observatory/frames.mjs --data-dir <dir> [--workspace W --repository R] ...   (an indexed data directory as it is)
 // Writes <out>.json and <out>.md, and prints the Markdown. --check exits 1 when a median misses its budget.
 import { execFileSync, spawn, spawnSync } from 'node:child_process'
@@ -23,7 +23,8 @@ const args = process.argv.slice(2)
 const flag = (n, d) => { const i = args.indexOf(n); return i < 0 ? d : args[i + 1] }
 const fixtureName = flag('--fixture'), dataDirArg = flag('--data-dir')
 const RUNS = Number(flag('--runs', 3)), SEED = Number(flag('--seed', 1)), NODES = Number(flag('--nodes', 50000)), INJECT = Number(flag('--inject-task-ms', 0))
-const query = flag('--query', 'order'), workspace = flag('--workspace'), repository = flag('--repository'), headless = !args.includes('--headed')
+const PALETTE_QUERIES = ['init', 'order', 'payment', 'load', 'render', 'conn', 'query', 'build', 'parse', 'format']
+const query = flag('--query', 'order'), paletteQuery = flag('--palette-query', 'initialize'), workspace = flag('--workspace'), repository = flag('--repository'), headless = !args.includes('--headed')
 const out = path.resolve(flag('--out', path.join(HERE, 'out', `${fixtureName === 'synthetic' ? `synthetic-${NODES}` : fixtureName ?? 'data-dir'}.json`)))
 const budgetsFile = flag('--budgets', path.join(HERE, 'budgets.json'))
 // --fixture with --data-dir is refused: a synthetic galaxy would overwrite the galaxy cache of a person's own data directory.
@@ -80,7 +81,8 @@ async function startView() {
 }
 
 // A synthetic galaxy replaces the indexed fixture's in the server's cache; its points map to the fixture's real symbol ids.
-let evidenceName = null
+// The cache's file names (galaxy-v3-<snapshot>) follow packages/proofmesh/src/query/galaxy.ts, whose version retires older layouts.
+let evidenceNames = null
 if (fixtureName === 'synthetic') {
   const v = await startView()
   const session = await fetch(`${v.origin}/session`, { method: 'POST', headers: { Origin: v.origin, 'Content-Type': 'application/json' }, body: JSON.stringify({ token: v.token }) })
@@ -88,17 +90,18 @@ if (fixtureName === 'synthetic') {
   const g = cookie && await fetch(`${v.origin}/api/v1/galaxy`, { method: 'POST', headers: { Origin: v.origin, Cookie: cookie, 'Content-Type': 'application/json' }, body: '{}' })
   v.stop()
   if (!g?.ok) fail(`could not build the fixture's galaxy (${g?.status ?? session.status})`)
-  const cache = path.join(dataDir, 'cache'), idsFile = fs.readdirSync(cache).find((f) => /^galaxy-v2-.*\.ids\.json$/.test(f))
-  const snapshotId = /^galaxy-v2-(.*)\.ids\.json$/.exec(idsFile)[1]
+  const cache = path.join(dataDir, 'cache'), idsFile = fs.readdirSync(cache).find((f) => /^galaxy-v3-.*\.ids\.json$/.test(f))
+  const snapshotId = /^galaxy-v3-(.*)\.ids\.json$/.exec(idsFile)[1]
   // Evidence opens the synthetic point that maps to the fixture's best method, so its Explore view has edges.
-  const real = evidencePoint(cachedGalaxy())
+  const real = evidencePoints(cachedGalaxy())
   const t0 = performance.now()
   const syn = generateGalaxy({ nodes: NODES, seed: SEED, snapshotId, ids: JSON.parse(fs.readFileSync(path.join(cache, idsFile), 'utf8')) })
   fs.writeFileSync(path.join(cache, idsFile), JSON.stringify(syn.ids))
-  fs.writeFileSync(path.join(cache, `galaxy-v2-${snapshotId}.bin.gz`), syn.gz)
+  fs.writeFileSync(path.join(cache, `galaxy-v3-${snapshotId}.bin.gz`), syn.gz)
   Object.assign(fixture, { nodes: NODES, seed: SEED, links: syn.links, galaxy_sha256: crypto.createHash('sha256').update(syn.gz).digest('hex'), generated_ms: Math.round(performance.now() - t0) })
   const names = cachedGalaxy().names
-  if (real >= 0 && real < NODES && alone(names, real)) evidenceName = names[real]
+  const mapped = real.filter((i) => i < NODES && alone(names, i))
+  if (mapped.length === 2) evidenceNames = mapped.map((i) => names[i])
   log(`synthetic galaxy: ${NODES} symbols, ${syn.links} links, seed ${SEED}`)
 }
 
@@ -179,7 +182,7 @@ const timedClick = (page, find, ready, arg) => page.evaluate(async ({ find, read
 }, { find: find.toString(), ready: ready.toString(), arg })
 /** The galaxy of a snapshot (or the only one) in the server's cache: the name, degree and kind of each point. */
 function cachedGalaxy(snapshotId) {
-  const file = snapshotId ? `galaxy-v2-${snapshotId}.bin.gz` : fs.readdirSync(path.join(dataDir, 'cache')).find((f) => /^galaxy-v2-.*\.bin\.gz$/.test(f))
+  const file = snapshotId ? `galaxy-v3-${snapshotId}.bin.gz` : fs.readdirSync(path.join(dataDir, 'cache')).find((f) => /^galaxy-v3-.*\.bin\.gz$/.test(f))
   const buf = zlib.gunzipSync(fs.readFileSync(path.join(dataDir, 'cache', file)))
   const hl = buf.readUInt32LE(0), h = JSON.parse(buf.subarray(4, 4 + hl).toString('utf8')), base = 4 + hl + ((4 - ((4 + hl) % 4)) % 4)
   return {
@@ -190,11 +193,11 @@ function cachedGalaxy(snapshotId) {
 }
 /** Whether no other name contains point i's name, so a search finds it alone. */
 function alone(names, i, all = names.join('\n').toLowerCase()) { const q = names[i].toLowerCase(); return q.length >= 2 && all.indexOf(q) === all.lastIndexOf(q) }
-/** The point opened for evidence: the best-connected method or function (Explore lists its calls as edges) a search finds alone. */
-function evidencePoint(g) {
+/** The points opened for evidence: the two best-connected methods or functions (the lens lists their calls) a search finds alone. */
+function evidencePoints(g) {
   const callable = (i) => (['method', 'function'].includes(g.kinds[g.kind[i]]) ? 1 : 0)
   const all = g.names.join('\n').toLowerCase()
-  return Array.from(g.names.keys()).sort((a, b) => callable(b) - callable(a) || g.degree[b] - g.degree[a] || a - b).slice(0, 500).find((i) => alone(g.names, i, all)) ?? -1
+  return Array.from(g.names.keys()).sort((a, b) => callable(b) - callable(a) || g.degree[b] - g.degree[a] || a - b).slice(0, 500).filter((i) => alone(g.names, i, all)).slice(0, 2)
 }
 
 const responses = (page) => {
@@ -268,25 +271,58 @@ async function coldRun(i, { keepFor } = {}) {
   const mapCold = await tab('Map')
   await tab('Galaxy')
   const mapWarm = await tab('Map')
-  await tab('Galaxy')
-  // Symbol to evidence: the Galaxy table's Explore button for one symbol (the same call path as a click on its point), to the source
-  // text shown; the first open, then again once Explore's renderer has started. Then an edge of it, from the Explore table.
-  // The galaxy shown is the one of the snapshot its layout key names; a data directory's cache may hold others.
-  if (!evidenceName) { const g = cachedGalaxy(layout.key.slice(0, layout.key.lastIndexOf(':'))); evidenceName = g.names[evidencePoint(g)] }
-  const symbol = evidenceName
-  if (!symbol) throw new Error('no symbol with a name no other name contains')
-  const openSymbol = async () => {
-    await page.getByRole('tab', { name: 'Galaxy' }).click()
-    await page.getByLabel('Search').fill(symbol)
-    await page.getByRole('button', { name: 'Table', exact: true }).click()
-    return timedClick(page, (s) => [...document.querySelectorAll('[aria-label="Galaxy table"] tr')].find((r) => r.children[2]?.textContent === s)?.querySelector('button'), () => document.querySelector('[data-testid=evidence-text]')?.textContent, symbol)
+  // The command palette (#43), over the Map: from a query set in its field to the frame after the count of matches changes, twenty
+  // times; then the longest main-thread task while a query is typed a key at a time.
+  await page.keyboard.press('Control+K')
+  const palette = page.getByRole('combobox', { name: 'Find a symbol, file or command' })
+  const paletteStatus = page.getByRole('dialog', { name: 'Command palette' }).getByRole('status')
+  await palette.fill(paletteQuery.slice(0, 2))
+  await paletteStatus.filter({ hasText: /match/ }).waitFor({ timeout: 120000 })
+  const paletteMs = []
+  for (let k = 0; k < 20; k++) {
+    paletteMs.push(await page.evaluate((q) => new Promise((resolve) => {
+      const input = document.querySelector('[role=dialog] input'), status = document.querySelector('[role=dialog] [role=status]')
+      const set = (v) => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, v); input.dispatchEvent(new Event('input', { bubbles: true })) }
+      set('')
+      requestAnimationFrame(() => {
+        const t0 = performance.now()
+        const seen = new MutationObserver(() => { if (/match/.test(status.textContent)) { seen.disconnect(); requestAnimationFrame(() => resolve(performance.now() - t0)) } })
+        seen.observe(status, { childList: true, characterData: true, subtree: true })
+        set(q)
+      })
+    }), PALETTE_QUERIES[k % PALETTE_QUERIES.length]))
   }
-  const evFirst = await openSymbol()
-  if (!evFirst) throw new Error(`the Galaxy table has no row for ${symbol}`)
-  await page.getByRole('button', { name: 'Close evidence' }).click()
-  const ev = await openSymbol()
-  await page.getByRole('button', { name: 'Table', exact: true }).click()
-  const edge = await timedClick(page, () => document.querySelector('[aria-label="Edges"] button'), () => / · /.test(document.querySelector('.ev-title')?.textContent ?? ''))
+  await palette.fill('')
+  const typingFrom = await page.evaluate(() => performance.now())
+  await page.keyboard.type(paletteQuery, { delay: 100 })
+  await paletteStatus.filter({ hasText: /match/ }).waitFor({ timeout: 60000 })
+  await page.waitForTimeout(500)
+  const typingTasks = await page.evaluate((t) => window.__obs.longTasks.filter((x) => x.start >= t).map((x) => x.duration), typingFrom)
+  await page.keyboard.press('Escape')
+  await tab('Galaxy')
+  // Symbol to evidence: the Galaxy table's Explore button (the same call path as a click on the symbol's point) to the Proof lens
+  // showing the symbol's source text, with the API requests between. The first open is the page's first; the warm open is of a
+  // second symbol, once the lens has drawn, so it still needs its own request. Then an edge: a caller or callee row of the lens to
+  // its call site shown.
+  // The galaxy shown is the one of the snapshot its layout key names; a data directory's cache may hold others.
+  if (!evidenceNames) { const g = cachedGalaxy(layout.key.slice(0, layout.key.lastIndexOf(':'))); evidenceNames = evidencePoints(g).map((i) => g.names[i]) }
+  if (evidenceNames.length < 2) throw new Error('no two symbols with names no other name contains')
+  const openSymbol = async (symbol) => {
+    await page.getByRole('tab', { name: 'Galaxy' }).click()
+    await page.getByRole('button', { name: 'Table', exact: true }).click()
+    await page.getByLabel('Search').fill(symbol)
+    // A synthetic point opens the fixture's real symbol it maps to, so there the panel's title is only checked to have changed.
+    const before = await page.evaluate(() => document.querySelector('.ev-title')?.textContent ?? null)
+    const t = await timedClick(page, (a) => [...document.querySelectorAll('[aria-label="Galaxy table"] tr')].find((r) => r.children[2]?.textContent === a.symbol)?.querySelector('button'),
+      (a) => { const title = document.querySelector('.ev-title')?.textContent; return title && (a.exact ? title === a.symbol : title !== a.before) && document.querySelector('[data-testid=evidence-text]')?.textContent },
+      { symbol, before, exact: fixtureName !== 'synthetic' })
+    if (!t) throw new Error(`the Galaxy table has no row for ${symbol}`)
+    return t
+  }
+  const evFirst = await openSymbol(evidenceNames[0])
+  const ev = await openSymbol(evidenceNames[1])
+  const edge = await timedClick(page, () => document.querySelector('[aria-label="Proof lens"] [role=listbox][aria-label=Callees] [role=option]') ?? document.querySelector('[aria-label="Proof lens"] [role=listbox][aria-label=Callers] [role=option]'),
+    () => document.querySelector('[data-testid=cited]')?.textContent)
   await page.getByLabel('Search').fill('')
   const calls = await page.evaluate(() => performance.getEntriesByType('resource').filter((e) => e.name.includes('/api/')).map((e) => ({ call: new URL(e.name).pathname, ms: e.duration })))
   Object.assign(run, {
@@ -294,6 +330,8 @@ async function coldRun(i, { keepFor } = {}) {
     frame_pan_zoom_p50_ms: pct(panZoom, 0.5), frame_pan_zoom_p95_ms: pct(panZoom, 0.95), frame_pan_zoom_max_ms: pct(panZoom, 1),
     search_ms: summarize(search).median, symbol_to_evidence_first_ms: evFirst?.ms, symbol_to_evidence_ms: ev?.ms, symbol_to_evidence_requests: ev?.requests,
     edge_to_evidence_ms: edge?.ms ?? null, edge_to_evidence_requests: edge?.requests ?? null, map_switch_ms: mapWarm.ms, map_switch_cold_ms: mapCold.ms,
+    palette_p50_ms: pct(paletteMs, 0.5), palette_p95_ms: pct(paletteMs, 0.95), palette_max_ms: pct(paletteMs, 1),
+    palette_typing_longest_task_ms: Math.max(0, ...typingTasks),
     script_gzip_kb: Math.round(loadBytes.filter((b) => b.type === 'script').reduce((s, b) => s + b.gzip, 0) / 1024),
     // Scripts and style sheets only, as #47's target counts them ("before data"); the bytes table lists the data apart.
     transferred_kb: Math.round(loadBytes.filter((b) => b.type !== 'api').reduce((s, b) => s + b.transferred, 0) / 1024),
@@ -303,7 +341,7 @@ async function coldRun(i, { keepFor } = {}) {
   const galaxyUrl = v.origin + (workspace && repository ? new URL(v.url).search : '/')
   await page.goto(galaxyUrl)
   const warm = await loadMetrics(page, cdp, server.process().pid)
-  const result = { run, warm, layout, renderer, summary, bytes: loadBytes, calls, browserVersion: browser.version(), symbol, galaxyUrl }
+  const result = { run, warm, layout, renderer, summary, bytes: loadBytes, calls, browserVersion: browser.version(), symbol: evidenceNames.join(', '), galaxyUrl }
   if (keepFor) { result.keep = { page, close: async () => { await server.close(); v.stop() } }; return result }
   await server.close()
   v.stop()

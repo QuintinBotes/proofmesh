@@ -19,11 +19,11 @@ test.afterAll(async () => { await context?.close(); view?.stop() })
 
 test('A11 the Galaxy opens first with every symbol, and search shows only the matches and lists them', async () => {
   await expect(page.getByRole('tab', { name: 'Galaxy' })).toHaveAttribute('aria-selected', 'true')
-  await expect(page.getByTestId('conclusion')).toHaveText('7 symbols in 4 areas, 4 links; 3 more areas hold files the graph cannot see. Search, pick an area, or click a point.', { timeout: 60000 })
+  await expect(page.getByTestId('conclusion')).toHaveText('8 symbols in 4 areas, 5 links; 3 more areas hold files the graph cannot see. Search, pick an area, or click a point.', { timeout: 60000 })
   await expect(page.getByRole('region', { name: 'Areas' })).toContainText('packages/api/src')
   await page.getByLabel('Search').fill('format')
   await expect(page.getByTestId('conclusion')).toHaveText('“format”: showing the 2 matching symbols; click one to explore it.')
-  await expect(page.getByRole('status').filter({ hasText: 'of 7 symbols' })).toContainText('“format”: 2 of 7 symbols')
+  await expect(page.getByRole('status').filter({ hasText: 'of 8 symbols' })).toContainText('“format”: 2 of 8 symbols')
   await page.getByRole('button', { name: 'Table', exact: true }).click()
   await expect(page.getByRole('table', { name: 'Symbols matching “format”' }).locator('tbody tr td:nth-child(3)')).toHaveText(['packages/format/src/currency:formatAmount', 'packages/legacy/src/format:formatAmount'])
 })
@@ -51,7 +51,7 @@ test('A11 B12 a settled layout is cached: a reload shows it at rest instead of s
   await page.getByRole('button', { name: 'Graph', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Resume layout' })).toBeVisible({ timeout: 60000 })
   await page.reload()
-  await expect(page.getByTestId('conclusion')).toContainText('7 symbols in 4 areas', { timeout: 60000 })
+  await expect(page.getByTestId('conclusion')).toContainText('8 symbols in 4 areas', { timeout: 60000 })
   // A cached layout is at rest as soon as it draws; a fresh simulation needs the better part of a minute to settle, so 5 s still tells them apart.
   await expect(page.getByRole('button', { name: 'Resume layout' })).toBeVisible({ timeout: 5000 })
 })
@@ -60,13 +60,22 @@ test('A11 B5 B8 B20 a one-character search says why nothing shows, every area is
   await page.getByLabel('Search').fill('f')
   await expect(page.getByTestId('conclusion')).toHaveText('Type at least two characters to search.')
   await page.getByLabel('Search').fill('')
-  await expect(page.locator('.galaxy-label')).toHaveText(['api/src', 'billing/src', 'format/src', 'legacy/src'])
+  await expect(page.locator('.galaxy-label')).toHaveText(['billing/src', 'api/src', 'format/src', 'legacy/src'])
   const toggle = page.getByRole('toolbar', { name: 'Galaxy controls' }).getByRole('button').last()
   const before = await toggle.boundingBox()
   await toggle.click()
   await expect(toggle).toHaveAttribute('aria-pressed', 'true')
   expect(await toggle.boundingBox()).toEqual(before)
   await toggle.click()
+})
+
+test('FR1210 a search with one match and an area of one symbol are said in the singular', async () => {
+  await page.getByLabel('Search').fill('dispatch')
+  await expect(page.getByTestId('conclusion')).toHaveText('“dispatch”: showing the 1 matching symbol; click one to explore it.')
+  await page.getByLabel('Search').fill('')
+  await page.getByRole('region', { name: 'Areas' }).getByRole('button', { name: /legacy\/src/ }).click()
+  await expect(page.getByTestId('conclusion')).toHaveText('packages/legacy/src: 1 symbol. Click a point to explore it.')
+  await page.getByRole('region', { name: 'Areas' }).getByRole('button', { name: /legacy\/src/ }).click()
 })
 
 test('A11 B10 no view raised a page error while these tests ran', async () => {

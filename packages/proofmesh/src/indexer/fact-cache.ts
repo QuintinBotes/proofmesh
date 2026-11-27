@@ -33,6 +33,8 @@ export function fileKeys(k: KeyInputs): Map<string, string> {
   const global = sha256(canonicalJson({ repository: k.repository, adapter: k.adapter, analysis_mode: k.analysisMode, config: k.config, external_inputs: k.externalInputs, configs: [...k.configs].sort((a, b) => (a.path < b.path ? -1 : 1)).map((c) => [c.path, c.hash]) }))
   const contents = (files: string[]) => [...new Set(files)].sort().map((p) => [p, k.hashOf(p) ?? null])
   const byId = new Map((k.units ?? []).map((u) => [u.id, u]))
+  // Keys are memoised by id, so two units with one id would share the first one's key and replay one file's facts for another.
+  if (byId.size !== (k.units ?? []).length) throw new AdapterProtocolError('two units have the same id')
   const unitKey = new Map<string, string>()
   const keyOf = (id: string, visiting: Set<string>): string => {
     const known = unitKey.get(id)

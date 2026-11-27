@@ -65,6 +65,11 @@ test('SC012 FR065 hostile names and paths show as visible text in Galaxy, Map, E
   await answered(page, () => matches.locator('tbody tr').filter({ hasText: METHOD }).getByRole('button', { name: 'Explore' }).click())
   await expect(page.getByRole('region', { name: 'Focus' })).toContainText(METHOD)
   await expect(page.getByTestId('evidence-text')).toContainText("'<b id=pwn>x</b>'(): number { return ⟨U+3164⟩() }")
+  // The Proof lens names the neighbours as text too (FR1183).
+  const lens = page.getByRole('region', { name: 'Proof lens' })
+  await expect(lens).toContainText('start⟨U+200D⟩here')
+  await expect(lens).toContainText('src/<img src=x onerror=alert(1)>/entry')
+  await injected('Explore lens')
   await page.getByRole('button', { name: 'Table', exact: true }).click()
   const neighbours = page.getByRole('table', { name: 'Symbol and its neighbours' })
   await expect(neighbours).toContainText(START)

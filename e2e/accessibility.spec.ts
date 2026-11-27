@@ -1,10 +1,11 @@
 import AxeBuilder from '@axe-core/playwright'
 import { expect, test, type Browser, type Page } from '@playwright/test'
-import { answered, startView, traceIt } from './view'
+import path from 'node:path'
+import { answered, ROOT, startView, traceIt } from './view'
 
 // Each test opens its own view: a launch link works once.
-async function open(browser: Browser, options: Parameters<Browser['newContext']>[0] = {}) {
-  const view = await startView()
+async function open(browser: Browser, options: Parameters<Browser['newContext']>[0] = {}, fixture?: string) {
+  const view = await startView(fixture)
   const context = await browser.newContext(options)
   const page = await context.newPage()
   await page.goto(view.launchUrl)
@@ -71,9 +72,10 @@ test('NFR012 everything can be done with the keyboard alone: search, explore, tr
     throw new Error(`Tab never reached ${name}`)
   }
   try {
-    await page.keyboard.press('/')
+    // `/` opens the command palette (FR1140), so the search box is reached with Tab like any other control.
+    await tabTo('Search')
     await page.keyboard.type('invoiceTotal')
-    await expect(page.getByTestId('conclusion')).toContainText('“invoiceTotal”: showing the 1 matching symbols')
+    await expect(page.getByTestId('conclusion')).toContainText('“invoiceTotal”: showing the 1 matching symbol;')
     await tabTo('Table')
     await page.keyboard.press('Enter')
     await tabTo('Explore')
@@ -98,5 +100,23 @@ test('NFR012 everything can be done with the keyboard alone: search, explore, tr
     await tabTo('Claims')
     await page.keyboard.press('Enter')
     await expect(page.getByRole('heading', { name: 'No claims yet' })).toBeVisible()
+  } finally { await close() }
+})
+
+test('NFR012 FR1140 FR1145 on the TypeORM sample, Control+K, a name and Enter select the symbol, show its evidence and put focus in it, with the keyboard alone', async ({ browser }) => {
+  const { page, close } = await open(browser, {}, path.join(ROOT, 'fixtures', 'ts-typeorm', 'repo'))
+  try {
+    const palette = page.getByRole('dialog', { name: 'Command palette' })
+    await page.keyboard.press('Control+K')
+    await expect(palette).toBeVisible()
+    await page.keyboard.type('initialize')
+    await answered(page, () => page.keyboard.press('Enter'))
+    await expect(palette).toHaveCount(0)
+    await expect(page.getByRole('tab', { name: 'Explore' })).toHaveAttribute('aria-selected', 'true')
+    await expect(page.getByRole('region', { name: 'Focus' })).toContainText('src/data-source:DataSource.initialize')
+    const evidence = page.getByRole('complementary', { name: 'Evidence' })
+    await expect(evidence.getByRole('heading')).toHaveText('src/data-source:DataSource.initialize')
+    await expect(evidence.getByTestId('evidence-text')).toContainText('async initialize(): Promise<this>')
+    await expect(evidence).toBeFocused()
   } finally { await close() }
 })

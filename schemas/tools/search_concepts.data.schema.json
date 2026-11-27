@@ -1,0 +1,155 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "search_concepts.data.schema.json",
+  "title": "search_concepts data",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "symbols",
+    "files",
+    "terms"
+  ],
+  "properties": {
+    "symbols": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "kind",
+          "name",
+          "qualified_name",
+          "path",
+          "start_line",
+          "score",
+          "terms"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^sym_[0-9a-z]+$"
+          },
+          "kind": {
+            "enum": [
+              "function",
+              "class",
+              "method",
+              "interface",
+              "type_alias",
+              "variable",
+              "module",
+              "struct",
+              "enum",
+              "property",
+              "field",
+              "constructor",
+              "namespace",
+              "project",
+              "package",
+              "endpoint",
+              "table",
+              "message",
+              "channel",
+              "job",
+              "feature_flag",
+              "config_key",
+              "team",
+              "service"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "qualified_name": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "start_line": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "score": {
+            "type": "number",
+            "minimum": 0,
+            "description": "The rank score: lexical relevance plus any graph-proximity boost (docs/proofmesh/mcp.md states the formula)."
+          },
+          "terms": {
+            "type": "array",
+            "maxItems": 5,
+            "items": {
+              "type": "string"
+            },
+            "description": "Up to five query terms that matched, the heaviest first."
+          },
+          "via": {
+            "type": "string",
+            "description": "The best lexical match this symbol is one or two resolved relationships from, when that proximity raised its score."
+          },
+          "generated": {
+            "type": "boolean",
+            "description": "Present and true when the file is generated (FR292); absent otherwise."
+          },
+          "key": {
+            "type": "string",
+            "description": "The stable_key of the symbol (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file."
+          }
+        }
+      }
+    },
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "line",
+          "score",
+          "terms"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "line": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Where to start reading: the declaration of the file's best symbol, else the first line a term occurs on."
+          },
+          "score": {
+            "type": "number",
+            "minimum": 0,
+            "description": "The rank score: lexical relevance plus any graph-proximity boost (docs/proofmesh/mcp.md states the formula)."
+          },
+          "terms": {
+            "type": "array",
+            "maxItems": 5,
+            "items": {
+              "type": "string"
+            },
+            "description": "Up to five query terms that matched, the heaviest first."
+          },
+          "generated": {
+            "type": "boolean",
+            "description": "Present and true when the file is generated (FR292); absent otherwise."
+          }
+        }
+      }
+    },
+    "terms": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "The query terms ranked by, the heaviest first: the words of the text the index holds, stop words left out."
+    },
+    "terms_dropped": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Present when the text had more indexed terms than the 32 kept: how many lighter ones were left out."
+    }
+  }
+}

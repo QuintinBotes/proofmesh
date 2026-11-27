@@ -1,26 +1,41 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { callTool, establishSession, fetchGalaxy, fetchWorkspaces, galaxySymbolId, listSnapshots, replaying, setReplay, setRepository, ToolError, type SnapshotInfo, type Workspace } from './api'
+import { callTool, establishSession, fetchGalaxy, fetchWorkspaces, galaxySymbol, listSnapshots, replaying, setReplay, setRepository, ToolError, type SnapshotInfo, type Workspace } from './api'
 import { DiffView } from './DiffView'
 import { overlay as diffOverlay, type CompareData } from './diff'
 import { fogText, Galaxy, manyLinks, MOVING_LINK_LIMIT } from './Galaxy'
 import { ClaimsView } from './ClaimsView'
 import { areaFog, legendAreas, matchIndices, parseGalaxy, rankMatches, shortName, type GalaxyData } from './galaxyData'
 import { GraphView } from './GraphView'
+import { Palette, type Command } from './Palette'
 import { toNeighbourhood, type RelationshipsEnvelope } from './explore'
+import { appendSide, CARD_ROWS, cardHood, declarationEvidence, rowEvidence, type Card, type Evidence } from './card'
+import { ProofLens, type Chain } from './ProofLens'
 import { areaColor, toMap, type Overview } from './map'
 import { defaultSelection, evidenceFor, LINK_WORDS, pairs, RELATION_COLOURS, RELATION_WORDS, relations, toEcosystem, type Ecosystem, type Relation } from './ecosystem'
 import { FRAMEWORK_TYPES, glyph, toScene, type TraceEnvelope } from './scene'
 import { visible } from './visible'
 import { share } from './share'
+import { plural } from './plural'
 import { areasSvg, caveatLines, NO_MEANING, offlineHtml, pngWithText, sceneSvg, sceneTable, type Caveats, type Source } from './exporting'
 
 type Sym = { id: string; kind: string; name: string; qualified_name: string; path: string; start_line: number; signature: string | null }
-type Evidence = { title: string; facts: Array<[string, string]>; integrity: string; text: string | null }
 type Hub = { id: string; kind: string; name: string; qualified_name: string; inbound: number }
 
 const EXPLORE_TYPES = ['calls', 'inherits', 'implements', 'overrides', ...FRAMEWORK_TYPES]
+/** What Explore asks a symbol's card for: the first page of each side, the whole card under a megabyte. */
+const CARD_INPUT = { types: EXPLORE_TYPES, limits: { max_rows: CARD_ROWS, max_bytes: 1048576 } }
+/** Keeps an answer that may still be in flight; a failed one is dropped so the next open asks again, and the oldest goes past 64. */
+function hold<K, V>(map: Map<K, Promise<V>>, key: K, asked: Promise<V>): Promise<V> {
+  asked.catch(() => map.delete(key))
+  map.set(key, asked)
+  if (map.size > 64) map.delete(map.keys().next().value!)
+  return asked
+}
 const param = (name: string) => new URLSearchParams(window.location.search).get(name)
-const VIEW_NAMES: Record<string, string> = { galaxy: 'Galaxy', map: 'Map', explore: 'Explore', trace: 'Trace a path', claims: 'Claims', diff: 'Diff', ecosystem: 'Ecosystem' }
+// In tab order; a view's single key is its place here (FR1144).
+const VIEW_NAMES = { galaxy: 'Galaxy', map: 'Map', explore: 'Explore', trace: 'Trace a path', claims: 'Claims', diff: 'Diff', ecosystem: 'Ecosystem' } as const
+type Mode = keyof typeof VIEW_NAMES
+const VIEWS = Object.entries(VIEW_NAMES) as Array<[Mode, string]>
 
 /** Saves bytes as a file the person downloads; nothing is sent anywhere. */
 function download(name: string, blob: Blob): void {
@@ -55,7 +70,7 @@ function Picker({ label, value, onPick }: { label: string; value: Sym | null; on
     const t = setTimeout(() => callTool('find_symbols', { text: text.trim(), limits: { max_rows: 20 } }).then((r) => { setHits(r.data.symbols); setMore(r.completion.truncated) }).catch(() => setHits([])), 150)
     return () => clearTimeout(t)
   }, [text])
-  const id = `picker-${label.toLowerCase()}`
+  const id = `picker-${label.toLowerCase().replace(/\s+/g, '-')}`
   return (
     <div className="picker">
       <label htmlFor={id}>{label}</label>
@@ -80,7 +95,7 @@ function Picker({ label, value, onPick }: { label: string; value: Sym | null; on
 /** The Galaxy's one-line summary; areas holding only files the graph cannot see are counted apart, never as empty (FR059). */
 function galaxySummary(g: GalaxyData): string {
   const seen = g.areas.filter((a) => a.count > 0).length, hidden = g.areas.length - seen
-  return `${g.n.toLocaleString('en')} symbols in ${seen} areas, ${(g.links.length / 2).toLocaleString('en')} links${hidden ? `; ${hidden} more area${hidden === 1 ? ' holds' : 's hold'} files the graph cannot see` : ''}. Search, pick an area, or click a point.`
+  return `${plural(g.n, 'symbol')} in ${plural(seen, 'area')}, ${plural(g.links.length / 2, 'link')}${hidden ? `; ${hidden} more area${hidden === 1 ? ' holds' : 's hold'} files the graph cannot see` : ''}. Search, pick an area, or click a point.`
 }
 
 export function App() {
@@ -90,7 +105,7 @@ export function App() {
   const [target, setTarget] = useState<Sym | null>(null)
   const [depth, setDepth] = useState(6)
   const [followFramework, setFollowFramework] = useState(false)
-  const [mode, setMode] = useState<'galaxy' | 'map' | 'explore' | 'trace' | 'claims' | 'diff' | 'ecosystem'>(() => (focusFromUrl() ? 'explore' : param('map') !== null ? 'map' : 'galaxy'))
+  const [mode, setMode] = useState<Mode>(() => (focusFromUrl() ? 'explore' : param('map') !== null ? 'map' : 'galaxy'))
   // Replay (FR010): the published snapshots, and the one every query is pinned to when it is not the current one.
   const [snapshots, setSnapshots] = useState<SnapshotInfo[]>([])
   const [replay, setReplayState] = useState<string | null>(null)
@@ -109,9 +124,17 @@ export function App() {
   const [galaxy, setGalaxy] = useState<GalaxyData | null>(null)
   const [galaxyArea, setGalaxyArea] = useState<number | null>(null)
   const galaxyAsked = useRef(false)
+  const [palette, setPalette] = useState(false)
+  // The commands with a single key, as of the last render, for the key handler below.
+  const keyed = useRef<Command[]>([])
   useEffect(() => {
-    // '/' jumps to search, as in most code browsers.
-    const onKey = (e: KeyboardEvent) => { if (e.key === '/' && !(e.target instanceof HTMLInputElement)) { e.preventDefault(); document.getElementById('search')?.focus() } }
+    // Control+K or ⌘K opens the palette from anywhere; '/', '?' and the single keys only where typing is not text (FR1140, FR1144).
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'k') { e.preventDefault(); setPalette(true); return }
+      if (e.metaKey || e.ctrlKey || e.altKey || (e.target as Element | null)?.closest?.('input, textarea, select, [contenteditable], [role=dialog]')) return
+      const command = e.key === '/' || e.key === '?' ? { run: () => setPalette(true) } : keyed.current.find((c) => c.key === e.key)
+      if (command) { e.preventDefault(); command.run() }
+    }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [])
@@ -121,6 +144,15 @@ export function App() {
   const searchTimer = useRef<number | undefined>(undefined)
   const [focus, setFocus] = useState<Sym | null>(null)
   const [hood, setHood] = useState<RelationshipsEnvelope | null>(null)
+  // The focus's card (FR1180): everything the Proof lens shows, so opening a row inside it asks the server nothing.
+  const [card, setCard] = useState<Card | null>(null)
+  const [chain, setChain] = useState<Chain | null>(null)
+  // Cards asked for, by symbol id: a click on a row the pointer rested on reuses its prefetch, even one still in flight (FR1186).
+  const cards = useRef(new Map<string, Promise<Card>>())
+  const points = useRef(new Map<number, Promise<string>>())
+  const prefetching = useRef(false)
+  const hoverTimer = useRef<number | undefined>(undefined)
+  const paging = useRef(new Set<string>())
   // Counts queries in flight: the first to finish must not show the view idle while another still loads (FR640).
   const [inFlight, setInFlight] = useState(0)
   const loading = inFlight > 0
@@ -132,11 +164,15 @@ export function App() {
   const [tableView, setTableView] = useState(false)
   const [noWebGl, setNoWebGl] = useState(false)
   const [evidence, setEvidence] = useState<Evidence | null>(null)
+  // A symbol chosen in the palette moves focus to its evidence once it shows (FR1145).
+  const evidencePanel = useRef<HTMLElement>(null)
+  const focusEvidence = useRef(false)
+  useEffect(() => { if (evidence && focusEvidence.current) { focusEvidence.current = false; evidencePanel.current?.focus() } }, [evidence])
   // Consent covers the source shown when it was given, so it lapses whenever the evidence panel changes (FR052).
   const [includeSource, setIncludeSource] = useState(false)
   useEffect(() => setIncludeSource(false), [evidence])
   // Evidence belongs to the view that opened it; another view starts without it.
-  useEffect(() => setEvidence(null), [mode])
+  useEffect(() => setEvidence((e) => (e?.view === mode ? e : null)), [mode])
   const reducedMotion = useMemo(() => window.matchMedia('(prefers-reduced-motion: reduce)').matches, [])
 
   const report = useCallback((e: unknown) => {
@@ -184,7 +220,7 @@ export function App() {
     setRepository(repositoryId)
     setDrilled(repositoryId)
     setGalaxy(null); galaxyAsked.current = false
-    setMap(null); setFocus(null); setHood(null); setTrace(null); setTraced(null); setSource(null); setTarget(null); setEvidence(null)
+    setMap(null); setFocus(null); setHood(null); setCard(null); setChain(null); cards.current.clear(); points.current.clear(); setTrace(null); setTraced(null); setSource(null); setTarget(null); setEvidence(null)
     setLoading(true)
     try { setStatus(await callTool('workspace_status', { limits: { max_rows: 1 } })); setError(null); setMode('galaxy') } catch (e) { report(e) } finally { setLoading(false); setAnswered((n) => n + 1) }
   }, [report])
@@ -204,24 +240,77 @@ export function App() {
     } catch (e) { report(e) }
   }, [report, showCode])
 
-  /** Centres Explore on a symbol; push adds a history entry so Back returns to the previous one. */
+  /** One request for a symbol's card, shared by a prefetch and the click that follows it. */
+  const fetchCard = useCallback((id: string): Promise<Card> => cards.current.get(id) ?? hold(cards.current, id, callTool('get_symbol_card', { symbol_id: id, ...CARD_INPUT }).then((env) => env.data as Card)), [])
+  /** A galaxy point's symbol id, its card held beside it, from one request (FR1180). */
+  const pointCard = useCallback((index: number): Promise<string> => points.current.get(index) ?? hold(points.current, index, galaxySymbol(index, CARD_INPUT).then(({ id, card }) => {
+    if (!cards.current.has(id)) hold(cards.current, id, Promise.resolve(card!.data as Card))
+    return id
+  })), [])
+  /** Prefetch on hover (FR1186): after 80 ms on a row or point, at most one request at a time, never for one already held. */
+  const prefetch = useCallback((held: boolean, ask: () => Promise<unknown>) => {
+    window.clearTimeout(hoverTimer.current)
+    hoverTimer.current = window.setTimeout(() => {
+      if (held || prefetching.current) return
+      prefetching.current = true
+      ask().catch(() => undefined).finally(() => { prefetching.current = false })
+    }, 80)
+  }, [])
+  const hover = useCallback((id: string | undefined) => ({
+    onMouseEnter: () => { if (id) prefetch(cards.current.has(id), () => fetchCard(id)) },
+    onMouseLeave: () => window.clearTimeout(hoverTimer.current),
+  }), [fetchCard, prefetch])
+  const hoverPoint = useCallback((index: number | null) => {
+    if (index === null) window.clearTimeout(hoverTimer.current)
+    else prefetch(points.current.has(index), () => pointCard(index))
+  }, [pointCard, prefetch])
+
+  /** Centres Explore on a symbol with one request; push adds a history entry so Back returns to the previous one. */
   const loadFocus = useCallback(async (id: string, push = true) => {
     setLoading(true)
     try {
-      const [s, env] = await Promise.all([
-        callTool('get_symbol', { symbol_id: id }),
-        callTool('get_relationships', { subject_id: id, direction: 'both', types: EXPLORE_TYPES, include_external: true, limits: { max_rows: 200, max_bytes: 1048576 } }),
-      ])
-      const sym = s.data.symbol
-      setFocus(sym)
-      setHood(env as RelationshipsEnvelope)
+      const c = await fetchCard(id)
+      setFocus(c.symbol)
+      setCard(c)
+      setChain(null)
+      setHood(cardHood(c))
       setTableView(false)
       setMode('explore')
       setError(null)
       if (push) window.history.pushState({ focus: id }, '', `?focus=${encodeURIComponent(id)}`)
-      await showCode(sym)
+      // Opened with the view it belongs to, so the switch to Explore in the same update keeps it.
+      setEvidence({ ...declarationEvidence(c), view: 'explore' })
     } catch (e) { report(e) } finally { setLoading(false); setAnswered((n) => n + 1) }
-  }, [report, showCode])
+  }, [report, fetchCard])
+  /** The next page of one side of the focus's card, as the list scrolls past its last row (FR058). */
+  const loadMore = useCallback(async (side: 'in' | 'out') => {
+    const c = card
+    const key = side === 'in' ? 'incoming' : 'outgoing'
+    const offset = c?.[key].next_offset
+    if (!c || offset == null || paging.current.has(`${c.symbol.id}${side}`)) return
+    paging.current.add(`${c.symbol.id}${side}`)
+    try {
+      const next = (await callTool('get_symbol_card', { symbol_id: c.symbol.id, direction: side, offset, types: EXPLORE_TYPES, limits: { max_rows: CARD_ROWS * 4, max_bytes: 1048576 } })).data as Card
+      const grown = { ...c, [key]: appendSide(c[key], next[key]) }
+      cards.current.set(c.symbol.id, Promise.resolve(grown))
+      setCard((now) => (now?.symbol.id === c.symbol.id ? grown : now))
+      setHood((now) => (now && focus?.id === c.symbol.id ? cardHood(grown) : now))
+    } catch (e) { report(e) } finally { paging.current.delete(`${c.symbol.id}${side}`) }
+  }, [card, focus, report])
+  /** A path from the focus as a chain of hops, each with its call site, labelled by its weakest hop (FR1185). */
+  const traceFrom = async (to: Sym) => {
+    if (!focus) return
+    setLoading(true)
+    try {
+      const env = await callTool('trace_paths', { source_id: focus.id, target_id: to.id, types: ['calls'], limits: { max_depth: depth } })
+      const p = env.data.paths[0] as { nodes: string[]; assertions: string[]; basis: string } | undefined
+      const node = (id: string) => env.data.nodes[id] as { name: string; qualified_name: string }
+      setChain(p
+        ? { basis: p.basis, conclusion: `${p.assertions.length} hop${p.assertions.length === 1 ? '' : 's'} to ${to.name}`, hops: p.nodes.map((id, i) => ({ id, name: node(id).name, qualifiedName: node(id).qualified_name, site: i < p.assertions.length ? env.data.relationships[p.assertions[i]!]?.site ?? null : null, basis: i < p.assertions.length ? env.data.relationships[p.assertions[i]!]?.basis ?? null : null })) }
+        : { basis: 'no path', conclusion: toScene(env, focus.id, to.id).conclusion, hops: [] })
+      setError(null)
+    } catch (e) { report(e) } finally { setLoading(false); setAnswered((n) => n + 1) }
+  }
 
   /** Shows the areas under a path, or with text only those holding a match, plus the matching symbols for the table. */
   const loadMap = useCallback(async (path: string, text: string, push = true, show = true) => {
@@ -280,20 +369,22 @@ export function App() {
     return () => { window.removeEventListener('hashchange', connect); window.removeEventListener('popstate', onPop) }
   }, [reducedMotion, report, loadFocus, loadMap, drillInto, loadEcosystem])
   useEffect(() => {
-    if (mode !== 'galaxy' || !status || galaxyAsked.current) return
+    // The palette searches the Galaxy's names, so opening it loads them in any view.
+    if ((mode !== 'galaxy' && !palette) || !status || galaxyAsked.current) return
     galaxyAsked.current = true
     setLoading(true)
     fetchGalaxy().then((b) => { setGalaxy(parseGalaxy(b)); setError(null) }).catch(report).finally(() => { setLoading(false); setAnswered((n) => n + 1) })
-  }, [mode, status, report])
+  }, [mode, palette, status, report])
   const galaxyMatches = useMemo(() => (galaxy && mode === 'galaxy' ? matchIndices(galaxy, query) : []), [galaxy, mode, query])
-  const galaxyOverlay = useMemo(() => (galaxy && diff && diff.data.head.snapshot_id === galaxy.snapshotId ? diffOverlay(galaxy, diff.data) : null), [galaxy, diff])
+  const [overlayShown, setOverlayShown] = useState(true)
+  const galaxyOverlay = useMemo(() => (overlayShown && galaxy && diff && diff.data.head.snapshot_id === galaxy.snapshotId ? diffOverlay(galaxy, diff.data) : null), [overlayShown, galaxy, diff])
 
   /** Pins every query to a published snapshot, or back to the current one, and starts the views over on it. */
   const pin = useCallback(async (id: string | null) => {
     const next = id && snapshots.find((s) => s.id === id && !s.current) ? id : null
     setReplay(next); setReplayState(next)
     setGalaxy(null); galaxyAsked.current = false
-    setMap(null); setHood(null); setFocus(null); setTrace(null); setTraced(null); setEvidence(null)
+    setMap(null); setHood(null); setFocus(null); setCard(null); setChain(null); cards.current.clear(); points.current.clear(); setTrace(null); setTraced(null); setEvidence(null)
     try {
       setStatus(await callTool('workspace_status', { limits: { max_rows: 1 } }))
       if (mode === 'map' || mode === 'explore') await loadMap('', query.trim(), false, false)
@@ -337,7 +428,7 @@ export function App() {
         ...(scene!.stubs.length ? [`${scene!.stubs.length} unresolved boundar${scene!.stubs.length === 1 ? 'y' : 'ies'} drawn`] : []),
         ...(mode === 'trace' && scene!.conclusion ? [scene!.conclusion] : []),
       ],
-      coverage: calls ? [`${share(calls.unresolved, calls.sites)} of ${calls.sites.toLocaleString('en')} call sites unresolved`] : [],
+      coverage: calls ? [`${share(calls.unresolved, calls.sites)} of ${plural(calls.sites, 'call site')} unresolved`] : [],
     }
     if (mode === 'galaxy') {
       const counts = new Map<number, number>()
@@ -351,11 +442,33 @@ export function App() {
     return { caveats, source, svg: sceneSvg(scene!, caveats, source), table: sceneTable(scene!) }
   }, [status, mode, galaxy, scene, evidence, includeSource, query, map, focus, galaxyMatches])
   const fileStem = exportable ? `proofmesh-${exportable.caveats.view.toLowerCase().replace(/\W+/g, '-')}-${exportable.caveats.snapshotId}` : ''
+  const exportPage = () => { if (exportable) download(`${fileStem}.html`, new Blob([offlineHtml(exportable.svg, exportable.caveats, exportable.table, exportable.source)], { type: 'text/html' })) }
+  const exportImage = async () => {
+    if (!exportable) return
+    try {
+      const png = pngWithText(await svgToPng(exportable.svg), 'proofmesh:caveats', caveatLines(exportable.caveats, exportable.source).join('\n'))
+      download(`${fileStem}.png`, new Blob([png as BlobPart], { type: 'image/png' }))
+    } catch (e) { report(e) }
+  }
   // While searching, the legend lists only the areas that hold matches, with their match counts.
   const legend = useMemo(() => (galaxy ? legendAreas(galaxy, query.trim().length >= 2 ? galaxyMatches : [], 40) : { shown: [], total: 0 }), [galaxy, galaxyMatches, query])
   const openPoint = useCallback(async (index: number) => {
-    try { await loadFocus(await galaxySymbolId(index)) } catch (e) { report(e) }
-  }, [loadFocus, report])
+    setLoading(true)
+    try { await loadFocus(await pointCard(index)) } catch (e) { report(e) } finally { setLoading(false) }
+  }, [loadFocus, pointCard, report])
+  const openView = (m: Mode) => { setMode(m); if (m === 'map' && !map) loadMap('', query.trim()) }
+
+  // The palette's commands (FR1143): every view and overlay with its key (FR1144), then what the current state allows.
+  const commands: Command[] = [
+    ...VIEWS.map(([m, name], i) => ({ label: `${name} view`, key: String(i + 1), run: () => openView(m) })),
+    { label: 'Table or graph view', key: 't', run: () => setTableView((t) => !t) },
+    { label: 'Diff overlay on the Galaxy, shown or hidden', key: 'd', run: () => setOverlayShown((o) => !o) },
+    ...snapshots.filter((s) => !s.current && s.id !== replay).map((s) => ({ label: `Pin snapshot ${s.id.slice(0, 13)}${s.published_at ? `, published ${new Date(s.published_at).toLocaleString()}` : ''}`, run: () => void pin(s.id) })),
+    ...(replay ? [{ label: 'Back to the current snapshot', run: () => void pin(null) }] : []),
+    ...(focus ? [{ label: `Trace a path from ${focus.qualified_name}`, run: () => { setSource(focus); setMode('trace') } }] : []),
+    ...(exportable ? [{ label: 'Export page', run: exportPage }, { label: 'Export image', run: () => void exportImage() }] : []),
+  ]
+  useEffect(() => { keyed.current = commands.filter((c) => c.key) })
 
   const onNode = useCallback((id: string) => {
     if (mode === 'ecosystem') { if (!id.startsWith('stub:')) setSelected(id); return }
@@ -370,6 +483,9 @@ export function App() {
   }, [mode, focus, map, openSymbol, loadFocus, loadMap])
 
   const openEdge = async (sourceId: string, assertionId: string) => {
+    // The card already holds each row's evidence, so an edge of the focus opens with no request (FR1180).
+    const held = mode === 'explore' ? [...(card?.incoming.rows ?? []), ...(card?.outgoing.rows ?? [])].find((r) => r.assertion_id === assertionId) : undefined
+    if (held) return setEvidence(rowEvidence(held))
     const rels = (await callTool('get_relationships', { subject_id: sourceId, direction: 'out', types: EXPLORE_TYPES, include_external: true })).data.relationships
     const rel = rels.find((r: any) => r.assertion_id === assertionId)
     if (!rel) return report(new Error('That relationship is not in this snapshot any more.'))
@@ -387,15 +503,9 @@ export function App() {
       <header className="top">
         <div className="brand"><span className="mark" aria-hidden="true">◎</span> PROOFMESH <span className="dim">OBSERVATORY</span></div>
         <div className="tabs" role="tablist" aria-label="Mode">
-          <button type="button" role="tab" aria-selected={mode === 'galaxy'} onClick={() => setMode('galaxy')}>Galaxy</button>
-          <button type="button" role="tab" aria-selected={mode === 'map'} onClick={() => { setMode('map'); if (!map) loadMap('', query.trim()) }}>Map</button>
-          <button type="button" role="tab" aria-selected={mode === 'explore'} onClick={() => setMode('explore')}>Explore</button>
-          <button type="button" role="tab" aria-selected={mode === 'trace'} onClick={() => setMode('trace')}>Trace a path</button>
-          <button type="button" role="tab" aria-selected={mode === 'claims'} onClick={() => setMode('claims')}>Claims</button>
-          <button type="button" role="tab" aria-selected={mode === 'diff'} onClick={() => setMode('diff')}>Diff</button>
-          <button type="button" role="tab" aria-selected={mode === 'ecosystem'} onClick={() => setMode('ecosystem')}>Ecosystem</button>
+          {VIEWS.map(([m, name], i) => <button key={m} type="button" role="tab" aria-selected={mode === m} aria-keyshortcuts={String(i + 1)} data-key={i + 1} onClick={() => openView(m)}>{name}</button>)}
         </div>
-        <input id="search" className="search" type="search" aria-label="Search" value={query} placeholder="Search names, namespaces, areas…  ( / )" autoComplete="off" spellCheck={false}
+        <input id="search" className="search" type="search" aria-label="Search" value={query} placeholder="Search names, namespaces, areas…" autoComplete="off" spellCheck={false}
           onChange={(e) => search(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') search(query, true) }} />
         {status && (
           <div className="crumbs">
@@ -463,6 +573,7 @@ export function App() {
                 <button type="button" onClick={() => { setSource(focus); setMode('trace') }}>Trace a path from here</button>
               </section>
             )}
+            {focus && <Picker label="Path to" value={null} onPick={(s) => void traceFrom(s)} />}
           </>
         ) : mode === 'trace' ? (
           <>
@@ -497,8 +608,9 @@ export function App() {
         {/* Diff is a table of its own, so the graph-or-table switch has nothing to switch there. */}
         {mode !== 'diff' && (
           <div className="switch" role="group" aria-label="View">
-            <button type="button" aria-pressed={!tableView && !noWebGl} disabled={noWebGl} onClick={() => setTableView(false)}>Graph</button>
-            <button type="button" aria-pressed={tableView || noWebGl} onClick={() => setTableView(true)}>Table</button>
+            {/* Explore's lens is DOM rows, so it needs no WebGL. */}
+            <button type="button" aria-pressed={!tableView && (!noWebGl || mode === 'explore')} disabled={noWebGl && mode !== 'explore'} onClick={() => setTableView(false)}>Graph</button>
+            <button type="button" aria-pressed={tableView || (noWebGl && mode !== 'explore')} onClick={() => setTableView(true)}>Table</button>
           </div>
         )}
         {noWebGl && <div className="notice" role="status">WebGL is not available here, so Observatory shows the table view.</div>}
@@ -517,8 +629,8 @@ export function App() {
             {!diff && snapshots.length < 2 && <p className="dim" role="note">Only one snapshot is published; index again after a change to compare.</p>}
           </>
         )}
-        {mode === 'galaxy' && galaxy && !noWebGl && !tableView && <Galaxy data={galaxy} query={query} focusArea={galaxyArea} onOpen={openPoint} onClear={() => { setQuery(''); setGalaxyArea(null) }} overlay={galaxyOverlay} />}
-        {mode === 'galaxy' && galaxyOverlay && <p className="dim diff-legend" role="note"><span><i className="sw added" />added since {diff!.data.base.snapshot_id.slice(0, 13)}</span><span><i className="sw changed" />changed</span><span>removed symbols are in the Diff table</span></p>}
+        {mode === 'galaxy' && galaxy && !noWebGl && !tableView && <Galaxy data={galaxy} query={query} focusArea={galaxyArea} onOpen={openPoint} onHover={hoverPoint} onClear={() => { setQuery(''); setGalaxyArea(null) }} overlay={galaxyOverlay} />}
+        {mode === 'galaxy' && galaxyOverlay && <p className="dim diff-legend" role="note"><span><i className="sw added" />added since {diff!.data.base.snapshot_id.slice(0, 13)}</span><span><i className="sw changed" />changed</span><span>removed symbols are in the Diff table</span><span><kbd>d</kbd> hides this overlay</span></p>}
         {mode === 'galaxy' && galaxy && (tableView || noWebGl) && (
           <section className="table-view" aria-label="Galaxy table">
             <table>
@@ -548,7 +660,8 @@ export function App() {
             </table>
           </section>
         )}
-        {mode !== 'galaxy' && scene && !noWebGl && !tableView && <GraphView scene={scene} reducedMotion={reducedMotion} onNode={onNode} onWebGlFailure={() => setNoWebGl(true)} />}
+        {mode !== 'galaxy' && mode !== 'explore' && scene && !noWebGl && !tableView && <GraphView scene={scene} reducedMotion={reducedMotion} onNode={onNode} onWebGlFailure={() => setNoWebGl(true)} />}
+        {mode === 'explore' && card && focus?.id === card.symbol.id && !tableView && <ProofLens card={card} chain={chain} onOpen={setEvidence} onFocus={(id) => void loadFocus(id)} onMore={(side) => void loadMore(side)} hover={hover} />}
         {scene && mode === 'map' && map && (tableView || noWebGl) && (
           <section className="table-view" aria-label="Map table">
             <table>
@@ -569,7 +682,7 @@ export function App() {
                 <thead><tr><th>Name</th><th>Kind</th><th>Qualified name</th><th>Location</th><th /></tr></thead>
                 <tbody>
                   {map.matches.map((m) => (
-                    <tr key={m.id}>
+                    <tr key={m.id} {...hover(m.id)}>
                       <td>{visible(m.name)}</td><td>{m.kind}</td><td>{visible(m.qualified_name)}</td><td>{visible(m.path)}:{m.start_line}</td>
                       <td><button type="button" onClick={() => loadFocus(m.id)}>Explore</button></td>
                     </tr>
@@ -612,7 +725,7 @@ export function App() {
             )}
           </section>
         )}
-        {scene && mode !== 'map' && mode !== 'ecosystem' && (tableView || noWebGl) && (
+        {scene && mode !== 'map' && mode !== 'ecosystem' && (tableView || (noWebGl && mode !== 'explore')) && (
           <section className="table-view" aria-label="Trace table">
             <table>
               <caption>{mode === 'trace' ? 'Traced nodes in order' : 'Symbol and its neighbours'}</caption>
@@ -648,7 +761,7 @@ export function App() {
             <ul>
               {(status?.data.hubs as Hub[] | undefined)?.map((h) => (
                 <li key={h.id}>
-                  <button type="button" onClick={() => loadFocus(h.id)}>
+                  <button type="button" onClick={() => loadFocus(h.id)} {...hover(h.id)}>
                     <b>{glyph(h.kind)}{visible(h.name)}</b> <span className="dim">{h.kind} · {visible(h.qualified_name)} · {h.inbound} incoming</span>
                   </button>
                 </li>
@@ -681,12 +794,15 @@ export function App() {
         )
       })()}
       {evidence && (
-        <aside className="right" aria-label="Evidence">
+        <aside className="right" aria-label="Evidence" tabIndex={-1} ref={evidencePanel}>
           <button type="button" className="close" aria-label="Close evidence" onClick={() => setEvidence(null)}>×</button>
           <h2 className="ev-title">{visible(evidence.title)}</h2>
           <dl className="stats">{evidence.facts.map(([k, v]) => [<dt key={`${k}t`}>{k}</dt>, <dd key={`${k}d`}>{visible(v)}</dd>])}</dl>
           <p className={`integrity ${evidence.integrity}`}>integrity: {evidence.integrity === 'verified' ? '✓ verified' : evidence.integrity}</p>
-          <pre className="source" data-testid="evidence-text">{evidence.text === null ? 'Source unavailable: the evidence object failed its integrity check or is missing.' : visible(evidence.text)}</pre>
+          <pre className="source" data-testid="evidence-text">{evidence.text === null ? 'Source unavailable: the evidence object failed its integrity check or is missing.'
+            : evidence.highlight ? <>{visible(evidence.text.slice(0, evidence.highlight[0]))}<mark data-testid="cited">{visible(evidence.text.slice(...evidence.highlight))}</mark>{visible(evidence.text.slice(evidence.highlight[1]))}</>
+            : visible(evidence.text)}</pre>
+          {evidence.focusId && <button type="button" onClick={() => void loadFocus(evidence.focusId!)}>Explore from here</button>}
         </aside>
       )}
       <section className="legend" aria-label="Legend">
@@ -694,26 +810,23 @@ export function App() {
         {mode === 'ecosystem' && <div className="dim">Each node is a repository, sized by its symbols; a label ending “newer snapshot exists” was linked from a snapshot that is no longer its current one. Lines are links between repositories, thicker for more; an amber line has candidates only. Short amber stubs are client facts that matched nothing in the workspace. Click a repository to see its links and colour the others by their relation to it; open it from there.
           <div>{(Object.keys(RELATION_COLOURS) as Relation[]).map((r) => <span key={r}><span className="sw" style={{ background: RELATION_COLOURS[r] }} /> {RELATION_WORDS[r]} </span>)}</div></div>}
         {mode === 'map' && <div className="dim">Each node is an area, file or symbol, sized by its symbols, or by its matches while searching. Lines are resolved relationships between them, thicker for more. Click a node to open it.</div>}
-        {mode === 'explore' && <div className="dim">Incoming on the left, outgoing on the right. Click a node to explore from it; click the centre to read its code. Back returns to the previous symbol.</div>}
-        {(mode === 'trace' || mode === 'explore') && <>
-        <span className="sw resolved" /> {mode === 'trace' ? 'resolved call on the path' : 'resolved call'} <span className="sw framework" /> framework rule <span className="sw explored" /> explored by the search <span className="sw external" /> resolved outside the repository <span className="sw unresolved" /> unresolved boundary <span className="ring" /> horizon
+        {mode === 'explore' && <div className="dim">Callers on the left, callees on the right, each at its call site and marked observed, inferred or unresolved in words. Click a row to read its call site; double-click it, or press f, to explore from it. Back returns to the previous symbol.</div>}
+        {mode === 'trace' && <>
+        <span className="sw resolved" /> resolved call on the path <span className="sw framework" /> framework rule <span className="sw explored" /> explored by the search <span className="sw external" /> resolved outside the repository <span className="sw unresolved" /> unresolved boundary <span className="ring" /> horizon
         <div className="dim">A line names its type unless it is a call, its rule or any origin other than the semantic resolver, and any resolution short of resolved; an unresolved site ends in a stub naming why.</div></>}
         {mode === 'trace' && <div className="dim">Edges run left to right in search order.</div>}
         {mode !== 'claims' && mode !== 'diff' && <div className="dim">{NO_MEANING}</div>}
         {exportable && (
           <div className="export" role="group" aria-label="Export this view">
-            <button type="button" onClick={() => download(`${fileStem}.html`, new Blob([offlineHtml(exportable.svg, exportable.caveats, exportable.table, exportable.source)], { type: 'text/html' }))}>Export page</button>
-            <button type="button" onClick={async () => {
-              try {
-                const png = pngWithText(await svgToPng(exportable.svg), 'proofmesh:caveats', caveatLines(exportable.caveats, exportable.source).join('\n'))
-                download(`${fileStem}.png`, new Blob([png as BlobPart], { type: 'image/png' }))
-              } catch (e) { report(e) }
-            }}>Export image</button>
+            <button type="button" onClick={exportPage}>Export page</button>
+            <button type="button" onClick={() => void exportImage()}>Export image</button>
             {evidence?.text && <label><input type="checkbox" checked={includeSource} onChange={(e) => setIncludeSource(e.target.checked)} /> include the source shown in the evidence panel</label>}
           </div>
         )}
       </section>
-      <footer className="bottom" aria-live="polite" aria-busy={loading} data-answered={answered} data-testid="conclusion">{loading ? 'Loading…' : mode === 'galaxy' ? (galaxy ? (query.trim().length === 1 ? 'Type at least two characters to search.' : query.trim().length >= 2 ? `“${query.trim()}”: showing the ${galaxyMatches.length.toLocaleString('en')} matching symbols; click one to explore it.` : galaxyArea !== null ? `${galaxy.areas[galaxyArea]!.name}: ${galaxy.areas[galaxyArea]!.count.toLocaleString('en')} symbols. Click a point to explore it.` : galaxySummary(galaxy)) : '') : scene ? scene.conclusion : ''}</footer>
+      {palette && <Palette commands={commands} galaxy={galaxy} noRepository={!status} onClose={() => setPalette(false)}
+        onSymbol={(i) => { focusEvidence.current = true; void openPoint(i) }} onFile={(path) => void loadMap(path, '')} />}
+      <footer className="bottom" aria-live="polite" aria-busy={loading} data-answered={answered} data-testid="conclusion">{loading ? 'Loading…' : mode === 'galaxy' ? (galaxy ? (query.trim().length === 1 ? 'Type at least two characters to search.' : query.trim().length >= 2 ? `“${query.trim()}”: showing the ${plural(galaxyMatches.length, 'matching symbol')}; click one to explore it.` : galaxyArea !== null ? `${galaxy.areas[galaxyArea]!.name}: ${plural(galaxy.areas[galaxyArea]!.count, 'symbol')}. Click a point to explore it.` : galaxySummary(galaxy)) : '') : scene ? scene.conclusion : ''}</footer>
     </div>
   )
 }

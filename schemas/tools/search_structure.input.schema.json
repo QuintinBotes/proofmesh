@@ -1,0 +1,191 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "search_structure.input.schema.json",
+  "title": "search_structure input",
+  "description": "Code found by its shape, with ast-grep's pattern syntax over the syntax tier's Tree-sitter grammars (FR1060): every await in a loop, every call of escape with a string, every catch that swallows its error. Optionally only inside the symbols reachable from or reaching a symbol, or the files importing a file (scope). Read-only, over the snapshot's captured content, not the working tree. Lean over MCP: one `<enclosing name> <path>:<line> \"<first line of the match>\"` row per match, the text cut at 120 characters; pages with a cursor, and completion.total counts every match. Time, matches and bytes are the usual limits; files over 1 MiB are not parsed.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "pattern"
+  ],
+  "properties": {
+    "repository_id": {
+      "type": "string",
+      "pattern": "^repo_[0-9a-z]+$",
+      "description": "Optional when exactly one repository is registered."
+    },
+    "snapshot_id": {
+      "oneOf": [
+        {
+          "type": "string",
+          "pattern": "^snap_[0-9a-z]+$"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Null pins the current published snapshot."
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "timeout_ms": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_rows": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_depth": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "freshness": {
+      "enum": [
+        "snapshot",
+        "strict"
+      ],
+      "description": "snapshot (default) answers from the published snapshot. strict first checks that the working tree is exactly what the snapshot was built from; if not, it starts an index and refuses with STALE_INPUT naming the changed files."
+    },
+    "envelope": {
+      "enum": [
+        "full",
+        "compact",
+        "lean"
+      ],
+      "description": "lean, the default over MCP: plain text with no JSON and no structuredContent. A header `# <tool> · <n> rows · <snapshot> current` (stale when the snapshot is older than the repository's current one), one `<name> <path>:<line>` row per result, then `# ` lines for the limitations of this answer and `# more: cursor <c>` when a next page exists. The line is the call, import or reference site for relationship, impact and path rows and the declaration for symbol rows; tags follow: in or out when both directions are asked, depth=<n>, dispatch, external, candidate, ambiguous, unresolved:<reason>, and the relationship type when the query mixes types. A name or path with a space, quote or # is quoted as JSON. compact: the JSON envelope without the snapshot-wide parts an earlier answer gave (coverage, unresolved reasons, standing limitations). full: the whole JSON envelope. Ask for compact or full for ids, evidence and totals."
+    },
+    "cursor": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096,
+      "description": "The next_cursor of the previous page. It continues the same query on the same snapshot; it expires after an hour."
+    },
+    "pattern": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096,
+      "description": "Code in the language, with ast-grep's metavariables: $X matches one node, $$$X (or $$$) any number of nodes, $_ one node without capturing, $$X an unnamed node too. A repeated metavariable must match equal code. Matching is ast-grep's default (smart): comments and punctuation the pattern leaves out are skipped. A pattern that does not parse is refused with the parse error and its syntax tree."
+    },
+    "language": {
+      "enum": [
+        "typescript",
+        "tsx",
+        "javascript",
+        "python",
+        "go",
+        "rust",
+        "java",
+        "c",
+        "cpp",
+        "csharp",
+        "ruby",
+        "kotlin",
+        "scala",
+        "swift",
+        "bash",
+        "hcl"
+      ],
+      "description": "The pattern's language: only files with its extensions are searched, as ast-grep chooses them (typescript: .ts .cts .mts; tsx; javascript, read with the TSX grammar; python; go; ...). Omitted: every file whose extension has a grammar here, with the pattern parsed in each file's language; a language it does not parse in is skipped and named, and files with no grammar are counted."
+    },
+    "path_prefix": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Only files whose repository-relative path starts with this. Default: the whole repository."
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "description": "Only matches inside what the graph names; several keys intersect. A match counts when a symbol of the scope holds it whole.",
+      "properties": {
+        "reachable_from": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 20,
+          "items": {
+            "oneOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "name",
+                  "path"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "path": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              }
+            ],
+            "description": "A symbol id (sym_...), a name the snapshot holds once (`DataSource.initialize`, as a lean row shows it, or a plain name), or { name, path }."
+          },
+          "description": "Symbols, each with every symbol trace_paths reaches from it (resolved calls, and dispatch both ways through implements and overrides), within max_depth."
+        },
+        "reaching": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 20,
+          "items": {
+            "oneOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "name",
+                  "path"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "path": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              }
+            ],
+            "description": "A symbol id (sym_...), a name the snapshot holds once (`DataSource.initialize`, as a lean row shows it, or a plain name), or { name, path }."
+          },
+          "description": "Symbols, each with every symbol that reaches it the same way, within max_depth."
+        },
+        "importing": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 20,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Repository-relative file paths: only matches in the files whose resolved imports name one of them."
+        }
+      }
+    }
+  }
+}

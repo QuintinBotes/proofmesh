@@ -7,7 +7,7 @@ export type GalaxyArea = {
 }
 export type GalaxyData = {
   snapshotId: string; n: number; links: Uint32Array; degree: Uint32Array; area: Uint16Array; kind: Uint8Array
-  kinds: string[]; areas: GalaxyArea[]; names: string[]
+  kinds: string[]; areas: GalaxyArea[]; names: string[]; files: string[]
 }
 
 /** An unresolved share at or above this draws a ring round the area. */
@@ -30,7 +30,7 @@ export function parseGalaxy(buf: ArrayBuffer): GalaxyData {
   const h = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, 4, headerLength)))
   const base = 4 + headerLength + ((4 - ((4 + headerLength) % 4)) % 4)
   return {
-    snapshotId: h.snapshot_id, n: h.nodes, kinds: h.kinds, areas: h.areas,
+    snapshotId: h.snapshot_id, n: h.nodes, kinds: h.kinds, areas: h.areas, files: h.files ?? [],
     links: new Uint32Array(buf, base + h.offsets.links, h.links * 2),
     degree: new Uint32Array(buf, base + h.offsets.degree, h.nodes),
     area: new Uint16Array(buf, base + h.offsets.area, h.nodes),
@@ -39,31 +39,38 @@ export function parseGalaxy(buf: ArrayBuffer): GalaxyData {
   }
 }
 
-const lowered = new WeakMap<GalaxyData, { text: string; starts: Int32Array }>()
-/**
- * Indices of points whose qualified name contains the text, case-insensitively, in ascending order. The names are lowered and joined
- * once per galaxy, so a query is one native substring scan of that text, each hit mapped to its name by binary search (NFR005).
- */
+export type LoweredNames = { text: string; starts: Int32Array }
+
+/** The names lowered and joined by newlines, with where each starts in that text (FR1200). */
+export function lowerNames(names: string[]): LoweredNames {
+  // Lowering can lengthen a name (İ becomes two code units), so the offsets come from the lowered names.
+  const lowered = names.map((n) => n.toLowerCase())
+  const starts = new Int32Array(names.length)
+  let at = 0
+  lowered.forEach((n, i) => { starts[i] = at; at += n.length + 1 })
+  return { text: lowered.join('\n'), starts }
+}
+
+/** Calls hit with each name number whose lowered name holds q (already lowered), once, in name order: one native substring scan, each hit mapped to its name by binary search. */
+export function scanNames({ text: all, starts }: LoweredNames, q: string, hit: (i: number) => void): void {
+  for (let at = all.indexOf(q); at >= 0;) {
+    let lo = 0, hi = starts.length - 1
+    while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (starts[mid]! <= at) lo = mid; else hi = mid - 1 }
+    hit(lo)
+    // Skip the rest of this name, so a name that holds the text twice is listed once.
+    at = lo + 1 < starts.length ? all.indexOf(q, starts[lo + 1]!) : -1
+  }
+}
+
+const lowered = new WeakMap<GalaxyData, LoweredNames>()
+/** Indices of points whose qualified name contains the text, case-insensitively, in ascending order; the names are lowered and joined once per galaxy (NFR005). */
 export function matchIndices(d: GalaxyData, text: string): number[] {
   const q = text.trim().toLowerCase()
   if (q.length < 2) return []
   let index = lowered.get(d)
-  if (!index) {
-    const starts = new Int32Array(d.n)
-    let at = 0
-    for (let i = 0; i < d.n; i++) { starts[i] = at; at += d.names[i]!.length + 1 }
-    index = { text: d.names.map((n) => n.toLowerCase()).join('\n'), starts }
-    lowered.set(d, index)
-  }
-  const { text: all, starts } = index
+  if (!index) lowered.set(d, (index = lowerNames(d.names)))
   const out: number[] = []
-  for (let at = all.indexOf(q); at >= 0;) {
-    let lo = 0, hi = d.n - 1
-    while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (starts[mid]! <= at) lo = mid; else hi = mid - 1 }
-    out.push(lo)
-    // Skip the rest of this name, so a name that holds the text twice is listed once.
-    at = lo + 1 < d.n ? all.indexOf(q, starts[lo + 1]!) : -1
-  }
+  scanNames(index, q, (i) => out.push(i))
   return out
 }
 
