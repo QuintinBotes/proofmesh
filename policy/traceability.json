@@ -1774,6 +1774,9 @@
     "FR1111": [
       "packages/proofmesh/test/parity-bench.test.ts"
     ],
+    "FR1660": [
+      "packages/proofmesh/test/global-setup.test.ts"
+    ],
     "FR600": [
       "packages/proofmesh/test/syntax-rust-turbofish-calls.test.ts"
     ],
@@ -1962,6 +1965,10 @@
     "FR1540": [
       "packages/proofmesh/test/catalog-tools.test.ts",
       "packages/proofmesh/test/limits.test.ts"
+    ],
+    "FR1640": [
+      "packages/proofmesh/test/catalog-tools.test.ts",
+      "packages/proofmesh/test/python.frameworks.test.ts"
     ],
     "FR1040": [
       "packages/proofmesh/test/constrained.test.ts"
