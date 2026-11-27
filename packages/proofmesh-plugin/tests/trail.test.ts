@@ -157,12 +157,21 @@ test('FR615: a path outside the repository is not recorded, a subagent\'s call k
   await $.tool.call({ tool: 'Bash', command: 'cat /work/app/src/a.ts' })
   // A claim about `endpoint:GET /a` is kept without its subject, since trail record refuses a symbol id with a space.
   await $.tool.call({ tool: VERIFY, claim: { statement: 'x', proposition: { type: 'relationship', source: 'endpoint:GET /a', relationship: 'calls', target: 'sym_b' } } })
+  // A path stat cannot resolve (the stub answers it as written) is folded before the check: one `..` leaves the repository, one stays in it.
+  await $.tool.call({ tool: 'Read', file_path: '/work/app/../other/x.ts' })
+  await $.tool.call({ tool: 'Read', file_path: '/work/app/src/../x.ts' })
+  // get_symbol by { name, path } or by stable key opened that file.
+  await $.tool.call({ tool: 'mcp__plugin_proofmesh_proofmesh__get_symbol', symbol_id: { name: 'invoiceTotal', path: 'packages/billing/src/invoice.ts' } })
+  await $.tool.call({ tool: 'mcp__plugin_proofmesh_proofmesh__get_symbol', key: 'packages/api/src/handler.ts#packages/api/src/handler:handleInvoice#function' })
   await endTurn($, w)
   expect(w.entries().map((e) => [e.tool, e.path ?? e.symbol_id ?? null, e.agent_id ?? null, e.outcome])).toEqual([
     ['Read', 'src/lib.ts', 'a1b2c3', 'ok'],
     ['Write', 'src/new.ts', null, 'failed'],
     ['Edit', 'src/a.ts', null, 'failed'],
     [VERIFY, null, null, 'ok'],
+    ['Read', 'x.ts', null, 'ok'],
+    ['mcp__plugin_proofmesh_proofmesh__get_symbol', 'packages/billing/src/invoice.ts', null, 'ok'],
+    ['mcp__plugin_proofmesh_proofmesh__get_symbol', 'packages/api/src/handler.ts', null, 'ok'],
   ])
 })
 

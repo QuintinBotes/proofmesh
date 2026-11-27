@@ -115,7 +115,13 @@ async function start($) {
 
 /** `target` (absolute, or relative to the session's directory) relative to the repository root, `.` for the root; null outside it. */
 async function inRepository($, target) {
-  const absolute = /^([/\\]|[A-Za-z]:)/.test(target) ? target : `${cwd}/${target}`
+  const sep = repo.root.includes('\\') ? '\\' : '/'
+  // `.` and `..` are folded here, since a path that does not exist (a failed Read, a denied Write) comes back from stat as written.
+  const parts = []
+  for (const s of (/^([/\\]|[A-Za-z]:)/.test(target) ? target : `${cwd}/${target}`).split(/[/\\]/)) {
+    if (s === '..') { if (parts.length > 1) parts.pop() } else if (s !== '.' && (s !== '' || !parts.length)) parts.push(s)
+  }
+  const absolute = parts.join(sep)
   const real = (await $.fs.stat(absolute, { resolve: true }).catch(() => undefined))?.realPath ?? absolute
   if (real === repo.root) return '.'
   return real.startsWith(repo.root) && /^[/\\]/.test(real.slice(repo.root.length)) ? real.slice(repo.root.length + 1) : null
@@ -142,7 +148,8 @@ function subjectOf(tool, e) {
   const id = e.symbol_id ?? e.subject_id ?? e.subject_ids?.[0] ?? e.source_id
   if (symbol(id)) return { symbol_id: id }
   if (typeof id === 'string') return {}
-  const path = e.path ?? e.paths?.[0] ?? e.source_path ?? e.path_prefix
+  // A symbol named by { name, path }, or by a stable key (`<path>#<module>:<name>#<kind>`), is recorded as its file.
+  const path = id?.path ?? (typeof e.key === 'string' ? e.key.split('#')[0] : undefined) ?? e.path ?? e.paths?.[0] ?? e.source_path ?? e.path_prefix
   return { path: typeof path === 'string' ? path.replace(/\/+$/, '') || '.' : '.' }
 }
 
