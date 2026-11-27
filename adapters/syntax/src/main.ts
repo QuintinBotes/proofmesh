@@ -11,7 +11,7 @@ import { prismaFacts } from './prisma.js'
 import { callFacts } from './scope.js'
 import { gtestName, isRubySpec, rubyBlocks, scanRepository, testRoles, unitDependencies, withoutCycles } from './tests.js'
 
-const VERSION = '0.3.0'
+const VERSION = '0.4.0'
 const SYNTAX_LANGUAGES = Object.keys(manifest).filter((l) => l !== 'hcl')
 // Tags kinds this tier keeps; variables, fields and properties are mostly locals and parameters, so they are left out. Proofmesh's
 // own queries name a property declared in a type's body `member`, and a database table or view `table`.
@@ -133,7 +133,7 @@ async function analyse(file: string, callees = false) {
     const name = m.captures.find((c) => c.name === 'name')?.node
     const def = m.captures.find((c) => c.name.startsWith('definition.'))
     const role = (r: string) => m.captures.find((c) => c.name === r)?.node
-    // A Java `new T()` is a call of T, and the only reference.class the tags query matches on an object creation (a superclass is the other).
+    // A Java or PHP `new T()` is a call of T, and the only reference.class the tags query matches on an object creation (a superclass is the other).
     const created = role('reference.class')?.type === 'object_creation_expression' ? role('reference.class') : undefined
     const ref = role('reference.call') ?? created
     // An import statement, and a supertype a type names, need no @name: the module and the supertype are their own captures.

@@ -13,6 +13,13 @@ An index job whose host is killed reads `failed` with the reason (closes #158; F
 
 - When the index host died of a signal that was not heap exhaustion (SIGKILL from the operating system's memory killer, or `kill -9`), or exited non-zero before it recorded an outcome, its job row stayed `running` with `error` null, so `get_job` and `proofmesh status` read it `interrupted` with no reason. The outer `proofmesh index` process, which starts the host under the heap rule and outlives it, now records such a job `failed` with an error naming the signal or the exit code, for example `the index host was killed by signal SIGKILL before it recorded the job's outcome`. A job the host already recorded keeps its outcome, and a host out of memory keeps its named error.
 
+The syntax tier records a PHP call by a plain name and a `new` of a plain class name (closes #161; FR850 to FR852):
+
+- `helper()` and `new Mailer()` had no `calls` row: the tags query of tree-sitter-php 0.24 matches a call or a `new` only through a qualified name or a variable, and a plain one names a bare `name` node. Each is now one unresolved `calls` row, `outside_capability`, with the name as `detail.callee`.
+- A PHP call row now carries `detail.qualifier` as written: the namespace before the last `\` (`\App` for `\App\helper()`, `\` for `\strlen()`), or the scope of a static call (`Mailer` for `Mailer::make()`, `parent`), and a `new` carries `detail.form` `new`, as Go and Java calls carry theirs. A member call carries neither.
+- Not done: `namespace\f()` and `new class {}` have no row.
+- Upgrade note: the syntax adapter is 0.4.0, so cached facts are not replayed, and a re-indexed PHP repository reports one more unresolved call per plain call or `new`. No fixture or Rosetta expectation changed: the Rosetta PHP program's `total(...)` and `new Circle(...)` calls now have rows, but they stay unresolved, because constrained name matching does not cover PHP yet (#16), and the Rosetta expectations hold only rows that reach a target.
+
 The TypeScript adapter counts a UTF-8 byte order mark (closes #156; FR810):
 
 - In a `.ts` or `.js` file that starts with a UTF-8 BOM, every range was 3 bytes early: the TypeScript compiler drops the BOM when it reads a file, and the adapter counted byte offsets on that text, while the core stores ranges against the captured file, BOM included. `read_evidence` and every evidence text began 3 bytes before the declaration and lost its last 3 bytes. The adapter now counts the BOM, so each range is the bytes of its declaration, and a module's range is the whole file, BOM included, as in the syntax tier. The syntax tier, Python and C# already counted it.
