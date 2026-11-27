@@ -71,7 +71,10 @@ function chain(n: Node | null): string | null {
 export function callFacts(lang: string, call: Node, callee: Node): CallFacts {
   // A Rust path call names its qualifier as written before the last `::` (FR501).
   if (lang === 'rust') {
-    const fn = call.childForFieldName('function'), path = fn?.type === 'scoped_identifier' ? fn.childForFieldName('path') : null
+    let fn = call.childForFieldName('function')
+    // A turbofish (`a::f::<T>()`) belongs to the callee, so the qualifier is the path inside it (FR601).
+    if (fn?.type === 'generic_function') fn = fn.childForFieldName('function')
+    const path = fn?.type === 'scoped_identifier' ? fn.childForFieldName('path') : null
     // Spaces matter inside `<T as Trait>`, so only those around `::` go.
     return path ? { qualifier: path.text.replace(/\s*::\s*/g, '::').replace(/\s+/g, ' ') } : {}
   }

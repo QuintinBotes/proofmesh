@@ -12,3 +12,5 @@
 (trait_item bounds: (trait_bounds (higher_ranked_trait_bound type: (function_type trait: (_) @inherits))))
 ; A call through a path, `ffi::f()`, `Foo::new()` or `crate::util::f()`: the callee is the last name, and the path is its qualifier (FR500).
 (call_expression function: (scoped_identifier name: (identifier) @name)) @reference.call
+; A turbofish call, `f::<T>()`, `x.f::<T>()` or `a::f::<T>()`, wraps the function in generic_function; the callee is the same name (FR600).
+(call_expression function: (generic_function function: [(identifier) @name (scoped_identifier name: (identifier) @name) (field_expression field: (field_identifier) @name)])) @reference.call

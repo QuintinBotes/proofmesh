@@ -18,10 +18,16 @@ FFI seams between languages, as inferred links (#22; FR460 to FR467):
 - `workspace_status` reports `ffi_seams`, the count of FFI rows by mechanism.
 - Upgrade note: the pass's version is part of snapshot identity, so the first index after upgrading builds a new snapshot. A call row the FFI rules bind replaces the unresolved row the syntax tier or the Python adapter wrote at that site, so `calls.unresolved` in `workspace_status` drops by those calls.
 
+The syntax tier records a Rust turbofish call (closes #124; FR600, FR601):
+
+- `f::<u8>()`, `x.collect::<Vec<_>>()` and `std::iter::repeat::<u8>(0)` had no `calls` row: tree-sitter wraps the function of a turbofish call in a `generic_function` node, which no call pattern matched. Each is now one unresolved `calls` row, `outside_capability`, with the function's last name as `detail.callee`. A path call keeps the qualifier it has without the turbofish (`std::iter`).
+- Not done: in a chain such as `(0..3).map(f).collect::<Vec<_>>()`, `collect` still has no row of its own, with or without a turbofish, because every call of a chain is keyed at the chain's start (#134).
+- Upgrade note: the syntax adapter is 0.3.0, so cached facts are not replayed, and a re-indexed Rust repository reports one more unresolved call per turbofish call.
+
 The syntax tier records a Rust call through a path (closes #116; FR500, FR501):
 
 - `ffi::cosine(0.0)`, `Foo::new()`, `crate::util::f()` and `<T as Tr>::f()` were neither a candidate nor an unresolved boundary: the tier wrote no `calls` row for them, so `get_relationships`, `analyze_impact` and the unresolved-call counts never saw them. Each is now one unresolved `calls` row, `outside_capability`, with the last name as `detail.callee` and the path before the last `::` in `detail.qualifier`, as Go and Java calls carry theirs.
-- Not done: a call with a turbofish (`f::<T>()`, `ffi::f::<T>()`, `x.f::<T>()`) still has no row.
+- Not done here: a call with a turbofish (`f::<T>()`, `ffi::f::<T>()`, `x.f::<T>()`) had no row; #124, above, adds it.
 - Upgrade note: Rust snapshots gain `calls` rows, one per path call, so a re-indexed Rust repository reports more unresolved calls than before. No fixture or Rosetta expectation changed: none of their Rust sources calls through a path.
 
 The Claude Code plugin shows the snapshot's state under the prompt and adds `/pm-status` (part of #113; FR480 to FR487):
