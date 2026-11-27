@@ -65,6 +65,12 @@ describe('FR1900 to FR1905 SARIF findings attached to symbols (fixtures/sarif)',
     expect((findings({ paths: ['src/db.ts'] }).data.findings as Finding[]).map((f) => f.stale)).toEqual([null])
   })
 
+  it('FR1904 a finding in a file deleted from the tree since the snapshot is imported, and stale', () => {
+    fs.rmSync(path.join(repo, 'test', 'api.test.ts'))
+    run('sarif', 'add', repo, SARIF, '--name', 'after-delete')
+    expect((findings({ paths: ['test/api.test.ts'] }).data.findings as Finding[]).map((f) => [f.import, f.stale])).toEqual([['after-delete', 'sarif_stale:after-delete'], ['findings', null]])
+  })
+
   it('FR1900 a file that is not SARIF 2.1.0 is refused and nothing is imported', () => {
     const bad = path.join(tmpDir('pm-sarif-bad-'), 'bad.sarif')
     fs.writeFileSync(bad, JSON.stringify({ version: '2.0.0', runs: [] }))

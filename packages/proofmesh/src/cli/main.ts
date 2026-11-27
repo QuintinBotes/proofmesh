@@ -310,8 +310,9 @@ export async function main(argv: string[]): Promise<number> {
             const db = openSnapshot(catalog, snapshot)
             let read: ReturnType<typeof readSarif>
             try { read = readSarif(file, repo.root, (rel) => !!db.prepare("select 1 from file where path = ? and disposition = 'indexed'").get(rel)) } finally { db.close() }
-            // As for a SCIP index (A27): each file's hash as the tree stands now, on the assumption that the analyser just read it.
-            const files = Object.fromEntries([...new Set(read.findings.map((f) => f.path))].map((p) => [p, sha256File(path.join(repo.root, p))]))
+            // As for a SCIP index (A27): each file's hash as the tree stands now, on the assumption that the analyser just read it. A file
+            // deleted since the snapshot has no hash, so its findings are stale.
+            const files = Object.fromEntries([...new Set(read.findings.map((f) => f.path))].map((p) => [p, fs.existsSync(path.join(repo.root, p)) ? sha256File(path.join(repo.root, p)) : '']))
             const s = catalog.addSarif(repo.id, { name, path: file, sha256: sha256File(file), ...read, files }, os.userInfo().username)
             console.log(`SARIF file ${s.name} imported for ${repo.name}: ${s.findings.length} finding${s.findings.length === 1 ? '' : 's'} attached from ${s.tools.join(', ') || 'no run'}; by ${s.added_by} at ${s.added_at}`)
             if (s.unattached.length) console.log(`${s.unattached.length} result${s.unattached.length === 1 ? '' : 's'} not attached:\n${s.unattached.map((u) => `  ${u.uri || '(no location)'}${u.line ? `:${u.line}` : ''} ${u.rule}: ${u.reason}`).join('\n')}`)
