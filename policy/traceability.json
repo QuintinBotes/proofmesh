@@ -2113,6 +2113,24 @@
     ],
     "FR1186": [
       "e2e/lens.spec.ts"
+    ],
+    "FR1260": [
+      "packages/proofmesh/test/xrepo-symbols.test.ts"
+    ],
+    "FR1261": [
+      "packages/proofmesh/test/xrepo-symbols.test.ts"
+    ],
+    "FR1262": [
+      "packages/proofmesh/test/xrepo-symbols.test.ts"
+    ],
+    "FR1263": [
+      "packages/proofmesh/test/xrepo-symbols.test.ts"
+    ],
+    "FR1264": [
+      "packages/proofmesh/test/xrepo-symbols.test.ts"
+    ],
+    "FR1265": [
+      "packages/proofmesh/test/xrepo-symbols.test.ts"
     ]
   },
   "manual": {

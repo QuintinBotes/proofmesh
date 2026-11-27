@@ -985,6 +985,14 @@ generated?: boolean
  * The stable_key of the test (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file.
  */
 key?: string
+/**
+ * Present on a test of another repository of the workspace (include_workspace): that repository, and the commit its snapshot was built from. Its id is of that snapshot.
+ */
+repository?: {
+id: string
+name: string
+commit: (string | null)
+}
 }[]
 totals: {
 /**
@@ -1016,6 +1024,20 @@ available: boolean
 reason: string
 }
 stopped_by: ("max_depth" | "node_budget" | null)
+/**
+ * With include_workspace: each workspace that holds this repository, its link file (null when none is sealed), and each member's side of it: the snapshot and commit the link file was built from, and whether that snapshot is still the member's current one.
+ */
+workspace?: {
+name: string
+link_file_id: (string | null)
+members: {
+id: string
+name: string
+commit: (string | null)
+snapshot_id: string
+current: boolean
+}[]
+}[]
 }
 
 /**
@@ -1088,6 +1110,10 @@ cursor?: string
  * Whether the walk follows candidate edges: a call site that binds one candidate, or an ambiguous one of at most five. true follows them, false never does, auto (the default) follows them when every subject's file was analysed by the syntax tier alone. Every row reached through one is inferred; a site with more than five candidates is never followed.
  */
 include_inferred?: (boolean | "auto")
+/**
+ * true adds the tests in the other repositories of this repository's workspaces that reach the subjects through a package it builds (an npm package.json), or through a repository that does, read from the workspace's sealed link file. Each such test carries its repository and commit, one deeper than the site that crosses into this repository; its chain runs in its own repository and ends at that site.
+ */
+include_workspace?: boolean
 }
 
 export interface FindUnusedData {
@@ -4070,6 +4096,14 @@ key?: string
  * Present and true when the file is generated (FR292); absent otherwise.
  */
 generated?: boolean
+/**
+ * Present on a node of another repository of the workspace (include_workspace): that repository, and the commit its snapshot was built from. Its id is of that snapshot.
+ */
+repository?: {
+id: string
+name: string
+commit: (string | null)
+}
 }
 }
 /**
@@ -4097,6 +4131,20 @@ generated?: boolean
 }
 }
 }
+/**
+ * With include_workspace: each workspace that holds this repository, its link file (null when none is sealed), and each member's side of it: the snapshot and commit the link file was built from, and whether that snapshot is still the member's current one.
+ */
+workspace?: {
+name: string
+link_file_id: (string | null)
+members: {
+id: string
+name: string
+commit: (string | null)
+snapshot_id: string
+current: boolean
+}[]
+}[]
 }
 
 /**
@@ -4181,6 +4229,10 @@ envelope?: ("full" | "compact" | "lean")
  * Whether the walk follows candidate edges: a call site that binds one candidate, or an ambiguous one of at most five. true follows them, false never does, auto (the default) follows them when every subject's file was analysed by the syntax tier alone. Every row reached through one is inferred; a site with more than five candidates is never followed.
  */
 include_inferred?: (boolean | "auto")
+/**
+ * true lets source_id or target_id be a symbol of another repository of this repository's workspaces, by its id in the snapshot the workspace's sealed link file was built from, and lets a path cross into another repository where a call reaches a package that repository builds (an npm package.json). Each node of another repository carries its repository and commit; a crossing hop's rule is package_symbol, inferred when the installed version is not the built one.
+ */
+include_workspace?: boolean
 }
 
 export interface VerifyClaimData {
