@@ -930,6 +930,7 @@ From #39: a fresh clone starts from the snapshot a teammate or CI built for the 
 - FR062: SHOULD replay a recorded agent session's queries against its claims' declared scope (P2).
 - FR063: SHOULD compare two snapshots visually (P2).
 - FR064: MUST label every exported image or HTML page with snapshot, scope, limits, analysis mode, and legend; source-containing exports require consent (FR052).
+- FR1580: MUST draw the Galaxy's exported image and page from the snapshot's positions (FR1221): each symbol, or while searching each match, a point in its area's colour at its place in the map's square frame with y up as on screen, so two exports of one snapshot are byte-identical and show the map a person sees; the export keeps its caveats, its accessible title and its coverage fog (FR059), and its legend says position shows containment (FR1224) (#218).
 - FR065: MUST treat repository content as untrusted in the browser: text-only rendering, strict Content Security Policy, no remote assets, visible escaping of bidirectional and invisible characters.
 - FR066: MUST authenticate the browser session to the local installation and reject cross-origin and DNS-rebinding requests.
 - FR067: MUST offer a non-visual equivalent for every view and honor reduced-motion, color-scheme, and contrast preferences.

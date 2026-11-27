@@ -3,7 +3,7 @@ import path from 'node:path'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { toEcosystem, type Ecosystem } from '../src/ecosystem'
 import { toNeighbourhood, type Focus, type RelationshipsEnvelope } from '../src/explore'
-import { areasSvg } from '../src/exporting'
+import { galaxySvg } from '../src/exporting'
 import { toMap, type Overview } from '../src/map'
 import { plural } from '../src/plural'
 import { indexedDataDir, tool } from '../../../packages/proofmesh/test/helpers.js'
@@ -38,10 +38,10 @@ describe('FR1210 a count of one is said with the singular noun', () => {
     expect(toEcosystem({ ...data, members: [a!], links: [], boundaries }).conclusion).toMatch(/^shop: 1 repository, 0 linked pairs, 1 unresolved boundary\. /)
   })
 
-  it('a Galaxy export of one area says one area and one match, also to a screen reader', () => {
-    const svg = areasSvg([{ name: 'src', count: 1, matches: 1 }], { view: 'Galaxy', repository: 'r', snapshotId: 's', analysisMode: 'no_execution', scope: 'all', limits: [], coverage: [] }, null)
+  it('a Galaxy export of one area says one area, one symbol and one match, also to a screen reader', () => {
+    const svg = galaxySvg({ positions: Uint16Array.from([0, 0]), area: Uint16Array.from([0]) }, [0], [{ name: 'src', color: '#7fd4ff', count: 1, matches: 1 }], { view: 'Galaxy', repository: 'r', snapshotId: 's', analysisMode: 'no_execution', scope: 'all', limits: [], coverage: [] }, null)
     expect(svg).toContain('aria-label="Galaxy: 1 area"')
-    expect(svg).toContain('>1 area, sized by their symbols</text>')
-    expect(svg).toContain('src · 1 · 1 match</text>')
+    expect(svg).toContain(">1 symbol, placed by the snapshot&#39;s path tree</text>")
+    expect(svg).toContain('>src · 1 match</text>')
   })
 })

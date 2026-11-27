@@ -16,7 +16,7 @@ import { FRAMEWORK_TYPES, glyph, toScene, type TraceEnvelope } from './scene'
 import { visible } from './visible'
 import { share } from './share'
 import { plural } from './plural'
-import { areasSvg, caveatLines, CONTAINMENT, NO_MEANING, offlineHtml, pngWithText, sceneSvg, sceneTable, type Caveats, type Source } from './exporting'
+import { caveatLines, galaxySvg, CONTAINMENT, NO_MEANING, offlineHtml, pngWithText, sceneSvg, sceneTable, type Caveats, type Source } from './exporting'
 
 type Sym = { id: string; kind: string; name: string; qualified_name: string; path: string; start_line: number; signature: string | null }
 type Hub = { id: string; kind: string; name: string; qualified_name: string; inbound: number }
@@ -423,7 +423,7 @@ export function App() {
         : mode === 'map' ? `${map?.overview.path || 'the repository root'}${map?.text ? `, matching “${map.text}”` : ''}`
         : mode === 'explore' && !tracing ? `relationships of ${focus?.qualified_name ?? ''}`
         : `paths from ${scene!.nodes.find((n) => n.role === 'source')?.qualifiedName ?? ''} to ${scene!.nodes.find((n) => n.role === 'target' || n.role === 'unreached-target')?.qualifiedName ?? ''}`,
-      limits: mode === 'galaxy' ? ['symbols are summarised by area; individual symbols and links are not drawn'] : [
+      limits: mode === 'galaxy' ? ['links are not drawn'] : [
         ...(scene!.badges.length ? [`${scene!.badges.length} node${scene!.badges.length === 1 ? '' : 's'} at the horizon where expansion stopped`] : []),
         ...(scene!.stubs.length ? [`${scene!.stubs.length} unresolved boundar${scene!.stubs.length === 1 ? 'y' : 'ies'} drawn`] : []),
         ...(tracing && scene!.conclusion ? [scene!.conclusion] : []),
@@ -435,9 +435,9 @@ export function App() {
       for (const i of galaxyMatches) counts.set(galaxy!.area[i]!, (counts.get(galaxy!.area[i]!) ?? 0) + 1)
       const areas = galaxy!.areas.map((a, i) => {
         const f = areaFog(a)
-        return { name: a.name, count: a.count, ...(searching ? { matches: counts.get(i) ?? 0 } : {}), ...(f.haze || f.ring || f.excluded ? { fog: fogText(a) } : {}) }
+        return { name: a.name, color: areaColor(i), count: a.count, ...(searching ? { matches: counts.get(i) ?? 0 } : {}), ...(f.haze || f.ring || f.excluded ? { fog: fogText(a) } : {}) }
       })
-      return { caveats, source, svg: areasSvg(areas, caveats, source), table: { head: ['area', 'symbols', 'matches', 'coverage'], rows: areas.map((a) => [a.name, String(a.count), a.matches === undefined ? '' : String(a.matches), a.fog ?? 'complete']) } }
+      return { caveats, source, svg: galaxySvg(galaxy!, searching ? galaxyMatches : Array.from({ length: galaxy!.n }, (_, i) => i), areas, caveats, source), table: { head: ['area', 'symbols', 'matches', 'coverage'], rows: areas.map((a) => [a.name, String(a.count), a.matches === undefined ? '' : String(a.matches), a.fog ?? 'complete']) } }
     }
     return { caveats, source, svg: sceneSvg(scene!, caveats, source), table: sceneTable(scene!) }
   }, [status, mode, galaxy, scene, tracing, evidence, includeSource, query, map, focus, galaxyMatches])

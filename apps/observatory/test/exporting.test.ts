@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { areasSvg, caveatLines, offlineHtml, pngText, pngWithText, sceneSvg, sceneTable, type Caveats } from '../src/exporting'
+import { caveatLines, galaxySvg, offlineHtml, pngText, pngWithText, sceneSvg, sceneTable, type Caveats } from '../src/exporting'
 import type { Scene } from '../src/scene'
 
 const caveats: Caveats = { view: 'Trace', repository: 'invoicing', snapshotId: 'snap_0123456789abcdef01234567', analysisMode: 'no_execution', scope: 'handleInvoice → formatAmount, depth 6', limits: ['max_depth 6 reached'], coverage: ['3 of 10 call sites unresolved'] }
@@ -49,15 +49,28 @@ describe('FR064 FR052 FR065 exports carry their caveats, load nothing, and inclu
 })
 
 describe('FR059 SC011 a Galaxy export shows incomplete coverage, never an empty or small area', () => {
-  it('an area with gaps gets a dashed ring and its coverage in words; an area with no symbols draws no symbol disc', () => {
-    const svg = areasSvg([
-      { name: 'src/core', count: 40 },
-      { name: 'src/legacy', count: 3, fog: 'src/legacy: 12 files not analysed (no_adapter:.vb 12)' },
-      { name: 'docs', count: 0, fog: 'docs: 9 files not analysed (no_adapter:.md 9)' },
+  it('an area with gaps gets a dashed ring and its coverage in words; an area with no symbols is a ghost with no point', () => {
+    const d = { positions: Uint16Array.from([0, 0, 65535, 65535, 32768, 32768]), area: Uint16Array.from([0, 0, 1]) }
+    const svg = galaxySvg(d, [0, 1, 2], [
+      { name: 'src/core', color: '#111111', count: 2 },
+      { name: 'src/legacy', color: '#222222', count: 1, fog: 'src/legacy: 12 files not analysed (no_adapter:.vb 12)' },
+      { name: 'docs', color: '#333333', count: 0, fog: 'docs: 9 files not analysed (no_adapter:.md 9)' },
     ], { ...caveats, view: 'Galaxy' }, null)
     expect(svg.match(/stroke-dasharray="4 3"/g)).toHaveLength(2)
     expect(svg).toContain('<title>src/legacy: 12 files not analysed (no_adapter:.vb 12)</title>12 files not analysed (no_adapter:.vb 12)</text>')
-    expect(svg).toContain('<title>docs: 9 files not analysed (no_adapter:.md 9)</title>9 files not analysed (no_adapter:.md 9)</text>')
-    expect(svg.match(/fill-opacity="0.35"/g)).toHaveLength(2)
+    expect(svg).toContain('<title>docs: 9 files not analysed (no_adapter:.md 9)</title>docs: 9 files not analysed (no_adapter:.md 9)</text>')
+    expect(svg.match(/ r="3" /g)).toHaveLength(3)
+    expect(svg).not.toContain('fill="#333333"')
+  })
+})
+
+describe('FR1580 a Galaxy export draws every symbol at its place in the snapshot', () => {
+  it('maps the payload frame onto one square, y up as on screen, and the same input gives the same bytes', () => {
+    const d = { positions: Uint16Array.from([0, 0, 65535, 65535, 65535, 0]), area: Uint16Array.from([0, 0, 0]) }
+    const svg = galaxySvg(d, [0, 1, 2], [{ name: 'src', color: '#7fd4ff', count: 3 }], { ...caveats, view: 'Galaxy' }, null)
+    // 1600 by 1000: an 820-pixel square from x 390 and y 60, above the band of ghosts.
+    expect([...svg.matchAll(/<circle cx="([\d.]+)" cy="([\d.]+)" r="3"/g)].map((m) => `${m[1]},${m[2]}`)).toEqual(['390.0,880.0', '1210.0,60.0', '1210.0,880.0'])
+    expect(galaxySvg(d, [0, 1, 2], [{ name: 'src', color: '#7fd4ff', count: 3 }], { ...caveats, view: 'Galaxy' }, null)).toBe(svg)
+    expect(caveatLines({ ...caveats, view: 'Galaxy' }, null).at(-1)).toBe('Position shows containment: directory, then file, then name. Nearness is not a relationship; only drawn lines are relationships.')
   })
 })
