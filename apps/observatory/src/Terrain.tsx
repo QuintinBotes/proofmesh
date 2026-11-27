@@ -1,7 +1,7 @@
 import Graph from 'graphology'
 import Sigma from 'sigma'
 import { extremityArrow, layerDashed, layerFill, pathCurved, sdfCircle, sdfRectangle } from 'sigma/rendering'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { ghostAreas, matchIndices, shortName, type GalaxyData } from './galaxyData'
 import { OVERLAY_RGB } from './diff'
 import { cellRect, coverageOf, drawnStrokes, FRAME, labels as labelsOf, pairText, symbolSide, type Label, type Pair, type Stroke, type Terrain as Model, type View } from './terrainModel'
@@ -15,6 +15,8 @@ type Props = {
   /** A cell to bring into view, such as a file the palette opened; its key changes each time it is asked for. */
   show?: { cell: number; key: number } | null
   onWebGlFailure: () => void
+  /** Marks drawn over the Terrain where the view puts them, such as claims at their symbols (#50). */
+  marks?: (view: View) => ReactNode
 }
 
 /** Symbols are drawn once their cell is this many pixels across (FR1404); before that the areas, directories and files stand for them. */
@@ -29,7 +31,7 @@ const BYTES = (hex: string): [number, number, number] => [1, 3, 5].map((i) => pa
 /** Ghost areas hold files but no symbols, so they have no cell in the layout; they sit in a row below it (FR1405). */
 const GHOSTS = 10, GHOST_Y = FRAME * 1.04, GHOST_SIDE = FRAME * 0.06
 
-export function Terrain({ data: d, terrain: t, query, focusArea, hoverArea, overlay, onOpen, onHover, onHoverArea, onBundle, onClear, show, onWebGlFailure }: Props) {
+export function Terrain({ data: d, terrain: t, query, focusArea, hoverArea, overlay, onOpen, onHover, onHoverArea, onBundle, onClear, show, onWebGlFailure, marks }: Props) {
   const box = useRef<HTMLDivElement>(null)
   const sigma = useRef<Sigma | null>(null)
   const handlers = useRef({ onOpen, onHover, onHoverArea, onBundle, onWebGlFailure })
@@ -226,6 +228,7 @@ export function Terrain({ data: d, terrain: t, query, focusArea, hoverArea, over
         <button type="button" onClick={() => zoomBy(1 / 1.6)} aria-label="Zoom out" title="Zoom out">−</button>
         <button type="button" onClick={() => sigma.current?.getCamera().reset({ duration: 300 })} aria-label="Fit everything" title="Fit everything">⤢</button>
       </div>
+      {view && marks?.(view)}
       {tip && <div className="galaxy-tip" style={{ left: tip.x + 14, top: tip.y + 14 }} role="status"><b>{visible(tip.title)}</b>{tip.lines.map((l, i) => <div key={i} className="dim">{visible(l)}</div>)}</div>}
       <span hidden data-testid="terrain-strokes">{strokes.map((s: Stroke) => `${s.basis}:${s.pair.from}>${s.pair.to}`).join(' ')}</span>
     </div>

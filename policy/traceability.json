@@ -2308,6 +2308,34 @@
     ],
     "FR1945": [
       "packages/proofmesh/test/query-subjects.test.ts"
+    ],
+    "FR1950": [
+      "e2e/claims-trace.spec.ts"
+    ],
+    "FR1952": [
+      "e2e/claims-trace.spec.ts"
+    ],
+    "FR1955": [
+      "e2e/claims-trace.spec.ts"
+    ],
+    "FR1957": [
+      "e2e/claims-trace.spec.ts"
+    ],
+    "FR1951": [
+      "e2e/claims-trace.spec.ts",
+      "apps/observatory/test/claims.test.ts"
+    ],
+    "FR1953": [
+      "e2e/claims-trace.spec.ts",
+      "apps/observatory/test/claims.test.ts"
+    ],
+    "FR1954": [
+      "e2e/claims-trace.spec.ts",
+      "apps/observatory/test/claims.test.ts"
+    ],
+    "FR1956": [
+      "e2e/claims-trace.spec.ts",
+      "apps/observatory/test/claims.test.ts"
     ]
   },
   "manual": {
