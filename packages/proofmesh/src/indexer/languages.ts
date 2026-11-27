@@ -45,6 +45,9 @@ const csharpAdapterPath = (): string | undefined => csharpCandidates().find((c) 
 /** The names an API description goes by (FR253), read by the build adapter for the endpoints it declares: `openapi.yaml`, `swagger.json`, `orders.openapi.yaml`. */
 const OPENAPI_NAME = /^((openapi|swagger)([.\-_].+)?|.+[.\-_](openapi|swagger))\.(ya?ml|json)$/i
 
+/** Schema-first contracts (FR400, FR401), read by the build adapter for what they declare: their symbols are declarations, not configuration. */
+export const CONTRACT_NAME = /\.(proto|graphql|gql)$/i
+
 const SYNTAX: Record<string, string> = {
   '.java': 'java', '.go': 'go', '.rs': 'rust', '.rb': 'ruby', '.php': 'php',
   '.c': 'c', '.h': 'c', '.cpp': 'cpp', '.cc': 'cpp', '.cxx': 'cpp', '.hpp': 'cpp', '.hh': 'cpp', '.hxx': 'cpp',
@@ -82,10 +85,10 @@ export const BUILT_IN: AdapterSpec[] = [
     entry: () => createRequire(import.meta.url).resolve('@proofmesh/adapter-syntax/terraform'),
     unavailable: () => 'adapter_unavailable:terraform',
   },
-  // The build graph (FR124 to FR129, FR151 to FR160, FR240 to FR249): each manifest is a source for this adapter and, where another adapter reads it as configuration, for that one too.
+  // The build graph (FR124 to FR129, FR151 to FR160, FR240 to FR249) and schema-first contracts (FR400, FR401): each manifest is a source for this adapter and, where another adapter reads it as configuration, for that one too.
   {
     id: 'build', languages: new Set(['build']), extensions: {},
-    manifest: (name) => (/^(go\.(mod|work)|package\.json|pnpm-workspace\.yaml|tsconfig(\..+)?\.json|pom\.xml|(settings|build)\.gradle(\.kts)?|libs\.versions\.toml|Cargo\.toml|pyproject\.toml|composer\.json|.+\.gemspec|BUILD|BUILD\.bazel|BUCK)$/.test(name) || OPENAPI_NAME.test(name) ? 'build' : undefined),
+    manifest: (name) => (/^(go\.(mod|work)|package\.json|pnpm-workspace\.yaml|tsconfig(\..+)?\.json|pom\.xml|(settings|build)\.gradle(\.kts)?|libs\.versions\.toml|Cargo\.toml|pyproject\.toml|composer\.json|.+\.gemspec|BUILD|BUILD\.bazel|BUCK)$/.test(name) || OPENAPI_NAME.test(name) || CONTRACT_NAME.test(name) ? 'build' : undefined),
     isConfig: () => false,
     entry: () => createRequire(import.meta.url).resolve('@proofmesh/adapter-syntax/build'),
     unavailable: () => 'adapter_unavailable:build',

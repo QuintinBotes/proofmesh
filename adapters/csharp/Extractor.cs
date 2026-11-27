@@ -59,7 +59,15 @@ public static class Extractor
                         var t = model.GetTypeInfo(bt.Type).Type as INamedTypeSymbol;
                         var kind = t?.TypeKind == TypeKind.Interface || declared.TypeKind == TypeKind.Interface ? "implements" : "inherits";
                         var site = new FactSite(path, index.RangeOf(tree, bt.Span));
-                        if (t is null || t.TypeKind == TypeKind.Error) { unresolved++; rels.Add(new FactRelationship(kind, "semantic_resolver", FactRef.Sym(source), site, "unresolved", Reason: unbound, Detail: unbound == "dependency_missing" ? blame : null)); continue; }
+                        // A base type that does not bind keeps the name it is written with, which the gRPC server rule reads (FR403).
+                        if (t is null || t.TypeKind == TypeKind.Error)
+                        {
+                            unresolved++;
+                            var detail = new Dictionary<string, string> { ["name"] = bt.Type.ToString() };
+                            if (unbound == "dependency_missing" && blame is not null) foreach (var (k, v) in blame) detail[k] = v;
+                            rels.Add(new FactRelationship(kind, "semantic_resolver", FactRef.Sym(source), site, "unresolved", Reason: unbound, Detail: detail));
+                            continue;
+                        }
                         rels.Add(Link(kind, source, site, t, index));
                     }
                     break;

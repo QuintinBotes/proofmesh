@@ -1,0 +1,1 @@
+{ "type": "record", "name": "Invoice", "fields": [{ "name": "total", "type": "string" }] }

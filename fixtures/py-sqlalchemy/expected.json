@@ -22,7 +22,8 @@
     { "from": "store/models:RushOrder", "to": "store/models:Order", "line": 20, "site_text": "Order" },
     { "from": "store/models:Refund", "to": "store/models:Order", "line": 24, "site_text": "Order" },
     { "from": "store/models:OrderLine", "to": "store/db:Base", "line": 30, "site_text": "Base" },
-    { "from": "store/models:AuditEntry", "to": "store/db:Base", "line": 38, "site_text": "Base" }
+    { "from": "store/models:AuditEntry", "to": "store/db:Base", "line": 38, "site_text": "Base" },
+    { "from": "store/db:Base", "to": "unresolved sqlalchemy.orm.DeclarativeBase", "line": 5, "site_text": "DeclarativeBase" }
   ],
   "table_reach": [
     { "table": "orders", "path": "store/models.py", "entities": [["store/models:Order", "maps_to"], ["store/models:Refund", "inherits"], ["store/models:RushOrder", "inherits"]], "reach": [

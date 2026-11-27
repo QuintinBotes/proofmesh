@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package shop.v1;
+
+option go_package = "example.com/shop/gen/shopv1;pb";
+
+service Orders {
+  rpc GetOrder(GetOrderRequest) returns (Order);
+  // Declared, and implemented by no code of the repository.
+  rpc CancelOrder(GetOrderRequest) returns (Order);
+}
+
+message GetOrderRequest {
+  string id = 1;
+}
+
+message Order {
+  string id = 1;
+}

@@ -1459,6 +1459,24 @@
     ],
     "FR423": [
       "packages/proofmesh/test/tool-profiles.test.ts"
+    ],
+    "FR400": [
+      "packages/proofmesh/test/seams-schema.test.ts"
+    ],
+    "FR401": [
+      "packages/proofmesh/test/seams-schema.test.ts"
+    ],
+    "FR402": [
+      "packages/proofmesh/test/seams-schema.test.ts"
+    ],
+    "FR403": [
+      "packages/proofmesh/test/seams-schema.test.ts"
+    ],
+    "FR404": [
+      "packages/proofmesh/test/seams-schema.test.ts"
+    ],
+    "FR405": [
+      "packages/proofmesh/test/seams-schema.test.ts"
     ]
   },
   "manual": {
