@@ -15,7 +15,7 @@ function hubRepo(): string {
   return repo
 }
 
-/** The API requests the page makes from now on: a tool by its name, a Galaxy point's by its route. */
+/** The API requests the page makes from now on: a tool by its name, a Terrain point's by its route. */
 const toolRequests = (page: Page) => {
   const seen: string[] = []
   page.on('request', (r) => { const m = /\/api\/v1\/(?:tools\/([a-z_]+)|(galaxy\/symbol))$/.exec(r.url()); if (m) seen.push(m[1] ?? m[2]!) })
@@ -59,7 +59,7 @@ test.describe('the Proof lens on the invoicing fixture', () => {
     expect(seen).toEqual(['get_symbol_card'])
   })
 
-  test('FR1180 a Galaxy search result opens with one request: its point brings its card', async ({ page }) => {
+  test('FR1180 a Terrain search result opens with one request: its point brings its card', async ({ page }) => {
     await page.goto(view.launchUrl)
     await expect(page.getByTestId('conclusion')).toContainText('symbols in', { timeout: 60000 })
     await page.getByRole('button', { name: 'Table', exact: true }).click()
