@@ -27,3 +27,6 @@ node_modules/
 
 # Release artifacts are built locally and never committed.
 /release/out/
+
+# Claude Code writes this when it loads the plugin with --plugin-dir, for the mods types of its own build.
+/packages/proofmesh-plugin/tsconfig.json
