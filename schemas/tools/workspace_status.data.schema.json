@@ -12,7 +12,8 @@
     "hubs",
     "calls",
     "file_summary",
-    "analysis"
+    "analysis",
+    "doc_mentions"
   ],
   "properties": {
     "repository": {
@@ -926,6 +927,30 @@
           ],
           "description": "The generated and vendored code policy (FR296): the markers, attributes and paths used, and what is done with each kind of file. The policy the snapshot was built with; null for a snapshot sealed before it was recorded.",
           "additionalProperties": true
+        }
+      }
+    },
+    "doc_mentions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "resolved",
+        "ambiguous",
+        "stale"
+      ],
+      "description": "Markdown docs' mentions of code (FR820 to FR824): inline code and links resolved to one symbol or file, mentions of several symbols left ambiguous, and stale mentions whose code was renamed, moved or deleted since a snapshot that resolved them, which find_stale_mentions lists. All zero for a snapshot sealed before format 0.12.",
+      "properties": {
+        "resolved": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "ambiguous": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "stale": {
+          "type": "integer",
+          "minimum": 0
         }
       }
     }

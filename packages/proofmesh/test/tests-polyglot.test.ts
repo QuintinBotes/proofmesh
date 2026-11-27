@@ -224,14 +224,14 @@ describe('FR200 docs/proofmesh/languages.md lists the conventions and the marker
     for (const word of ['_test.go', 'test_*.py', '*_test.py', 'conftest.py', 'src/test/', '*Test.php', '_spec.rb', '_test.rb', '*_test.*', '*_unittest.*', 'Tests/', '#[test]', '#[tokio::test]', '#[cfg(test)]', '@Test', 'TestCase', 'XCTestCase', 'TEST_F', 'TEST_P', '[Fact]', '[TestMethod]', 'it "adds"', '`roles`', '`test_support`']) expect(doc, word).toContain(word)
   })
 
-  it('FR200 the adapter protocol schema declares roles as optional, and the compatibility table names protocol 1.2 and snapshot format 0.11', () => {
+  it('FR200 the adapter protocol schema declares roles as optional, and the compatibility table names protocol 1.2 and snapshot format 0.12', () => {
     const schema = JSON.parse(fs.readFileSync(path.join(ROOT, 'schemas', 'adapter-protocol', 'analyze.response.schema.json'), 'utf8'))
     const symbol = schema.properties.symbols.items
     expect(symbol.properties.roles.items.enum).toEqual(['test', 'test_support'])
     expect(symbol.required).not.toContain('roles')
     const table = fs.readFileSync(path.join(ROOT, 'COMPATIBILITY.md'), 'utf8')
     expect(table).toMatch(/\| Adapter protocol \| 1\.2 \|/)
-    expect(table).toMatch(/\| Snapshot file format \| 0\.11 \|/)
+    expect(table).toMatch(/\| Snapshot file format \| 0\.12 \|/)
   })
 })
 

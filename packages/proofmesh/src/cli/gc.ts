@@ -31,6 +31,9 @@ export function plan(catalog: Catalog, keep: number): GcPlan {
       const db = new Database(file, { readonly: true })
       try {
         for (const r of db.prepare('select distinct object_hash h from evidence union select distinct content_hash h from file where content_hash is not null').all() as Array<{ h: string }>) referenced.add(r.h)
+        // A doc's text is kept with the snapshot that read it for mentions (FR826), whether or not it named any code.
+        const docs = db.prepare("select value from meta where key = 'doc_links'").get() as { value: string } | undefined
+        for (const h of Object.values(docs ? (JSON.parse(docs.value) as { docs: Record<string, string> }).docs : {})) referenced.add(h)
       } finally {
         db.close()
       }

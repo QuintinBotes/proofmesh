@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "tools/find_stale_mentions.input.schema.json",
+  "title": "find_stale_mentions input",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "repository_id": {
+      "type": "string",
+      "pattern": "^repo_[0-9a-z]+$"
+    },
+    "snapshot_id": {
+      "type": "string",
+      "pattern": "^snap_[0-9a-z]+$",
+      "description": "Default is the repository's current snapshot."
+    },
+    "path_prefix": {
+      "type": "string",
+      "description": "Only docs whose repository-relative path starts with this."
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "timeout_ms": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_rows": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_depth": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "envelope": {
+      "enum": [
+        "full",
+        "compact"
+      ],
+      "description": "compact leaves out the snapshot-wide parts of the envelope (unresolved reasons, standing limitations) that an earlier answer from the same snapshot already gave; query-specific limits stay. Over MCP, answers after the first full one per snapshot are compact unless full is asked for."
+    }
+  },
+  "description": "Doc mentions that no longer name real code: a Markdown doc's inline code or link that resolved in an earlier snapshot and names nothing now, each with its file and line, and renamed, moved or moved_renamed with the new name when the symbol was paired by body hash, else deleted."
+}

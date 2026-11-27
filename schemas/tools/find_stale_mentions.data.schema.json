@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "tools/find_stale_mentions.data.schema.json",
+  "title": "find_stale_mentions data",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "mentions",
+    "total"
+  ],
+  "properties": {
+    "mentions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "line",
+          "mention",
+          "change",
+          "to"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "The doc, repository-relative."
+          },
+          "line": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "mention": {
+            "type": "string",
+            "description": "The inline code or link target as the doc writes it."
+          },
+          "change": {
+            "enum": [
+              "renamed",
+              "moved",
+              "moved_renamed",
+              "deleted"
+            ]
+          },
+          "to": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "name",
+                  "path"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "The new name, written as the mention wrote the old one, or the file's new path."
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "generated": {
+                    "type": "boolean",
+                    "description": "Present and true when the new file is generated (FR292); absent otherwise."
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    "total": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Stale mentions under the prefix, before max_rows."
+    }
+  },
+  "description": "Stale doc mentions by doc path and line (FR823)."
+}
