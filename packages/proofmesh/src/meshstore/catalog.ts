@@ -622,9 +622,12 @@ export class Catalog {
 
   /** A running job whose process no longer holds the index lease was interrupted; it is reported so, not as running. */
   job(id: string): IndexJob | undefined {
-    const row = this.db.prepare('select * from index_job where id = ?').get(id) as Record<string, string | number | null> | undefined
+    const read = () => this.db.prepare('select * from index_job where id = ?').get(id) as Record<string, string | number | null> | undefined
+    let row = read()
     if (!row) return undefined
     const holder = this.leaseHolder(row.repository_id as string)
+    // An index records its outcome before it frees the lease, so the row read again once the lease is gone is final (FR740).
+    if (row.state === 'running' && holder?.owner !== row.owner) row = read()!
     const interrupted = (row.state === 'running' && (!holder || holder.owner !== row.owner)) || (row.state === 'queued' && Date.now() - Date.parse((row.progress_at ?? row.requested_at) as string) > 120000)
     const { owner: _owner, adapter_progress: adapterProgress, ...rest } = row
     const started = row.started_at ? Date.parse(row.started_at as string) : null

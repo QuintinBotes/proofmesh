@@ -385,6 +385,7 @@ Acceptance: CI runs my pull request without secrets or release credentials; lice
 - FR275: MUST provide a large benchmark tier, `bench/graph-bench/run-large.sh`, on a pinned public repository of at least 20,000 source files in at least three languages, reporting as the median of three runs, with the machine described (NFR005), the cold index time, the peak memory of each adapter process, the store size, the time and files re-analysed for a one-file edit and seconds per file; no time or size budget is promised before it has measured one.
 - FR276: MUST print the seconds per analysed file of each adapter in the index summary, and `docs/proofmesh/operations.md` MUST record the Python adapter's measured figure.
 - FR277: MUST make each adapter's budget part of the snapshot's identity, so that raising a budget indexes again, while cached facts are still replayed.
+- FR740: MUST record an index job's final state (`succeeded` with its result, or `failed` with its error) before the index frees the repository's index lease, and `get_job` MUST read a `running` job's row again after it finds the lease free or held by another process, so a job that finished is never reported `interrupted`; `interrupted` means only that the job's process stopped before recording an outcome (#130).
 
 ### Concurrent indexes
 

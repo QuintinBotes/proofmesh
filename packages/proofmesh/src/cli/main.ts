@@ -443,6 +443,15 @@ export async function main(argv: string[]): Promise<number> {
         const report = progressReporter((line) => process.stderr.write(`${line}\n`), testMs('PROOFMESH_TEST_PROGRESS_INTERVAL_MS', 50, 60000), recordAdapters)
         let started = false, phase = '', beat = 0
         const plan: Record<string, { mode: string; analyse: number; reuse: number }> = {}
+        // A finished job keeps counts that mean something: the files indexed, not the last phase's zero.
+        const succeed = (r: Awaited<ReturnType<typeof indexRepository>>) => jobs.updateJob(jobId, { state: 'succeeded', finished_at: new Date().toISOString(), phase: 'done', done: r.counts.indexed, total: r.counts.indexed, progress_at: new Date().toISOString(), result: JSON.stringify({ snapshot_id: r.snapshotId, status: r.status, counts: r.counts, reuse: r.reuse ?? null, commit: r.commit ?? null, ...(r.memoryRestarts ? { memory_restarts: r.memoryRestarts } : {}), ...(r.fallbacks ? { fallbacks: r.fallbacks } : {}), ...(r.partial ? { partial: r.partial } : {}), memory: { host_heap_mb: heapLimitMb(), adapter_budgets: r.adapterBudgets } }) })
+        // The run report names the adapter that failed and those that had finished, so a failed index says where it broke.
+        const fail = (e: unknown) => {
+          const failure = asProofmeshError(e)
+          const { failed_adapter: failedAdapter, completed_adapters: completedAdapters } = failure.details
+          jobs.updateJob(jobId, { state: 'failed', finished_at: new Date().toISOString(), error: storedMessage(failure), ...(failedAdapter ? { result: JSON.stringify({ failed_adapter: failedAdapter, completed_adapters: completedAdapters ?? [] }) } : {}) })
+        }
+        let settled = false
         let r: Awaited<ReturnType<typeof indexRepository>>
         try {
           // --keep-current: a commit indexed for impact_completeness leaves the repository's current snapshot as it was (FR109).
@@ -460,22 +469,20 @@ export async function main(argv: string[]): Promise<number> {
             recordAdapters()
           }, undefined, rev, keepCurrent && !!rev, {
             wait: !noWait, allowPartial, onNotice: (line) => process.stderr.write(`${line}\n`),
+            // The job row is final before the index lease is free, so get_job never reads a finished job as interrupted (FR740).
+            onSettled: (o) => { if ('result' in o) succeed(o.result); else fail(o.error); settled = true },
             // A job waiting behind another index is alive: refresh its heartbeat so no poller reads it as interrupted and starts another.
             onWait: () => { const at = Date.now(); if (at - beat >= 10_000) { beat = at; jobs.updateJob(jobId, { progress_at: new Date(at).toISOString() }) } },
           })
         } catch (e) {
           report.stop()
-          const failure = asProofmeshError(e)
-          // The run report names the adapter that failed and those that had finished, so a failed index says where it broke.
-          const { failed_adapter: failedAdapter, completed_adapters: completedAdapters, batches_kept: kept, batches_total: keptOf } = failure.details
-          jobs.updateJob(jobId, { state: 'failed', finished_at: new Date().toISOString(), error: storedMessage(failure), ...(failedAdapter ? { result: JSON.stringify({ failed_adapter: failedAdapter, completed_adapters: completedAdapters ?? [] }) } : {}) })
+          if (!settled) fail(e)
+          const { batches_kept: kept, batches_total: keptOf } = asProofmeshError(e).details
           if (kept !== undefined) process.stderr.write(`${kept} of ${keptOf} batches were kept; index again to resume, or with --allow-partial to publish what was analysed\n`)
           jobs.close()
           throw e
         }
         const phases = report.stop()
-        // A finished job keeps counts that mean something: the files indexed, not the last phase's zero.
-        jobs.updateJob(jobId, { state: 'succeeded', finished_at: new Date().toISOString(), phase: 'done', done: r.counts.indexed, total: r.counts.indexed, progress_at: new Date().toISOString(), result: JSON.stringify({ snapshot_id: r.snapshotId, status: r.status, counts: r.counts, reuse: r.reuse ?? null, commit: r.commit ?? null, ...(r.memoryRestarts ? { memory_restarts: r.memoryRestarts } : {}), ...(r.fallbacks ? { fallbacks: r.fallbacks } : {}), ...(r.partial ? { partial: r.partial } : {}), memory: { host_heap_mb: heapLimitMb(), adapter_budgets: r.adapterBudgets } }) })
         jobs.close()
         for (const f of r.fallbacks ?? []) console.log(`adapter ${f.adapter} could not analyse ${f.files} file${f.files === 1 ? '' : 's'}, so the syntax tier read them: ${f.reason}`)
         if (r.partial) console.log(`partial snapshot: adapter ${r.partial.adapters.join(', ')} failed, ${r.partial.missing} of ${r.partial.files} files are missing; they are failed with adapter_died, and indexing again asks the adapter again`)

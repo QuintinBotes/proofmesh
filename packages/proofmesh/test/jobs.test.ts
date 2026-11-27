@@ -43,6 +43,8 @@ describe('request_index and get_job: background indexing with progress', () => {
     for (const args of [['init'], ['repo', 'add', repo], ['index', repo]]) expect(cli(['--data-dir', d, ...args]).status).toBe(0)
     fs.appendFileSync(path.join(repo, 'src', 'Tools', 'Cli.cs'), '\n// edited\n')
     const job = await poll(d, (tool(d, 'request_index', {}).data as any).job.id)
+    // The state and error first, so a job that did not succeed says how it ended (#130).
+    expect({ state: job.state, error: job.error }).toEqual({ state: 'succeeded', error: null })
     expect(job.plan).toEqual({ csharp: { mode: 'incremental', analyse: 1, reuse: 1, budget_mb: expect.any(Number), budget_source: 'machine' } })
     expect(job.result.reuse).toEqual({ reused: 1, analysed: 1 })
   }, 240000)
@@ -50,6 +52,35 @@ describe('request_index and get_job: background indexing with progress', () => {
   it('an unknown job is not found', async () => {
     const { dataDir } = await indexedDataDir()
     expect(() => tool(dataDir, 'get_job', { job_id: 'job_missing' })).toThrow('no index job job_missing for this repository')
+  })
+})
+
+describe('FR740 a finished index job is never read as interrupted (#130)', () => {
+  it('the index records its outcome while it holds the lease, and get_job reads a running row again once the lease is free', async () => {
+    const { Catalog, initDataDir, LEASE_OWNER } = await import('../src/meshstore/catalog.js')
+    const { indexRepository } = await import('../src/indexer/coordinator.js')
+    const d = tmpDir()
+    initDataDir(d)
+    const catalog = Catalog.open(d)
+    const repo = catalog.addRepository(copyFixture())
+    // Who held the lease when each outcome was handed over: this process, both for a published index and for one that failed after taking it.
+    const seen: Array<[string, string | undefined]> = []
+    const onSettled = (o: { result: unknown } | { error: unknown }) => { seen.push(['result' in o ? 'result' : 'error', catalog.leaseHolder(repo.id)?.owner]) }
+    await indexRepository(d, repo.id, undefined, undefined, undefined, false, { onSettled })
+    await expect(indexRepository(d, repo.id, undefined, undefined, 'no-such-commit', true, { onSettled })).rejects.toThrow()
+    expect(seen).toEqual([['result', LEASE_OWNER], ['error', LEASE_OWNER]])
+    expect(catalog.leaseHolder(repo.id)).toBeUndefined()
+    // The index settles its row and frees the lease between get_job's read of the row and its look at the lease: the job reads succeeded.
+    const job = catalog.createJob(repo.id, 'test')
+    catalog.updateJob(job, { state: 'running', started_at: new Date().toISOString(), owner: LEASE_OWNER })
+    const leaseHolder = catalog.leaseHolder.bind(catalog)
+    catalog.leaseHolder = (id?: string) => { catalog.updateJob(job, { state: 'succeeded', finished_at: new Date().toISOString() }); return leaseHolder(id) }
+    expect(catalog.job(job)!.state).toBe('succeeded')
+    // A row still running once the lease is gone was interrupted.
+    catalog.leaseHolder = leaseHolder
+    catalog.updateJob(job, { state: 'running' })
+    expect(catalog.job(job)!.state).toBe('interrupted')
+    catalog.close()
   })
 })
 

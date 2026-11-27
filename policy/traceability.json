@@ -1670,6 +1670,9 @@
     ],
     "FR680": [
       "packages/proofmesh/test/csharp.golden.test.ts"
+    ],
+    "FR740": [
+      "packages/proofmesh/test/jobs.test.ts"
     ]
   },
   "manual": {

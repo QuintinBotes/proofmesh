@@ -108,9 +108,11 @@ export type Progress = { phase: 'discover' | 'capture' | 'prepare' | 'initialize
  * registry: the conformance kit indexes with the adapter it checks first; everything else uses the data directory's own.
  * rev: a commit to index instead of the working tree. Its snapshot becomes current like any other, unless keepCurrent and the repository has one.
  */
-export async function indexRepository(dataDir: string, repoIdOrPath: string, onProgress?: (p: Progress) => void, registry?: Registry, rev?: string, keepCurrent = false, lock: { wait?: boolean; onNotice?: (line: string) => void; onWait?: () => void; signal?: AbortSignal; /** Publish what was analysed when an adapter dies, the files it did not reach failed with `adapter_died` (FR340). */ allowPartial?: boolean } = {}): Promise<IndexResult> {
+export async function indexRepository(dataDir: string, repoIdOrPath: string, onProgress?: (p: Progress) => void, registry?: Registry, rev?: string, keepCurrent = false, lock: { wait?: boolean; onNotice?: (line: string) => void; onWait?: () => void; signal?: AbortSignal; /** Publish what was analysed when an adapter dies, the files it did not reach failed with `adapter_died` (FR340). */ allowPartial?: boolean; /** Called with the outcome while the index lock is still held, so a job row written here is final before anyone can see the lock free (FR740). */ onSettled?: (outcome: { result: IndexResult } | { error: unknown }) => void } = {}): Promise<IndexResult> {
   const catalog = Catalog.open(dataDir)
   let held: HeldLock | undefined
+  let outcome: { result: IndexResult } | { error: unknown } | undefined
+  const settle = (result: IndexResult) => { outcome = { result }; return result }
   const progress = (p: Progress) => onProgress?.(p)
   let runs: AdapterRun[] = []
   const finished: string[] = []
@@ -262,7 +264,7 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
     const existing = catalog.snapshot(snapshotId)
     if (existing?.state === 'published') {
       if (catalog.currentSnapshot(repo.id)?.id !== snapshotId) catalog.publish(snapshotId, repo.id, existing.store_digest!, keepCurrent)
-      return { snapshotId, status: 'unchanged', analysisMode, counts: countDispositions(discovered.map((d) => (d.status === 'capture' ? 'indexed' : DISPOSITION[d.status]))), commit: checkout?.git.commit, adapterPeakRssKb: await peaks(), adapterBudgets, ...(recorded(snapshotId).length ? { fallbacks: recorded(snapshotId).map(said) } : {}) }
+      return settle({ snapshotId, status: 'unchanged', analysisMode, counts: countDispositions(discovered.map((d) => (d.status === 'capture' ? 'indexed' : DISPOSITION[d.status]))), commit: checkout?.git.commit, adapterPeakRssKb: await peaks(), adapterBudgets, ...(recorded(snapshotId).length ? { fallbacks: recorded(snapshotId).map(said) } : {}) })
     }
     for (const run of runs) {
       run.keys = fileKeys({
@@ -554,7 +556,7 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
       sealAndPublish(catalog, db, stagingFile, snapshotId, repo.id, keepCurrent)
       fs.rmSync(stagingDir(dataDir, snapshotId), { recursive: true, force: true })
       for (const run of runs) cache.prune(repo.id, run.spec.id, run.keys!.values())
-      return { snapshotId, status: 'published', analysisMode, counts, reuse, commit: checkout?.git.commit, adapterPeakRssKb: await peaks(), adapterBudgets, ...(memoryRestarts.length ? { memoryRestarts } : {}), ...(fallbacks.length ? { fallbacks } : {}), ...(batches.done ? { resumed: batches } : {}), ...(partialResult ? { partial: partialResult } : {}) }
+      return settle({ snapshotId, status: 'published', analysisMode, counts, reuse, commit: checkout?.git.commit, adapterPeakRssKb: await peaks(), adapterBudgets, ...(memoryRestarts.length ? { memoryRestarts } : {}), ...(fallbacks.length ? { fallbacks } : {}), ...(batches.done ? { resumed: batches } : {}), ...(partialResult ? { partial: partialResult } : {}) })
     } catch (e) {
       // The batches the checkpoint holds survive the failure: the next index resumes them, and their facts are in the cache.
       if (db.open && !analysed && e instanceof ProofmeshError && e.details.failed_adapter) {
@@ -566,12 +568,18 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
       if (analysed) fs.rmSync(stagingDir(dataDir, snapshotId), { recursive: true, force: true })
       throw e
     }
+  } catch (e) {
+    outcome = { error: e }
+    throw e
   } finally {
     cache?.close()
     for (const r of runs) await r.process?.shutdown()
     if (jobDir) fs.rmSync(jobDir, { recursive: true, force: true })
-    held?.release()
-    catalog.close()
+    // The outcome is recorded before the lock is free: a reader that finds the lock free and the job still running knows it was interrupted (#130).
+    try { if (held && outcome) lock.onSettled?.(outcome) } finally {
+      held?.release()
+      catalog.close()
+    }
   }
 }
 
