@@ -6,6 +6,7 @@ import { fogText, Galaxy, manyLinks, MOVING_LINK_LIMIT } from './Galaxy'
 import { ClaimsView } from './ClaimsView'
 import { areaFog, legendAreas, matchIndices, parseGalaxy, rankMatches, shortName, type GalaxyData } from './galaxyData'
 import { GraphView } from './GraphView'
+import { Palette, type Command } from './Palette'
 import { toNeighbourhood, type RelationshipsEnvelope } from './explore'
 import { areaColor, toMap, type Overview } from './map'
 import { defaultSelection, evidenceFor, LINK_WORDS, pairs, RELATION_COLOURS, RELATION_WORDS, relations, toEcosystem, type Ecosystem, type Relation } from './ecosystem'
@@ -20,7 +21,10 @@ type Hub = { id: string; kind: string; name: string; qualified_name: string; inb
 
 const EXPLORE_TYPES = ['calls', 'inherits', 'implements', 'overrides', ...FRAMEWORK_TYPES]
 const param = (name: string) => new URLSearchParams(window.location.search).get(name)
-const VIEW_NAMES: Record<string, string> = { galaxy: 'Galaxy', map: 'Map', explore: 'Explore', trace: 'Trace a path', claims: 'Claims', diff: 'Diff', ecosystem: 'Ecosystem' }
+// In tab order; a view's single key is its place here (FR1144).
+const VIEW_NAMES = { galaxy: 'Galaxy', map: 'Map', explore: 'Explore', trace: 'Trace a path', claims: 'Claims', diff: 'Diff', ecosystem: 'Ecosystem' } as const
+type Mode = keyof typeof VIEW_NAMES
+const VIEWS = Object.entries(VIEW_NAMES) as Array<[Mode, string]>
 
 /** Saves bytes as a file the person downloads; nothing is sent anywhere. */
 function download(name: string, blob: Blob): void {
@@ -90,7 +94,7 @@ export function App() {
   const [target, setTarget] = useState<Sym | null>(null)
   const [depth, setDepth] = useState(6)
   const [followFramework, setFollowFramework] = useState(false)
-  const [mode, setMode] = useState<'galaxy' | 'map' | 'explore' | 'trace' | 'claims' | 'diff' | 'ecosystem'>(() => (focusFromUrl() ? 'explore' : param('map') !== null ? 'map' : 'galaxy'))
+  const [mode, setMode] = useState<Mode>(() => (focusFromUrl() ? 'explore' : param('map') !== null ? 'map' : 'galaxy'))
   // Replay (FR010): the published snapshots, and the one every query is pinned to when it is not the current one.
   const [snapshots, setSnapshots] = useState<SnapshotInfo[]>([])
   const [replay, setReplayState] = useState<string | null>(null)
@@ -109,9 +113,17 @@ export function App() {
   const [galaxy, setGalaxy] = useState<GalaxyData | null>(null)
   const [galaxyArea, setGalaxyArea] = useState<number | null>(null)
   const galaxyAsked = useRef(false)
+  const [palette, setPalette] = useState(false)
+  // The commands with a single key, as of the last render, for the key handler below.
+  const keyed = useRef<Command[]>([])
   useEffect(() => {
-    // '/' jumps to search, as in most code browsers.
-    const onKey = (e: KeyboardEvent) => { if (e.key === '/' && !(e.target instanceof HTMLInputElement)) { e.preventDefault(); document.getElementById('search')?.focus() } }
+    // Control+K or ⌘K opens the palette from anywhere; '/', '?' and the single keys only where typing is not text (FR1140, FR1144).
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'k') { e.preventDefault(); setPalette(true); return }
+      if (e.metaKey || e.ctrlKey || e.altKey || (e.target as Element | null)?.closest?.('input, textarea, select, [contenteditable], [role=dialog]')) return
+      const command = e.key === '/' || e.key === '?' ? { run: () => setPalette(true) } : keyed.current.find((c) => c.key === e.key)
+      if (command) { e.preventDefault(); command.run() }
+    }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [])
@@ -132,6 +144,10 @@ export function App() {
   const [tableView, setTableView] = useState(false)
   const [noWebGl, setNoWebGl] = useState(false)
   const [evidence, setEvidence] = useState<Evidence | null>(null)
+  // A symbol chosen in the palette moves focus to its evidence once it shows (FR1145).
+  const evidencePanel = useRef<HTMLElement>(null)
+  const focusEvidence = useRef(false)
+  useEffect(() => { if (evidence && focusEvidence.current) { focusEvidence.current = false; evidencePanel.current?.focus() } }, [evidence])
   // Consent covers the source shown when it was given, so it lapses whenever the evidence panel changes (FR052).
   const [includeSource, setIncludeSource] = useState(false)
   useEffect(() => setIncludeSource(false), [evidence])
@@ -280,13 +296,15 @@ export function App() {
     return () => { window.removeEventListener('hashchange', connect); window.removeEventListener('popstate', onPop) }
   }, [reducedMotion, report, loadFocus, loadMap, drillInto, loadEcosystem])
   useEffect(() => {
-    if (mode !== 'galaxy' || !status || galaxyAsked.current) return
+    // The palette searches the Galaxy's names, so opening it loads them in any view.
+    if ((mode !== 'galaxy' && !palette) || !status || galaxyAsked.current) return
     galaxyAsked.current = true
     setLoading(true)
     fetchGalaxy().then((b) => { setGalaxy(parseGalaxy(b)); setError(null) }).catch(report).finally(() => { setLoading(false); setAnswered((n) => n + 1) })
-  }, [mode, status, report])
+  }, [mode, palette, status, report])
   const galaxyMatches = useMemo(() => (galaxy && mode === 'galaxy' ? matchIndices(galaxy, query) : []), [galaxy, mode, query])
-  const galaxyOverlay = useMemo(() => (galaxy && diff && diff.data.head.snapshot_id === galaxy.snapshotId ? diffOverlay(galaxy, diff.data) : null), [galaxy, diff])
+  const [overlayShown, setOverlayShown] = useState(true)
+  const galaxyOverlay = useMemo(() => (overlayShown && galaxy && diff && diff.data.head.snapshot_id === galaxy.snapshotId ? diffOverlay(galaxy, diff.data) : null), [overlayShown, galaxy, diff])
 
   /** Pins every query to a published snapshot, or back to the current one, and starts the views over on it. */
   const pin = useCallback(async (id: string | null) => {
@@ -351,11 +369,32 @@ export function App() {
     return { caveats, source, svg: sceneSvg(scene!, caveats, source), table: sceneTable(scene!) }
   }, [status, mode, galaxy, scene, evidence, includeSource, query, map, focus, galaxyMatches])
   const fileStem = exportable ? `proofmesh-${exportable.caveats.view.toLowerCase().replace(/\W+/g, '-')}-${exportable.caveats.snapshotId}` : ''
+  const exportPage = () => { if (exportable) download(`${fileStem}.html`, new Blob([offlineHtml(exportable.svg, exportable.caveats, exportable.table, exportable.source)], { type: 'text/html' })) }
+  const exportImage = async () => {
+    if (!exportable) return
+    try {
+      const png = pngWithText(await svgToPng(exportable.svg), 'proofmesh:caveats', caveatLines(exportable.caveats, exportable.source).join('\n'))
+      download(`${fileStem}.png`, new Blob([png as BlobPart], { type: 'image/png' }))
+    } catch (e) { report(e) }
+  }
   // While searching, the legend lists only the areas that hold matches, with their match counts.
   const legend = useMemo(() => (galaxy ? legendAreas(galaxy, query.trim().length >= 2 ? galaxyMatches : [], 40) : { shown: [], total: 0 }), [galaxy, galaxyMatches, query])
   const openPoint = useCallback(async (index: number) => {
     try { await loadFocus(await galaxySymbolId(index)) } catch (e) { report(e) }
   }, [loadFocus, report])
+  const openView = (m: Mode) => { setMode(m); if (m === 'map' && !map) loadMap('', query.trim()) }
+
+  // The palette's commands (FR1143): every view and overlay with its key (FR1144), then what the current state allows.
+  const commands: Command[] = [
+    ...VIEWS.map(([m, name], i) => ({ label: `${name} view`, key: String(i + 1), run: () => openView(m) })),
+    { label: 'Table or graph view', key: 't', run: () => setTableView((t) => !t) },
+    { label: 'Diff overlay on the Galaxy, shown or hidden', key: 'd', run: () => setOverlayShown((o) => !o) },
+    ...snapshots.filter((s) => !s.current && s.id !== replay).map((s) => ({ label: `Pin snapshot ${s.id.slice(0, 13)}${s.published_at ? `, published ${new Date(s.published_at).toLocaleString()}` : ''}`, run: () => void pin(s.id) })),
+    ...(replay ? [{ label: 'Back to the current snapshot', run: () => void pin(null) }] : []),
+    ...(focus ? [{ label: `Trace a path from ${focus.qualified_name}`, run: () => { setSource(focus); setMode('trace') } }] : []),
+    ...(exportable ? [{ label: 'Export page', run: exportPage }, { label: 'Export image', run: () => void exportImage() }] : []),
+  ]
+  useEffect(() => { keyed.current = commands.filter((c) => c.key) })
 
   const onNode = useCallback((id: string) => {
     if (mode === 'ecosystem') { if (!id.startsWith('stub:')) setSelected(id); return }
@@ -387,15 +426,9 @@ export function App() {
       <header className="top">
         <div className="brand"><span className="mark" aria-hidden="true">◎</span> PROOFMESH <span className="dim">OBSERVATORY</span></div>
         <div className="tabs" role="tablist" aria-label="Mode">
-          <button type="button" role="tab" aria-selected={mode === 'galaxy'} onClick={() => setMode('galaxy')}>Galaxy</button>
-          <button type="button" role="tab" aria-selected={mode === 'map'} onClick={() => { setMode('map'); if (!map) loadMap('', query.trim()) }}>Map</button>
-          <button type="button" role="tab" aria-selected={mode === 'explore'} onClick={() => setMode('explore')}>Explore</button>
-          <button type="button" role="tab" aria-selected={mode === 'trace'} onClick={() => setMode('trace')}>Trace a path</button>
-          <button type="button" role="tab" aria-selected={mode === 'claims'} onClick={() => setMode('claims')}>Claims</button>
-          <button type="button" role="tab" aria-selected={mode === 'diff'} onClick={() => setMode('diff')}>Diff</button>
-          <button type="button" role="tab" aria-selected={mode === 'ecosystem'} onClick={() => setMode('ecosystem')}>Ecosystem</button>
+          {VIEWS.map(([m, name], i) => <button key={m} type="button" role="tab" aria-selected={mode === m} aria-keyshortcuts={String(i + 1)} data-key={i + 1} onClick={() => openView(m)}>{name}</button>)}
         </div>
-        <input id="search" className="search" type="search" aria-label="Search" value={query} placeholder="Search names, namespaces, areas…  ( / )" autoComplete="off" spellCheck={false}
+        <input id="search" className="search" type="search" aria-label="Search" value={query} placeholder="Search names, namespaces, areas…" autoComplete="off" spellCheck={false}
           onChange={(e) => search(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') search(query, true) }} />
         {status && (
           <div className="crumbs">
@@ -518,7 +551,7 @@ export function App() {
           </>
         )}
         {mode === 'galaxy' && galaxy && !noWebGl && !tableView && <Galaxy data={galaxy} query={query} focusArea={galaxyArea} onOpen={openPoint} onClear={() => { setQuery(''); setGalaxyArea(null) }} overlay={galaxyOverlay} />}
-        {mode === 'galaxy' && galaxyOverlay && <p className="dim diff-legend" role="note"><span><i className="sw added" />added since {diff!.data.base.snapshot_id.slice(0, 13)}</span><span><i className="sw changed" />changed</span><span>removed symbols are in the Diff table</span></p>}
+        {mode === 'galaxy' && galaxyOverlay && <p className="dim diff-legend" role="note"><span><i className="sw added" />added since {diff!.data.base.snapshot_id.slice(0, 13)}</span><span><i className="sw changed" />changed</span><span>removed symbols are in the Diff table</span><span><kbd>d</kbd> hides this overlay</span></p>}
         {mode === 'galaxy' && galaxy && (tableView || noWebGl) && (
           <section className="table-view" aria-label="Galaxy table">
             <table>
@@ -681,7 +714,7 @@ export function App() {
         )
       })()}
       {evidence && (
-        <aside className="right" aria-label="Evidence">
+        <aside className="right" aria-label="Evidence" tabIndex={-1} ref={evidencePanel}>
           <button type="button" className="close" aria-label="Close evidence" onClick={() => setEvidence(null)}>×</button>
           <h2 className="ev-title">{visible(evidence.title)}</h2>
           <dl className="stats">{evidence.facts.map(([k, v]) => [<dt key={`${k}t`}>{k}</dt>, <dd key={`${k}d`}>{visible(v)}</dd>])}</dl>
@@ -702,17 +735,14 @@ export function App() {
         {mode !== 'claims' && mode !== 'diff' && <div className="dim">{NO_MEANING}</div>}
         {exportable && (
           <div className="export" role="group" aria-label="Export this view">
-            <button type="button" onClick={() => download(`${fileStem}.html`, new Blob([offlineHtml(exportable.svg, exportable.caveats, exportable.table, exportable.source)], { type: 'text/html' }))}>Export page</button>
-            <button type="button" onClick={async () => {
-              try {
-                const png = pngWithText(await svgToPng(exportable.svg), 'proofmesh:caveats', caveatLines(exportable.caveats, exportable.source).join('\n'))
-                download(`${fileStem}.png`, new Blob([png as BlobPart], { type: 'image/png' }))
-              } catch (e) { report(e) }
-            }}>Export image</button>
+            <button type="button" onClick={exportPage}>Export page</button>
+            <button type="button" onClick={() => void exportImage()}>Export image</button>
             {evidence?.text && <label><input type="checkbox" checked={includeSource} onChange={(e) => setIncludeSource(e.target.checked)} /> include the source shown in the evidence panel</label>}
           </div>
         )}
       </section>
+      {palette && <Palette commands={commands} galaxy={galaxy} noRepository={!status} onClose={() => setPalette(false)}
+        onSymbol={(i) => { focusEvidence.current = true; void openPoint(i) }} onFile={(path) => void loadMap(path, '')} />}
       <footer className="bottom" aria-live="polite" aria-busy={loading} data-answered={answered} data-testid="conclusion">{loading ? 'Loading…' : mode === 'galaxy' ? (galaxy ? (query.trim().length === 1 ? 'Type at least two characters to search.' : query.trim().length >= 2 ? `“${query.trim()}”: showing the ${galaxyMatches.length.toLocaleString('en')} matching symbols; click one to explore it.` : galaxyArea !== null ? `${galaxy.areas[galaxyArea]!.name}: ${galaxy.areas[galaxyArea]!.count.toLocaleString('en')} symbols. Click a point to explore it.` : galaxySummary(galaxy)) : '') : scene ? scene.conclusion : ''}</footer>
     </div>
   )

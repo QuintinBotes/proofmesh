@@ -33,6 +33,8 @@ Without pnpm or Corepack on your PATH, run the pinned pnpm through npx instead: 
 
 When to use it: call paths through interfaces and dependency injection, framework wiring (routes, handlers, jobs, flags, tables), ownership and impact. Use text search for string literals, configuration values and files outside the indexed languages. Every answer names the snapshot's commit and branch; check them against the branch you care about.
 
+In Observatory, `Control+K`, `⌘K` or `/` opens a command palette: type part of a symbol or file name and press Enter to open it with its evidence, or run a command (switch view, show or hide the Diff overlay, pin a snapshot, trace a path, export). `1` to `7` open the views and `?` lists every key.
+
 Connect Claude Code from inside the repository: `claude mcp add -s project proofmesh -- proofmesh mcp`.
 
 ## Updating

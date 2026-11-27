@@ -16,6 +16,8 @@ export type FileCounts = { indexed: number; unsupported: number; excluded: numbe
 export type GalaxyArea = { name: string; count: number; files: FileCounts; calls: { sites: number; unresolved: number }; gaps: Array<[string, number]> }
 export type GalaxyHeader = {
   snapshot_id: string; nodes: number; links: number; areas: GalaxyArea[]; kinds: string[]
+  /** The analysed files, sorted, for the Observatory's command palette. */
+  files: string[]
   offsets: { links: number; degree: number; area: number; kind: number; names: number }; names_bytes: number
 }
 
@@ -38,7 +40,7 @@ export function galaxyFor(dataDir: string, opts: { snapshotId?: string; reposito
     if (hit) return hit
     // A sealed snapshot never changes, so its galaxy is built once and kept beside it in the data directory.
     // The version in the name retires galaxies built in an older layout.
-    const cache = path.join(dataDir, 'cache'), gzFile = path.join(cache, `galaxy-v2-${snapshot.id}.bin.gz`), idsFile = path.join(cache, `galaxy-v2-${snapshot.id}.ids.json`)
+    const cache = path.join(dataDir, 'cache'), gzFile = path.join(cache, `galaxy-v3-${snapshot.id}.bin.gz`), idsFile = path.join(cache, `galaxy-v3-${snapshot.id}.ids.json`)
     if (fs.existsSync(gzFile) && fs.existsSync(idsFile)) {
       const stored = { gz: fs.readFileSync(gzFile), ids: JSON.parse(fs.readFileSync(idsFile, 'utf8')) as string[] }
       memo.set(snapshot.id, stored)
@@ -95,6 +97,7 @@ export function galaxyFor(dataDir: string, opts: { snapshotId?: string; reposito
       for (const s of sections) { offsets.push(at); at += s.length; at += (4 - (at % 4)) % 4 }
       const header: GalaxyHeader = {
         snapshot_id: snapshot.id, nodes: n, links: pairs.length / 2, areas, kinds, names_bytes: names.length,
+        files: db.prepare("select path from file where disposition = 'indexed' order by path").pluck().all() as string[],
         offsets: { links: offsets[0]!, degree: offsets[1]!, area: offsets[2]!, kind: offsets[3]!, names: offsets[4]! },
       }
       const headerBytes = Buffer.from(JSON.stringify(header), 'utf8')
