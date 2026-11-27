@@ -2009,6 +2009,10 @@
     "FR1146": [
       "e2e/a11y.spec.ts",
       "e2e/palette.spec.ts"
+    ],
+    "FR1200": [
+      "apps/observatory/test/galaxy.test.ts",
+      "e2e/casefold.spec.ts"
     ]
   },
   "manual": {

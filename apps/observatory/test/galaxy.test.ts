@@ -1,5 +1,7 @@
 import zlib from 'node:zlib'
+import fc from 'fast-check'
 import { beforeAll, describe, expect, it } from 'vitest'
+import { buildIndex, LIMIT, searchIndex } from '../src/paletteIndex'
 import { JITTER, areaFog, areaLabel, ghostAreas, legendAreas, placeLabels, seeds, layoutKey, matchIndices, nameHashes, parseGalaxy, rankMatches, shortName, warmStart, type GalaxyData } from '../src/galaxyData'
 import { galaxyFor } from '../../../packages/proofmesh/src/query/galaxy.js'
 import { indexedDataDir } from '../../../packages/proofmesh/test/helpers.js'
@@ -130,6 +132,30 @@ describe('B13 B14 points never collapse onto one place, and labels never pile up
       const plain = names.flatMap((n, i) => (n.toLowerCase().includes(q.toLowerCase()) ? [i] : []))
       expect(matchIndices(g, q), q).toEqual(plain)
     }
+  })
+})
+
+describe('FR1200 search maps each match to its own name when lowering changes the length of a name before it', () => {
+  // İ lowers to two code units; ẞ, ß, combining marks, final sigma and an emoji are case-folding traps of their own.
+  const units = ['İ', 'i', '\u0307', 'ẞ', 'ß', 's', 'S', 'e', '\u0301', 'é', '🚀', 'Σ', 'ς', 'a', 'b', ':', '/']
+  const galaxy = (names: string[]) => ({ n: names.length, names }) as unknown as GalaxyData
+
+  it('finds the name the text is in, after a name holding İ, in the Galaxy and the palette', () => {
+    const names = ['src/a:' + 'İ'.repeat(20), 'src/b:ab', 'src/c:xy']
+    expect(matchIndices(galaxy(names), 'src/b:ab').map((i) => names[i])).toEqual(['src/b:ab'])
+    expect(searchIndex(buildIndex(names, []), 'src/b:ab').items.map((i) => names[i])).toEqual(['src/b:ab'])
+  })
+
+  it('agrees with a plain filter on any names and query built from case-folding traps', () => {
+    const text = (min: number, max: number) => fc.array(fc.constantFrom(...units), { minLength: min, maxLength: max }).map((a) => a.join(''))
+    fc.assert(fc.property(fc.array(text(1, 12), { maxLength: 40 }), text(2, 4), (names, q) => {
+      const want = names.flatMap((n, i) => (n.toLowerCase().includes(q.toLowerCase()) ? [i] : []))
+      expect(matchIndices(galaxy(names), q)).toEqual(want)
+      const r = searchIndex(buildIndex(names, []), q)
+      expect(r.total).toBe(want.length)
+      expect(r.items.length).toBe(Math.min(want.length, LIMIT))
+      for (const i of r.items) expect(want).toContain(i)
+    }), { numRuns: 500 })
   })
 })
 

@@ -4,6 +4,10 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 ## Unreleased
 
+Galaxy search finds the symbol the text is in after a name that lengthens when lowered (closes #200; FR1200):
+
+- Galaxy search scanned the lowered, joined names but took each name's offset from the names as written. A name holding `İ`, whose lowercase is two code units, shifted every later offset, so a match was attributed to a later symbol: the Galaxy highlighted, counted and listed it, and Explore opened it. The offsets now come from the lowered names, in one helper that the Galaxy and the command palette share.
+
 Code found by its shape, limited by the graph (part of #37; FR1060 to FR1067):
 
 - New tool `search_structure` (profile `extra`, lean over MCP) takes a code pattern in ast-grep's syntax (`$X`, `$$$X`, `$_`, a repeated metavariable matching equal code) and matches it over the Tree-sitter grammars the syntax tier already ships, with no new dependency: TypeScript, TSX, JavaScript, Python, Go, Rust, Java, C, C++, C#, Ruby, Kotlin, Scala, Swift, Bash and HCL. Each match is a lean row `<enclosing name> <path>:<line> <first line of the match>`, paged with a cursor, with an exact total.

@@ -889,6 +889,7 @@ From #39: a fresh clone starts from the snapshot a teammate or CI built for the 
 - FR1144: MUST give every view (`1` to `7`, in tab order), the table or graph switch (`t`) and the Diff overlay (`d`) a single-key shortcut, shown beside its tab or overlay and in `aria-keyshortcuts`, active only while focus is not in a field, and list every key when `?` is pressed.
 - FR1145: MUST, when a symbol is chosen in the palette, open it in Explore with its evidence and move focus to the evidence panel.
 - FR1146: MUST render repository text in the palette as text with the visible escaping of FR065, announce the highlighted option as the combobox's active descendant, and pass axe with no serious or critical violation in the light and the dark scheme.
+- FR1200: MUST attribute each Galaxy search and palette match to the name that holds the text, also after names whose lowercase is longer or shorter than the name (such as `İ`), so the Galaxy highlights, counts and lists, and Explore opens, exactly the symbols whose names contain the text case-insensitively (#200).
 
 ### Open source and extensibility
 
