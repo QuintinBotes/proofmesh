@@ -4,6 +4,14 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 ## Unreleased
 
+A reproducible Observatory benchmark with published budgets (part of #41; FR1160 to FR1169):
+
+- `pnpm bench:observatory --fixture typeorm` builds the TypeORM sample at the parity benchmark's commit (`bench/parity/fixture.sh`, now shared by both benchmarks; never committed here), indexes a copy into a fresh data directory and measures the Observatory in Playwright's pinned Chromium at 1400×900: first contentful paint, first drawn map, final positions, time to interactive, total blocking time and the longest main-thread task, cold and warm; frames at rest and while panning and zooming; JS heap and the memory of every browser process; raw, gzip and transferred bytes of each script, style sheet and API response; each API call's latency; search, symbol to evidence and edge to evidence with the requests between, and the Map switch; and layout stability across two fresh profiles and across a commit touching four files.
+- Each measure is the median of `--runs` cold runs (3), each in a new browser process and profile and a new `proofmesh view`, with its spread; the machine's first run is reported apart. The JSON and Markdown name the hardware, its load average, the browser build, the viewport, the WebGL renderer and the ProofMesh commit. A software renderer is named and checked against the budgets' software column.
+- `--fixture synthetic --nodes N --seed S` writes a deterministic galaxy of any size into the server's cache, so the real server serves it; its points open real evidence.
+- `bench/observatory/budgets.json` holds the budgets with GPU and software columns and the targets of the Observatory specs (#44 to #47); `--check` exits 1 when a median misses its budget, and the table marks it `over budget`. The earlier budgets are unchanged; the one new budget, the longest main-thread task at 100 ms, catches a build slowed by a 200 ms task. `bench/observatory/README.md` publishes the budgets and the latest results.
+- RESULTS_LINE
+
 A Composer `require-dev` package is for tests only (closes #180; FR1040):
 
 - A `require-dev` entry was recorded like a `require` one, with no scope, so a main source (`src/`) bound names of a package it may only use in development. Its `depends_on` or `depends_on_package` row now carries `detail.scope` `test`, as Cargo's `dev-dependencies` do. A main source's call or `use` into such a package keeps its row (`outside_capability`); a file under the project's `autoload-dev` directories (or `src/test` and the like) still binds it.
