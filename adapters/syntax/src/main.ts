@@ -183,6 +183,13 @@ async function analyse(file: string, callees = false) {
     }
     else if (role('local')) locals.push({ node: role('local')!.parent!, name: name.text.toLowerCase() })
   }
+  // A Go composite literal `T{}` constructs a T: for the SCIP importer only, it is a call site at the type's name (FR168, FR530).
+  if (callees && lang === 'go') for (const lit of tree.rootNode.descendantsOfType('composite_literal')) {
+    let type = lit.childForFieldName('type')
+    if (type?.type === 'generic_type') type = type.childForFieldName('type')
+    const name = type?.type === 'qualified_type' ? type.childForFieldName('name') : type?.type === 'type_identifier' ? type : null
+    if (name) calls.push({ name: name.text, site: range(lit), node: lit, at: range(name), facts: { form: 'literal' } })
+  }
   // A googletest macro is named as it is written, `TEST(Calc, Adds)`. An RSpec example block has no declared name: it is named by its call and its
   // description, and a group block is a scope that names what it sits around (FR192).
   const examples = new Set<string>()

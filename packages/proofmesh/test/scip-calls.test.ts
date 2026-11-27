@@ -116,6 +116,8 @@ describe('FR161 FR162 FR163 FR169 calls, inheritance and imports from a SCIP ind
   it('FR161 scenario 6: a call to a symbol the index defines elsewhere is resolved_external with its package; a local variable holding a function is no call', () => {
     expect(edges(d, 'calls')).toEqual([
       ['api/handler:Handle', 'resolved', 'api/handler:apply', 'semantic_resolver', 9, null, null],
+      // `cart.Cart{}` constructs a Cart: a call to the type, which has no constructor symbol (FR530).
+      ['api/handler:Handle', 'resolved', 'cart/cart:Cart', 'semantic_resolver', 10, null, null],
       ['api/handler:Handle', 'resolved', 'cart/cart:Cart.Checkout', 'semantic_resolver', 10, null, null],
       ['cart/cart:Cart.Checkout', 'resolved_external', 'github.com/golang/go/src:fmt.Sprint', 'semantic_resolver', 14, null, null],
       ['cart/cart:Cart.Checkout', 'resolved', 'pricing/pricing:Total', 'semantic_resolver', 14, null, null],
@@ -162,7 +164,7 @@ describe('FR161 FR162 FR163 FR169 calls, inheritance and imports from a SCIP ind
     expect(capability(d, 'api/handler.go', 'resolved_calls')).toBe('complete')
     const slices = q(d, `select ae.evidence_id as ev from assertion a join assertion_evidence ae on ae.assertion_id = a.id where a.adapter = 'scip' and a.type = 'calls'`)
       .map((r) => withSnapshot(d, (db) => evidenceSlice(d, db, String(r.ev)))).sort()
-    expect(slices).toEqual(['Checkout', 'Sprint', 'Total', 'apply', 'area', 'valueOf'].sort())
+    expect(slices).toEqual(['Cart', 'Checkout', 'Sprint', 'Total', 'apply', 'area', 'valueOf'].sort())
   })
 
   it('FR165 naming the index changes no stable key and no body hash', () => {
@@ -220,6 +222,32 @@ describe('FR166 FR167 FR168 FR170 edge cases of the join between call sites and 
     const kotlin = (repo: string) => { fs.mkdirSync(path.join(repo, 'kt')); fs.writeFileSync(path.join(repo, 'kt/Shapes.kt'), 'package com.shop\n\nclass Circle(val radius: Double)\n\nclass Square\n\nfun build(): Double {\n    val a = Circle(2.0)\n    val b = Square()\n    return a.radius\n}\n') }
     const { d } = named('scip-calls', docs, kotlin)
     expect(edges(d, 'calls').map((r) => [r[0], r[1], r[2]])).toEqual([['com.shop.build', 'resolved', 'com.shop.Circle.<init>'], ['com.shop.build', 'resolved', 'com.shop.Square']])
+  }, 240000)
+
+  it('FR530 a Go composite literal T{} and a Java new T() are calls: to the constructor symbol where the index has one, else to the type', () => {
+    const CTOR = `${JAVA}com/shop/Circle#\`<init>\`().`, F = 'java/Factory.java'
+    const factory = (repo: string) => fs.writeFileSync(path.join(repo, F), 'package com.shop;\n\npublic class Factory {\n    public Shape make() {\n        return new Circle(2.0);\n    }\n\n    public Report report() {\n        return new Report();\n    }\n}\n')
+    const docs = (repo: string): Doc[] => {
+      const { at, block } = place(repo)
+      return [...fixtureIndex(repo).map((doc) => (doc.path !== 'java/Circle.java' ? doc
+        : { ...doc, occurrences: [...doc.occurrences, { symbol: CTOR, range: at(doc.path, 'public Circle(double', 'Circle'), enclosing: block(doc.path, 'public Circle(double', '    }'), def: true }], symbols: [...doc.symbols!, { symbol: CTOR, kind: 9 }] })),
+      { path: F, language: 'java', typed: true, occurrences: [
+        { symbol: `${JAVA}com/shop/Factory#`, range: at(F, 'class Factory', 'Factory'), enclosing: block(F, 'class Factory'), def: true },
+        { symbol: `${JAVA}com/shop/Factory#make().`, range: at(F, 'Shape make', 'make'), enclosing: block(F, 'Shape make', '    }'), def: true },
+        { symbol: `${JAVA}com/shop/Factory#report().`, range: at(F, 'Report report', 'report'), enclosing: block(F, 'Report report', '    }'), def: true },
+        { symbol: S.shape, range: at(F, 'Shape make', 'Shape') }, { symbol: CTOR, range: at(F, 'new Circle', 'Circle') },
+        { symbol: S.report, range: at(F, 'Report report', 'Report') }, { symbol: S.report, range: at(F, 'new Report', 'Report') },
+      ], symbols: [{ symbol: `${JAVA}com/shop/Factory#`, kind: 7 }, { symbol: `${JAVA}com/shop/Factory#make().`, kind: 26 }, { symbol: `${JAVA}com/shop/Factory#report().`, kind: 26 }] }]
+    }
+    const { d } = named('scip-calls', docs, factory)
+    const calls = edges(d, 'calls').map((r) => [r[0], r[1], r[2], r[4]])
+    // Java: `new Circle(2.0)` calls the constructor the index defines; `new Report()` has none in the index, so it calls the type.
+    expect(calls.filter((r) => String(r[0]).startsWith('com.shop.Factory'))).toEqual([['com.shop.Factory.make', 'resolved', 'com.shop.Circle.<init>', 5], ['com.shop.Factory.report', 'resolved', 'com.shop.Report', 9]])
+    // Go: `cart.Cart{}` constructs a Cart, which has no constructor symbol: a call to the type, beside the call to its method.
+    expect(calls.filter((r) => r[0] === 'api/handler:Handle' && r[3] === 10)).toEqual([['api/handler:Handle', 'resolved', 'cart/cart:Cart', 10], ['api/handler:Handle', 'resolved', 'cart/cart:Cart.Checkout', 10]])
+    // The type name in a literal is a call, so it is no references row as well.
+    expect(edges(d, 'references').filter((r) => r[2] === 'cart/cart:Cart' && r[4] === 10)).toEqual([])
+    expect(edges(d, 'references').filter((r) => r[2] === 'com.shop.Report' && r[4] === 9)).toEqual([])
   }, 240000)
 
   it('FR170 a file in a language the syntax tier lacks keeps its references, and reports its calls and imports unsupported', () => {

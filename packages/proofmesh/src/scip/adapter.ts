@@ -7,7 +7,8 @@ import { syntaxSymbols, type Spans, type SyntaxFile } from './syntax-spans.js'
 import { DEFINITION, readDocument, type ScipOccurrence, type ScipRange, type ScipSymbol } from './decode.js'
 import { loadIndexes, type RoutedDocument } from './load.js'
 
-const VERSION = '0.2.0'
+// 0.3.0: a Go composite literal is a call site (FR530), so facts an older version cached are not reused.
+const VERSION = '0.3.0'
 type Range = { start_byte: number; end_byte: number; start_line: number; end_line: number }
 type Definition = { local_id: string; path: string; qualified: string; kind?: string; range: Range; named: Range; occurrence: ScipOccurrence; info?: ScipSymbol }
 

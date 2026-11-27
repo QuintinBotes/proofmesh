@@ -6,7 +6,8 @@ import { sha256File } from '../src/core/hash.js'
 import { decodeScip, newProbe, readDocument, scanScip, type ScipDocument } from '../src/scip/decode.js'
 import { loadIndexes, type LoadProbe } from '../src/scip/load.js'
 import { documentBytes, encode, metadataBytes, type Doc, type Occ } from './helpers-scip.js'
-import { tmpDir } from './helpers.js'
+import { indexRepository } from '../src/indexer/coordinator.js'
+import { cli, tmpDir, withSnapshot } from './helpers.js'
 
 describe('FR164 the index is read document by document, in memory that grows with its definitions, not its size', () => {
   const CHUNK = 64 * 1024
@@ -133,4 +134,57 @@ describe('FR164 the index is read document by document, in memory that grows wit
     fs.writeFileSync(file, encode('/r', 'rewritten', docs.slice().reverse()))
     expect(() => readDocument(file, at[1]!, expected('b.go'))).toThrow(/changed/)
   })
+})
+
+describe('FR531 a 1 GB index with 100,000 definitions is named and indexed with the SCIP adapter under 600 MB of resident memory', () => {
+  const varint = (n: number): Buffer => { const out: number[] = []; do { let b = n % 128; n = Math.floor(n / 128); if (n) b |= 0x80; out.push(b) } while (n); return Buffer.from(out) }
+  const field = (no: number, v: Buffer) => Buffer.concat([varint(no * 8 + 2), varint(v.length), v])
+
+  it('FR531 scenario 7: the adapter\'s peak resident memory, sampled by the host through the whole index, stays under 600 MB', async () => {
+    const FILES = 1000, PER_FILE = 100, MB = 1024 * 1024
+    const repo = fs.realpathSync(tmpDir('pm-scip-gb-')), indexDir = tmpDir('pm-scip-gb-index-'), file = path.join(indexDir, 'big.scip'), d = tmpDir()
+    try {
+      fs.writeFileSync(path.join(repo, 'go.mod'), 'module example.com/big\n\ngo 1.22\n')
+      // Each definition carries ten kilobytes of hover documentation, as indexers record for a symbol: the bulk of the index, read and dropped.
+      const documentation = Buffer.from('Documentation of a generated function, as an indexer records it for hover. '.repeat(142))
+      const fd = fs.openSync(file, 'w')
+      let bytes = 0
+      const write = (b: Uint8Array) => { fs.writeSync(fd, b); bytes += b.length }
+      write(Uint8Array.from(metadataBytes(repo, 'synthetic')))
+      for (let i = 0; i < FILES; i++) {
+        const rel = `p${i}/f.go`, lines = [`package p${i}`, '']
+        const occurrences: Occ[] = [], infos: Buffer[] = []
+        for (let j = 0; j < PER_FILE; j++) {
+          const line = lines.length, symbol = `scip-go gomod example.com/big v1 \`example.com/big/p${i}\`/F${j}().`
+          lines.push(`func F${j}() int {`, `\treturn ${j}`, '}', '')
+          occurrences.push({ symbol, range: [line, 5, 5 + `F${j}`.length], enclosing: [line, 0, line + 2, 1], def: true })
+          infos.push(field(3, Buffer.concat([field(1, Buffer.from(symbol)), varint(5 * 8), varint(17), field(3, documentation)])))
+        }
+        fs.mkdirSync(path.join(repo, `p${i}`))
+        fs.writeFileSync(path.join(repo, rel), lines.join('\n'))
+        // The document's own fields as the helper writes them (after its tag and length), then its symbol information.
+        const head = Buffer.from(documentBytes({ path: rel, language: 'go', typed: true, occurrences }))
+        let k = 1
+        while (head[k]! & 0x80) k++
+        write(field(2, Buffer.concat([head.subarray(k + 1), ...infos])))
+      }
+      fs.closeSync(fd)
+      expect(bytes).toBeGreaterThanOrEqual(1024 * MB)
+      for (const args of [['init'], ['repo', 'add', repo], ['scip', 'add', repo, file]]) { const r = cli(['--data-dir', d, ...args]); expect(r.status, r.stderr).toBe(0) }
+      process.env.PROOFMESH_TEST_ADAPTER_RSS_SAMPLE_MS = '50'
+      const r = await indexRepository(d, repo)
+      expect(r.status).toBe('published')
+      // Every definition was read.
+      const n = withSnapshot(d, (db) => (db.prepare("select count(*) as n from symbol s join file f on f.id = s.file_id where f.path like 'p%/f.go' and s.kind = 'function'").get() as { n: number }).n)
+      expect(n).toBe(FILES * PER_FILE)
+      // The host sampled the adapter's process group (the adapter and the syntax tier it starts) every 50 ms and at the end of every batch.
+      const peak = r.adapterPeakRssKb.scip
+      expect(peak, 'the host could not sample the adapter\'s resident memory (is ps available?)').toBeGreaterThan(0)
+      expect(peak! / 1024).toBeLessThan(600)
+    } finally {
+      delete process.env.PROOFMESH_TEST_ADAPTER_RSS_SAMPLE_MS
+      // Never leave a gigabyte behind.
+      for (const dir of [indexDir, repo, d]) fs.rmSync(dir, { recursive: true, force: true })
+    }
+  }, 600000)
 })

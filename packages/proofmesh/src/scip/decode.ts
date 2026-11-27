@@ -153,13 +153,16 @@ export function scanScip(file: string, visit: { metadata?(m: Pick<ScipIndex, 'pr
   probe.chunkBytes = chunkBytes
   const fd = fs.openSync(file, 'r'), hash = crypto.createHash('sha256'), size = fs.fstatSync(fd).size
   const corrupt = (why: string) => new Error(`the SCIP file is truncated or corrupt at offset ${fieldAt}: ${why}`)
-  let buf = Buffer.alloc(0), start = 0, fieldAt = 0, eof = false, sawMetadata = false
+  let buf = Buffer.alloc(0), store = buf, start = 0, fieldAt = 0, eof = false, sawMetadata = false
   /** Reads until `want` bytes are buffered, or the file ends. `want` was checked against the file's size, so one allocation holds it. */
   const ensure = (want: number): boolean => {
     if (buf.length >= want) return true
     if (eof) return false
-    // One buffer for the wanted size and a chunk more, filled by as many reads as it takes, so short reads reallocate nothing.
-    const next = Buffer.allocUnsafe(Math.max(want, buf.length + chunkBytes))
+    // One buffer for the wanted size and a chunk more, filled by as many reads as it takes, so short reads reallocate nothing. It is
+    // kept while it is big enough: a new one for every message churns the allocator, which keeps what it freed resident (FR531).
+    const need = Math.max(want, buf.length + chunkBytes)
+    const next = store.length >= need ? store : (store = Buffer.allocUnsafe(need))
+    // Buffer#copy is a memmove, so the bytes left over move to the front of the same buffer safely.
     buf.copy(next)
     let have = buf.length
     probe.maxBufferedBytes = Math.max(probe.maxBufferedBytes, next.length)
@@ -231,13 +234,16 @@ export function scanScip(file: string, visit: { metadata?(m: Pick<ScipIndex, 'pr
 export type Stamp = { size: number; mtimeMs: number }
 export const stampOf = (file: string): Stamp => { const st = fs.statSync(file); return { size: st.size, mtimeMs: st.mtimeMs } }
 
+let again = Buffer.alloc(0)
 /** One document of an index, read again by where `scanScip` found it; refused if the file changed or another document sits there. */
 export function readDocument(file: string, at: DocumentAt, expected: Stamp & { path: string }): ScipDocument {
   const fd = fs.openSync(file, 'r')
   try {
     const st = fs.fstatSync(fd), changed = () => new Error(`the SCIP index ${file} changed after the adapter read it`)
     if (st.size !== expected.size || st.mtimeMs !== expected.mtimeMs || at.offset + at.length > st.size) throw changed()
-    const bytes = Buffer.allocUnsafe(at.length)
+    // One buffer, kept for the next read for the reason scanScip keeps its own; a document decodes to strings and numbers, never views of it.
+    if (again.length < at.length) again = Buffer.allocUnsafe(at.length)
+    const bytes = again.subarray(0, at.length)
     let have = 0
     while (have < at.length) {
       const n = fs.readSync(fd, bytes, have, at.length - have, at.offset + have)
