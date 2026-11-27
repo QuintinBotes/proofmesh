@@ -1718,6 +1718,9 @@
     ],
     "FR740": [
       "packages/proofmesh/test/jobs.test.ts"
+    ],
+    "FR840": [
+      "packages/proofmesh/test/jobs.test.ts"
     ]
   },
   "manual": {

@@ -425,11 +425,17 @@ export async function main(argv: string[]): Promise<number> {
         // The host holds every relationship until the write, so it runs under the machine rule's heap; a host that dies of heap exhaustion fails its job by name.
         if (needsHeap()) {
           jobs.close()
-          try { return await runUnderHeap([...argv, ...(jobFlag ? [] : ['--job', jobId])]) } catch (e) {
+          // A host that died of heap exhaustion or a signal, or exited before it recorded its outcome, left its row open; this process says how it ended (FR840).
+          const failOpenJob = (error: string) => {
             const again = Catalog.open(dataDir)
-            try { again.updateJob(jobId, { state: 'failed', finished_at: new Date().toISOString(), error: storedMessage(e) }) } finally { again.close() }
-            throw e
+            try {
+              const state = again.job(jobId)?.state
+              if (state !== 'succeeded' && state !== 'failed') again.updateJob(jobId, { state: 'failed', finished_at: new Date().toISOString(), error })
+            } finally { again.close() }
           }
+          const host = await runUnderHeap([...argv, ...(jobFlag ? [] : ['--job', jobId])]).catch((e) => { failOpenJob(storedMessage(e)); throw e })
+          if (host.died) failOpenJob(`the index host ${host.died} before it recorded the job's outcome`)
+          return host.code
         }
         stopWithOuterProcess()
         // Progress goes to stderr, so stdout stays the parseable summary.

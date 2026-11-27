@@ -386,6 +386,7 @@ Acceptance: CI runs my pull request without secrets or release credentials; lice
 - FR276: MUST print the seconds per analysed file of each adapter in the index summary, and `docs/proofmesh/operations.md` MUST record the Python adapter's measured figure.
 - FR277: MUST make each adapter's budget part of the snapshot's identity, so that raising a budget indexes again, while cached facts are still replayed.
 - FR740: MUST record an index job's final state (`succeeded` with its result, or `failed` with its error) before the index frees the repository's index lease, and `get_job` MUST read a `running` job's row again after it finds the lease free or held by another process, so a job that finished is never reported `interrupted`; `interrupted` means only that the job's process stopped before recording an outcome (#130).
+- FR840: MUST, when the CLI's index host dies by a signal or exits non-zero with its job still `queued` or `running`, record that job `failed` from the outer CLI process, with an `error` naming the signal (for example SIGKILL) or the exit code; a job the host already recorded keeps its outcome, and a host that died of heap exhaustion keeps its named out-of-memory error (FR355) (#158).
 
 ### Concurrent indexes
 

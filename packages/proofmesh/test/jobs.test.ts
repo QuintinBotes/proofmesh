@@ -110,3 +110,32 @@ describe('the index lock of a process that died is free at once', () => {
     catalog.close()
   })
 })
+
+describe('FR840 an index whose host dies by a signal or a non-zero exit is failed with a reason (#158)', () => {
+  it('FR840 scenario 1: SIGKILL of the index host mid-index fails the job with an error naming the signal, not interrupted with none', async () => {
+    const { spawn } = await import('node:child_process')
+    const path = await import('node:path')
+    const { CLI } = await import('./helpers.js')
+    const { Catalog } = await import('../src/meshstore/catalog.js')
+    const repo = tmpDir('pm-killed-')
+    for (let i = 0; i < 20; i++) fs.writeFileSync(path.join(repo, `f${i}.ts`), `export const x${i} = ${i}\n`)
+    const d = tmpDir()
+    cli(['--data-dir', d, 'init']); cli(['--data-dir', d, 'repo', 'add', repo])
+    // 600 ms a file, one file a batch: the index runs long enough to be killed partway.
+    const env = { ...process.env, PROOFMESH_TS_ADAPTER: path.join(import.meta.dirname, 'fake-adapters', 'slow.mjs'), PROOFMESH_INDEX_BATCH: '1' }
+    const outer = spawn(process.execPath, [CLI, '--data-dir', d, 'index', repo], { env, stdio: 'ignore' })
+    const exited = new Promise<number | null>((r) => outer.on('close', (code) => r(code)))
+    const c = Catalog.open(d)
+    const row = () => c.db.prepare('select id, state, owner, error from index_job').get() as { id: string; state: string; owner: string | null; error: string | null } | undefined
+    for (let i = 0; i < 300 && row()?.state !== 'running'; i++) await new Promise((r) => setTimeout(r, 50))
+    // The row's owner is the host that holds the lease: the inner process, not the outer one this test started.
+    const host = Number(/^pid:(\d+)@/.exec(row()!.owner!)![1])
+    expect(host).not.toBe(outer.pid)
+    process.kill(host, 'SIGKILL')
+    expect(await exited).toBe(137)
+    const job = c.job(row()!.id)!
+    c.close()
+    expect(job.state).toBe('failed')
+    expect(job.error).toMatch(/SIGKILL/)
+  }, 60000)
+})
