@@ -4,6 +4,8 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 ## Unreleased
 
+A Python file the Python adapter analysed reports `references: partial` even when it records no use, as it was read for them (#224; FR1640). A snapshot of Python alone now gives the partial references note instead of `References other than calls and imports are not analysed for this snapshot.`, and the language census counts those files as partial.
+
 The references note every answer carries names Python (#217; FR1540): `References other than calls and imports are recorded only where an adapter supports them (C# uses of repository declarations, TypeScript uses of repository types, Python uses of repository classes and functions); ...`, as Python has recorded those uses since #38 (FR1287). The FR204 digests leave that standing note out: it is about the snapshot's adapters, not the subject's answer. They were re-pinned once on the code before this change, so the answers they pin are unchanged.
 
 The Galaxy's layout is computed with the snapshot, and every symbol keeps its place (part of #44; FR1220 to FR1225):
