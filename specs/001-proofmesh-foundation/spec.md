@@ -463,6 +463,8 @@ Acceptance: CI runs my pull request without secrets or release credentials; lice
 - FR423: MUST answer a call to a tool outside the profiles a server was started with as `INVALID_ARGUMENT` naming the profile that lists it (`details.profile`), never as an unknown tool or a silent failure; tool names, input schemas and envelopes do not change.
 - FR720: MUST exit `proofmesh mcp` on stdio with status 0 once its client closes stdin, after writing the answers to every request read before it, with no `unsettled top-level await` warning on stderr; an error on stdin, or one at start, still exits non-zero.
 
+- FR730: MUST make `proofmesh mcp --help` and `proofmesh mcp -h` print the usage of `mcp`, naming `--tools` with its profiles (`core`, `data`, `claims`, `extra`, `all`) and the transport flags `--http` and `--port`, and exit 0 without starting a server or reading stdin.
+
 ### Parity benchmark (#25)
 
 - FR510: MUST provide `sh bench/parity/run.sh`, which copies `src/` and `LICENSE` of TypeORM at commit `3d55188c0dd1256f520143379ecf97f45e71acba` (MIT) into a new git repository under `$TMPDIR`, with the tsconfig the README states and a `PROVENANCE` note, never into this repository, and writes `bench/parity/out/parity.md`: one row per question class Q1 to Q12 of `bench/parity/questions.json`, one column per tool (ProofMesh, Graphify, scip-typescript, Serena, aider), recall / precision or `no tool` in each cell, and in its header the fixture commit, the ProofMesh commit and every tool's version.

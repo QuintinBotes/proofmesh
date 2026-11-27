@@ -8,6 +8,10 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 - Closing stdin is how an MCP client stops a stdio server, but `proofmesh mcp` then exited 13 with Node's `Warning: Detected unsettled top-level await`: after starting the server it waited on a promise that never settled, so once stdin ended nothing kept Node running. It now waits for stdin to end and exits 0, after answering what it was sent; an error on stdin still exits non-zero. Stopped by SIGTERM or SIGINT, over stdio or `--http`, it still ends by the signal (143 and 130 under a shell), as before.
 
+`proofmesh mcp --help` prints usage (closes #152; FR730):
+
+- `proofmesh mcp --help` and `mcp -h` started the MCP server on stdio and waited for a client, so a person looking up its flags saw nothing. They now print the usage of `mcp`, which names `--tools` and its profiles and the `--http` and `--port` flags, and exit 0 without starting a server.
+
 `NUGET_PACKAGES` reaches the C# adapter (closes #142; FR680):
 
 - On a machine whose NuGet global packages folder is not `~/.nuget/packages`, the C# adapter looked for restored packages in the wrong place: it reads `NUGET_PACKAGES`, but the core starts every adapter with an allowlisted environment that did not carry it. A restored package read as missing, so calls into it were unresolved and it was not listed as an external input. The allowlist now carries `NUGET_PACKAGES` when it is set, the standard NuGet variable that `dotnet` itself reads; it is still an allowlist.
