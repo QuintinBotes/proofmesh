@@ -4,12 +4,12 @@ Proofmesh serves its tools over MCP on stdio (`proofmesh mcp`) and over Streamab
 
 ## Tool profiles (FR420 to FR423)
 
-A client that does not defer tool loading puts every listed tool's name, description and input schema into the model's context before the first question. So `proofmesh mcp` lists only the `core` profile, whose `tools/list` stays under 20,000 bytes (a test asserts it; 18,349 bytes for 13 tools at this change, against 106,853 for all 36):
+A client that does not defer tool loading puts every listed tool's name, description and input schema into the model's context before the first question. So `proofmesh mcp` lists only the `core` profile, whose `tools/list` stays under 20,000 bytes (a test asserts it; 18,427 bytes for 13 tools at this change, against 112,939 for all 37):
 
 | Profile | Tools |
 |---|---|
 | `core` (default) | `find_symbols`, `get_symbol`, `get_symbols_at`, `get_relationships`, `trace_paths`, `analyze_impact`, `find_tests`, `search_sources`, `read_evidence`, `workspace_status`, `list_repositories`, `get_overview`, `list_queries` |
-| `data` | `get_table_reach`, `get_property_reads`, `find_query_source`, `get_external_usage`, `get_session_trail` |
+| `data` | `get_table_reach`, `get_property_reads`, `find_query_source`, `get_external_usage`, `get_session_trail`, `get_context_map` |
 | `claims` | `verify_claim`, `get_claims`, `prepare_verification`, `get_verification` |
 | `extra` | `list_snapshots`, `list_workspaces`, `get_ecosystem`, `compare_snapshots`, `impact_completeness`, `request_index`, `get_job`, `get_memory`, `save_memory`, `find_stale_mentions`, `find_unused`, `find_cycles`, `find_entry_points`, `find_hubs` |
 
@@ -51,6 +51,21 @@ A row reached through a chain is `inferred` when any hop of its strongest chain 
 ## Reach through candidate edges (FR201 to FR210, FR560, FR561)
 
 Where no compiler or index analysed a subject (Go and Java without a SCIP index), its calls are `candidate` or `ambiguous` rows, which are not edges. `analyze_impact`, `find_tests`, `trace_paths` and `impact_completeness` take `include_inferred`: `true` follows them, `false` never does, and `auto`, the default, follows them when every subject's file was analysed by the syntax tier alone (for `impact_completeness`, per changed symbol). Following walks a `candidate` site and an `ambiguous` site of at most five candidates, never one whose candidates were capped, and labels every row reached through one `inferred`; a row an observed chain also reaches stays `observed` (FR184). Auto is decided once, from the subjects: once on, the walk follows candidate sites in every file it reaches, a precise-tier file included, and the answer says so; a precise-tier subject follows none even where its walk meets a syntax-tier file. Answers for TypeScript, Python, C# and any SCIP-covered file, or a file that records no tier, are byte-identical with the default input, including where candidate sites exist. The answer says in `limitations` that candidate edges were followed and why, and how many ambiguous sites of more than five candidates it stopped at; it counts the candidate sites it did not follow only when `include_inferred` is `false`. `find_tests` keeps its own count when it does not follow them, by default for a precise-tier subject as with `false`: `<n> call sites with no single resolved target name code on these paths as a candidate; ...` (FR560). `impact_completeness` says these sentences once for all its changed symbols, summing their sites (FR561). The node budget is checked as each row is reached. Candidate imports are not followed.
+
+## The context map (FR920 to FR924)
+
+`get_context_map` (the `data` profile, lean by default) answers, within a byte budget, the declarations around a focus in both directions: what calls, implements, imports, references or tests it, and what it calls, implements, imports and references. It is the orientation call before a change; the precise tools answer the questions it raises. It is in `data`, not `core`, so the default `tools/list` keeps its room under 20,000 bytes; the plugin's registration loads `data`.
+
+- `focus` takes `paths` (repository-relative files), `symbols` (a row name such as `Driver.escape`, a plain name, which may name several symbols, or an id), or `base` with an optional `head`: the declarations the diff from `base` to `head`, or to the working tree, changed on this snapshot, which are rows of their own, `changed` at depth 0. A declaration that only lost lines is placed by the head line at the gap. A deleted declaration is not on the snapshot and is not in the focus. When the snapshot is not of `head` (or of the working tree), a limitation says changed lines may fall on other declarations.
+- `budget_bytes` (default 4,096, at most 65,536) is the answer's `max_bytes`: header, rows, limitations and the cursor line included, as for every tool (FR330). A budget too small for the header, one row and the cursor line is refused with `max_bytes_too_small`. `max_depth` (default 2, at most 4) is the hops from the focus. The rest of the map is a cursor away; `limits.max_rows` (default 100) also bounds a page.
+- A row is `<name> <path>:<line> <relation> depth=<n>`, at the declaration; a file, and its module, is one row, `<path>:1`. The relation is the row's to the focus: `calls`, `implements`, `references` and `imports` for what the focus uses; `called_by`, `implemented_by`, `referenced_by` and `imported_by` for what uses it, or `tests` when that code is test code (recognised as `find_tests` recognises it). Relationships followed: resolved `calls`, `references`, `imports`, `implements`, `overrides` and `inherits` (the last two read as `implements`), calls and references to a member a reached symbol implements or overrides (dispatch), and candidate edges. A row ends ` inferred` when any hop of its strongest chain is a candidate edge or otherwise inferred (FR184).
+- Each declaration is one row, at its least depth and, there, its strongest relation. Nothing in a focus file is a row.
+- The rank, which two calls repeat exactly:
+  1. by depth (`changed` rows at 0 first), and at a depth observed rows before inferred ones;
+  2. within those, a file's first row before any file's second, and so on, so the map names as many places as the budget holds;
+  3. within that, a row the focus uses and a row that uses it alternate, each side ordered by relation strength (`implements`/`implemented_by`, `calls`/`called_by`, `tests`, `references`/`referenced_by`, `imports`/`imported_by`), then the weight of the row's file (its relationships to the code one hop nearer the focus, every site counted), the row's own weight, path, line and name.
+- A focus file no adapter analyses has an empty map, and the limitation names its disposition; a path that is no file of the snapshot is refused, as for every tool.
+- On the parity fixture (`bench/parity`, TypeORM) with each question's target file as the focus, a 4,096-byte map names on average 62% of the truth's inbound files and 81% of the target's imports, where aider's 1,024-token map names 1% and 47% (0 to 8% per question); at 16,384 bytes the map names 89% and 100%, aider's 4,096-token map 3% and 68%. `sh bench/parity/run.sh` reports both at 4,096 and 16,384 bytes beside aider's 1k and 4k maps (FR924).
 
 ## Envelopes: lean, compact and full (FR095 to FR100)
 

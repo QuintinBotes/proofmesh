@@ -4,6 +4,12 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 ## Unreleased
 
+A task context map: the code around a focus, ranked, within a byte budget (issue #33; FR920 to FR924):
+
+- `get_context_map`, in the `data` tool profile and lean by default, takes a focus (`paths`, `symbols`, or a diff from `base`), a `budget_bytes` (default 4,096) and a `max_depth` (default 2). It answers one row per declaration around the focus, in both directions, `<name> <path>:<line> <relation> depth=<n>`: what calls, implements, imports, references or tests the focus, and what the focus calls, implements, imports and references, with dispatch followed and candidate edges marked ` inferred`. A diff's changed declarations are rows marked `changed`. The answer never exceeds the budget, and a cursor pages the rest.
+- The rank is deterministic and stated in `docs/proofmesh/mcp.md`: by depth, observed rows before inferred ones, then a file's first row before any file's second, with what the focus uses alternating with what uses it, each by relation strength, then weight, path and line. A row is inferred when any hop of its chain is.
+- The parity benchmark reports the map's inbound and outbound shares at 4,096 and 16,384 bytes beside aider's repository map. On the TypeORM fixture at 4,096 bytes it names on average 62% of each target's inbound files and 81% of its imports; aider's 1,024-token map names 1% and 47%.
+
 Calls into a library resolve to its repository when both are in one workspace (part of #28; FR900 to FR904):
 
 - A call from one registered repository into an npm package that another registered repository builds ended at the package boundary, as `resolved_external`, so callers and impact stopped there. `proofmesh workspace link` now seals a `package_symbol` link for each TypeScript `calls`, `inherits`, `implements` or `references` site into such a package, to the symbol of that name in the repository whose `package.json` builds it. The same installed and built version is `observed`; a mismatch or an unknown version is `inferred`. Two repositories building one package make a candidate naming both, and a package no member builds makes no link.

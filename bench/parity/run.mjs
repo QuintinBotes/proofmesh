@@ -104,7 +104,24 @@ async function runProofMesh() {
   const answers = {}
   for (const q of Q) answers[q.id] = await ask(q)
   pm.close(); pmExtra.close()
-  return { cost, answers, tools_list_bytes: Buffer.byteLength(JSON.stringify(tools)), tools: tools.length, startup_ms: startMs }
+  // The context map (get_context_map, in the data profile) is scored as aider's map is: the target file as the focus, at each budget.
+  const cm = new McpClient('node', pmArgs('mcp', '--tools', 'data'), { cwd: FIX })
+  await cm.init()
+  const contextMap = {}
+  for (const q of CONTEXT_ASKED) {
+    contextMap[q.id] = []
+    // A target the fixture lacks has no map to score; the tool refuses a path that is no file of the snapshot.
+    if (!fs.existsSync(path.join(FIX, q.target.file))) { contextMap[q.id] = PM_BUDGETS.map((bytes) => ({ bytes, inbound: null, outbound: null })); continue }
+    for (const bytes of PM_BUDGETS) {
+      const r = await cm.call('get_context_map', { focus: { paths: [q.target.file] }, budget_bytes: bytes })
+      if (r.isError) throw new Error(`get_context_map ${q.target.file}: ${r.text.slice(0, 200)}`)
+      raw(`proofmesh-context-${q.id}-${bytes}.txt`, r.text)
+      const named = new Set(r.text.split('\n').filter((l) => !l.startsWith('#')).map((l) => /(\S+):\d+ /.exec(l)?.[1]).filter(Boolean))
+      contextMap[q.id].push({ bytes, ...contextShares(q, named), ms: r.ms, answer_bytes: r.bytes })
+    }
+  }
+  cm.close()
+  return { cost, answers, context_map: contextMap, tools_list_bytes: Buffer.byteLength(JSON.stringify(tools)), tools: tools.length, startup_ms: startMs }
 }
 
 // ---------- Graphify (CLI, code-only update) ----------
@@ -267,6 +284,16 @@ async function runSerena() {
 // Scored as context: the share of the truth's files its map names, at 1,024 and 4,096 tokens, inbound (callers,
 // importers, implementers, type users) and outbound (the target file's imports).
 const AIDER_TOKENS = [1024, 4096]
+/** ProofMesh's context map at about aider's two sizes: 4,096 bytes is about 1,024 tokens (aider's 1k map measured 4.5 KB), 16,384 about 4,096. */
+const PM_BUDGETS = [4096, 16384]
+const CONTEXT_ASKED = Q.filter((q) => q.target && q.kind !== 'path')
+/** The share of the truth's inbound files (callers, importers, implementers, dependents, type users) and of the target file's imports a map names. */
+function contextShares(q, named) {
+  const inbound = new Set([...truthFor(q).items].map((k) => (k.includes('::') ? fileOf(k) : k)))
+  const outbound = new Set(T.imports.filter((x) => x.from === q.target.file).map((x) => x.to))
+  const share = (set) => (set.size ? [...set].filter((f) => named.has(f)).length / set.size : null)
+  return { inbound: share(inbound), outbound: share(outbound) }
+}
 function aiderPython() {
   const bin = run('sh', ['-c', 'command -v aider']).stdout.trim()
   const shebang = bin && fs.readFileSync(bin, 'utf8').split('\n')[0]
@@ -286,22 +313,18 @@ function runAider() {
   const job = [{ file: EDIT_FILE, ident: 'TypeORMError', tokens: 1024 }]
   // The map's own time, read from the run; Python start-up is not index building.
   const cost = costs({ store, cold: () => fs.rmSync(store, { recursive: true, force: true }), build: () => [py, ['-I', path.join(HERE, 'aider-map.py'), FIX], { input: JSON.stringify(job) + '\n' + files }], ms: (r) => lastJson(r.stdout)[0].ms })
-  const asked = Q.filter((q) => q.target && q.kind !== 'path')
+  const asked = CONTEXT_ASKED
   const jobs = asked.flatMap((q) => AIDER_TOKENS.map((tokens) => ({ file: q.target.file, ident: q.target.qname ? last(q.target.qname) : path.basename(q.target.file).replace(/\.\w+$/, ''), tokens })))
   const res = maps(jobs)
   const answers = {}
   for (const q of Q) {
     const i = asked.indexOf(q)
     if (i < 0) { answers[q.id] = { none: true }; continue }
-    const t = truthFor(q)
-    const inbound = new Set([...t.items].map((k) => (k.includes('::') ? fileOf(k) : k)))
-    const outbound = new Set(T.imports.filter((x) => x.from === q.target.file).map((x) => x.to))
     const ctx = AIDER_TOKENS.map((tokens, j) => {
       const m = res[i * AIDER_TOKENS.length + j]
       raw(`aider-${q.id}-${tokens}.txt`, m.map)
       const named = new Set(m.map.split('\n').filter((l) => /^\S.*:$/.test(l)).map((l) => l.slice(0, -1)))
-      const share = (set) => (set.size ? [...set].filter((f) => named.has(f)).length / set.size : null)
-      return { tokens, inbound: share(inbound), outbound: share(outbound), ms: m.ms, bytes: Buffer.byteLength(m.map) }
+      return { tokens, ...contextShares(q, named), ms: m.ms, bytes: Buffer.byteLength(m.map) }
     })
     answers[q.id] = { context: ctx, ms: ctx[0].ms, bytes: ctx[0].bytes }
   }
@@ -375,6 +398,17 @@ const range = (xs) => { const v = xs.filter((x) => x != null); return v.length ?
 const perQ = (field) => TOOLS.map((t) => (results[t.id].not_run ? 'not run' : t.id === 'scip' ? `n/a (decode ${s(results.scip.decode_ms)} once)` : range(scored.filter((r) => Number(r.id.slice(1)) <= 9).map((r) => r[t.id][field]))))
 costRows.push(`| ms per question, Q1–Q9 | ${perQ('ms').join(' | ')} |`, `| bytes per answer, Q1–Q9 | ${perQ('bytes').join(' | ')} |`)
 costRows.push(`| \`tools/list\` bytes (MCP) | ${TOOLS.map((t) => { const r = results[t.id]; return r.not_run ? 'not run' : r.tools_list_bytes != null ? `${r.tools_list_bytes} (${r.tools} tools)` : r.transport }).join(' | ')} |`)
+// The context map beside aider's map: per question, then the mean over the questions (outbound over those whose target imports anything).
+const io = (c) => `in ${pc(c.inbound)} out ${pc(c.outbound)}`
+const aiderCtx = (id) => (results.aider.not_run ? null : results.aider.answers[id]?.context)
+const cmCell = (id, j) => io(results.proofmesh.context_map[id][j])
+const aiderCell = (id, j) => (results.aider.not_run ? 'not run' : io(aiderCtx(id)[j]))
+const meanOf = (cells) => { const v = cells.filter((x) => x != null); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null }
+const meanCell = (get) => io({ inbound: meanOf(CONTEXT_ASKED.map((q) => get(q.id)?.inbound)), outbound: meanOf(CONTEXT_ASKED.map((q) => get(q.id)?.outbound)) })
+const contextRows = [
+  ...CONTEXT_ASKED.map((q) => `| ${q.id} | \`${q.target.file}\` | ${PM_BUDGETS.map((_, j) => cmCell(q.id, j)).join(' | ')} | ${AIDER_TOKENS.map((_, j) => aiderCell(q.id, j)).join(' | ')} |`),
+  `| mean | | ${PM_BUDGETS.map((_, j) => meanCell((id) => results.proofmesh.context_map[id][j])).join(' | ')} | ${AIDER_TOKENS.map((_, j) => (results.aider.not_run ? 'not run' : meanCell((id) => aiderCtx(id)[j]))).join(' | ')} |`,
+]
 const md = [
   '# Parity benchmark',
   '',
@@ -387,6 +421,12 @@ const md = [
   head, sep, ...quality,
   '',
   '(derived): computed by the harness from an index that has no query for it. (data): computed from stored data; no tool answers it. aider is scored as context: the share of the truth\'s files its map names, inbound and outbound, at 1k and 4k tokens.',
+  '',
+  '## Context map: the share of the truth\'s files named, inbound / outbound (%)',
+  '',
+  `| Q | focus | ${PM_BUDGETS.map((b) => `ProofMesh get_context_map ${b} bytes`).join(' | ')} | ${AIDER_TOKENS.map((t) => `aider ${t / 1024}k tokens`).join(' | ')} |`, `|---|---|${[...PM_BUDGETS, ...AIDER_TOKENS].map(() => '---|').join('')}`, ...contextRows,
+  '',
+  'Each map is asked with the question\'s target file as its focus (aider: in the chat, its file and name mentioned). Inbound: the files of the truth\'s callers, importers, implementers, dependents or type users; outbound: the files the target file imports.',
   '',
   '## Callers at three levels: items · `file:line` sites · files',
   '',

@@ -63,7 +63,8 @@
         "find_unused",
         "find_cycles",
         "find_entry_points",
-        "find_hubs"
+        "find_hubs",
+        "get_context_map"
       ]
     },
     "snapshot": {

@@ -24,8 +24,8 @@ const mac = (dataDir: string, body: string) => crypto.createHmac('sha256', insta
 
 /** The question a cursor continues: the input without cursor, limits, and scope, so a page may change size but not question. */
 export function queryHash(tool: string, input: Record<string, unknown>): string {
-  // The envelope mode changes only how the answer is wrapped, so a cursor carries across it.
-  const { cursor: _c, limits: _l, snapshot_id: _s, repository_id: _r, envelope: _e, ...question } = input
+  // The envelope mode changes only how the answer is wrapped, so a cursor carries across it; budget_bytes is a limit too.
+  const { cursor: _c, limits: _l, budget_bytes: _b, snapshot_id: _s, repository_id: _r, envelope: _e, ...question } = input
   return crypto.createHash('sha256').update(`${tool}\n${canonicalJson(question)}`).digest('hex').slice(0, 32)
 }
 

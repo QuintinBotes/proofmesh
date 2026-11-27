@@ -22,7 +22,7 @@ function fixture(): string {
 }
 
 describe('FR510 to FR516 the parity benchmark scores every tool on one truth, and a missing comparator is not run', () => {
-  it('FR510 FR511 FR512 FR513 FR514 FR515 FR946 with no comparator at its pinned version, the harness fills the ProofMesh column, says why each other did not run, restores the fixture and exits 0', () => {
+  it('FR510 FR511 FR512 FR513 FR514 FR515 FR924 FR946 with no comparator at its pinned version, the harness fills the ProofMesh column, says why each other did not run, restores the fixture and exits 0', () => {
     const fix = fixture()
     const out = tmpDir('pm-parity-out-')
     const bin = tmpDir('pm-parity-bin-')
@@ -45,6 +45,11 @@ describe('FR510 to FR516 the parity benchmark scores every tool on one truth, an
     expect(q1.slice(4).join(' | ')).toBe('not run: graphify 0.9.120 is not the pinned 0.9.108 | not run: scip-typescript is not installed (sh bench/parity/install.sh); scip is not installed (sh bench/parity/install.sh) | not run: serena is not installed (sh bench/parity/install.sh) | not run: aider is not installed (sh bench/parity/install.sh) |')
     // FR946: ProofMesh answers Q10 to Q13 through its structure tools over MCP, so its cells carry no (data) mark.
     for (const [q, kind] of [['Q10', 'dead_code'], ['Q11', 'cycles'], ['Q12', 'roots'], ['Q13', 'hubs']]) expect(md).toMatch(new RegExp(`^\\| ${q} \\| ${kind} \\| \\d+ \\| \\d+ / (\\d+|-) \\| not run`, 'm'))
+    // FR924 (issue 33 scenario 5): the context map's inbound and outbound shares beside aider's, at each budget, and their mean.
+    expect(md).toContain('| Q | focus | ProofMesh get_context_map 4096 bytes | ProofMesh get_context_map 16384 bytes | aider 1k tokens | aider 4k tokens |')
+    expect(md).toMatch(/^\| Q1 \| `src\/globals\.ts` \| in \d+% out \d+% \| in \d+% out \d+% \| not run \| not run \|$/m)
+    expect(md).toMatch(/^\| mean \| \| in \d+% out \d+% \| in \d+% out \d+% \| not run \| not run \|$/m)
+    expect(fs.readFileSync(path.join(out, 'raw', 'proofmesh-context-Q1-4096.txt'), 'utf8')).toMatch(/^# get_context_map · \d+ rows? · snap_\w+ current\n/)
     // FR512: callers at three levels; FR513: the cost rows, with ProofMesh measured and its tools/list bytes.
     expect(md).toMatch(/^\| Q1 \| \d+ \/ (\d+|-) · \d+ \/ (\d+|-) · \d+ \/ (\d+|-) \| not run/m)
     for (const row of ['Full build', 'Peak memory (largest process)', 'Disk (own store)', 'No-change re-index', 'One edit (a statement in the constructor of src/error/TypeORMError.ts)']) expect(md).toMatch(new RegExp(`^\\| ${row.replace(/[()./]/g, '\\$&')} \\| \\d+(\\.\\d)? (ms|s|MB) \\| not run \\| not run \\| not run \\| not run \\|$`, 'm'))

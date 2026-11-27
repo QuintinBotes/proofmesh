@@ -1862,6 +1862,21 @@
     ],
     "FR1001": [
       "e2e/no-snapshot.spec.ts"
+    ],
+    "FR920": [
+      "packages/proofmesh/test/context-map.test.ts"
+    ],
+    "FR921": [
+      "packages/proofmesh/test/context-map.test.ts"
+    ],
+    "FR922": [
+      "packages/proofmesh/test/context-map.test.ts"
+    ],
+    "FR923": [
+      "packages/proofmesh/test/context-map.test.ts"
+    ],
+    "FR924": [
+      "packages/proofmesh/test/parity-bench.test.ts"
     ]
   },
   "manual": {
