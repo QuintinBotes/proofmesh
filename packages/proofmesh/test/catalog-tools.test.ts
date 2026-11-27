@@ -3,7 +3,7 @@ import { beforeAll, describe, expect, it } from 'vitest'
 import { Catalog } from '../src/meshstore/catalog.js'
 import { indexRepository } from '../src/indexer/coordinator.js'
 import { runTool } from '../src/query/tools.js'
-import { copyFixture, fixtureRepo, indexedDataDir, tool } from './helpers.js'
+import { copyFixture, fixtureRepo, indexedDataDir, indexedRepo, symbolId, tool } from './helpers.js'
 
 describe('A34 #31 finding repositories over MCP when several are registered', () => {
   let d: string, first: string, second: string
@@ -90,8 +90,14 @@ describe('the standing references limitation follows the snapshot\'s capability'
     expect(tool(dataDir, 'find_symbols', { text: 'main' }).limitations).toContain('References other than calls and imports are not analysed for this snapshot.')
   })
 
-  it('says references are partial for a snapshot whose TypeScript adapter records uses of repository types', async () => {
+  it('FR1540 says references are partial for a snapshot whose TypeScript adapter records uses of repository types', async () => {
     const { dataDir } = await indexedDataDir()
-    expect(tool(dataDir, 'find_symbols', { text: 'formatAmount' }).limitations).toContain('References other than calls and imports are recorded only where an adapter supports them (C# uses of repository declarations, TypeScript uses of repository types); elsewhere a missing reference is not evidence of no use.')
+    expect(tool(dataDir, 'find_symbols', { text: 'formatAmount' }).limitations).toContain('References other than calls and imports are recorded only where an adapter supports them (C# uses of repository declarations, TypeScript uses of repository types, Python uses of repository classes and functions); elsewhere a missing reference is not evidence of no use.')
+  })
+
+  it('FR1540 names Python among the adapters that record references, for a snapshot of Python alone that records one', async () => {
+    const { dataDir } = await indexedRepo({ 'shop/cart.py': 'class Cart:\n    pass\n', 'shop/app.py': 'from shop.cart import Cart\n\n\ndef make(c: Cart) -> None:\n    pass\n' })
+    expect(tool(dataDir, 'get_relationships', { subject_id: symbolId(dataDir, 'shop/cart:Cart'), types: ['references'] }).data.relationships).toHaveLength(1)
+    expect(tool(dataDir, 'find_symbols', { text: 'Cart' }).limitations).toContain('References other than calls and imports are recorded only where an adapter supports them (C# uses of repository declarations, TypeScript uses of repository types, Python uses of repository classes and functions); elsewhere a missing reference is not evidence of no use.')
   })
 })

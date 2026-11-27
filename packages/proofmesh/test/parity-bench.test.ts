@@ -28,8 +28,8 @@ function parityEnv(fix: string, out: string): NodeJS.ProcessEnv {
 }
 const RUN_SH = path.join(ROOT, 'bench/parity/run.sh')
 
-describe('FR510 to FR516 the parity benchmark scores every tool on one truth, and a missing comparator is not run', () => {
-  it('FR510 FR511 FR512 FR513 FR514 FR515 FR924 FR946 with no comparator at its pinned version, the harness fills the ProofMesh column, says why each other did not run, restores the fixture and exits 0', () => {
+describe('FR510 to FR516 FR966 the parity benchmark scores every tool on one truth, and a missing comparator is not run', () => {
+  it('FR510 FR511 FR512 FR513 FR514 FR515 FR924 FR946 FR966 with no comparator at its pinned version, the harness fills the ProofMesh column, says why each other did not run, restores the fixture and exits 0', () => {
     const fix = fixture()
     const out = tmpDir('pm-parity-out-')
     const r = spawnSync('sh', [RUN_SH], { encoding: 'utf8', env: parityEnv(fix, out) })
@@ -57,6 +57,12 @@ describe('FR510 to FR516 the parity benchmark scores every tool on one truth, an
     for (const row of ['Full build', 'Peak memory (largest process)', 'Disk (own store)', 'No-change re-index', 'One edit (a statement in the constructor of src/error/TypeORMError.ts)']) expect(md).toMatch(new RegExp(`^\\| ${row.replace(/[()./]/g, '\\$&')} \\| \\d+(\\.\\d)? (ms|s|MB) \\| not run \\| not run \\| not run \\| not run \\|$`, 'm'))
     expect(md).toMatch(/^\| `tools\/list` bytes \(MCP\) \| \d+ \(\d+ tools\) \| not run/m)
     expect(JSON.parse(fs.readFileSync(path.join(out, 'results.json'), 'utf8')).meta.runs).toBe(1)
+    // FR966: each question is asked again as one query_graph query, in a column beside the typed tools, with its p95.
+    expect(md).toContain('| Q | class | ProofMesh (typed tools) | ProofMesh query_graph | same items as typed | ms (median) |')
+    expect(md).toMatch(/^\| Q1 \| callers \| \d+ \/ (\d+|-) \| \d+ \/ (\d+|-) \| yes \| \d+ \|$/m)
+    expect(md).toMatch(/^\| Q5 \| importers \| \d+ \/ (\d+|-) \| \d+ \/ (\d+|-) \| yes \| \d+ \|$/m)
+    expect(md).toMatch(/^query_graph p95 over Q1–Q12, 1 run each: \d+ ms \(target 500 ms\)\.$/m)
+    expect(fs.readFileSync(path.join(out, 'raw', 'pm-query-Q1.txt'), 'utf8')).toMatch(/^MATCH \(\)-\[r:calls\]->\(t \{qualified_name: \$t\}\) RETURN r\n\{"t":"src\/globals:getMetadataArgsStorage"\}\n# query_graph · commit [0-9a-f]{12} · \d+ rows? · snap_/)
     // FR515: the edit is undone and the fixture lists nothing but the excluded caches.
     expect(md).toContain('Fixture after the edit step: clean')
     expect(fs.readFileSync(path.join(fix, 'src/error/TypeORMError.ts'), 'utf8')).toBe(ERROR_TS)
@@ -93,10 +99,11 @@ describe('FR510 to FR516 the parity benchmark scores every tool on one truth, an
     expect(fs.readFileSync(path.join(fix, '.git/info/exclude'), 'utf8')).toBe(before.exclude)
     // FR515 and FR1031: each run's copy was clean after its edit step, both score alike, and out/ holds one whole result.
     // A snapshot id names the repository, so it differs between the two copies; an error cell may quote it.
-    const rows = (md: string) => md.split('\n').filter((l) => /^\| Q\d+ \| /.test(l)).map((l) => l.replace(/snap_[0-9a-f]+/g, 'snap_'))
+    // A query_graph row ends with its median time, which is no score and differs between runs (#36).
+    const rows = (md: string) => md.split('\n').filter((l) => /^\| Q\d+ \| /.test(l)).map((l) => l.replace(/snap_[0-9a-f]+/g, 'snap_').replace(/(\| (?:yes|no \([^)]*\)|error) \| )\d+ \|$/, '$1ms |'))
     for (const r of runs) expect(r.stdout).toContain('Fixture after the edit step: clean (tool caches graphify-out/, .serena/, .aider.tags.cache.v4/ are in .git/info/exclude)')
-    // 16 score rows plus the 8 rows of the context map table (#33, FR924), which also start with a question.
-    expect(rows(runs[0].stdout).length).toBe(24)
+    // 16 score rows plus the 8 rows of the context map table (#33, FR924) and the 13 of the query_graph table (#36, FR966), which also start with a question.
+    expect(rows(runs[0].stdout).length).toBe(37)
     expect(rows(runs[1].stdout)).toEqual(rows(runs[0].stdout))
     const md = fs.readFileSync(path.join(out, 'parity.md'), 'utf8')
     expect(runs.map((r) => r.stdout.replace(/\n$/, ''))).toContain(md)
