@@ -4,6 +4,8 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 ## Unreleased
 
+The Galaxy keeps each ghost (an area with no symbols) and its label inside the canvas and clear of the zoom controls and the Graph/Table switch, after the first paint, after Fit everything and as the camera moves; a ghost whose place on its ring falls outside the view waits at the nearest edge (#210; FR1560).
+
 The Galaxy's layout is computed with the snapshot, and every symbol keeps its place (part of #44; FR1220 to FR1225):
 
 - Positions are a pure function of the snapshot's path tree and symbol names: ordered strips of directories, then files, then symbols, each in name order, every symbol the same area, overloads ordered by declaration line. Edges never move a node. The server computes them when it builds the Galaxy payload, in 0.1 s at 250,000 symbols, and the same snapshot gives byte-identical positions in every browser, on every machine and on every run.

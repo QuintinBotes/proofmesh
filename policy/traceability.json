@@ -2098,6 +2098,9 @@
     "FR1225": [
       "packages/proofmesh/test/layout.test.ts"
     ],
+    "FR1560": [
+      "e2e/galaxy.spec.ts"
+    ],
     "FR580": [
       "packages/proofmesh/test/concepts.test.ts"
     ],

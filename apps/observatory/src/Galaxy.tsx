@@ -33,9 +33,10 @@ export function fogText(a: GalaxyData['areas'][number], reasons = true): string 
 /**
  * Fog over the areas the graph cannot fully see (FR059). An area with symbols gets haze in proportion to its unanalysed files
  * and a ring when most of its calls are unresolved, sized to its points' spread; an area with no symbols at all is a labelled
- * ghost on a ring just outside the galaxy, so missing coverage never reads as empty space.
+ * ghost on a ring just outside the galaxy, so missing coverage never reads as empty space. A ghost and its label are kept inside
+ * the canvas and clear of the overlays on it wherever the ring falls on screen (#210).
  */
-function fogOf(d: GalaxyData, sum: Float64Array, sq: Float64Array, g: Graph): Fog[] {
+function fogOf(d: GalaxyData, sum: Float64Array, sq: Float64Array, g: Graph, view: View): Fog[] {
   const out: Fog[] = []
   const toScreen = (x: number, y: number) => g.spaceToScreenPosition([x, y])
   let cx = 0, cy = 0, n = 0
@@ -62,8 +63,12 @@ function fogOf(d: GalaxyData, sum: Float64Array, sq: Float64Array, g: Graph): Fo
   const placed: Array<{ x: number; y: number; w: number }> = []
   ghosts.forEach((gh, i) => {
     const t = (2 * Math.PI * i) / ghosts.length - Math.PI / 2
-    const [x, y] = toScreen(cx + Math.cos(t) * rim * 1.08, cy + Math.sin(t) * rim * 1.08)
-    const r = Math.min(48, 10 + 3 * Math.sqrt(gh.files)), w = gh.label.length * 6.2
+    const [sx, sy] = toScreen(cx + Math.cos(t) * rim * 1.08, cy + Math.sin(t) * rim * 1.08)
+    const r = Math.min(48, 10 + 3 * Math.sqrt(gh.files)), w = gh.label.length * 6.2, hw = Math.max(r, w / 2) + EDGE
+    const x = clamp(sx, hw, view.w - hw)
+    let y = clamp(sy, r + EDGE, view.h - r - LABEL_H - EDGE)
+    // The overlays sit at the top of the canvas, so a ghost that would fall under one moves down below it.
+    for (const k of view.keepOut) if (x + hw > k.left && x - hw < k.right && y - r - EDGE < k.bottom && y + r + LABEL_H + EDGE > k.top) y = k.bottom + EDGE + r
     // A label that would overlap one already placed is left off; the ghost stays, and the table names it.
     const free = !placed.some((p) => Math.abs(p.y - (y + r)) < 16 && Math.abs(p.x - x) < (p.w + w) / 2 + 8)
     if (free) placed.push({ x, y: y + r, w })
@@ -72,9 +77,14 @@ function fogOf(d: GalaxyData, sum: Float64Array, sq: Float64Array, g: Graph): Fo
   return out
 }
 const GHOSTS = 10
+/** The canvas size, and the boxes of the overlays floating on it in canvas pixels, which ghosts keep inside and clear of. */
+type View = { w: number; h: number; keepOut: Array<{ left: number; right: number; top: number; bottom: number }> }
+const EDGE = 8, LABEL_H = 20
+const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v))
 
 export function Galaxy({ data, query, focusArea, onOpen, onHover, onClear, overlay }: Props) {
   const box = useRef<HTMLDivElement>(null)
+  const controls = useRef<HTMLDivElement>(null)
   const graph = useRef<Graph | null>(null)
   const handlers = useRef({ onOpen, onHover })
   handlers.current = { onOpen, onHover }
@@ -131,7 +141,10 @@ export function Galaxy({ data, query, focusArea, onOpen, onHover, onClear, overl
         areaSums = { sum, sq }
       }
       const { sum, sq } = areaSums
-      setFog(viewMap.current ? [] : fogOf(d, sum, sq, g))
+      // The zoom controls and the Graph/Table switch float over the canvas.
+      const b = box.current!.getBoundingClientRect(), over = [controls.current, box.current!.closest('.center')?.querySelector(':scope > .switch')]
+      const keepOut = over.flatMap((e) => { if (!e) return []; const c = e.getBoundingClientRect(); return [{ left: c.left - b.left, right: c.right - b.left, top: c.top - b.top, bottom: c.bottom - b.top }] })
+      setFog(viewMap.current ? [] : fogOf(d, sum, sq, g, { w: b.width, h: b.height, keepOut }))
       // Biggest areas first; a label that would overlap one already placed is skipped rather than piled on top (B14).
       const candidates = d.areas.slice(0, 40).flatMap((a, i) => {
         if (!sum[i * 3 + 2]) return []
@@ -267,7 +280,7 @@ export function Galaxy({ data, query, focusArea, onOpen, onHover, onClear, overl
         </div>
       )}
       {shown && shown.matched === 0 && <div className="galaxy-empty" role="status">No symbol matches {visible(filterLabel)}.</div>}
-      <div className="canvas-controls" role="toolbar" aria-label="Galaxy controls">
+      <div ref={controls} className="canvas-controls" role="toolbar" aria-label="Galaxy controls">
         <button type="button" onClick={() => zoomBy(1.6)} aria-label="Zoom in" title="Zoom in">+</button>
         <button type="button" onClick={() => zoomBy(1 / 1.6)} aria-label="Zoom out" title="Zoom out">−</button>
         <button type="button" onClick={() => graph.current?.fitView(500)} aria-label="Fit everything" title="Fit everything">⤢</button>

@@ -49,6 +49,27 @@ test('FR059 SC011 areas the graph cannot see are drawn as fog, and the table say
   await expect(rows.filter({ hasText: 'packages/billing/dist' }).locator('td')).toHaveText(['packages/billing/dist', '0', '0', '0', '1', 'no call sites', '**/dist/** 1', ''])
 })
 
+test('FR1560 every ghost and its label lie inside the Galaxy and clear of its controls, after the first paint and after Fit everything', async () => {
+  await page.getByRole('button', { name: 'Graph', exact: true }).click()
+  await expect(page.locator('.galaxy-fog.empty .fog-label')).toHaveCount(3, { timeout: 30000 })
+  // Each shown ghost's and label's box against the canvas, the zoom toolbar and the Graph/Table switch: an empty list means all are clear.
+  const misplaced = () => page.evaluate(() => {
+    const g = document.querySelector('.galaxy')!.getBoundingClientRect()
+    const over = ['[aria-label="Galaxy controls"]', '[role="group"][aria-label="View"]'].map((s) => document.querySelector(s)!.getBoundingClientRect())
+    return [...document.querySelectorAll('.galaxy-fog.empty, .galaxy-fog.empty .fog-label')].flatMap((e) => {
+      const b = e.getBoundingClientRect(), name = e.getAttribute('data-area') ?? e.textContent
+      const outside = b.left < g.left || b.right > g.right || b.top < g.top || b.bottom > g.bottom
+      const under = over.some((c) => b.left < c.right && b.right > c.left && b.top < c.bottom && b.bottom > c.top)
+      return outside || under ? [`${name}${outside ? ' outside' : ''}${under ? ' under a control' : ''}`] : []
+    })
+  })
+  await expect.poll(misplaced).toEqual([])
+  await page.getByRole('button', { name: 'Fit everything' }).click()
+  // Fitting animates for half a second; the labels must stay put once it has settled.
+  await page.waitForTimeout(800)
+  await expect.poll(misplaced).toEqual([])
+})
+
 test('FR1223 the map paints at its final positions: no simulation, no layout control and no layout cache in the browser', async ({ browser }) => {
   // A fresh context on a second view of the same data, so the first paint is a cold one.
   const second = await serveView(view.dataDir)

@@ -970,6 +970,7 @@ From #39: a fresh clone starts from the snapshot a teammate or CI built for the 
 - FR1223: MUST run no layout simulation in the browser: the Galaxy's first frame shows every symbol at its final position, and it has no pause or resume control, no IndexedDB layout cache and no warm start.
 - FR1224: MUST say in the Galaxy's legend that position shows containment (directory, then file, then name), that nearness is not a relationship, and that only drawn lines are relationships (FR068).
 - FR1225: MUST lay out 250,000 symbols on the server in at most one second on the reference machine (#44 SC-002).
+- FR1560: MUST keep every Galaxy ghost (an area with no symbols, FR059) and its label inside the canvas and clear of the overlays on it (the zoom controls and the Graph/Table switch), after the first paint and after Fit everything (#210).
 
 ### Open source and extensibility
 
