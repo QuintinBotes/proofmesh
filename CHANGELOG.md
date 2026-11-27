@@ -10,6 +10,13 @@ The syntax tier records a Rust call through a path (closes #116; FR500, FR501):
 - Not done: a call with a turbofish (`f::<T>()`, `ffi::f::<T>()`, `x.f::<T>()`) still has no row.
 - Upgrade note: Rust snapshots gain `calls` rows, one per path call, so a re-indexed Rust repository reports more unresolved calls than before. No fixture or Rosetta expectation changed: none of their Rust sources calls through a path.
 
+The Claude Code plugin shows the snapshot's state under the prompt and adds `/pm-status` (part of #113; FR480 to FR487):
+
+- The plugin now ships a hooks module (a mod, Claude Code 2.1.287 and later), listed under `modules` in `hooks/hooks.json` beside the settings hooks. Its status line reads `proofmesh: current <snapshot id> (<age>)`, `behind (<n> files edited)`, `indexing <stage>`, `missing`, `not registered here`, `not installed` or `unknown (<reason>)`. It polls every 5 seconds while the snapshot is not current and once a minute while it is (a branch switch or an IDE edit moves the tree too), one `proofmesh` process at a time, and stops after 10 idle minutes. Its `workspace_status` call asks for a compact envelope, so the agent still gets the full one first on the shared MCP connection.
+- `/pm-status` answers at once, also while Claude is working, with no model turn: the state, the repository, the snapshot's id, mode, commit and age, the files edited since, and the adapters that are unavailable.
+- `fresh.mjs` and the module pick the repository with one shared function (`hooks/repos.mjs`). Older Claude Code versions ignore `modules`, and the prompt command `/proofmesh:status` stays.
+- `pnpm test:plugin` runs the module's tests (`claude plugin test packages/proofmesh-plugin`); `pnpm test` does not include them.
+
 The C# adapter is built by `pnpm build`, and an unbuilt one says so (closes #100; FR385 to FR387):
 
 - `pnpm build` ends with `node scripts/build-csharp.mjs`, which runs `dotnet build adapters/csharp -c Release -nologo -v:q -m:1` when `dotnet` is on PATH and fails the build if that fails. Without `dotnet` it prints `skipped: build the C# adapter (...)` and succeeds, unless an earlier adapter build exists, which would stay in use, and then fails, as `scripts/update.mjs` already did. `update:all` already built the adapter and still does.

@@ -1,6 +1,8 @@
 import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
+import { Client } from '@modelcontextprotocol/sdk/client/index.js'
+import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { describe, expect, it } from 'vitest'
 import { Catalog } from '../src/meshstore/catalog.js'
 import { PROFILE, TOOLS } from '../src/query/tools.js'
@@ -89,4 +91,36 @@ describe('A13 the Claude Code plugin: skill, MCP registration, commands, and hoo
     expect(hook('session', { cwd: path.dirname(outside) }, { PATH: `${tmpDir('pm-empty-')}:/usr/bin:/bin`, PROOFMESH_HOOK_STATE: state })).toBeNull()
     expect(fs.readdirSync(state)).toEqual([])
   }, 240000)
+})
+
+describe("#113 the plugin's hooks module: the snapshot state under the prompt and /pm-status (its scenarios run under claude plugin test)", () => {
+  const MODULE = path.join(PLUGIN, 'hooks', 'register.mjs')
+
+  it('FR480 hooks.json lists the hooks module beside its settings hooks, and the module exports register(on)', async () => {
+    const hooks = JSON.parse(fs.readFileSync(path.join(PLUGIN, 'hooks', 'hooks.json'), 'utf8'))
+    expect(hooks.modules).toEqual(['./register.mjs'])
+    expect(Object.keys(hooks.hooks).sort()).toEqual(['PostToolUse', 'SessionStart'])
+    expect(typeof (await import(MODULE)).register).toBe('function')
+  })
+
+  it("FR486 the module reaches ProofMesh only through $.process.run and the plugin's own MCP server, and every tool it calls is listed by the server .mcp.json starts", async () => {
+    const source = fs.readFileSync(MODULE, 'utf8')
+    expect([...new Set(source.match(/\$\.\w+\.\w+/g))].sort()).toEqual(['$.clock.after', '$.clock.every', '$.clock.now', '$.command.register', '$.fs.stat', '$.mcp.call', '$.mcp.connect', '$.process.run', '$.ui.status'])
+    expect(source).toContain("$.process.run(['proofmesh', ...args])")
+    expect(source).toContain("$.mcp.connect('proofmesh')")
+    const called = [...source.matchAll(/callTool\(\$, '(\w+)'/g)].map((m) => m[1])
+    expect(called).toEqual(['workspace_status'])
+
+    const server = JSON.parse(fs.readFileSync(path.join(PLUGIN, '.mcp.json'), 'utf8')).mcpServers.proofmesh as { command: string; args: string[] }
+    const dataDir = tmpDir('pm-plugin-mcp-')
+    expect(cli(['--data-dir', dataDir, 'init']).status).toBe(0)
+    const client = new Client({ name: 'proofmesh-plugin-tests', version: '0' })
+    await client.connect(new StdioClientTransport({ command: process.execPath, args: [BIN, '--data-dir', dataDir, ...server.args], stderr: 'pipe' }))
+    try {
+      const listed = (await client.listTools()).tools.map((t) => t.name)
+      for (const tool of called) expect(listed).toContain(tool)
+    } finally {
+      await client.close()
+    }
+  }, 60000)
 })

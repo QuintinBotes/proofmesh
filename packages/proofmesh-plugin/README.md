@@ -1,3 +1,11 @@
 # Proofmesh plugin for Claude Code
 
 A skill that tells agents to call Proofmesh before searching by hand and to verify absence claims; an MCP registration that starts `proofmesh mcp --tools core,data,claims`, the tool profiles its skill and commands call; commands (`/proofmesh:status`, `/proofmesh:index`, `/proofmesh:impact`, `/proofmesh:trace`, `/proofmesh:verify-claim`); and freshness hooks. After an Edit or Write inside a registered repository, and at session start when `proofmesh status --fresh` finds the working tree differs from the snapshot, the hook records the change and one background runner per repository runs `proofmesh index` once edits have been quiet for four seconds; the agent is told that answers are as of the previous snapshot until it publishes. The runner's state and log live under the system temporary directory (`proofmesh-hooks-<uid>`). Install `proofmesh` first (A13). This plugin replaces the predecessor's plugin surface (A15).
+
+## Status line and /pm-status (Claude Code 2.1.287 and later)
+
+`hooks/register.mjs` is a hooks module (a [mod](https://code.claude.com/docs/en/plugins/mods/overview)), listed under `modules` in `hooks/hooks.json`; tested with Claude Code 2.1.332. Under the prompt it shows the snapshot's state for the session's repository (the deepest registered root that holds the working directory, as the freshness hook picks it): `proofmesh: current <snapshot id> (<age>)`, `behind (<n> files edited)` after an edit, `indexing <stage>` while the background index runs, `missing`, `not registered here`, `not installed` or `unknown (<reason>)`. While the snapshot is not current it asks `proofmesh status` every 5 seconds, and once a minute while it is, one process at a time; it stops after 10 minutes with no tool call, prompt or command. Sessions with nothing to draw on (`claude -p`, the Agent SDK) show nothing, and the freshness hook still tells Claude as before.
+
+`/pm-status` answers at once, also while Claude is working, and starts no model turn: the state, the repository, the snapshot's id, mode, commit and age, the files edited since, and the adapters that are unavailable. `/proofmesh:status` stays for older Claude Code versions, which ignore `modules`.
+
+Run the module's tests with `pnpm test:plugin` (`claude plugin test packages/proofmesh-plugin`).
