@@ -52,6 +52,7 @@ export function runCompleteness(dataDir: string, rest: string[], take: (args: st
   } catch (e) {
     const err = asProofmeshError(e)
     process.stderr.write(`proofmesh: ${err.code}: ${err.message}\n`)
+    if (json) console.log(JSON.stringify(err.toJSON(), null, 2))
     return 2
   }
 }

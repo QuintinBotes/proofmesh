@@ -615,6 +615,15 @@ export class Catalog {
       .map((r) => this.job(r.id)!).filter((j) => j.state === 'queued' || j.state === 'running')
   }
 
+  /**
+   * The repository's job that last ended, or last moved if none has since, as job() reports it: an `index --no-wait` refused while
+   * another index ran ends before that index does, so the one that published is last.
+   */
+  lastJob(repositoryId: string): IndexJob | undefined {
+    const r = this.db.prepare('select id from index_job where repository_id = ? order by coalesce(finished_at, progress_at, started_at, requested_at) desc, rowid desc limit 1').get(repositoryId) as { id: string } | undefined
+    return r && this.job(r.id)
+  }
+
   updateJob(id: string, patch: Partial<{ state: string; started_at: string; finished_at: string; phase: string; done: number; total: number; result: string; error: string; owner: string; progress_at: string; phase_started_at: string; plan: string; adapter_progress: string }>): void {
     const keys = Object.keys(patch)
     if (keys.length) this.db.prepare(`update index_job set ${keys.map((k) => `${k} = ?`).join(', ')} where id = ?`).run(...keys.map((k) => (patch as Record<string, unknown>)[k]), id)

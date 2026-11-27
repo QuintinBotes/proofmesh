@@ -118,6 +118,9 @@ describe('#28 a CLI index is an index job that status and MCP report while it ru
     for (let i = 0; i < 200 && (tool(d, 'get_job', { job_id: job!.id }).data.job as { state: string }).state !== 'interrupted'; i++) await new Promise((r) => setTimeout(r, 50))
     expect(tool(d, 'get_job', { job_id: job!.id }).data.job).toMatchObject({ state: 'interrupted', phase: 'analyze typescript' })
     expect(jobs()).toEqual([])
-    expect(cli(['--data-dir', d, 'status']).stdout).not.toContain('index job')
+    // No longer listed as an open job; named instead as the last index, interrupted (FR871).
+    const after = cli(['--data-dir', d, 'status']).stdout
+    expect(after).not.toMatch(/^index job /m)
+    expect(after).toContain(`last index job ${job!.id} interrupted: its process stopped before it recorded an outcome\n`)
   }, 180000)
 })
