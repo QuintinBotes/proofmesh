@@ -7,7 +7,7 @@
   },
   "packageManager": "pnpm@10.14.0",
   "scripts": {
-    "build": "pnpm --filter @proofmesh/adapter-typescript build && pnpm --filter @proofmesh/adapter-syntax build && pnpm --filter @proofmesh/observatory build && pnpm --filter proofmesh build",
+    "build": "pnpm --filter @proofmesh/adapter-typescript build && pnpm --filter @proofmesh/adapter-syntax build && pnpm --filter @proofmesh/observatory build && pnpm --filter proofmesh build && node scripts/build-csharp.mjs",
     "typecheck": "pnpm -r typecheck",
     "update:all": "node scripts/update.mjs",
     "test": "vitest run",

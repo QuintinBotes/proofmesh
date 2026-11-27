@@ -45,3 +45,44 @@ describe('#26 scripts/update.mjs updates a checkout without a global pnpm, or sa
     expect(r.stderr).toContain('update failed: build (exit code 3); the steps after it did not run, so this checkout is not updated')
   })
 })
+
+describe('FR386 pnpm build builds the C# adapter when dotnet is on PATH, and says it skipped it when not', () => {
+  /** A copy of the script in an empty checkout, so whether an earlier adapter build exists is up to the test. */
+  const checkout = (built: boolean) => {
+    const root = tmpDir('pm-build-cs-'), out = path.join(root, 'adapters', 'csharp', 'bin', 'Release', 'net10.0')
+    fs.mkdirSync(path.join(root, 'scripts'))
+    fs.copyFileSync(path.join(ROOT, 'scripts', 'build-csharp.mjs'), path.join(root, 'scripts', 'build-csharp.mjs'))
+    if (built) { fs.mkdirSync(out, { recursive: true }); fs.writeFileSync(path.join(out, 'Proofmesh.Adapter.CSharp.dll'), '') }
+    return root
+  }
+  const build = (root: string, dir: string) => spawnSync(process.execPath, [path.join(root, 'scripts', 'build-csharp.mjs')], { encoding: 'utf8', env: { PATH: dir } })
+
+  it('FR386 is the last step of the root build script', () => {
+    expect(JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).scripts.build).toMatch(/ && node scripts\/build-csharp\.mjs$/)
+  })
+
+  it('FR386 with dotnet on PATH it builds the adapter in Release, on one MSBuild node', () => {
+    const fake = fakePath({ dotnet: 'exit 0' })
+    const r = build(checkout(false), fake.dir)
+    expect(r.status, r.stderr).toBe(0)
+    expect(fake.calls()).toEqual([`${CSHARP} -m:1`])
+  })
+
+  it('FR386 a failing dotnet build fails the build and says so', () => {
+    const r = build(checkout(false), fakePath({ dotnet: 'exit 4' }).dir)
+    expect(r.status).toBe(1)
+    expect(r.stderr).toContain('build failed: build the C# adapter (exit code 4)')
+  })
+
+  it('FR386 without dotnet and with no earlier build it skips the adapter, says so and what C# files get instead, and succeeds', () => {
+    const r = build(checkout(false), fakePath({}).dir)
+    expect(r.status, r.stderr).toBe(0)
+    expect(r.stdout).toContain('skipped: build the C# adapter (dotnet is not on PATH, so C# files are read by the syntax tier; install the .NET 10 SDK and run pnpm build again)')
+  })
+
+  it('FR386 without dotnet and with an earlier build it fails, since that build would stay in use', () => {
+    const r = build(checkout(true), fakePath({}).dir)
+    expect(r.status).toBe(1)
+    expect(r.stderr).toContain('build failed: build the C# adapter: dotnet is not on PATH and an earlier build would stay in use; install the .NET 10 SDK and run pnpm build again')
+  })
+})

@@ -19,6 +19,8 @@ export type AdapterSpec = {
   entry: () => string | undefined
   /** Why entry() is undefined, as a file disposition detail. */
   unavailable: () => string
+  /** For an adapter a person builds: what is missing and where entry() looked, said beside unavailable() in the index's answer and in status (FR385). */
+  missing?: () => string
   /** For an adapter a person installed: the hash its entry file had then, which joins snapshot identity. */
   sha256?: string
   /** The syntax tier reads this adapter's files when it is unavailable, fails on a file, or dies (FR311, FR313). */
@@ -29,16 +31,16 @@ export type AdapterSpec = {
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 
-function csharpAdapterPath(): string | undefined {
-  // An override naming a file that is not there leaves the adapter unavailable, so the census says so (FR138).
-  if (process.env.PROOFMESH_CS_ADAPTER) return fs.existsSync(process.env.PROOFMESH_CS_ADAPTER) ? process.env.PROOFMESH_CS_ADAPTER : undefined
-  const candidates = [
+/** Where the C# adapter is looked for: only the override when one is set, so one naming a file that is not there leaves the adapter unavailable and the census says so (FR138). */
+function csharpCandidates(): string[] {
+  if (process.env.PROOFMESH_CS_ADAPTER) return [process.env.PROOFMESH_CS_ADAPTER]
+  return [
     path.join(here, 'adapters', 'csharp', 'Proofmesh.Adapter.CSharp.dll'),
     path.resolve(here, '..', '..', '..', '..', 'adapters', 'csharp', 'bin', 'Release', 'net10.0', 'Proofmesh.Adapter.CSharp.dll'),
     path.resolve(here, '..', '..', '..', 'adapters', 'csharp', 'bin', 'Release', 'net10.0', 'Proofmesh.Adapter.CSharp.dll'),
   ]
-  return candidates.find((c) => fs.existsSync(c))
 }
+const csharpAdapterPath = (): string | undefined => csharpCandidates().find((c) => fs.existsSync(c))
 
 /** The names an API description goes by (FR253), read by the build adapter for the endpoints it declares: `openapi.yaml`, `swagger.json`, `orders.openapi.yaml`. */
 const OPENAPI_NAME = /^((openapi|swagger)([.\-_].+)?|.+[.\-_](openapi|swagger))\.(ya?ml|json)$/i
@@ -64,6 +66,7 @@ export const BUILT_IN: AdapterSpec[] = [
     isConfig: (name) => /\.(csproj|props|targets|sln|slnx)$/i.test(name) || ['global.json', 'nuget.config'].includes(name.toLowerCase()),
     entry: csharpAdapterPath,
     unavailable: () => 'adapter_unavailable:csharp',
+    missing: () => `not built: looked in ${csharpCandidates().join(', ')}`,
   },
   // Python: declarations from Tree-sitter, call targets from Pyright, which never runs Python.
   {

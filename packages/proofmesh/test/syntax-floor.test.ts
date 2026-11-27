@@ -213,9 +213,41 @@ describe('FR311 FR313 FR314 FR315 FR316 FR317 the fallback is recorded, replaced
 
   it('FR311 FR314 an unavailable adapter is a fallback in the job result, the CLI line and the snapshot meta, as a dying one is', () => {
     const { d, stdout, result } = index(fixtureRepo('cs-orders'), NO_CS)
-    expect(result.fallbacks).toEqual([{ adapter: 'csharp', files: 6, reason: 'adapter_unavailable:csharp' }])
+    expect(result.fallbacks).toEqual([{ adapter: 'csharp', files: 6, reason: `adapter_unavailable:csharp (not built: looked in ${NO_CS.PROOFMESH_CS_ADAPTER})` }])
     expect(stdout).toContain('adapter csharp could not analyse 6 files, so the syntax tier read them: adapter_unavailable:csharp')
     expect(meta(d)!.handoffs).toEqual([{ adapter: 'csharp', files: 6, reason: 'adapter_unavailable:csharp', kind: 'unavailable' }])
+  }, 240000)
+
+  it('FR385 an unavailable C# adapter says it is not built and where it was looked for, in the CLI line and the job result, also when the snapshot is unchanged', () => {
+    const why = `adapter_unavailable:csharp (not built: looked in ${NO_CS.PROOFMESH_CS_ADAPTER})`
+    const first = index(fixtureRepo('cs-orders'), NO_CS)
+    expect(first.stdout).toContain(`adapter csharp could not analyse 6 files, so the syntax tier read them: ${why}\n`)
+    const again = index(fixtureRepo('cs-orders'), NO_CS, first.d)
+    expect(again.stdout).toContain('unchanged')
+    expect(again.result.fallbacks).toEqual([{ adapter: 'csharp', files: 6, reason: why }])
+    expect(again.stdout).toContain(`adapter csharp could not analyse 6 files, so the syntax tier read them: ${why}\n`)
+    // The file rows and the census keep the bare code, the same on every machine (FR312).
+    expect(files(first.d).find((f) => f.path.endsWith('.cs'))!.detail).toBe('adapter_unavailable:csharp')
+  }, 240000)
+
+  it('FR385 without an override the C# adapter lists every path it looks in, the build output of adapters/csharp among them', async () => {
+    const { BUILT_IN } = await import('../src/indexer/languages.js')
+    const saved = process.env.PROOFMESH_CS_ADAPTER
+    delete process.env.PROOFMESH_CS_ADAPTER
+    try {
+      const why = BUILT_IN.find((s) => s.id === 'csharp')!.missing!()
+      expect(why).toMatch(/^not built: looked in .+, .+/)
+      expect(why).toContain(path.join('adapters', 'csharp', 'bin', 'Release', 'net10.0', 'Proofmesh.Adapter.CSharp.dll'))
+    } finally { if (saved !== undefined) process.env.PROOFMESH_CS_ADAPTER = saved }
+  })
+
+  it('FR387 proofmesh status lists the adapters this install can run and, for each that it cannot, why', () => {
+    const { d } = index(fixtureRepo('cs-orders'), NO_CS)
+    const without = cli(['--data-dir', d, 'status', fixtureRepo('cs-orders')], NO_CS)
+    expect(without.status, without.stderr).toBe(0)
+    expect(without.stdout).toContain(`adapters available: typescript, python, terraform, build, syntax; unavailable: csharp (not built: looked in ${NO_CS.PROOFMESH_CS_ADAPTER})\n`)
+    const withCs = cli(['--data-dir', d, 'status', fixtureRepo('cs-orders')])
+    expect(withCs.stdout).toContain('adapters available: typescript, csharp, python, terraform, build, syntax\n')
   }, 240000)
 
   it('FR314 a TypeScript adapter override that names no file falls back instead of failing the index', () => {
