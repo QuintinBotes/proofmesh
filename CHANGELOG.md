@@ -35,10 +35,10 @@ Protobuf, gRPC and GraphQL contracts are symbols, linked to the code that implem
 
 A SCIP symbol keeps the index's own name, and the last rows that named symbols by id alone carry keys (part of #15; FR440, FR441):
 
-- A definition the SCIP importer declares keeps the index's own symbol in `detail.scip` (for example `scip-go gomod example.com/shop v1 ... Cart#Checkout().`), beside the qualified name of its language that replaced it. `get_symbol` returns `detail`; a symbol another adapter declared has none.
+- A definition the SCIP importer declares keeps the index's own symbol in `detail.scip` (for example `scip-go gomod example.com/shop v1 ... Cart#Checkout().`), beside the qualified name of its language that replaced it. `get_symbol` returns `detail` as the adapter sent it; the other built-in adapters send none.
 - Adapter protocol 1.2 adds a symbol's optional `detail`; 1.0 and 1.1 adapters are unchanged. Snapshot format 0.11 adds a symbol's `detail` column, so snapshot identity changes and the next index rebuilds; a snapshot sealed in 0.10 or earlier stays readable and answers no `detail`. The SCIP adapter's version is 0.2.0, so its cached facts are not replayed.
 - `trace_paths` explored edges and `get_overview` links in a file scope carry `from_key` and `to_key` for each end that is a symbol.
-- Not done: SC-002 of #15 (no shared keys on the pinned public samples) waits for the benchmark of #9. The Rust trait-impl form (`Counter.<Default>.default`, where the issue says `Counter.default`) and the hash suffix (`~<8 hex>`, where the issue says `~1`, `~2`) stay as FR146 and FR147 chose them; the issue's text and the code disagree there and a person decides.
+- Not done: SC-002 of #15 (no shared keys on the pinned public samples) waits for the benchmark of #9. The Rust trait-impl form (`Counter.<Default>.default`, where the issue says `Counter.default`) and the hash suffix (`~<8 hex>`, where the issue says `~1`, `~2`) stay as FR146 and FR147 chose them; the issue's text and the code disagree there and a person decides. The issue's edge case that a changed parameter type is paired as `renamed` does not hold: the parameter list is part of the hashed declaration text, so `compare_snapshots` lists one removed and one added symbol.
 
 Discover skips directories git ignores as a whole (closes #102; FR380 to FR384):
 

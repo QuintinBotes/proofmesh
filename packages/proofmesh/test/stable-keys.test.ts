@@ -371,4 +371,26 @@ describe('FR441 a symbol the SCIP importer declares keeps the index\'s own symbo
     expect(symbol('java/Shop.java#com.acme.Shop.add(String)#method').detail).toEqual({ scip: `${JAVA}Shop#add(+1).` })
     expect(withSnapshot(d, (db) => db.prepare("select detail from symbol where stable_key = 'go/cart.go#go/cart:New#function'").get())).toEqual({ detail: JSON.stringify({ scip: `${GO}New().` }) })
   }, 240000)
+
+  it('a snapshot sealed in format 0.10, with no detail column, still answers get_symbol, with no detail', () => {
+    const d = tmpDir(), repo = copy()
+    ids(d, repo)
+    name(repo, d)
+    index(d, repo)
+    // Rewrite the sealed file as format 0.10 wrote it, and the catalog's digest of it as it now is.
+    const catalog = new Database(path.join(d, 'catalog.db'))
+    const snap = (catalog.prepare("select id from snapshot where state = 'published'").get() as { id: string }).id
+    const file = path.join(d, 'snapshots', `${snap}.db`)
+    fs.chmodSync(file, 0o644)
+    const sealed = new Database(file)
+    sealed.exec('alter table symbol drop column detail')
+    sealed.prepare("update meta set value = '0.10' where key = 'format_version'").run()
+    sealed.close()
+    fs.chmodSync(file, 0o444)
+    catalog.prepare('update snapshot set store_digest = ? where id = ?').run(require('node:crypto').createHash('sha256').update(fs.readFileSync(file)).digest('hex'), snap)
+    catalog.close()
+    const s = (tool(d, 'get_symbol', { key: 'go/cart.go#go/cart:Cart.Checkout#method' }).data as { symbol: Record<string, unknown> }).symbol
+    expect(s.stable_key).toBe('go/cart.go#go/cart:Cart.Checkout#method')
+    expect(s).not.toHaveProperty('detail')
+  }, 240000)
 })

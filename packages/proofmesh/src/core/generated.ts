@@ -1574,7 +1574,7 @@ roles?: ("test" | "test_support")[]
  */
 generated?: boolean
 /**
- * What the adapter recorded beside the symbol's name, when it recorded any: scip, the SCIP index's own symbol for a definition the SCIP importer declared (FR441). Absent otherwise, and in a snapshot sealed before format 0.11.
+ * What the adapter recorded beside the symbol's name, when it recorded any: scip, the SCIP index's own symbol for a definition the SCIP importer declared (FR441). Absent when the adapter sent none (no built-in adapter but the SCIP importer sends it), and in a snapshot sealed before format 0.11.
  */
 detail?: {
 /**
