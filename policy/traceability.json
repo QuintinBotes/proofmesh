@@ -1013,6 +1013,9 @@
     "FR561": [
       "packages/proofmesh/test/reach-inferred.test.ts"
     ],
+    "FR640": [
+      "e2e/explore.spec.ts"
+    ],
     "FR211": [
       "packages/proofmesh/test/rosetta.test.ts"
     ],

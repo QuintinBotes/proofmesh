@@ -13,6 +13,10 @@ The root README installs the CLI onto PATH (closes #141; FR690, FR691):
 
 - Its Install section made `proofmesh` an alias, which exists only in the shell that defined it, so Claude Code, `claude mcp add -s project proofmesh -- proofmesh mcp` and the plugin's MCP server and hooks never found it. It now gives the command the plugin README gives (#133): clone, `pnpm install --frozen-lockfile`, `pnpm build`, then `npm link` from `packages/proofmesh`, which links the checkout into npm's global bin folder.
 
+The Observatory stays busy until every query it started has answered (closes #136; FR640):
+
+- The conclusion bar kept one loading flag, so the first query to finish cleared it. A starting point clicked in Explore while the first load's `get_overview` was still running was shown as answered (`aria-busy` false, the old text back) when that load finished, before the symbol's own answer came. Assistive technology was told the view was idle while it still loaded, and the e2e Explore test checked the URL too early and failed under load. The click was never lost: the browser always reached `?focus=`. The bar now counts the queries in flight and shows `Loading…` until the last one answers.
+
 `PROOFMESH_PYRIGHT_UNANNOTATED=off` reaches the Python adapter (closes #135; FR670, FR671):
 
 - The setting had no effect: the core starts every adapter with an allowlisted environment that did not carry it, so the adapter always analysed unannotated bodies. The core now reads it and passes it as `pyright_unannotated` in the configuration of initialize; the adapter's environment is still an allowlist.
