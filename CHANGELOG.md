@@ -4,7 +4,7 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 ## Unreleased
 
-`search_structure`'s latency target is restated (closes #37; FR1880). SC-003 asked for a p95 per TypeScript pattern no slower than the native, multi-threaded ast-grep CLI, which one Node process parsing with WebAssembly grammars on one thread cannot meet. `bench/structure` now checks each pattern's p95 on the parity fixture against a 1,500 ms budget (`p95_budget_ms` in `patterns.json`), MCP round trip included, and still prints ast-grep's time beside it.
+`search_structure`'s latency target is restated (closes #37; FR1880). SC-003 asked for a p95 per TypeScript pattern no slower than the ast-grep CLI. That CLI is native and spreads a search over every core; one Node process parsing with WebAssembly grammars on one thread cannot match it. `bench/structure` now checks each pattern's p95 CPU time on the parity fixture against a 2,000 ms budget (1,370 ms was the most measured) (`p95_cpu_budget_ms` in `patterns.json`). The time covers a whole MCP session: the server's startup, the call and the matcher. It still prints both tools' wall-clock and CPU times beside each other. CPU time, as for FR1620, because a busy machine stretched the same search from 0.4 s to 12 s of wall-clock time.
 
 The Terrain replaces the Galaxy and Map views: semantic zoom from areas to symbols, with bundles that open their evidence (part of #46; closes #42; FR1400 to FR1409):
 

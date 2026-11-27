@@ -2,8 +2,10 @@
 // (extra profile) and of the pinned ast-grep CLI, on the same files: the parity fixture (TypeScript) and the TypeScript, Python
 // and Go files of fixtures/. SC-001: the sets of matched `path:start-end` line ranges are equal for every pattern. SC-002: the
 // scoped pattern returns exactly the matches whose enclosing symbol trace_paths reaches. SC-003 (as FR1880 restates it): the p95
-// time per TypeScript pattern on the parity fixture, over STRUCTURE_RUNS runs (3), is at most patterns.json's p95_budget_ms;
-// ast-grep's p95 is printed beside it for comparison. Exits 1 when any of them fails.
+// CPU time per TypeScript pattern on the parity fixture, over STRUCTURE_RUNS runs (3), is at most patterns.json's
+// p95_cpu_budget_ms. Each run is one MCP session, started, asked once and ended under /usr/bin/time, so its user and system time
+// is the server's and the matcher's it reaps, startup included; a busy machine stretches wall-clock time, not that work.
+// Wall-clock time and ast-grep's CPU and wall-clock time are printed beside it. Exits 1 when any of them fails.
 //
 // Usage: node bench/structure/run.mjs [--record]. PARITY_FIXTURE is the parity fixture (default $TMPDIR/parity-typeorm; build it
 // with `sh bench/parity/run.sh --fixture-only`); ast-grep is found after $PARITY_TOOLS/npm/node_modules/.bin (install.sh).
@@ -13,6 +15,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
+import { once } from 'node:events'
 import { McpClient } from '../graph-bench/mcp-client.mjs'
 
 const HERE = path.dirname(new URL(import.meta.url).pathname)
@@ -29,10 +32,14 @@ const log = (s) => console.error(`structure: ${s}`)
 const run = (cmd, args, opts = {}) => spawnSync(cmd, args, { encoding: 'utf8', maxBuffer: 1 << 30, ...opts })
 const ofLanguage = (files, lang) => files.filter((f) => EXTS[lang].includes(f.slice(f.lastIndexOf('.') + 1)))
 const p95 = (xs) => { const s = [...xs].sort((a, b) => a - b); return s[Math.ceil(s.length * 0.95) - 1] }
+const TIME = '/usr/bin/time'
+/** User plus system milliseconds from `time -p`'s report, the process and every child it waited for. */
+const cpuOf = (stderr) => ['user', 'sys'].reduce((t, k) => t + Number(new RegExp(`^${k}\\s+([\\d.]+)`, 'm').exec(stderr)?.[1] ?? NaN) * 1000, 0)
 
 const AG = [path.join(TOOLS, 'npm/node_modules/.bin/ast-grep'), 'ast-grep'].find((c) => run(c, ['--version']).status === 0)
 const agVersion = AG && /\d+\.\d+\.\d+/.exec(run(AG, ['--version']).stdout)?.[0]
 if (agVersion !== SUITE.ast_grep) { log(`ast-grep ${SUITE.ast_grep} is needed (found ${agVersion ?? 'none'}): sh bench/parity/install.sh`); process.exit(2) }
+if (run(TIME, ['-p', 'true']).status !== 0) { log(`${TIME} is needed to time CPU`); process.exit(2) }
 if (!fs.existsSync(path.join(FIX, 'PROVENANCE'))) { log(`no parity fixture at ${FIX}: sh bench/parity/run.sh --fixture-only`); process.exit(2) }
 fs.mkdirSync(OUT, { recursive: true })
 
@@ -71,14 +78,26 @@ async function ours(r, args) {
   if (sites.length !== total) throw new Error(`search_structure ${args.pattern}: ${sites.length} rows for a total of ${total}`)
   return { sites, rows, ms }
 }
-/** ast-grep's matches on the same files, as `path:start-end`, with its wall time. */
+/** One search in a session of its own, under time: its wall time and the session's CPU time. */
+async function timed(r, args) {
+  const c = new McpClient(TIME, ['-p', process.execPath, PM_BIN, '--data-dir', r.data, 'mcp', '--tools', 'core,extra'], { cwd: r.dir })
+  await c.init()
+  const a = await c.call('search_structure', { ...args, envelope: 'compact', limits: { max_rows: 1000, timeout_ms: 30000 } })
+  if (a.isError) throw new Error(`search_structure ${args.pattern}: ${a.text}`)
+  c.proc.stdin.end()
+  await once(c.proc, 'exit')
+  const cpu = cpuOf(c.stderr)
+  if (!Number.isFinite(cpu)) throw new Error(`no CPU time for ${args.pattern}: ${c.stderr}`)
+  return { ms: a.ms, cpu }
+}
+/** ast-grep's matches on the same files, as `path:start-end`, with its wall and CPU time. */
 function theirs(r, lang, pattern) {
   const files = ofLanguage(r.files, lang)
   const t0 = performance.now()
-  const x = run(AG, ['run', '-p', pattern, '-l', lang, '--json=stream', ...files], { cwd: r.dir })
+  const x = run(TIME, ['-p', AG, 'run', '-p', pattern, '-l', lang, '--json=stream', ...files], { cwd: r.dir })
   const ms = performance.now() - t0
   if (x.status !== 0 && x.status !== 1) throw new Error(`ast-grep ${pattern}: ${x.stderr}`)
-  return { sites: x.stdout.split('\n').filter(Boolean).map((l) => JSON.parse(l)).map((m) => `${m.file}:${m.range.start.line + 1}-${m.range.end.line + 1}`), ms }
+  return { sites: x.stdout.split('\n').filter(Boolean).map((l) => JSON.parse(l)).map((m) => `${m.file}:${m.range.start.line + 1}-${m.range.end.line + 1}`), ms, cpu: cpuOf(x.stderr) }
 }
 
 // ---------- SC-001 and SC-003 ----------
@@ -91,11 +110,12 @@ for (const { language, pattern } of SUITE.patterns) {
     const extra = [...a].filter((x) => !b.has(x)), missing = [...b].filter((x) => !a.has(x))
     const row = { repo: r.name, language, pattern, matches: o.sites.length, ast_grep: t.sites.length, extra, missing, same: !extra.length && !missing.length && o.sites.length === t.sites.length, ast_grep_sites: t.sites }
     if (r.name === 'parity' && language === 'typescript') {
-      const mine = [o.ms], agMs = [t.ms]
-      for (let i = 1; i < RUNS; i++) { mine.push((await ours(r, { pattern, language })).ms); agMs.push(theirs(r, language, pattern).ms) }
-      Object.assign(row, { ms: mine, ast_grep_ms: agMs, p95: p95(mine), ast_grep_p95: p95(agMs) })
+      const mine = [], ag = [t]
+      for (let i = 0; i < RUNS; i++) { mine.push(await timed(r, { pattern, language })); if (i) ag.push(theirs(r, language, pattern)) }
+      const of = (xs, k) => xs.map((x) => x[k])
+      Object.assign(row, { ms: of(mine, 'ms'), cpu_ms: of(mine, 'cpu'), ast_grep_ms: of(ag, 'ms'), ast_grep_cpu_ms: of(ag, 'cpu'), p95: p95(of(mine, 'ms')), cpu_p95: p95(of(mine, 'cpu')), ast_grep_p95: p95(of(ag, 'ms')), ast_grep_cpu_p95: p95(of(ag, 'cpu')) })
     }
-    log(`${row.same ? 'same' : 'DIFFERENT'} ${r.name} ${language} ${pattern}: ${row.matches} / ast-grep ${row.ast_grep}${row.p95 ? ` (p95 ${Math.round(row.p95)} ms / ${Math.round(row.ast_grep_p95)} ms)` : ''}`)
+    log(`${row.same ? 'same' : 'DIFFERENT'} ${r.name} ${language} ${pattern}: ${row.matches} / ast-grep ${row.ast_grep}${row.p95 ? ` (p95 CPU ${Math.round(row.cpu_p95)} ms / ${Math.round(row.ast_grep_cpu_p95)} ms, wall ${Math.round(row.p95)} ms / ${Math.round(row.ast_grep_p95)} ms)` : ''}`)
     results.push(row)
   }
 }
@@ -119,18 +139,18 @@ for (const r of repos) r.mcp.close()
 // ---------- results ----------
 const sc1 = results.every((r) => r.same)
 const timedRows = results.filter((r) => r.p95 != null)
-const sc3 = timedRows.every((r) => r.p95 <= SUITE.p95_budget_ms)
+const sc3 = timedRows.every((r) => r.cpu_p95 <= SUITE.p95_cpu_budget_ms)
 const head = run('git', ['-C', ROOT, 'rev-parse', '--short', 'HEAD']).stdout.trim()
-const meta = { proofmesh: head, ast_grep: agVersion, runs: RUNS, p95_budget_ms: SUITE.p95_budget_ms, when: new Date().toISOString(), machine: `${os.type()} ${os.release()} ${os.arch()}, ${os.cpus()[0]?.model ?? ''} x${os.cpus().length}, load ${os.loadavg().map((l) => l.toFixed(0)).join(' ')}, Node ${process.version}`, fixture: fs.readFileSync(path.join(FIX, 'PROVENANCE'), 'utf8').split('\n')[1] }
+const meta = { proofmesh: head, ast_grep: agVersion, runs: RUNS, p95_cpu_budget_ms: SUITE.p95_cpu_budget_ms, when: new Date().toISOString(), machine: `${os.type()} ${os.release()} ${os.arch()}, ${os.cpus()[0]?.model ?? ''} x${os.cpus().length}, load ${os.loadavg().map((l) => l.toFixed(0)).join(' ')}, Node ${process.version}`, fixture: fs.readFileSync(path.join(FIX, 'PROVENANCE'), 'utf8').split('\n')[1] }
 fs.writeFileSync(path.join(OUT, 'results.json'), JSON.stringify({ meta, sc1, sc2, sc3, patterns: results.map(({ ast_grep_sites: _s, ...r }) => r) }, null, 1))
 const md = [
   `# search_structure against ast-grep ${agVersion}`, '',
   `ProofMesh ${head}, ${meta.when}, ${meta.machine}. Parity fixture: ${meta.fixture}.`, '',
-  '| repo | language | pattern | search_structure | ast-grep | same | p95 ms (ours / ast-grep) |', '|---|---|---|---|---|---|---|',
-  ...results.map((r) => `| ${r.repo} | ${r.language} | \`${r.pattern.replaceAll('|', '\\|').replaceAll('\n', '\\n')}\` | ${r.matches} | ${r.ast_grep} | ${r.same ? 'yes' : `no (+${r.extra.length} −${r.missing.length})`} | ${r.p95 != null ? `${Math.round(r.p95)} / ${Math.round(r.ast_grep_p95)}` : '-'} |`),
+  '| repo | language | pattern | search_structure | ast-grep | same | p95 CPU ms (ours / ast-grep) | p95 wall ms (ours / ast-grep) |', '|---|---|---|---|---|---|---|---|',
+  ...results.map((r) => `| ${r.repo} | ${r.language} | \`${r.pattern.replaceAll('|', '\\|').replaceAll('\n', '\\n')}\` | ${r.matches} | ${r.ast_grep} | ${r.same ? 'yes' : `no (+${r.extra.length} −${r.missing.length})`} | ${r.p95 != null ? `${Math.round(r.cpu_p95)} / ${Math.round(r.ast_grep_cpu_p95)} | ${Math.round(r.p95)} / ${Math.round(r.ast_grep_p95)}` : '- | -'} |`),
   '', `Scope: \`${sc.pattern}\` reachable_from \`${sc.reachable_from}\`: ${got.length} of ${every.rows.length} matches, ${sc2.same ? 'exactly' : 'NOT'} those whose enclosing symbol trace_paths reaches (${sc2.symbols_reached} of ${reached.size} symbols).`,
   '', `- SC-001 identical match sets on every pattern: ${sc1 ? 'met' : 'NOT met'}`, `- SC-002 scoped matches equal the reachable set: ${sc2.same ? 'met' : 'NOT met'}`,
-  `- SC-003 p95 per TypeScript pattern at most ${SUITE.p95_budget_ms} ms (FR1880): ${sc3 ? 'met' : `NOT met (${timedRows.filter((r) => r.p95 > SUITE.p95_budget_ms).length} of ${timedRows.length} patterns over)`}; slowest ${Math.round(Math.max(...timedRows.map((r) => r.p95)))} ms, ast-grep's slowest ${Math.round(Math.max(...timedRows.map((r) => r.ast_grep_p95)))} ms`, '',
+  `- SC-003 p95 CPU time per TypeScript pattern at most ${SUITE.p95_cpu_budget_ms} ms (FR1880): ${sc3 ? 'met' : `NOT met (${timedRows.filter((r) => r.cpu_p95 > SUITE.p95_cpu_budget_ms).length} of ${timedRows.length} patterns over)`}; most ${Math.round(Math.max(...timedRows.map((r) => r.cpu_p95)))} ms, ast-grep's most ${Math.round(Math.max(...timedRows.map((r) => r.ast_grep_cpu_p95)))} ms`, '',
 ].join('\n')
 fs.writeFileSync(path.join(OUT, 'structure.md'), md)
 console.log(md)
