@@ -31,7 +31,7 @@ function lazyView<P extends object>(load: () => Promise<ComponentType<P>>): Comp
   }
   return Object.assign(View, { preload })
 }
-const Terrain = lazyView(() => import('./Terrain').then((m) => m.Terrain))
+const Terrain = lazyView(() => import('./Terrain').then((m) => { m.warmRenderer(); return m.Terrain }))
 const GraphView = lazyView(() => import('./GraphView').then((m) => m.GraphView))
 
 type Sym = { id: string; kind: string; name: string; qualified_name: string; path: string; start_line: number; signature: string | null }
@@ -654,29 +654,37 @@ export function App() {
                 head={<thead><tr><th>Name</th><th>Kind</th><th>Qualified name</th><th /></tr></thead>}
                 row={(k) => { const i = rankedMatches[k]!; return <tr key={i}><td>{visible(shortName(galaxy.names[i]!))}</td><td>{galaxy.kinds[galaxy.kind[i]!]}</td><td>{visible(galaxy.names[i]!)}</td><td><button type="button" onClick={() => openPoint(i)}>Explore</button></td></tr> }} />
             ) : (
-              <VirtualTable count={galaxy.areas.length} columns={9} caption="Areas"
-                head={<thead><tr><th>Area</th><th>Symbols</th><th>Files analysed</th><th>Not analysed</th><th>Excluded</th><th>Unresolved calls</th><th>Why not analysed</th><th>Coverage</th><th /></tr></thead>}
-                row={(i) => { const a = galaxy.areas[i]!; return (
-                  <tr key={a.name}>
-                    <td>{visible(a.name)}</td><td>{a.count.toLocaleString('en')}</td><td>{a.files.indexed.toLocaleString('en')}</td>
-                    <td>{areaFog(a).unanalysed.toLocaleString('en')}</td><td>{a.files.excluded.toLocaleString('en')}</td>
-                    <td>{a.calls.sites ? `${share(a.calls.unresolved, a.calls.sites)} of ${a.calls.sites.toLocaleString('en')}` : 'no call sites'}</td>
-                    <td>{visible(a.gaps.map(([reason, n]) => `${reason} ${n.toLocaleString('en')}`).join(', '))}</td>
-                    <td>{[coverageOf(a).hatched ? 'hatched: calls unresolved' : '', coverageOf(a).ghost || !a.count ? 'ghost: files not analysed' : ''].filter(Boolean).join('; ') || 'complete'}</td>
-                    <td>{a.count > 0 && <button type="button" onClick={() => { setGalaxyArea(i); setTableView(false) }}>Show</button>}</td>
-                  </tr>
-                ) }} />
+              <table>
+                <caption>Areas</caption>
+                <thead><tr><th>Area</th><th>Symbols</th><th>Files analysed</th><th>Not analysed</th><th>Excluded</th><th>Unresolved calls</th><th>Why not analysed</th><th>Coverage</th><th /></tr></thead>
+                <tbody>
+                  {galaxy.areas.map((a, i) => (
+                    <tr key={a.name}>
+                      <td>{visible(a.name)}</td><td>{a.count.toLocaleString('en')}</td><td>{a.files.indexed.toLocaleString('en')}</td>
+                      <td>{areaFog(a).unanalysed.toLocaleString('en')}</td><td>{a.files.excluded.toLocaleString('en')}</td>
+                      <td>{a.calls.sites ? `${share(a.calls.unresolved, a.calls.sites)} of ${a.calls.sites.toLocaleString('en')}` : 'no call sites'}</td>
+                      <td>{visible(a.gaps.map(([reason, n]) => `${reason} ${n.toLocaleString('en')}`).join(', '))}</td>
+                      <td>{[coverageOf(a).hatched ? 'hatched: calls unresolved' : '', coverageOf(a).ghost || !a.count ? 'ghost: files not analysed' : ''].filter(Boolean).join('; ') || 'complete'}</td>
+                      <td>{a.count > 0 && <button type="button" onClick={() => { setGalaxyArea(i); setTableView(false) }}>Show</button>}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             )}
             {query.trim().length < 2 && (
-              <VirtualTable count={terrain.pairs.length} columns={7} caption="Bundles between areas"
-                head={<thead><tr><th>From</th><th>To</th><th>Observed</th><th>Inferred</th><th>Types</th><th>Drawn</th><th /></tr></thead>}
-                row={(k) => { const p = terrain.pairs[k]!; return (
-                  <tr key={`${p.from}>${p.to}`}>
-                    <td>{visible(galaxy.areas[p.from]!.name)}</td><td>{visible(galaxy.areas[p.to]!.name)}</td><td>{p.observed.toLocaleString('en')}</td><td>{p.inferred.toLocaleString('en')}</td>
-                    <td>{p.types.map((x) => `${x.type} ${(x.observed + x.inferred).toLocaleString('en')}`).join(', ')}</td><td>{drawnPairs.includes(p) ? 'yes' : 'no'}</td>
-                    <td><button type="button" onClick={() => void openBundle(p)}>Open</button></td>
-                  </tr>
-                ) }} />
+              <table>
+                <caption>Bundles between areas</caption>
+                <thead><tr><th>From</th><th>To</th><th>Observed</th><th>Inferred</th><th>Types</th><th>Drawn</th><th /></tr></thead>
+                <tbody>
+                  {terrain.pairs.map((p) => (
+                    <tr key={`${p.from}>${p.to}`}>
+                      <td>{visible(galaxy.areas[p.from]!.name)}</td><td>{visible(galaxy.areas[p.to]!.name)}</td><td>{p.observed.toLocaleString('en')}</td><td>{p.inferred.toLocaleString('en')}</td>
+                      <td>{p.types.map((x) => `${x.type} ${(x.observed + x.inferred).toLocaleString('en')}`).join(', ')}</td><td>{drawnPairs.includes(p) ? 'yes' : 'no'}</td>
+                      <td><button type="button" onClick={() => void openBundle(p)}>Open</button></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             )}
           </section>
         )}

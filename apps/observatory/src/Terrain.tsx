@@ -19,6 +19,8 @@ type Props = {
 
 /** Symbols are drawn once their cell is this many pixels across (FR1404); before that the areas, directories and files stand for them. */
 const POINTS_PX = 4
+/** Cells added to the graph per task: each batch, and sigma's processing of all the cells added so far, stays inside the main thread's 100 ms budget (#208). */
+const CELL_BATCH = 4000
 /** A symbol's point is this share of its cell's side. */
 const POINT = 0.12
 // Neutral cells, darker the deeper (FR1406): colour is kept for basis, change and coverage.
@@ -28,6 +30,32 @@ const STROKE = { observed: '#7fd4ff', inferred: '#c79bff' } as const
 const BYTES = (hex: string): [number, number, number] => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)) as [number, number, number]
 /** Ghost areas hold files but no symbols, so they have no cell in the layout; they sit in a row below it (FR1405). */
 const GHOSTS = 10, GHOST_Y = FRAME * 1.04, GHOST_SIDE = FRAME * 0.06
+
+/** The renderer's settings, programs and styles; the warm-up below builds the same programs. */
+const sigmaOptions = () => ({
+    settings: { renderLabels: false, renderEdgeLabels: false, enableEdgeEvents: true, itemSizesReference: 'positions', zoomToSizeRatioFunction: (x: number) => x, minEdgeThickness: 1.5, stagePadding: 24, enableCameraRotation: false, gestureTarget: 'graph', minCameraRatio: 0.0005, maxCameraRatio: 2, autoRescale: true },
+    primitives: {
+      nodes: { shapes: [sdfCircle(), sdfRectangle()], layers: [layerFill()] },
+      edges: { paths: [pathCurved()], extremities: [extremityArrow({ lengthRatio: 4, widthRatio: 3.5 })], layers: [layerDashed({ dashSize: { value: 7, mode: 'pixels' }, gapSize: { value: 5, mode: 'pixels' }, gapColor: { attribute: 'gapColor', default: 'rgba(0,0,0,0)' } })] },
+      depthLayers: ['cells', 'edges', 'nodes', 'topEdges', 'topNodes'],
+    },
+    styles: {
+      nodes: { x: { attribute: 'x' }, y: { attribute: 'y' }, size: { attribute: 'size' }, color: { attribute: 'color' }, shape: { attribute: 'shape', defaultValue: 'circle' }, aspectRatio: { attribute: 'aspectRatio', defaultValue: 1 }, zIndex: { attribute: 'zIndex', defaultValue: 0 }, depth: { attribute: 'depth', defaultValue: 'nodes' }, labelVisibility: 'hidden' },
+      edges: { size: { attribute: 'size' }, color: { attribute: 'color' }, head: 'arrow', path: 'curved', curvature: { attribute: 'curvature' }, gapColor: { attribute: 'gapColor' }, visibility: { whenData: { hidden: true }, then: 'hidden', else: 'visible' }, depth: 'edges' },
+    },
+  })
+
+/**
+ * Compiles the renderer's shaders on a throwaway canvas while the snapshot's payload is still loading, so the browser's shader
+ * cache serves the Terrain's own renderer and its first task stays inside the main thread's budget (#208).
+ */
+export function warmRenderer(): void {
+  const box = Object.assign(document.createElement('div'), { ariaHidden: 'true' })
+  box.style.cssText = 'position:fixed;left:-10px;top:-10px;width:8px;height:8px;opacity:0;pointer-events:none'
+  document.body.append(box)
+  try { new Sigma(new Graph(), box, sigmaOptions() as never).kill() } catch { /* no WebGL: the Terrain says so when it mounts */ }
+  box.remove()
+}
 
 export function Terrain({ data: d, terrain: t, query, focusArea, hoverArea, overlay, onOpen, onHover, onHoverArea, onBundle, onClear, show, onWebGlFailure }: Props) {
   const box = useRef<HTMLDivElement>(null)
@@ -44,12 +72,14 @@ export function Terrain({ data: d, terrain: t, query, focusArea, hoverArea, over
     if (!box.current) return
     const graph = new Graph({ type: 'directed', multi: true })
     const r = d.cells.rects
-    // Cells: every area and what it holds, nested by depth; directories above the areas are not drawn.
+    // Cells: every area and what it holds, nested by depth; directories above the areas are not drawn. They join the graph once the
+    // renderer exists, a batch per task, as sigma processes every node of a refresh in one go (#208).
+    const cells: Array<[string, Record<string, unknown>]> = []
     for (let c = 0; c < t.cellArea.length; c++) {
       const depth = t.cellDepth[c]!
       if (depth < 0 || (depth > 0 && !d.cells.names[c])) continue
       const w = Math.max(1, r[c * 4 + 2]!), h = Math.max(1, r[c * 4 + 3]!)
-      graph.addNode(`c${c}`, { x: r[c * 4]! + w / 2, y: FRAME - (r[c * 4 + 1]! + h / 2), size: Math.max(w, h) / 2, aspectRatio: w / h, shape: 'rectangle', color: CELL[Math.min(depth, 2)], zIndex: depth, depth: 'cells' })
+      cells.push([`c${c}`, { x: r[c * 4]! + w / 2, y: FRAME - (r[c * 4 + 1]! + h / 2), size: Math.max(w, h) / 2, aspectRatio: w / h, shape: 'rectangle', color: CELL[Math.min(depth, 2)], zIndex: depth, depth: 'cells' }])
     }
     // Bundles join area centres; each pair has a solid stroke for its observed relationships and a dashed one for its inferred (FR1402).
     // A bundle ends at an unseen anchor in the middle of each area, not at the area's edge, where neighbouring cells would leave no room to draw it.
@@ -69,18 +99,7 @@ export function Terrain({ data: d, terrain: t, query, focusArea, hoverArea, over
     })
     let s: Sigma
     try {
-      s = new Sigma(graph, box.current, {
-        settings: { renderLabels: false, renderEdgeLabels: false, enableEdgeEvents: true, itemSizesReference: 'positions', zoomToSizeRatioFunction: (x: number) => x, minEdgeThickness: 1.5, stagePadding: 24, enableCameraRotation: false, gestureTarget: 'graph', minCameraRatio: 0.0005, maxCameraRatio: 2, autoRescale: true },
-        primitives: {
-          nodes: { shapes: [sdfCircle(), sdfRectangle()], layers: [layerFill()] },
-          edges: { paths: [pathCurved()], extremities: [extremityArrow({ lengthRatio: 4, widthRatio: 3.5 })], layers: [layerDashed({ dashSize: { value: 7, mode: 'pixels' }, gapSize: { value: 5, mode: 'pixels' }, gapColor: { attribute: 'gapColor', default: 'rgba(0,0,0,0)' } })] },
-          depthLayers: ['cells', 'edges', 'nodes', 'topEdges', 'topNodes'],
-        },
-        styles: {
-          nodes: { x: { attribute: 'x' }, y: { attribute: 'y' }, size: { attribute: 'size' }, color: { attribute: 'color' }, shape: { attribute: 'shape', defaultValue: 'circle' }, aspectRatio: { attribute: 'aspectRatio', defaultValue: 1 }, zIndex: { attribute: 'zIndex', defaultValue: 0 }, depth: { attribute: 'depth', defaultValue: 'nodes' }, labelVisibility: 'hidden' },
-          edges: { size: { attribute: 'size' }, color: { attribute: 'color' }, head: 'arrow', path: 'curved', curvature: { attribute: 'curvature' }, gapColor: { attribute: 'gapColor' }, visibility: { whenData: { hidden: true }, then: 'hidden', else: 'visible' }, depth: 'edges' },
-        },
-      } as never)
+      s = new Sigma(graph, box.current, sigmaOptions() as never)
     } catch {
       handlers.current.onWebGlFailure()
       return
@@ -93,15 +112,15 @@ export function Terrain({ data: d, terrain: t, query, focusArea, hoverArea, over
     const colour = (i: number): [number, number, number] => (overlay?.[i] ? OVERLAY_RGB[overlay[i]!]!.map((v) => Math.round(v * 255)) as [number, number, number] : BYTES(SYMBOL))
     const pos = new Float32Array(d.n * 2)
     for (let i = 0; i < d.n; i++) { pos[i * 2] = d.positions[i * 2]!; pos[i * 2 + 1] = FRAME - d.positions[i * 2 + 1]! }
-    const layer = points(pos, d.n), find = grid(pos, d.n, side)
+    // The points layer and its grid are built in a task of their own, after the renderer's (#208).
+    let layer: ReturnType<typeof points> | undefined, find: ReturnType<typeof grid> | undefined
     const loaded = new Set<number>()
     let matches: Set<number> | null = null
-    const paint = () => { layer.paint((i) => loaded.has(d.area[i]!) || !!matches?.has(i), (i) => (matches?.has(i) ? BYTES(MATCH) : colour(i)), (i) => !!matches?.has(i)); s.scheduleRender() }
-    s.addCustomLayerProgram('points', 'nodes' as never, layer.program as never)
+    const paint = () => { layer?.paint((i) => loaded.has(d.area[i]!) || !!matches?.has(i), (i) => (matches?.has(i) ? BYTES(MATCH) : colour(i)), (i) => !!matches?.has(i)); s.scheduleRender() }
     /** The shown point under a viewport position, if any. */
     const pointAt = (vx: number, vy: number) => {
       const v = viewOf(), k = Math.abs(v.kx)
-      return find((vx - v.bx) / v.kx, FRAME - (vy - v.by) / v.ky, Math.max(side * POINT, 3 / k) + 2 / k, (i) => layer.shown[i] === 1)
+      return find && layer ? find((vx - v.bx) / v.kx, FRAME - (vy - v.by) / v.ky, Math.max(side * POINT, 3 / k) + 2 / k, (i) => layer!.shown[i] === 1) : -1
     }
     let frame = 0, perPx = 0
     const viewOf = (): View => {
@@ -112,7 +131,7 @@ export function Terrain({ data: d, terrain: t, query, focusArea, hoverArea, over
       cancelAnimationFrame(frame)
       frame = requestAnimationFrame(() => {
         const v = viewOf(), f0 = s.graphToFramedGraph({ x: 0, y: 0 }), f1 = s.graphToFramedGraph({ x: FRAME, y: FRAME }), ratio = window.devicePixelRatio || 1
-        layer.frame([(f1.x - f0.x) / FRAME, (f1.y - f0.y) / FRAME, f0.x, f0.y], 2 * side * POINT * Math.abs(v.kx) * ratio, 6 * ratio)
+        layer?.frame([(f1.x - f0.x) / FRAME, (f1.y - f0.y) / FRAME, f0.x, f0.y], 2 * side * POINT * Math.abs(v.kx) * ratio, 6 * ratio)
         setView(v)
         // Sizes are in layout units so cells scale with the zoom; a bundle keeps its width in pixels, so it is resized as the zoom changes.
         const units = 1 / Math.abs(v.kx)
@@ -160,9 +179,18 @@ export function Terrain({ data: d, terrain: t, query, focusArea, hoverArea, over
     s.on('clickStage' as never, (({ event }: { event: { x: number; y: number } }) => { const i = pointAt(event.x, event.y); if (i >= 0) handlers.current.onOpen(i) }) as never)
     s.on('leaveStage' as never, (() => { handlers.current.onHoverArea(null); setTip(null) }) as never)
     graphRef.current = { graph, search: (picked) => { matches = picked && new Set(picked); paint() } }
-    setReady(true)
-    update()
-    return () => { cancelAnimationFrame(frame); s.kill(); sigma.current = null; graphRef.current = null; hoverPoint.current = () => {}; setReady(false) }
+    let batch = 0
+    const addCells = (from: number) => {
+      for (let k = from; k < Math.min(cells.length, from + CELL_BATCH); k++) graph.addNode(cells[k]![0], cells[k]![1])
+      if (from + CELL_BATCH < cells.length) batch = window.setTimeout(() => addCells(from + CELL_BATCH), 0)
+      else { setReady(true); update() }
+    }
+    batch = window.setTimeout(() => {
+      layer = points(pos, d.n); find = grid(pos, d.n, side)
+      s.addCustomLayerProgram('points', 'nodes' as never, layer.program as never)
+      batch = window.setTimeout(() => addCells(0), 0)
+    }, 0)
+    return () => { clearTimeout(batch); cancelAnimationFrame(frame); s.kill(); sigma.current = null; graphRef.current = null; hoverPoint.current = () => {}; setReady(false) }
   }, [d, t, overlay])
   const graphRef = useRef<{ graph: Graph; search: (picked: number[] | null) => void } | null>(null)
   const hoverPoint = useRef<(x: number, y: number) => void>(() => {})
