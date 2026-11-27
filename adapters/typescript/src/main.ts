@@ -1,4 +1,5 @@
 // Proofmesh TypeScript adapter: reads only the captured workspace and the TypeScript library declarations; never runs repository code.
+import { createHash } from 'node:crypto'
 import fs from 'node:fs'
 import { builtinModules, createRequire } from 'node:module'
 import path from 'node:path'
@@ -38,6 +39,16 @@ const routeFacts = new Map<string, Array<Record<string, unknown>>>()
 const resolverRoots: TS.PropertyAssignment[] = []
 const keyOf = (n: TS.Node) => `${n.getSourceFile().fileName}|${n.pos}|${n.end}|${n.kind}`
 const symbolsByFile = new Map<string, Array<Record<string, unknown>>>()
+/** Per file, where the nodes are whose facts or symbols a pass over every file reads (resources, routes, resolver maps, Prisma accesses). */
+const globalSites = new Map<string, number[]>()
+/** The digest of every program file's outline, which every file's facts may depend on; see outline(). */
+let outlineDigest = ''
+/**
+ * A local id names no position, so an edit inside a body that moves later declarations leaves other files' facts as they were (#31).
+ * Two ids named alike are told apart by the order they are made in, which only an outline change moves.
+ */
+const named = new Map<string, number>()
+const unique = (id: string) => { const n = (named.get(id) ?? 0) + 1; named.set(id, n); return n === 1 ? id : `${id}~${n}` }
 /**
  * Names that may denote a repository class, interface, enum, type alias, variable, function or method: their own, and the names default
  * imports and renaming imports or exports give; only an identifier with one of these names can reference one, and the checker decides whether it does.
@@ -47,7 +58,9 @@ const refNames = new Set<string>()
 const REFERABLE = /^(class|interface|enum|type_alias|variable|function|method|property)$/
 const byteMaps = new Map<TS.SourceFile, Int32Array>()
 
-const rel = (abs: string) => path.relative(workspace, abs).split(path.sep).join('/')
+/** Memoised: it is asked for every declaration and call, and path.relative cost a quarter of a second an index (#31); the workspace is set once. */
+const relOf = new Map<string, string>()
+const rel = (abs: string) => relOf.get(abs) ?? relOf.set(abs, path.relative(workspace, abs).split(path.sep).join('/')).get(abs)!
 const inWorkspace = (abs: string) => !rel(abs).startsWith('..') && !path.isAbsolute(rel(abs)) && !rel(abs).split('/').includes('node_modules')
 /** The package a file under node_modules belongs to, such as `greeter` or `@fx/util`. */
 const packageOf = (file: string): string | undefined => {
@@ -167,6 +180,35 @@ function buildProjects(): void {
   }
   indexRoutes()
   indexResolvers()
+  const digest = createHash('sha256').update(JSON.stringify(files.map((f) => f.path).sort()))
+  projects.forEach((project, i) => {
+    for (const sf of [...project.program.getSourceFiles()].filter((f) => inWorkspace(f.fileName)).sort((a, b) => (a.fileName < b.fileName ? -1 : 1))) digest.update(`\0${i}\0${rel(sf.fileName)}\0${outline(sf)}`)
+  })
+  outlineDigest = digest.digest('hex')
+}
+
+/**
+ * A file's text with each function body that no other file can observe left out (#31, A16): a constructor's, unless the class has a
+ * property whose type the constructor could infer; a setter's; and any other's whose return type is written. A body that holds a node
+ * a pass over every file reads or types (globalSites) or an `import()` stays. JavaScript, whose types bodies declare, stays whole. Another
+ * file's facts read this file through its declarations and their types, and local ids name no position, so they depend on no more.
+ */
+function outline(sf: TS.SourceFile): string {
+  if (!/\.(ts|tsx|mts|cts)$/.test(sf.fileName) || sf.isDeclarationFile) return sf.text
+  const sites = globalSites.get(rel(sf.fileName)) ?? []
+  const cut: Array<[number, number]> = []
+  const visit = (n: TS.Node): void => {
+    const body = (ts.isFunctionLike(n) && 'body' in n ? (n as { body?: TS.Node }).body : undefined)
+    const hidden = body && ts.isBlock(body) && (ts.isConstructorDeclaration(n)
+      ? !n.parent.members.some((m) => ts.isPropertyDeclaration(m) && !m.type && !m.initializer)
+      : ts.isSetAccessor(n) || !!(n as TS.SignatureDeclaration).type)
+    if (hidden && !sites.some((at) => at >= body.pos && at < body.end) && !/\bimport\s*\(/.test(sf.text.slice(body.pos, body.end))) { cut.push([body.pos, body.end]); return }
+    ts.forEachChild(n, visit)
+  }
+  visit(sf)
+  let text = '', from = 0
+  for (const [start, end] of cut) { text += `${sf.text.slice(from, start)}{}`; from = end }
+  return text + sf.text.slice(from)
 }
 
 const readJson = (file: string): Record<string, any> | undefined => { try { return JSON.parse(ts.sys.readFile(file) ?? '') } catch { return undefined } }
@@ -233,7 +275,7 @@ function indexDeclarations(sf: TS.SourceFile): void {
   const p = rel(sf.fileName), base = noExt(p), out: Array<Record<string, unknown>> = []
   const add = (node: TS.Node, kind: string, name: string, qualified: string, signature: string | null, start = node.getStart(sf), end = node.getEnd()) => {
     const r = range(sf, start, end)
-    const local = `${p}#${kind}#${qualified}#${r.start_byte}`
+    const local = unique(`${p}#${kind}#${qualified}`)
     declLocal.set(keyOf(node), local)
     out.push({ local_id: local, path: p, kind, name, qualified_name: qualified, range: r, signature })
     if (REFERABLE.test(kind)) refNames.add(name)
@@ -315,16 +357,20 @@ function indexDeclarations(sf: TS.SourceFile): void {
     }
   }
   visit(sf.statements, '')
+  const sites: number[] = []
+  globalSites.set(p, sites)
   const resources = (n: TS.Node): void => {
     const r = ts.isNewExpression(n) ? pulumiResource(n) : undefined
     if (r) {
-      const local = `${p}#resource#${r.token}::${r.name}#${n.getStart(sf)}`
+      const local = unique(`${p}#resource#${r.token}::${r.name}`)
       resourceLocal.set(keyOf(n), local)
       out.push({ local_id: local, path: p, kind: 'resource', name: r.name, qualified_name: `${base}:${r.token}::${r.name}`, range: range(sf, n.getStart(sf), n.getEnd()), signature: `resource "${r.token}"` })
     }
     if (isRouteSite(n)) routeSites.push(n)
     if (ts.isPropertyAssignment(n) && GRAPHQL_ROOTS.has(keyName(n.name, sf)) && ts.isObjectLiteralExpression(n.initializer)) resolverRoots.push(n)
     const access = prismaAccess(n), table = access && prismaTables.get(access.accessor)
+    // Where a library is in the program, every node its check types counts, found or not: typing it can change how later signatures print.
+    if (isRouteSite(n) || (ts.isPropertyAssignment(n) && GRAPHQL_ROOTS.has(keyName(n.name, sf))) || (ts.isNewExpression(n) && has('pulumi')) || (prismaShape(n) && has('prisma'))) sites.push(n.pos)
     if (table && !declaredTables.has(table.qualified)) {
       declaredTables.add(table.qualified)
       out.push({ local_id: `fw#table#${table.qualified}`, path: p, kind: 'table', name: table.name, qualified_name: table.qualified, range: range(sf, access.site.getStart(sf), access.site.getEnd()), signature: null })
@@ -336,8 +382,22 @@ function indexDeclarations(sf: TS.SourceFile): void {
 }
 
 const PULUMI_BASES = new Set(['CustomResource', 'ComponentResource'])
+/**
+ * Whether the program holds @pulumi/pulumi, or any file importing @prisma/client: without them no `new` can be a Pulumi resource and no
+ * call a Prisma Client access, so neither is typed. Typing every `new` cost a second of each index of TypeORM (#31), and typing a node
+ * inside a body another file cannot observe could change how a later signature prints (union members are ordered by when their types were made).
+ */
+const libraries = new Map<TS.Program, { pulumi: boolean; prisma: boolean }>()
+function has(library: 'pulumi' | 'prisma'): boolean {
+  if (!libraries.has(program!)) {
+    const files = program!.getSourceFiles()
+    libraries.set(program!, { pulumi: files.some((f) => packageOf(f.fileName) === '@pulumi/pulumi'), prisma: files.some((f) => f.text.includes('@prisma/client')) })
+  }
+  return libraries.get(program!)![library]
+}
 /** A Pulumi resource: a class deriving from @pulumi/pulumi's CustomResource or ComponentResource, named as its URN names it, type then name. */
 function pulumiResource(n: TS.NewExpression): { token: string; name: string } | undefined {
+  if (!has('pulumi')) return undefined
   const derives = (t: TS.Type): boolean => {
     const target = (t as TS.TypeReference).target ?? t
     const sym = target.getSymbol(), decl = sym?.declarations?.[0]
@@ -617,10 +677,12 @@ function isPrismaClientType(e: TS.Node, seen = new Set<TS.Node>()): boolean {
  */
 // shortcut: a client typed through an alias, a factory's return type or `$extends` is not recognised, nor a transaction's client
 // parameter; follow the checker's type when a repository needs them.
+const prismaShape = (n: TS.Node): n is TS.CallExpression & { expression: TS.PropertyAccessExpression & { expression: TS.PropertyAccessExpression } } =>
+  ts.isCallExpression(n) && ts.isPropertyAccessExpression(n.expression) && ts.isPropertyAccessExpression(n.expression.expression) && !n.expression.expression.name.text.startsWith('$')
 function prismaAccess(n: TS.Node): { site: TS.PropertyAccessExpression; accessor: string; operation: string } | undefined {
-  if (!ts.isCallExpression(n) || !ts.isPropertyAccessExpression(n.expression) || !ts.isPropertyAccessExpression(n.expression.expression)) return undefined
+  // An import of @prisma/client is how isPrismaClientName knows the client, so without one in the program nothing is typed.
+  if (!prismaShape(n) || !has('prisma')) return undefined
   const model = n.expression.expression, client = model.expression
-  if (model.name.text.startsWith('$')) return undefined
   const decl = aliased(checker.getSymbolAtLocation(ts.isPropertyAccessExpression(client) ? client.name : client))?.valueDeclaration
   if (!decl || !(ts.isVariableDeclaration(decl) || ts.isPropertyDeclaration(decl) || ts.isParameter(decl))) return undefined
   const typed = !!decl.type && ts.isTypeReferenceNode(decl.type) && isPrismaClientType(decl.type.typeName)
@@ -759,7 +821,7 @@ function expressHandler(call: TS.CallExpression, file: string): string {
     const known = declLocal.get(keyOf(last))
     if (known) return known
     const name = `${call.expression.getText(sf)}(${call.arguments[0]!.getText(sf)})`, qualified = `${noExt(file)}:${name}`
-    const r = range(sf, last.getStart(sf), last.getEnd()), local = `${file}#function#${qualified}#${r.start_byte}`
+    const r = range(sf, last.getStart(sf), last.getEnd()), local = unique(`${file}#function#${qualified}`)
     declLocal.set(keyOf(last), local)
     symbolsByFile.get(file)!.push({ local_id: local, path: file, kind: 'function', name, qualified_name: qualified, range: r, signature: signatureOf(name, last as TS.ArrowFunction) })
     return local
@@ -864,7 +926,7 @@ function indexResolvers(): void {
       let handler = declLocal.get(keyOf(fn))
       if (!handler && (ts.isMethodDeclaration(fn) || isFunctionLike(fn))) {
         const qualified = `${noExt(file)}:${[...keys, field].join('.')}`, r = range(sf, fn.getStart(sf), fn.getEnd())
-        handler = `${file}#function#${qualified}#${r.start_byte}`
+        handler = unique(`${file}#function#${qualified}`)
         declLocal.set(keyOf(fn), handler)
         symbolsByFile.get(file)!.push({ local_id: handler, path: file, kind: 'function', name: field, qualified_name: qualified, range: r, signature: signatureOf(field, fn as TS.ArrowFunction) })
       } else if (!handler && (ts.isIdentifier(fn) || ts.isPropertyAccessExpression(fn))) {
@@ -872,7 +934,7 @@ function indexResolvers(): void {
         if (named.resolution === 'resolved' && named.target && 'symbol' in named.target) handler = named.target.symbol
       }
       if (!handler) continue
-      const name = `graphql ${keyName(root.name, sf)}.${field}`, id = `${file}#resolver#${name}#${m.getStart(sf)}`, site = { path: file, range: range(sf, m.getStart(sf), m.getEnd()) }
+      const name = `graphql ${keyName(root.name, sf)}.${field}`, id = unique(`${file}#resolver#${name}`), site = { path: file, range: range(sf, m.getStart(sf), m.getEnd()) }
       symbolsByFile.get(file)!.push({ local_id: id, path: file, kind: 'endpoint', name: name.slice('graphql '.length), qualified_name: name, range: site.range, signature: null })
       const facts = routeFacts.get(file) ?? routeFacts.set(file, []).get(file)!
       facts.push({ type: 'exposes', origin: 'framework_adapter', source: { symbol: id }, site, resolution: 'resolved', target: { symbol: handler }, detail: { rule: 'graphql_resolver_map' } })
@@ -1155,6 +1217,8 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
         adapter: { id: 'typescript', version: VERSION, protocol_version: '1.3', languages: ['typescript', 'javascript'], toolchain: { typescript: ts.version } },
         capabilities: { syntax: true, symbols: true, imports: true, resolved_calls: true, references: true, framework: false },
         external_inputs: externalInputs,
+        // One unit per file, keyed by every file's outline: an edit inside a body reanalyses that file alone (#31).
+        units: [...projectOf.keys()].sort().map((p) => ({ id: `${p} outline:${outlineDigest}`, files: [p] })),
       } })
     } else if (req.method === 'workspace') {
       // Every fact this adapter produces belongs to one analysed file.
