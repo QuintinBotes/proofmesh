@@ -799,6 +799,12 @@
     "FR170": [
       "packages/proofmesh/test/scip-calls.test.ts"
     ],
+    "FR530": [
+      "packages/proofmesh/test/scip-calls.test.ts"
+    ],
+    "FR531": [
+      "packages/proofmesh/test/scip-stream.test.ts"
+    ],
     "FR151": [
       "packages/proofmesh/test/build-graph-jvm.test.ts"
     ],

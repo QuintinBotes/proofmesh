@@ -12,9 +12,12 @@ export type SyntaxFile = { path: string; content_hash: string; language: string 
 export type SyntaxRelationship = { type: string; site: { path: string; range: Range }; detail?: Record<string, string> }
 export type Spans = { symbols: Map<string, SyntaxSymbol[]>; relationships: Map<string, SyntaxRelationship[]>; capabilities: Map<string, Record<string, string>>; unsupported: string[]; /** Files the syntax tier was asked about and did not answer (only when `problem` is set). */ unanswered: string[]; problem?: 'unavailable' | 'failed' | 'timeout' }
 
-/** Well under the host's 60 s of adapter silence; for call sites it is the time of each batch, not of the whole request. */
+/** Well under the host's 60 s of adapter silence; it is the time of each batch, not of the whole request. */
 export const SPANS_TIMEOUT_MS = 15000
-/** Files asked of the syntax tier at once for their call sites: a slow machine loses one batch, not the whole request. */
+/**
+ * Files asked of the syntax tier at once, for their call sites or their spans: a slow machine loses one batch, not the whole request,
+ * and neither process holds the parse of every file at once (FR531).
+ */
 export const CALLS_BATCH = 20
 
 export function syntaxEntry(): string | undefined {
@@ -58,10 +61,9 @@ export async function syntaxSymbols(files: SyntaxFile[], workspace: string, entr
     const languages = new Set(init.adapter?.languages ?? [])
     out.unsupported = files.filter((f) => !languages.has(f.language)).map((f) => f.path)
     const paths = files.filter((f) => languages.has(f.language)).map((f) => f.path)
-    // Call sites are asked in batches; spans in one, whose partial answer would be worse than none.
-    const size = method === 'analyze_calls' ? CALLS_BATCH : Math.max(1, paths.length)
-    for (let at = 0; at < paths.length; at += size) {
-      const r = await within(ask(method, { paths: paths.slice(at, at + size) }))
+    // Both are asked in batches; a partial answer for spans is dropped below, since it would be worse than none.
+    for (let at = 0; at < paths.length; at += CALLS_BATCH) {
+      const r = await within(ask(method, { paths: paths.slice(at, at + CALLS_BATCH) }))
       if (r === 'timeout' || !r) { out.unanswered = paths.slice(at); return r ? 'timeout' : 'failed' }
       for (const sym of r.symbols ?? []) out.symbols.set(sym.path, [...(out.symbols.get(sym.path) ?? []), sym])
       for (const rel of r.relationships ?? []) out.relationships.set(rel.site.path, [...(out.relationships.get(rel.site.path) ?? []), rel])

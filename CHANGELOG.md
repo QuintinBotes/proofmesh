@@ -17,6 +17,12 @@ The Claude Code plugin shows the snapshot's state under the prompt and adds `/pm
 - `fresh.mjs` and the module pick the repository with one shared function (`hooks/repos.mjs`). Older Claude Code versions ignore `modules`, and the prompt command `/proofmesh:status` stays.
 - `pnpm test:plugin` runs the module's tests (`claude plugin test packages/proofmesh-plugin`); `pnpm test` does not include them.
 
+SCIP indexes: a Go `T{}` literal is a call, and a 1 GB index is indexed in about 415 MB (part of #19; FR530, FR531):
+
+- A Go composite literal of a named type (`cart.Cart{}`) is now a `calls` to the type, as a Java `new T()` already was (to the constructor symbol where the index has one). Before, it was a `references` row. The syntax tier finds these sites only for the SCIP importer, so a syntax-only Go file's facts are unchanged. The SCIP adapter's version is now 0.3.0, so facts cached by 0.2.0 are read again.
+- A test builds a 1.08 GB index of 100,000 definitions, names it and indexes it, and checks the peak resident memory the host samples for the SCIP adapter and the syntax tier it starts. On main that peak was 704 MB. It is now about 415 MB, under the spec's 600 MB. Two changes did it. The index reader reuses one buffer instead of allocating 1 to 2 MB for each document, because macOS kept the freed buffers resident. And the syntax tier is asked for spans 20 files at a time instead of all at once, which also made `initialize` about three times faster.
+- Not done: caller fidelity on real scip-go and scip-java indexes (SC-002) waits for the per-language benchmark (#9). An import statement with no index occurrence inside it (every `#include` from scip-clang, for example) is still `unresolved` rather than resolved through the build graph.
+
 The C# adapter is built by `pnpm build`, and an unbuilt one says so (closes #100; FR385 to FR387):
 
 - `pnpm build` ends with `node scripts/build-csharp.mjs`, which runs `dotnet build adapters/csharp -c Release -nologo -v:q -m:1` when `dotnet` is on PATH and fails the build if that fails. Without `dotnet` it prints `skipped: build the C# adapter (...)` and succeeds, unless an earlier adapter build exists, which would stay in use, and then fails, as `scripts/update.mjs` already did. `update:all` already built the adapter and still does.
