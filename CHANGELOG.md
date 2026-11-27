@@ -4,6 +4,14 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 ## Unreleased
 
+Change review: a diff's blast radius and test reach on the Terrain (#49; FR1810 to FR1816):
+
+- The Diff view gains Change review, beside the comparison of snapshots. For a base and a head commit, or the working tree, it lists every row `impact_completeness` returns, each changed symbol then its dependents with their statuses in the tool's words, the summary, and the gate, which fails while any dependent is neither changed nor tested. It has no status logic of its own, and waits for the index job the tool starts when a side has no snapshot yet.
+- On the head snapshot's Terrain, a modified symbol is a filled dot with a ring, an added one a filled dot, a deleted one a cross at its place in the base snapshot; each dependent is ringed solid (changed), double (tested) or dashed (neither). The legend says each in words with its count. A mark or a row opens the row's evidence.
+- Each `impact_completeness` dependent now carries `chain` in JSON: the hops from the dependent at its site to the changed symbol at its declaration, each with its path, line and the assertion id of the relationship to the next. Opening a row shows its chain with no request, and its tests from one `find_tests` request, each with its evidence kind and chain; a test file that only imports it is named, and the row stays neither.
+- `?change=<base>..<head>` (or `?change=<base>` for the working tree) opens it, with `&depth=<n>` and `&open=<stable key>` to open a row. More than 500 rows are drawn a window at a time. The export carries the range, the summary, the gate and the limits in its caption.
+- New route `/api/v1/galaxy/points` gives the Terrain point of each stable key in a snapshot.
+
 The Terrain replaces the Galaxy and Map views: semantic zoom from areas to symbols, with bundles that open their evidence (part of #46; closes #42; FR1400 to FR1409):
 
 - The first view draws the snapshot's own layout as nested cells: areas, a file's first two directories such as `src/driver`, each named with its symbol count, then directories and files, then symbols. A label shows once its cell is 40 px on screen, never over another label; an area too small is named in its tooltip and the table. Symbols are drawn per area once the zoom reaches them, so a large snapshot's overview draws areas and bundles only. Nothing moves as you zoom.

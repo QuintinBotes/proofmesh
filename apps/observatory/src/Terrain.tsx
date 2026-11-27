@@ -1,7 +1,7 @@
 import Graph from 'graphology'
 import Sigma from 'sigma'
 import { extremityArrow, layerDashed, layerFill, pathCurved, sdfCircle, sdfRectangle } from 'sigma/rendering'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { ghostAreas, matchIndices, shortName, type GalaxyData } from './galaxyData'
 import { OVERLAY_RGB } from './diff'
 import { cellRect, coverageOf, drawnStrokes, FRAME, labels as labelsOf, pairText, symbolSide, type Label, type Pair, type Stroke, type Terrain as Model, type View } from './terrainModel'
@@ -15,6 +15,8 @@ type Props = {
   /** A cell to bring into view, such as a file the palette opened; its key changes each time it is asked for. */
   show?: { cell: number; key: number } | null
   onWebGlFailure: () => void
+  /** Marks drawn over the cells for the current view, such as Change review's (FR1814). */
+  marks?: (view: View) => ReactNode
 }
 
 /** Symbols are drawn once their cell is this many pixels across (FR1404); before that the areas, directories and files stand for them. */
@@ -29,7 +31,7 @@ const BYTES = (hex: string): [number, number, number] => [1, 3, 5].map((i) => pa
 /** Ghost areas hold files but no symbols, so they have no cell in the layout; they sit in a row below it (FR1405). */
 const GHOSTS = 10, GHOST_Y = FRAME * 1.04, GHOST_SIDE = FRAME * 0.06
 
-export function Terrain({ data: d, terrain: t, query, focusArea, hoverArea, overlay, onOpen, onHover, onHoverArea, onBundle, onClear, show, onWebGlFailure }: Props) {
+export function Terrain({ data: d, terrain: t, query, focusArea, hoverArea, overlay, onOpen, onHover, onHoverArea, onBundle, onClear, show, onWebGlFailure, marks }: Props) {
   const box = useRef<HTMLDivElement>(null)
   const sigma = useRef<Sigma | null>(null)
   const handlers = useRef({ onOpen, onHover, onHoverArea, onBundle, onWebGlFailure })
@@ -214,6 +216,7 @@ export function Terrain({ data: d, terrain: t, query, focusArea, hoverArea, over
         return <div key={g.name} className="terrain-fog empty" data-area={g.name} title={g.text} aria-hidden="true" style={{ left: q.left, top: q.top, width: q.width, height: q.height }}>{q.width >= 40 && <span className="fog-label">{visible(g.name)}</span>}</div>
       })}
       {placed.map((l) => <div key={l.key} className={`terrain-label ${l.kind}${l.height > 16 ? ' stacked' : ''}`} data-kind={l.kind} title={l.title} style={{ left: l.kind === 'symbol' ? l.left + l.width / 2 : l.left, top: l.top }} aria-hidden="true">{l.kind === 'area' ? l.text.split(' ').map((x, i) => <span key={i}>{i ? ' ' : ''}{visible(x)}</span>) : visible(l.text)}</div>)}
+      {view && marks?.(view)}
       {shown && (
         <div className="filter-chip" role="status">
           <span>{visible(filterLabel)}: <b>{shown.matched.toLocaleString('en')}</b> of {plural(d.n, 'symbol')}</span>
