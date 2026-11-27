@@ -31,7 +31,11 @@ export class EvidenceStore {
   put(content: Uint8Array, durable: boolean | 'later' = true): string {
     const hash = sha256(content)
     const target = this.objectPath(hash)
-    if (fs.existsSync(target) && sha256(fs.readFileSync(target)) === hash) return hash
+    if (fs.existsSync(target) && sha256(fs.readFileSync(target)) === hash) {
+      // Another run may have put it 'later' and stopped before its flush: what cites it here makes it durable too.
+      if (durable === 'later') this.unsynced.push(target)
+      return hash
+    }
     const tmpDir = path.join(this.dataDir, 'objects', 'tmp')
     this.mkdir(tmpDir)
     this.mkdir(path.dirname(target))
@@ -50,7 +54,7 @@ export class EvidenceStore {
     return hash
   }
 
-  /** Makes every object put with durable 'later' so far durable: an fsync of each, a few at a time on the thread pool. */
+  /** Makes every object put with durable 'later' so far, written or found, durable: an fsync of each, a few at a time on the thread pool. */
   async flush(): Promise<void> {
     const paths = this.unsynced
     this.unsynced = []

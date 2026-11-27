@@ -6,14 +6,16 @@ import { EvidenceStore } from '../src/evidence/store.js'
 import { AdapterProcess, PROTOCOL_VERSION, typescriptAdapterPath } from '../src/indexer/adapter-host.js'
 import { NODE_GC_FLAGS } from '../src/indexer/memory.js'
 import { createStagingStore } from '../src/meshstore/snapshot.js'
-import { indexedRepo, tmpDir, withSnapshot } from './helpers.js'
+import { cli, indexedRepo, tmpDir, withSnapshot } from './helpers.js'
 
 // #32: a cold build in less memory and time, with the same facts. Each check counts flags, fsyncs, pages or facts, never a wall clock.
 afterEach(() => vi.restoreAllMocks())
 
+const execArgvAdapter = path.join(import.meta.dirname, 'fake-adapters', 'exec-argv.mjs')
+
 describe('FR1240 every Node process of an index starts under GC flags that keep its resident set near its live data', () => {
   it('FR1240 scenario 1: a JavaScript adapter starts with the GC flags, then its budget, so a heap flag of its own would come last', async () => {
-    const a = new AdapterProcess(path.join(import.meta.dirname, 'fake-adapters', 'exec-argv.mjs'), 60000, 3000, 'argv', undefined, 512)
+    const a = new AdapterProcess(execArgvAdapter, 60000, 3000, 'argv', undefined, 512)
     try {
       const init = await a.initialize({ protocol_version: PROTOCOL_VERSION, workspace: tmpDir('pm-ws-'), analysis_mode: 'no_execution', files: [], config: {} })
       expect(JSON.parse(init.adapter.toolchain.exec_argv!)).toEqual([...NODE_GC_FLAGS, '--max-old-space-size=512'])
@@ -23,33 +25,49 @@ describe('FR1240 every Node process of an index starts under GC flags that keep 
     expect(hostNodeArgs(2048)).toEqual([...NODE_GC_FLAGS, '--max-old-space-size=2048', ...process.execArgv])
     expect(NODE_GC_FLAGS).toEqual(['--max-semi-space-size=4', '--heap-growing-percent=25'])
   })
+  it('FR1240 scenario 3: `proofmesh index` runs its host with the GC flags ahead of the heap limit, as the adapter it starts sees it', () => {
+    const repo = tmpDir('pm-repo-'), d = tmpDir()
+    fs.writeFileSync(path.join(repo, 'a.ts'), 'export const a = 1\n')
+    for (const args of [['init'], ['repo', 'add', repo]]) expect(cli(['--data-dir', d, ...args]).status).toBe(0)
+    const r = cli(['--data-dir', d, 'index', repo], { PROOFMESH_TS_ADAPTER: execArgvAdapter, PROOFMESH_HOST_MEMORY_MB: '3000' })
+    expect(r.status, r.stderr).toBe(0)
+    const adapters = withSnapshot(d, (db) => JSON.parse((db.prepare("select value from meta where key = 'adapters'").get() as { value: string }).value) as Array<{ id: string; toolchain: Record<string, string> }>)
+    expect(adapters.find((a) => a.id === 'typescript')!.toolchain.parent).toContain(`${NODE_GC_FLAGS.join(' ')} --max-old-space-size=3000 `)
+  }, 120000)
 })
 
 describe('FR1241 capture makes its objects durable off the main thread, before the snapshot that cites them is sealed', () => {
-  it('FR1241 scenario 1: a deferred put fsyncs nothing; flush fsyncs each object it wrote once, and an object already stored is not written again', async () => {
+  it('FR1241 scenario 1: a deferred put fsyncs nothing; flush fsyncs each object put since the last flush once, an object already stored included, which is not written again', async () => {
     const store = new EvidenceStore(tmpDir())
-    const syncs = vi.spyOn(fs, 'fsyncSync'), opens = vi.spyOn(fs.promises, 'open')
+    const syncs = vi.spyOn(fs, 'fsyncSync'), opens = vi.spyOn(fs.promises, 'open'), writes = vi.spyOn(fs, 'writeSync')
     const hashes = ['a', 'b', 'c'].map((t) => store.put(Buffer.from(t), 'later'))
     store.put(Buffer.from('a'), 'later')
     expect(syncs).not.toHaveBeenCalled()
+    expect(writes).toHaveBeenCalledTimes(3)
     await store.flush()
-    expect(opens.mock.calls.map((c) => c[0])).toEqual(hashes.map((h) => store.objectPath(h)))
+    expect(opens.mock.calls.map((c) => c[0])).toEqual([...hashes, hashes[0]!].map((h) => store.objectPath(h)))
     await store.flush()
-    expect(opens).toHaveBeenCalledTimes(3)
+    expect(opens).toHaveBeenCalledTimes(4)
     expect(store.read(hashes[1]!)!.toString()).toBe('b')
   })
-  it('FR1241 scenario 2: an index makes as many synchronous fsyncs for 40 files as for 2 (the sealed file and its directory), and flushes every captured object', async () => {
+  it('FR1241 scenario 2: an index makes as many synchronous fsyncs for 40 files as for 2 (the sealed file and its directory), after every captured object is fsynced', async () => {
+    const probe = path.join(tmpDir(), 'probe')
+    fs.writeFileSync(probe, '')
+    const handle = await fs.promises.open(probe, 'r'), proto = Object.getPrototypeOf(handle) as { sync: () => Promise<void> }
+    await handle.close()
     const counts: number[] = []
     for (const n of [2, 40]) {
+      const events: string[] = []
+      const realSync = proto.sync, realFsync = fs.fsyncSync
+      vi.spyOn(proto, 'sync').mockImplementation(async function (this: unknown) { await realSync.call(this); events.push('object') })
+      vi.spyOn(fs, 'fsyncSync').mockImplementation((fd) => { events.push('seal'); realFsync(fd) })
       const files = Object.fromEntries(Array.from({ length: n }, (_, i) => [`m${i}.py`, `def f${i}():\n    return ${i}\n`]))
-      const syncs = vi.spyOn(fs, 'fsyncSync'), flush = vi.spyOn(EvidenceStore.prototype, 'flush'), opens = vi.spyOn(fs.promises, 'open')
       const { dataDir } = await indexedRepo(files)
-      counts.push(syncs.mock.calls.length)
-      expect(flush).toHaveBeenCalledTimes(1)
-      const objects = opens.mock.calls.map((c) => String(c[0])).filter((p) => p.startsWith(path.join(dataDir, 'objects')))
-      expect(objects.length).toBe(n)
-      expect(withSnapshot(dataDir, (db) => (db.prepare("select count(*) n from file where disposition = 'indexed'").get() as { n: number }).n)).toBe(n)
       vi.restoreAllMocks()
+      expect(events.filter((e) => e === 'object')).toHaveLength(n)
+      expect(events.indexOf('seal')).toBeGreaterThan(events.lastIndexOf('object'))
+      counts.push(events.filter((e) => e === 'seal').length)
+      expect(withSnapshot(dataDir, (db) => (db.prepare("select count(*) n from file where disposition = 'indexed'").get() as { n: number }).n)).toBe(n)
     }
     expect(counts).toEqual([2, 2])
   }, 120000)
