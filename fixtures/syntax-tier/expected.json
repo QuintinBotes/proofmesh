@@ -638,8 +638,8 @@
       "from": "Greeter.greet",
       "line": 2,
       "site_text": "helper()",
-      "resolution": "unresolved",
-      "reason": "outside_capability"
+      "resolution": "candidate",
+      "reason": "candidate"
     },
     {
       "from": "Greeter.greet",

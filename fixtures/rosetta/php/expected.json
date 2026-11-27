@@ -32,22 +32,33 @@
       "calls": {
         "find_symbols": {
           "rows": [
-            { "role": "Circle.area", "row": "Rosetta.Circle.area src/Shapes.php:14 function" },
-            { "role": "Shape.area", "row": "Rosetta.Shape.area src/Shapes.php:7 function" },
-            { "role": "Square.area", "row": "Rosetta.Square.area src/Shapes.php:24 function" },
-            { "role": "circleArea", "row": "Rosetta.circleArea src/Shapes.php:39 function" }
+            {
+              "role": "Circle.area",
+              "row": "Rosetta.Circle.area src/Shapes.php:14 function"
+            },
+            {
+              "role": "Shape.area",
+              "row": "Rosetta.Shape.area src/Shapes.php:7 function"
+            },
+            {
+              "role": "Square.area",
+              "row": "Rosetta.Square.area src/Shapes.php:24 function"
+            },
+            {
+              "role": "circleArea",
+              "row": "Rosetta.circleArea src/Shapes.php:39 function"
+            }
           ]
         },
         "implements": {
-          "rows": [],
-          "not_at_tier": [
+          "rows": [
             {
               "role": "Circle",
-              "reason": "slice 59a, languages.md (Kotlin, Rust, PHP and Ruby, FR222): `implements Shape` is recorded as an implements row (FR222) but unresolved, with no target, so no row reaches Shape; constrained name matching does not cover PHP yet"
+              "row": "Rosetta.Circle src/Shapes.php:10 candidate inferred"
             },
             {
               "role": "Square",
-              "reason": "slice 59a, languages.md (Kotlin, Rust, PHP and Ruby, FR222): `implements Shape` is recorded as an implements row (FR222) but unresolved, with no target, so no row reaches Shape; constrained name matching does not cover PHP yet"
+              "row": "Rosetta.Square src/Shapes.php:20 candidate inferred"
             }
           ]
         },
@@ -56,7 +67,7 @@
           "not_at_tier": [
             {
               "role": "total",
-              "reason": "languages.md (constrained name matching): PHP is not covered yet, so its call sites stay unresolved"
+              "reason": "languages.md (constrained name matching in Kotlin, PHP and Ruby, FR885): the receiver $s is a variable, whose class the tier does not know, so the call binds to nothing"
             }
           ]
         },
@@ -65,11 +76,11 @@
           "not_at_tier": [
             {
               "role": "circleArea",
-              "reason": "languages.md (constrained name matching): PHP is not covered yet, so its call sites stay unresolved"
+              "reason": "languages.md (constrained name matching in Kotlin, PHP and Ruby, FR885): `(new Circle(1))->area()` has an expression as receiver, whose class the tier does not know, so it binds to nothing"
             },
             {
               "role": "total",
-              "reason": "languages.md (constrained name matching): PHP is not covered yet, so its call sites stay unresolved"
+              "reason": "languages.md (constrained name matching in Kotlin, PHP and Ruby, FR885): the receiver $s is a variable, whose class the tier does not know, so the call binds to nothing"
             }
           ]
         },
@@ -78,7 +89,7 @@
           "not_at_tier": [
             {
               "role": "report",
-              "reason": "slice 59a, languages.md (Kotlin, Rust, PHP and Ruby, FR221): the tier records each PHP import as an unresolved row with no target, so no row points at the file; constrained name matching does not cover PHP yet"
+              "reason": "languages.md (constrained name matching in Kotlin, PHP and Ruby, FR883): Report.php reaches Shapes.php by `require_once`, which the tier does not record as an import, and needs no `use` for a function of its own namespace, so no row points at the file"
             }
           ]
         },
@@ -87,28 +98,27 @@
           "not_at_tier": [
             {
               "role": "circleArea",
-              "reason": "languages.md (constrained name matching): PHP is not covered yet, so its call sites stay unresolved"
+              "reason": "languages.md (constrained name matching in Kotlin, PHP and Ruby, FR885): `(new Circle(1))->area()` has an expression as receiver, whose class the tier does not know, so it binds to nothing"
             },
             {
               "role": "total",
-              "reason": "languages.md (constrained name matching): PHP is not covered yet, so its call sites stay unresolved"
+              "reason": "languages.md (constrained name matching in Kotlin, PHP and Ruby, FR885): the receiver $s is a variable, whose class the tier does not know, so the call binds to nothing"
             },
             {
               "role": "report",
-              "reason": "languages.md (constrained name matching): PHP is not covered yet, so its call sites stay unresolved"
+              "reason": "reached only through total"
             },
             {
               "role": "totalOfTwo",
-              "reason": "languages.md (constrained name matching): PHP is not covered yet, so its call sites stay unresolved"
+              "reason": "reached only through total"
             }
           ]
         },
         "find_tests": {
-          "rows": [],
-          "not_at_tier": [
+          "rows": [
             {
               "role": "totalOfTwo",
-              "reason": "languages.md (constrained name matching): PHP is not covered yet, so its call sites stay unresolved"
+              "row": "Rosetta.ShapesTest.testTotalOfTwo src/ShapesTest.php:13 depth=1 inferred"
             }
           ]
         },
@@ -117,15 +127,15 @@
           "not_at_tier": [
             {
               "role": "totalOfTwo",
-              "reason": "languages.md (constrained name matching): PHP is not covered yet, so its call sites stay unresolved"
+              "reason": "languages.md (constrained name matching in Kotlin, PHP and Ruby, FR884, FR885): testTotalOfTwo reaches total (php_same_namespace), but total calls area on the variable $s, whose class the tier does not know, so no path reaches Shape.area"
             },
             {
               "role": "total",
-              "reason": "languages.md (constrained name matching): PHP is not covered yet, so its call sites stay unresolved"
+              "reason": "the path stops at total, see totalOfTwo"
             },
             {
               "role": "Shape.area",
-              "reason": "languages.md (constrained name matching): PHP is not covered yet, so its call sites stay unresolved"
+              "reason": "the path stops at total, see totalOfTwo"
             }
           ]
         }

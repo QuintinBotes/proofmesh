@@ -141,7 +141,7 @@ Go builds no package from a `vendor` or `testdata` directory, or one starting wi
 
 Dependencies (FR172): a module sees the modules the build graph records a direct, resolved `depends_on` to, and no others. A dependency of the test scope (Maven `<scope>test</scope>`, a Gradle `test...` configuration) is seen by test sources only (`src/test` and the like), and one of the runtime scope by none, so a name only such a module holds is `dependency_missing` for a main source. A transitive dependency is not seen: a module that uses a type of a module it reaches only through another gets `dependency_missing` until it declares the dependency, as a Go module must list what it imports.
 
-Java visibility: `private` within the top-level class, package-private within the package, `protected` in the package or by inheritance, `public` always, and an interface member without `private` is public. A type is reachable when it and every type around it is public or in the file's package. A name the repository does not declare (the JDK's, a library's, a package outside it) keeps `outside_capability`. Rust, C and C++ have rules of their own (below); Kotlin, PHP and Ruby are not covered yet, and their rows stay as the tier wrote them.
+Java visibility: `private` within the top-level class, package-private within the package, `protected` in the package or by inheritance, `public` always, and an interface member without `private` is public. A type is reachable when it and every type around it is public or in the file's package. A name the repository does not declare (the JDK's, a library's, a package outside it) keeps `outside_capability`. Rust, C, C++, Kotlin, PHP and Ruby have rules of their own (below).
 
 `workspace_status` gives `module_cycles` (FR178): each cycle among the build modules of an ecosystem whose builds forbid one (Maven, Gradle, Go modules, Cargo, .NET) that these rows form, with the edges that form it, and a warning in `limitations`. It is empty on a repository whose declared dependencies do not loop.
 
@@ -170,6 +170,37 @@ The same pass binds Rust, C and C++ names by their own rules (FR750 to FR758), w
 - A call on any receiver but `self` (`w.paint()`, `o.run()`, `p->run()`) binds to nothing, as in Go and Java. A C function only declared, with no definition in the repository, keeps its row: its body is in a library or across a foreign-function interface, which the FFI seams link (FR465).
 - Crates and modules: `lib.rs`, `main.rs` and each file of `src/bin/`, `tests/`, `examples/` and `benches/` is a crate root whose `mod x;` children sit beside it, so `crate::` in `src/main.rs` is the binary's own root even beside `src/lib.rs`, which the binary names by its package name. A name a module declares with `mod`, or a child module a glob `use` brings, is never read as a crate. In C++, a member the method's class declares hides every free function of the name, also when the repository holds no body for it.
 - Not followed yet: `pub use` re-exports, an impl block in another file than its type, a `use` inside a function body (its import row is bound, no call through it is), a local closure named like a function, a C++ member inherited from a base class, and the namespaces of a C++ bare call.
+
+## The syntax tier: constrained name matching in Kotlin, PHP and Ruby
+
+The same pass binds Kotlin, PHP and Ruby names by their own rules (FR880 to FR890), with the same outcomes as above: a `candidate` or `ambiguous` row naming its rule, `inferred`, never `resolved`, at most five candidates, and the row the tier wrote where no rule can judge. A `require_relative`, whose path fixes the file, is a candidate too.
+
+| rule | what it binds |
+|---|---|
+| `kotlin_same_class` | a bare `f()` or `this.f()` to the member functions `f` of the innermost enclosing class that has one, ahead of every top-level name |
+| `kotlin_inherited` | the same, when only a supertype of the class declares `f`, and `super.f()`; past a supertype the repository does not hold a bare call binds nothing, since a member there would hide a top-level function |
+| `kotlin_import` | a name an explicit import brings, by its alias or last segment: a top-level function, a class (a call of a class's name is its constructor), a supertype; `T.f()` to the members of that type, its companion object's included; an import itself to what it names |
+| `kotlin_same_package` | a top-level function or class of the file's own package, in any file |
+| `kotlin_star_import` | a top-level function or class of a package a star import names |
+| `kotlin_qualified_name` | `a.b.f()` to the top-level function `f` of package `a.b`, and a type written with its package |
+| `php_use` | a class or function name through a `use` clause, by its alias, and a qualified name whose first part a `use` aliases (`Models\User`); a `use` of one class or function itself |
+| `php_same_namespace` | an unqualified or relative class or function name in the file's namespace |
+| `php_fully_qualified` | a name written from the root, `\A\B` |
+| `php_global_function` | an unqualified function with none of its name in the namespace, to the global one PHP falls back to |
+| `php_same_class` | `$this->f()`, `self::f()` and `static::f()` to the methods of the enclosing class and its parents; `new self` to the class |
+| `php_inherited` | `parent::f()` to the methods of the parent class and its parents |
+| `ruby_require_relative` | `require_relative "p"` to the file at `p` from the requiring file |
+| `ruby_require` | `require "p"` to the files `p.rb` at the repository root or under a `lib/` directory; `ambiguous` when several |
+| `ruby_constant` | a constant through the lexical nesting at the site, innermost first, then the top level: `C.new` to the class, `C.f` and `C::f` to the singleton methods (`def self.f`) of `C` and its superclasses, a superclass or an `include` to its class or module |
+| `ruby_same_class` | a bare `f()` or `self.f()` to the methods `f` of the enclosing class or module, singleton methods from its body or a `def self.`, instance methods from any other `def` |
+| `ruby_inherited` | the same, through the superclass and, for instance methods, the modules the class includes; past one the repository does not hold nothing is bound |
+| `ruby_top_level` | a bare `f()` with no such method to a top-level `def f`, a private method of every object |
+
+- Kotlin visibility (FR881): a `private` top-level declaration is seen from its own file, a `private` member from its top-level class, an `internal` one from its own Gradle or Maven module, and a `protected` one from its class and subclasses. A name only such a declaration holds is `unresolved` `unknown_name` with `detail.visibility`. Levels go explicit import, same package, star import; the first that holds a visible name wins.
+- PHP (FR883 to FR886): class and function names are matched case-insensitively. Where Composer's PSR-4 map (from the build graph's `reads_config` rows) places a class's file, only the class in that file is a candidate and the row has `detail.autoload` `psr-4`, so a stray copy in another directory never is. A `private` method is reached from its class only and a `protected` one from its class's line; `T::f()` to one that is not reached is `unknown_name` with `detail.visibility`. A class or function of a Composer project the caller's project does not require is `dependency_missing` naming it. A group `use A\{B, C}` keeps its row, though its names are used.
+- Ruby (FR887 to FR889): a file sees itself and the files it requires, directly or through each other, and nothing else, so a class of the same name in a file nothing requires is never a candidate. `class A::B` names the constant `A::B`, and a constant inside it is looked up in `A::B` and at the top level, never in `A`. A file of a gem the requiring gem does not depend on is `dependency_missing`; a file in no gem is not judged.
+- A call on any other receiver (`o.total()`, `$u->save()`, `Cart.new.add`) binds to nothing, as in the other languages.
+- Not followed yet: Zeitwerk's path-to-constant autoloading (a Rails application with no `require` binds only within each file), methods inside `class << self`, `extend`, `prepend` and `module_function`, PHP traits, a `use` inside a PHP namespace block applying to that block only, Kotlin extension functions, and a Kotlin local value named like a type.
 
 ## The build graph: JavaScript and Go modules
 
@@ -313,10 +344,10 @@ A tier gives a row, or states under `not_at_tier` why it cannot; a row neither g
 | `csharp` | precise | 4/4 | 2/2 | 1/1 | 2/2 | 0/1 | 4/4 | 1/1 | 3/3 |
 | `go` | syntax | 3/4 | 0/2 | 0/1 | 0/2 | 1/1 | 0/4 | 1/1 | 0/3 |
 | `java` | syntax | 4/4 | 2/2 | 0/1 | 0/2 | 1/1 | 0/4 | 1/1 | 0/3 |
-| `kotlin` | syntax | 4/4 | 0/2 | 0/1 | 0/2 | 0/1 | 0/4 | 0/1 | 0/3 |
-| `php` | syntax | 4/4 | 0/2 | 0/1 | 0/2 | 0/1 | 0/4 | 0/1 | 0/3 |
+| `kotlin` | syntax | 4/4 | 0/2 | 0/1 | 0/2 | 0/1 | 0/4 | 1/1 | 0/3 |
+| `php` | syntax | 4/4 | 2/2 | 0/1 | 0/2 | 0/1 | 0/4 | 1/1 | 0/3 |
 | `python` | precise | 4/4 | 0/2 | 1/1 | 2/2 | 1/1 | 4/4 | 1/1 | 3/3 |
-| `ruby` | syntax | 4/4 | 0/2 | 0/1 | 0/2 | 0/1 | 0/4 | 0/1 | 0/3 |
+| `ruby` | syntax | 4/4 | 0/2 | 0/1 | 0/2 | 1/1 | 0/4 | 1/1 | 0/3 |
 | `rust` | syntax | 3/4 | 2/2 | 0/1 | 0/2 | 0/1+2 | 0/4 | 0/1 | 0/3 |
 | `typescript` | precise | 4/4 | 2/2 | 1/1 | 2/2 | 1/1 | 4/4 | 1/1 | 3/3 |
 
