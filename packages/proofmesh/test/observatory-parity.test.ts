@@ -11,7 +11,7 @@ import { Catalog } from '../src/meshstore/catalog.js'
 import { copyFixture, indexedDataDir, ROOT } from './helpers.js'
 import { mcpClient } from './mcp-client.js'
 
-// Observatory reads four routes that are not MCP tools (FR055). Each test shows the route answers with data an MCP client gets from
+// Observatory reads five routes that are not MCP tools (FR055). Each test shows the route answers with data an MCP client gets from
 // the tools on the same snapshot; where no tool lists something the route lists, the test title says so.
 let d: string, repoId: string, s: ViewServer, client: Client, cookie: string
 
@@ -49,7 +49,8 @@ function decodeGalaxy(gz: Buffer) {
   const names = buf.subarray(section(header.offsets.names), section(header.offsets.names) + header.names_bytes).toString('utf8').split('\n')
   return { header, links, kind, names }
 }
-const areaOf = (p: string) => { const dirs = p.split('/').slice(0, -1); return dirs.length ? dirs.slice(0, 3).join('/') : '(root)' }
+// The Terrain's areas are a file's first two directories (FR1400).
+const areaOf = (p: string) => { const dirs = p.split('/').slice(0, -1); return dirs.length ? dirs.slice(0, 2).join('/') : '(root)' }
 
 beforeAll(async () => {
   const repo = copyFixture()
@@ -119,6 +120,35 @@ describe('FR055 Observatory is built only on what other clients can get: its non
     const sum = (k: 'sites' | 'unresolved') => header.areas.reduce((n: number, a: any) => n + a.calls[k], 0)
     expect({ sites: sum('sites'), unresolved: sum('unresolved') }).toEqual({ sites: status.data.calls.sites, unresolved: status.data.calls.unresolved })
     expect(status.data.calls.sites).toBeGreaterThan(0)
+  })
+
+  it('FR055 FR1402 FR1403 /api/v1/galaxy/bundle: each bundle\'s count is the rows the route lists for its two areas, and each row is a relationship get_relationships returns, with its type, basis and call site', async () => {
+    const { header } = decodeGalaxy(await route('POST', '/api/v1/galaxy', {}))
+    const pairs = new Map<string, number>()
+    for (const [from, to, , , n] of header.bundles as Array<[number, number, number, number, number]>) pairs.set(`${from},${to}`, (pairs.get(`${from},${to}`) ?? 0) + n)
+    expect(pairs.size).toBeGreaterThan(0)
+    for (const [key, n] of pairs) {
+      const [from, to] = key.split(',').map((i) => header.areas[Number(i)].name as string)
+      const b = JSON.parse((await route('POST', '/api/v1/galaxy/bundle', { from, to })).toString())
+      expect(b.total, key).toBe(n)
+      expect(b.rows).toHaveLength(n)
+      expect(b.by_basis.observed + b.by_basis.inferred).toBe(n)
+      for (const [t, k] of [[0, 'observed'], [1, 'inferred']] as const) expect(b.by_basis[k]).toBe((header.bundles as number[][]).filter((x) => `${x[0]},${x[1]}` === key && x[3] === t).reduce((m, x) => m + x[4]!, 0))
+      for (const row of b.rows) {
+        expect(areaOf(row.source.path)).toBe(from); expect(areaOf(row.target.path)).toBe(to)
+        const env = await mcp('get_relationships', { subject_id: row.source.id, direction: 'out', types: [row.type], resolutions: ['resolved'], limits: { max_rows: 1000 } })
+        const r = env.data.relationships.find((x: { assertion_id: string }) => x.assertion_id === row.assertion_id)
+        expect(r, row.assertion_id).toBeTruthy()
+        expect({ target: r.other.id, basis: r.basis, site: r.site && { path: r.site.path, start_line: r.site.start_line } }).toEqual({ target: row.target.id, basis: row.basis, site: row.site })
+      }
+    }
+    // A page is the rows in the same order from its offset.
+    const [key] = [...pairs].sort((x, y) => y[1] - x[1])[0]!
+    const [from, to] = key.split(',').map((i) => header.areas[Number(i)].name as string)
+    const whole = JSON.parse((await route('POST', '/api/v1/galaxy/bundle', { from, to })).toString())
+    const tail = JSON.parse((await route('POST', '/api/v1/galaxy/bundle', { from, to, offset: 1, limit: 1 })).toString())
+    expect(tail.rows).toEqual(whole.rows.slice(1, 2))
+    expect(tail.next_offset).toBe(whole.total > 2 ? 2 : null)
   })
 
   it('FR055 /api/v1/snapshots: each listed snapshot\'s id, analysis mode, publication time, commit and current flag are what workspace_status and list_repositories say, and the route is list_snapshots\' data', async () => {

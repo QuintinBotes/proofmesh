@@ -37,7 +37,7 @@ test.beforeAll(async () => {
 })
 test.afterAll(() => view?.stop())
 
-test('SC012 FR065 hostile names and paths show as visible text in Galaxy, Map, Explore, Trace, Claims and Diff: no script runs, no markup is injected, no policy is violated, nothing loads from elsewhere', async ({ page }) => {
+test('SC012 FR065 hostile names and paths show as visible text in the Terrain, Explore, Trace, Claims and Diff: no script runs, no markup is injected, no policy is violated, nothing loads from elsewhere', async ({ page }) => {
   test.setTimeout(180000)
   const dialogs: string[] = [], elsewhere: string[] = []
   page.on('dialog', async (d) => { dialogs.push(d.message()); await d.dismiss() })
@@ -54,12 +54,12 @@ test('SC012 FR065 hostile names and paths show as visible text in Galaxy, Map, E
   await page.goto(view.launchUrl)
   await expect(conclusion).toContainText('symbols in', { timeout: 60000 })
 
-  // Galaxy: the search table lists the names.
+  // Terrain: the search table lists the names.
   await page.getByLabel('Search').fill('Evil')
   await page.getByRole('button', { name: 'Table', exact: true }).click()
   const matches = page.getByRole('table', { name: 'Symbols matching “Evil”' })
   await expect(matches).toContainText(METHOD)
-  await injected('Galaxy')
+  await injected('Terrain search')
 
   // Explore: the focus card, the neighbours and the evidence panel.
   await answered(page, () => matches.locator('tbody tr').filter({ hasText: METHOD }).getByRole('button', { name: 'Explore' }).click())
@@ -76,15 +76,16 @@ test('SC012 FR065 hostile names and paths show as visible text in Galaxy, Map, E
   await expect(neighbours).toContainText(FILLER)
   await injected('Explore')
 
-  // Map: directory and file names as areas; the first load already opened src, the only top-level directory.
-  await page.getByRole('tab', { name: 'Map' }).click()
-  await page.getByRole('button', { name: 'Table', exact: true }).click()
-  await expect(conclusion).toHaveText('src: 3 areas, 2 links between them. Click one to open it.')
-  const areas = page.getByRole('table', { name: 'Areas' })
-  await expect(areas).toContainText('<img src=x onerror=alert(1)>')
-  await expect(areas).toContainText('bidi⟨U+202E⟩gnp')
-  await expect(areas).toContainText('zero⟨U+200B⟩width')
-  await injected('Map')
+  // Terrain: the directory named with markup is an area, labelled as text; the file names label their cells once the src area is in view (FR1404).
+  await page.getByLabel('Search').fill('')
+  await page.getByRole('tab', { name: 'Terrain' }).click()
+  await page.getByRole('button', { name: 'Graph', exact: true }).click()
+  await expect(page.locator('.terrain-label.area', { hasText: '<img src=x onerror=alert(1)> 1' })).toHaveCount(1)
+  await page.getByRole('region', { name: 'Areas' }).getByRole('button', { name: /^src\s*\d+$/ }).click()
+  const files = page.locator('.terrain-label.file')
+  await expect(files.filter({ hasText: 'bidi⟨U+202E⟩gnp.ts' })).toHaveCount(1)
+  await expect(files.filter({ hasText: 'zero⟨U+200B⟩width.ts' })).toHaveCount(1)
+  await injected('Terrain')
 
   // Trace, in the lens (FR1300): the palette, the Path to picker and the traced table.
   await traceIt(page, ['start', 'start⟨U+200D⟩here'], ['zero', '⟨U+3164⟩'])
