@@ -610,8 +610,8 @@
       "from": "rust/lib:Counter.bump",
       "line": 4,
       "site_text": "helper()",
-      "resolution": "unresolved",
-      "reason": "outside_capability"
+      "resolution": "candidate",
+      "reason": "candidate"
     },
     {
       "from": "ruby/greeter:Greeter.greet",
@@ -715,8 +715,8 @@
       "from": "c/util:run",
       "line": 2,
       "site_text": "helper(1)",
-      "resolution": "unresolved",
-      "reason": "outside_capability"
+      "resolution": "candidate",
+      "reason": "candidate"
     }
   ],
   "closed_world": "Symbols and calls are complete for this fixture. The imports and table references below are complete for this fixture: the Swift file has the only imports, and the SQL file the table references.",

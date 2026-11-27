@@ -307,7 +307,7 @@ describe('FR187 FR188 the name matching of issue 16 stays inferred without its s
     withSnapshot(d, (db) => {
       const open = db.prepare("select detail from assertion where origin = 'syntax' and type in ('calls', 'inherits', 'implements', 'imports') and resolution in ('candidate', 'ambiguous')").all() as Array<{ detail: string }>
       expect(open.length).toBeGreaterThan(10)
-      for (const r of open) { const detail = JSON.parse(r.detail); expect(detail.rule).toMatch(/^(go|java)_/); expect(detail.inferred).toBeUndefined() }
+      for (const r of open) { const detail = JSON.parse(r.detail); expect(detail.rule).toMatch(/^(go|java|rust|c|cpp)_/); expect(detail.inferred).toBeUndefined() }
     })
     const rows = relationships(d, { subject_id: symbolId(d, 'lib/lib:Format'), direction: 'in', types: ['calls'] }).relationships
     expect(rows).toHaveLength(1)

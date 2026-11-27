@@ -4,7 +4,7 @@ import path from 'node:path'
 import type Database from 'better-sqlite3'
 import { describe, expect, it } from 'vitest'
 import { RESOLUTION_VERSION } from '../src/indexer/constrained/index.js'
-import { cli, expectedFor, fixtureRepo, indexedRepo, ROOT, symbolId, tmpDir, tool, withSnapshot } from './helpers.js'
+import { cli, expectedFor, fixtureRepo, indexedRepo, ROOT, rows, symbolId, tmpDir, tool, withSnapshot } from './helpers.js'
 
 const EXPECTED = expectedFor('constrained')
 let indexed: string | undefined
@@ -20,11 +20,11 @@ const constrainedIndex = () => {
 type Fact = { at: string; type: string; name: string; resolution: string; reason?: string; rule?: string; to?: string; candidates?: string[]; detail?: Record<string, string> }
 type Row = { id: string; type: string; resolution: string; reason: string | null; detail: string | null; target_kind: string | null; target_id: string | null; source_kind: string; source_id: string }
 
-/** Every call, supertype and import of the Go and Java files that the syntax tier read, as the oracle writes them. */
+/** Every call, supertype and import of the Go, Java, Rust, C and C++ files that the syntax tier read, as the oracle writes them. */
 function facts(db: Database.Database, keep: (f: Fact) => boolean = () => true, wanted: Record<string, string[]> = {}): Fact[] {
   const found = (db.prepare("select id, type, resolution, reason, detail, target_kind, target_id, source_kind, source_id from assertion where origin = 'syntax' and type in ('calls', 'inherits', 'implements', 'imports') order by id").all() as Row[]).flatMap((r) => {
     const ev = db.prepare('select e.start_line as line, f.path as path from assertion_evidence ae join evidence e on e.id = ae.evidence_id join file f on f.id = e.file_id where ae.assertion_id = ? order by e.start_byte limit 1').get(r.id) as { line: number; path: string }
-    if (!/\.(go|java)$/.test(ev.path)) return []
+    if (!/\.(go|java|rs|c|h|cpp|hpp)$/.test(ev.path)) return []
     const detail = (r.detail ? JSON.parse(r.detail) : {}) as Record<string, string>
     const at = `${ev.path}:${ev.line}`
     const name = r.type === 'calls' ? detail.callee! : r.type === 'imports' ? detail.module! : detail.name!
@@ -224,7 +224,7 @@ describe('FR171 issue 16 scenario 7: a candidate is read as inferred, and no edg
     withSnapshot(constrainedIndex(), (db) => {
       const open = (db.prepare("select id, resolution, detail from assertion where origin = 'syntax' and type in ('calls', 'inherits', 'implements', 'imports') and resolution in ('candidate', 'ambiguous')").all() as Array<{ id: string; resolution: string; detail: string }>)
       expect(open.length).toBeGreaterThan(10)
-      for (const r of open) expect(JSON.parse(r.detail)).toMatchObject({ rule: expect.stringMatching(/^(go|java)_/) })
+      for (const r of open) expect(JSON.parse(r.detail)).toMatchObject({ rule: expect.stringMatching(/^(go|java|rust|c|cpp)_/) })
       expect((db.prepare("select count(*) as n from edge e join assertion a on a.id = e.assertion_id where a.resolution in ('candidate', 'ambiguous')").get() as { n: number }).n).toBe(0)
       // No syntax-tier import is a resolved edge: a Go package is a directory and an import links files, so its row lists the package's files (FR177).
       expect((db.prepare("select count(*) as n from assertion where type = 'imports' and resolution = 'resolved' and origin = 'syntax'").get() as { n: number }).n).toBe(0)
@@ -271,7 +271,7 @@ describe('FR179 languages.md states the rules, one row per rule the tier applies
   it('FR179 every rule the fixtures show is named in docs/proofmesh/languages.md, and so is the cap and the cycle warning', () => {
     const doc = fs.readFileSync(path.join(ROOT, 'docs', 'proofmesh', 'languages.md'), 'utf8')
     const rules = new Set(all().flatMap((f) => (f.rule ? [f.rule] : [])))
-    expect(rules.size).toBe(8)
+    expect(rules.size).toBe(21)
     for (const rule of rules) expect(doc, rule).toContain(`\`${rule}\``)
     expect(doc).toContain('`module_cycles`')
     expect(doc).toContain('`detail.more`')
@@ -331,4 +331,135 @@ describe('FR172 FR173 FR174 FR177 FR180 review of the first version: precision w
     expect(lock.version, 'resolution.lock.json names another version than RESOLUTION_VERSION').toBe(RESOLUTION_VERSION)
     expect(hash.digest('hex'), 'the rules changed: bump RESOLUTION_VERSION in constrained/index.ts, then set the new version and hash in resolution.lock.json').toBe(lock.sha256)
   })
+})
+
+const RS = 'rust/app/src/main.rs'
+describe('FR750 FR751 FR752 FR753 FR754 Rust binds a name through its module, its uses, its paths and its crates, and only what privacy allows', () => {
+  it('FR750 a bare call binds the function of its own module, else the one a use names (by alias too), else what a glob use brings; a method call on a variable, or a name only a use in another function body brings, binds to nothing', () => {
+    expect(actual(`${RS}:7`, 'helper')).toMatchObject({ resolution: 'candidate', rule: 'rust_same_module', candidates: ['rust/app/src/main:helper@rust/app/src/main.rs'] })
+    expect(actual(`${RS}:9`, 'h')).toMatchObject({ resolution: 'candidate', rule: 'rust_use', candidates: ['rust/app/src/util:helper@rust/app/src/util.rs'] })
+    expect(actual(`${RS}:10`, 'render')).toMatchObject({ resolution: 'candidate', rule: 'rust_use', candidates: ['rust/shapes/src/draw:render@rust/shapes/src/draw.rs'] })
+    expect(actual('rust/shapes/src/lib.rs:10', 'render')).toMatchObject({ resolution: 'candidate', rule: 'rust_glob_use', candidates: ['rust/shapes/src/draw:render@rust/shapes/src/draw.rs'] })
+    expect(actual(`${RS}:16`, 'paint')).toMatchObject({ resolution: 'unresolved', reason: 'outside_capability' })
+    // A use inside a function body names nothing for the rest of the module: outside() cannot call drawn, and no call binds through it.
+    expect(actual(`${RS}:39`, 'shapes::draw::render')).toMatchObject({ resolution: 'candidate', rule: 'rust_use' })
+    expect(actual(`${RS}:44`, 'drawn')).toMatchObject({ resolution: 'unresolved', reason: 'outside_capability' })
+  }, 240000)
+
+  it('FR751 a path call follows a child module, super, a used module and a type; Self:: and self. bind the impl\'s own methods; an impl names its trait by path', () => {
+    expect(actual(`${RS}:8`, 'helper')).toMatchObject({ resolution: 'candidate', rule: 'rust_path', candidates: ['rust/app/src/util:helper@rust/app/src/util.rs'] })
+    expect(actual('rust/app/src/util.rs:2', 'helper')).toMatchObject({ resolution: 'candidate', rule: 'rust_path', candidates: ['rust/app/src/main:helper@rust/app/src/main.rs'] })
+    expect(actual(`${RS}:11`, 'render')).toMatchObject({ resolution: 'candidate', rule: 'rust_path', candidates: ['rust/shapes/src/draw:render@rust/shapes/src/draw.rs'] })
+    expect(actual(`${RS}:15`, 'new')).toMatchObject({ resolution: 'candidate', rule: 'rust_path', candidates: ['rust/app/src/main:Widget.new@rust/app/src/main.rs'] })
+    expect(actual(`${RS}:25`, 'make')).toMatchObject({ resolution: 'candidate', rule: 'rust_self', candidates: ['rust/app/src/main:Widget.make@rust/app/src/main.rs'] })
+    expect(actual(`${RS}:31`, 'size')).toMatchObject({ resolution: 'candidate', rule: 'rust_self', candidates: ['rust/app/src/main:Widget.size@rust/app/src/main.rs'] })
+    expect(actual(`${RS}:36`, 'shapes::Shape')).toMatchObject({ type: 'implements', resolution: 'candidate', rule: 'rust_path', candidates: ['rust/shapes/src/lib:Shape@rust/shapes/src/lib.rs'] })
+  }, 240000)
+
+  it('FR752 a private function of another module, and a pub(crate) one of another crate, are unknown_name with their visibility and no candidate; a private one is seen from inside its module', () => {
+    expect(actual(`${RS}:12`, 'secret')).toMatchObject({ resolution: 'unresolved', reason: 'unknown_name', detail: { visibility: 'private' } })
+    expect(actual(`${RS}:13`, 'crate_only')).toMatchObject({ resolution: 'unresolved', reason: 'unknown_name', detail: { visibility: 'crate' } })
+    expect(actual(`${RS}:12`, 'secret')!.candidates).toBeUndefined()
+    expect(actual('rust/shapes/src/draw.rs:2', 'crate_only')).toMatchObject({ resolution: 'candidate', rule: 'rust_same_module' })
+  }, 240000)
+
+  it('FR753 a path into a crate the caller declares no dependency on is dependency_missing naming it, and no function of that crate is ever a candidate though it has helper and render', () => {
+    expect(actual(`${RS}:14`, 'thing')).toMatchObject({ resolution: 'unresolved', reason: 'dependency_missing', detail: { undeclared: 'other' } })
+    withSnapshot(constrainedIndex(), (db) => {
+      expect((db.prepare("select count(*) as n from assertion_candidate c join symbol s on s.id = c.symbol_id join file f on f.id = s.file_id where f.path like 'rust/other/%'").get() as { n: number }).n).toBe(0)
+      // The positive control: the crate the caller does declare supplies candidates.
+      expect((db.prepare("select count(*) as n from assertion_candidate c join symbol s on s.id = c.symbol_id join file f on f.id = s.file_id where f.path like 'rust/shapes/%'").get() as { n: number }).n).toBeGreaterThan(3)
+    })
+  }, 240000)
+
+  it('FR753 a crate declared only as a dev-dependency, or a crate of that name outside the repository, keeps the row instead of claiming dependency_missing', async () => {
+    const { dataDir } = await indexedRepo({
+      'Cargo.toml': '[workspace]\nmembers = ["app", "util", "log"]\n',
+      'app/Cargo.toml': '[package]\nname = "app"\nversion = "0.1.0"\n\n[dependencies]\nlog = "0.4"\n\n[dev-dependencies]\nutil = { path = "../util" }\n',
+      'app/src/lib.rs': 'pub fn run() {\n    util::help();\n    log::info();\n    crate::run();\n}\n',
+      'util/Cargo.toml': '[package]\nname = "util"\nversion = "0.1.0"\n', 'util/src/lib.rs': 'pub fn help() {}\n',
+      'log/Cargo.toml': '[package]\nname = "log"\nversion = "0.1.0"\n', 'log/src/lib.rs': 'pub fn info() {}\n',
+    })
+    const calls = withSnapshot(dataDir, (db) => rows(db, 'calls')).map((r) => [r.detail?.callee, r.resolution, r.reason])
+    // The control: a path inside the crate itself still binds.
+    expect(calls).toEqual([['help', 'unresolved', 'outside_capability'], ['info', 'unresolved', 'outside_capability'], ['run', 'candidate', 'candidate']])
+  }, 240000)
+
+  it('FR754 mod x; is a candidate of the module file the layout fixes, and a use is a candidate of the item, module or glob it names, never resolved', () => {
+    expect(actual(`${RS}:1`, 'util')).toMatchObject({ resolution: 'candidate', rule: 'rust_mod_file', candidates: ['rust/app/src/util@rust/app/src/util.rs'] })
+    expect(actual(`${RS}:3`, 'crate::util::helper')).toMatchObject({ resolution: 'candidate', rule: 'rust_use', candidates: ['rust/app/src/util:helper@rust/app/src/util.rs'] })
+    expect(actual(`${RS}:4`, 'shapes::draw')).toMatchObject({ resolution: 'candidate', rule: 'rust_use', candidates: ['rust/shapes/src/draw@rust/shapes/src/draw.rs'] })
+    expect(actual('rust/shapes/src/lib.rs:7', 'super::draw::*')).toMatchObject({ resolution: 'candidate', rule: 'rust_use', candidates: ['rust/shapes/src/draw@rust/shapes/src/draw.rs'] })
+  }, 240000)
+})
+
+describe('FR755 FR756 FR757 C and C++ bind a name through the headers a file includes, never a static function of another file', () => {
+  it('FR755 a quoted include relative to its file is a candidate of that file, one found by the end of its path is c_include_name, and a system header the repository lacks keeps its row', () => {
+    expect(actual('c/app/main.c:1', '../lib/util.h')).toMatchObject({ resolution: 'candidate', rule: 'c_include_path', candidates: ['c/lib/util@c/lib/util.h'] })
+    expect(actual('c/app/main.c:4', 'util.h')).toMatchObject({ resolution: 'candidate', rule: 'c_include_name', candidates: ['c/lib/util@c/lib/util.h'] })
+    expect(actual('c/app/main.c:3', 'stdio.h')).toMatchObject({ resolution: 'unresolved', reason: 'outside_capability' })
+  }, 240000)
+
+  it('FR756 a bare call binds its own static function, never the static one of the same name in another file, and through a header the definition behind it; a static function of another file and a name only declared keep their rows', () => {
+    expect(actual('c/app/main.c:9', 'helper')).toMatchObject({ resolution: 'candidate', rule: 'c_same_file', candidates: ['c/app/main:helper@c/app/main.c'] })
+    expect(actual('c/app/main.c:10', 'add')).toMatchObject({ resolution: 'candidate', rule: 'c_include', candidates: ['c/lib/util:add@c/lib/util.c'] })
+    for (const [line, name] of [[11, 'hidden'], [12, 'declared_only'], [13, 'printf']] as const) expect(actual(`c/app/main.c:${line}`, name)).toMatchObject({ resolution: 'unresolved', reason: 'outside_capability' })
+  }, 240000)
+
+  it('FR757 in C++ a method calls its own class first, T::f() binds the members of T, ns::f() the functions of a header opening ns, and a call on an object binds to nothing', () => {
+    expect(actual('c/cpp/shape.cpp:6', 'size')).toMatchObject({ resolution: 'candidate', rule: 'cpp_same_class', candidates: ['c/cpp/shape:Shape.size@c/cpp/shape.cpp'] })
+    expect(actual('c/cpp/use.cpp:5', 'make')).toMatchObject({ resolution: 'candidate', rule: 'cpp_class_member', candidates: ['c/cpp/shape:Shape.make@c/cpp/shape.cpp'] })
+    expect(actual('c/cpp/use.cpp:4', 'area')).toMatchObject({ resolution: 'candidate', rule: 'cpp_namespace', candidates: ['c/cpp/shape:area@c/cpp/shape.cpp'] })
+    expect(actual('c/cpp/use.cpp:6', 'size')).toMatchObject({ resolution: 'unresolved', reason: 'outside_capability' })
+  }, 240000)
+
+  it('FR756 a C function only declared in the repository is left to the FFI seams: a Rust #[no_mangle] function a C call names is still linked as rust_no_mangle', async () => {
+    const { dataDir } = await indexedRepo({ 'c/api.h': 'int rs_add(int a);\n', 'c/main.c': '#include "api.h"\n\nint main(void) {\n    return rs_add(1);\n}\n', 'src/lib.rs': '#[no_mangle]\npub extern "C" fn rs_add(a: i32) -> i32 {\n    a\n}\n' })
+    expect(withSnapshot(dataDir, (db) => rows(db, 'calls')).filter((r) => r.detail?.callee === 'rs_add').map((r) => [r.resolution, r.detail?.rule, r.candidates])).toEqual([['candidate', 'rust_no_mangle', ['src/lib:rs_add@src/lib.rs']]])
+  }, 240000)
+})
+
+describe('FR758 languages.md names the Rust, C and C++ rules, and the rules\' version moved with them', () => {
+  it('FR758 every Rust, C and C++ rule has its row in languages.md, and RESOLUTION_VERSION is past the Go and Java rules\' 3', () => {
+    const doc = fs.readFileSync(path.join(ROOT, 'docs', 'proofmesh', 'languages.md'), 'utf8')
+    for (const rule of ['rust_same_module', 'rust_use', 'rust_glob_use', 'rust_path', 'rust_self', 'rust_mod_file', 'c_include_path', 'c_include_name', 'c_same_file', 'c_include', 'cpp_same_class', 'cpp_class_member', 'cpp_namespace']) expect(doc, rule).toContain(`| \`${rule}\``)
+    expect(RESOLUTION_VERSION).toBeGreaterThan(3)
+  })
+})
+
+describe('FR751 FR753 FR756 FR757 review of the Rust, C and C++ rules: what Cargo and C++ scope make of a name', () => {
+  it('FR751 FR753 a module a glob use brings, a binary beside its library, and a tests/ crate with its own common module bind their own code, never a crate of the same name', async () => {
+    const pkg = (name: string, deps = '') => `[package]\nname = "${name}"\nversion = "0.1.0"\n${deps}`
+    const { dataDir } = await indexedRepo({
+      'Cargo.toml': '[workspace]\nmembers = ["app", "config", "common"]\n',
+      'app/Cargo.toml': pkg('app', '\n[dependencies]\ncommon = { path = "../common" }\n'),
+      'app/src/lib.rs': 'mod config;\n\npub fn f() {}\n\n#[cfg(test)]\nmod tests {\n    use super::*;\n\n    fn t() {\n        config::load();\n    }\n}\n',
+      'app/src/config.rs': 'pub fn load() {}\n',
+      'app/src/main.rs': 'fn f() {}\n\nfn main() {\n    crate::f();\n    app::f();\n}\n',
+      'app/tests/it.rs': 'mod common;\n\nfn t() {\n    common::setup();\n}\n',
+      'app/tests/common/mod.rs': 'pub fn setup() {}\n',
+      'config/Cargo.toml': pkg('config'), 'config/src/lib.rs': 'pub fn load() {}\n',
+      'common/Cargo.toml': pkg('common'), 'common/src/lib.rs': 'pub fn setup() {}\n',
+    })
+    const calls = withSnapshot(dataDir, (db) => rows(db, 'calls')).map((r) => [r.path, r.line, r.detail?.callee, r.resolution, r.detail?.rule, r.candidates])
+    expect(calls).toEqual([
+      ['app/src/main.rs', 4, 'f', 'candidate', 'rust_path', ['app/src/main:f@app/src/main.rs']],
+      ['app/src/main.rs', 5, 'f', 'candidate', 'rust_path', ['app/src/lib:f@app/src/lib.rs']],
+      ['app/src/lib.rs', 10, 'load', 'candidate', 'rust_path', ['app/src/config:load@app/src/config.rs']],
+      ['app/tests/it.rs', 4, 'setup', 'candidate', 'rust_path', ['app/tests/common/mod:setup@app/tests/common/mod.rs']],
+    ].sort((a, b) => String(a[0]).localeCompare(String(b[0])) || Number(a[1]) - Number(b[1])))
+  }, 240000)
+
+  it('FR757 FR755 a member the class declares hides a free function of the name though no body is in the repository, and an angle include names every file ending with its path', async () => {
+    const { dataDir } = await indexedRepo({
+      'shape.hpp': 'class Shape {\npublic:\n    virtual void draw() = 0;\n    void render();\n};\n',
+      'shape.cpp': '#include "shape.hpp"\n\nstatic void draw(int x) {}\n\nvoid Shape::render() {\n    draw();\n}\n',
+      'inc/a/x.h': 'int xa(void);\n', 'inc/b/x.h': 'int xb(void);\n', 'main.c': '#include <x.h>\n\nint main(void) {\n    return 0;\n}\n',
+    })
+    withSnapshot(dataDir, (db) => {
+      expect(rows(db, 'calls').filter((r) => r.detail?.callee === 'draw').map((r) => [r.resolution, r.reason])).toEqual([['unresolved', 'outside_capability']])
+      const include = db.prepare("select a.resolution, a.detail from assertion a where a.type = 'imports' and a.detail like '%x.h%'").get() as { resolution: string; detail: string }
+      expect([include.resolution, JSON.parse(include.detail).rule]).toEqual(['ambiguous', 'c_include_name'])
+    })
+  }, 240000)
 })

@@ -85,11 +85,11 @@
           ]
         },
         "imports": {
-          "rows": [],
-          "not_at_tier": [
+          "rows": [
+            { "role": "report", "row": "report.cc:1 candidate inferred" },
             {
-              "role": "report",
-              "reason": "slice 59b, languages.md (Swift, Scala, C, C++ and Bash, FR231): the tier records each C++ include as an unresolved row with no target, so no row points at the file; constrained name matching does not cover C++ yet"
+              "extra": "languages.md (constrained name matching in Rust, C and C++, FR755): shapes.cc includes the header whose functions it defines, a candidate by its relative path (c_include_path)",
+              "row": "shapes.cc:1 candidate inferred"
             }
           ]
         },
@@ -116,12 +116,8 @@
           ]
         },
         "find_tests": {
-          "rows": [],
-          "not_at_tier": [
-            {
-              "role": "totalOfTwo",
-              "reason": "slice 59b, languages.md (Swift, Scala, C, C++ and Bash, FR233): C++ calls are recorded as unresolved rows with no target, so no call reaches total; constrained name matching does not cover C++ yet"
-            }
+          "rows": [
+            { "role": "totalOfTwo", "row": "\"TEST(Shapes, TotalOfTwo)\" shapes_test.cc:8 depth=1 inferred" }
           ]
         },
         "trace_paths": {

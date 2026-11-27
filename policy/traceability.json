@@ -917,6 +917,33 @@
     "FR180": [
       "packages/proofmesh/test/constrained.test.ts"
     ],
+    "FR750": [
+      "packages/proofmesh/test/constrained.test.ts"
+    ],
+    "FR751": [
+      "packages/proofmesh/test/constrained.test.ts"
+    ],
+    "FR752": [
+      "packages/proofmesh/test/constrained.test.ts"
+    ],
+    "FR753": [
+      "packages/proofmesh/test/constrained.test.ts"
+    ],
+    "FR754": [
+      "packages/proofmesh/test/constrained.test.ts"
+    ],
+    "FR755": [
+      "packages/proofmesh/test/constrained.test.ts"
+    ],
+    "FR756": [
+      "packages/proofmesh/test/constrained.test.ts"
+    ],
+    "FR757": [
+      "packages/proofmesh/test/constrained.test.ts"
+    ],
+    "FR758": [
+      "packages/proofmesh/test/constrained.test.ts"
+    ],
     "FR181": [
       "packages/proofmesh/test/basis.test.ts"
     ],

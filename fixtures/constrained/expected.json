@@ -1,5 +1,5 @@
 {
-  "closed_world": "Every call, supertype and import statement of the Go and Java files, with how the rules bind it: its resolution, its reason when unresolved, the rule that bound it, and its candidates in rank order (qualified name at path). Written by hand from the language rules, never from the output.",
+  "closed_world": "Every call, supertype and import statement of the Go, Java, Rust, C and C++ files, with how the rules bind it: its resolution, its reason when unresolved, the rule that bound it, and its candidates in rank order (qualified name at path). Written by hand from the language rules, never from the output.",
   "calls": [
     {
       "at": "svc/main.go:6",
@@ -286,6 +286,282 @@
       "detail": {
         "undeclared": "example:a"
       }
+    },
+    {
+      "at": "rust/app/src/main.rs:7",
+      "type": "calls",
+      "name": "helper",
+      "resolution": "candidate",
+      "rule": "rust_same_module",
+      "candidates": [
+        "rust/app/src/main:helper@rust/app/src/main.rs"
+      ]
+    },
+    {
+      "at": "rust/app/src/main.rs:8",
+      "type": "calls",
+      "name": "helper",
+      "resolution": "candidate",
+      "rule": "rust_path",
+      "candidates": [
+        "rust/app/src/util:helper@rust/app/src/util.rs"
+      ]
+    },
+    {
+      "at": "rust/app/src/main.rs:9",
+      "type": "calls",
+      "name": "h",
+      "resolution": "candidate",
+      "rule": "rust_use",
+      "candidates": [
+        "rust/app/src/util:helper@rust/app/src/util.rs"
+      ]
+    },
+    {
+      "at": "rust/app/src/main.rs:10",
+      "type": "calls",
+      "name": "render",
+      "resolution": "candidate",
+      "rule": "rust_use",
+      "candidates": [
+        "rust/shapes/src/draw:render@rust/shapes/src/draw.rs"
+      ]
+    },
+    {
+      "at": "rust/app/src/main.rs:11",
+      "type": "calls",
+      "name": "render",
+      "resolution": "candidate",
+      "rule": "rust_path",
+      "candidates": [
+        "rust/shapes/src/draw:render@rust/shapes/src/draw.rs"
+      ]
+    },
+    {
+      "at": "rust/app/src/main.rs:12",
+      "type": "calls",
+      "name": "secret",
+      "resolution": "unresolved",
+      "reason": "unknown_name",
+      "detail": {
+        "visibility": "private"
+      }
+    },
+    {
+      "at": "rust/app/src/main.rs:13",
+      "type": "calls",
+      "name": "crate_only",
+      "resolution": "unresolved",
+      "reason": "unknown_name",
+      "detail": {
+        "visibility": "crate"
+      }
+    },
+    {
+      "at": "rust/app/src/main.rs:14",
+      "type": "calls",
+      "name": "thing",
+      "resolution": "unresolved",
+      "reason": "dependency_missing",
+      "detail": {
+        "undeclared": "other"
+      }
+    },
+    {
+      "at": "rust/app/src/main.rs:15",
+      "type": "calls",
+      "name": "new",
+      "resolution": "candidate",
+      "rule": "rust_path",
+      "candidates": [
+        "rust/app/src/main:Widget.new@rust/app/src/main.rs"
+      ]
+    },
+    {
+      "at": "rust/app/src/main.rs:16",
+      "type": "calls",
+      "name": "paint",
+      "resolution": "unresolved",
+      "reason": "outside_capability"
+    },
+    {
+      "at": "rust/app/src/main.rs:25",
+      "type": "calls",
+      "name": "make",
+      "resolution": "candidate",
+      "rule": "rust_self",
+      "candidates": [
+        "rust/app/src/main:Widget.make@rust/app/src/main.rs"
+      ]
+    },
+    {
+      "at": "rust/app/src/main.rs:31",
+      "type": "calls",
+      "name": "size",
+      "resolution": "candidate",
+      "rule": "rust_self",
+      "candidates": [
+        "rust/app/src/main:Widget.size@rust/app/src/main.rs"
+      ]
+    },
+    {
+      "at": "rust/app/src/util.rs:2",
+      "type": "calls",
+      "name": "helper",
+      "resolution": "candidate",
+      "rule": "rust_path",
+      "candidates": [
+        "rust/app/src/main:helper@rust/app/src/main.rs"
+      ]
+    },
+    {
+      "at": "rust/app/src/util.rs:3",
+      "type": "calls",
+      "name": "inner",
+      "resolution": "candidate",
+      "rule": "rust_same_module",
+      "candidates": [
+        "rust/app/src/util:inner@rust/app/src/util.rs"
+      ]
+    },
+    {
+      "at": "rust/shapes/src/draw.rs:2",
+      "type": "calls",
+      "name": "crate_only",
+      "resolution": "candidate",
+      "rule": "rust_same_module",
+      "candidates": [
+        "rust/shapes/src/draw:crate_only@rust/shapes/src/draw.rs"
+      ]
+    },
+    {
+      "at": "c/app/main.c:9",
+      "type": "calls",
+      "name": "helper",
+      "resolution": "candidate",
+      "rule": "c_same_file",
+      "candidates": [
+        "c/app/main:helper@c/app/main.c"
+      ]
+    },
+    {
+      "at": "c/app/main.c:10",
+      "type": "calls",
+      "name": "add",
+      "resolution": "candidate",
+      "rule": "c_include",
+      "candidates": [
+        "c/lib/util:add@c/lib/util.c"
+      ]
+    },
+    {
+      "at": "c/app/main.c:11",
+      "type": "calls",
+      "name": "hidden",
+      "resolution": "unresolved",
+      "reason": "outside_capability"
+    },
+    {
+      "at": "c/app/main.c:12",
+      "type": "calls",
+      "name": "declared_only",
+      "resolution": "unresolved",
+      "reason": "outside_capability"
+    },
+    {
+      "at": "c/app/main.c:13",
+      "type": "calls",
+      "name": "printf",
+      "resolution": "unresolved",
+      "reason": "outside_capability"
+    },
+    {
+      "at": "c/app/main.c:15",
+      "type": "calls",
+      "name": "run",
+      "resolution": "unresolved",
+      "reason": "outside_capability"
+    },
+    {
+      "at": "c/cpp/shape.cpp:5",
+      "type": "calls",
+      "name": "area",
+      "resolution": "candidate",
+      "rule": "c_same_file",
+      "candidates": [
+        "c/cpp/shape:area@c/cpp/shape.cpp"
+      ]
+    },
+    {
+      "at": "c/cpp/shape.cpp:7",
+      "type": "calls",
+      "name": "Shape",
+      "resolution": "candidate",
+      "rule": "c_include",
+      "candidates": [
+        "c/cpp/shape:Shape@c/cpp/shape.hpp"
+      ]
+    },
+    {
+      "at": "c/cpp/use.cpp:4",
+      "type": "calls",
+      "name": "area",
+      "resolution": "candidate",
+      "rule": "cpp_namespace",
+      "candidates": [
+        "c/cpp/shape:area@c/cpp/shape.cpp"
+      ]
+    },
+    {
+      "at": "c/cpp/use.cpp:5",
+      "type": "calls",
+      "name": "make",
+      "resolution": "candidate",
+      "rule": "cpp_class_member",
+      "candidates": [
+        "c/cpp/shape:Shape.make@c/cpp/shape.cpp"
+      ]
+    },
+    {
+      "at": "c/cpp/use.cpp:6",
+      "type": "calls",
+      "name": "size",
+      "resolution": "unresolved",
+      "reason": "outside_capability"
+    },
+    {
+      "at": "rust/shapes/src/lib.rs:10",
+      "type": "calls",
+      "name": "render",
+      "resolution": "candidate",
+      "rule": "rust_glob_use",
+      "candidates": [
+        "rust/shapes/src/draw:render@rust/shapes/src/draw.rs"
+      ]
+    },
+    {
+      "at": "c/cpp/shape.cpp:6",
+      "type": "calls",
+      "name": "size",
+      "resolution": "candidate",
+      "rule": "cpp_same_class",
+      "candidates": [
+        "c/cpp/shape:Shape.size@c/cpp/shape.cpp"
+      ]
+    },
+    {
+      "at": "rust/app/src/main.rs:40",
+      "type": "calls",
+      "name": "drawn",
+      "resolution": "unresolved",
+      "reason": "outside_capability"
+    },
+    {
+      "at": "rust/app/src/main.rs:44",
+      "type": "calls",
+      "name": "drawn",
+      "resolution": "unresolved",
+      "reason": "outside_capability"
     }
   ],
   "heritage": [
@@ -351,6 +627,16 @@
       "rule": "java_import",
       "candidates": [
         "a.Util@java/a/src/main/java/a/Util.java"
+      ]
+    },
+    {
+      "at": "rust/app/src/main.rs:36",
+      "type": "implements",
+      "name": "shapes::Shape",
+      "resolution": "candidate",
+      "rule": "rust_path",
+      "candidates": [
+        "rust/shapes/src/lib:Shape@rust/shapes/src/lib.rs"
       ]
     }
   ],
@@ -561,6 +847,143 @@
       "detail": {
         "undeclared": "example:a"
       }
+    },
+    {
+      "at": "rust/app/src/main.rs:1",
+      "type": "imports",
+      "name": "util",
+      "resolution": "candidate",
+      "rule": "rust_mod_file",
+      "candidates": [
+        "rust/app/src/util@rust/app/src/util.rs"
+      ]
+    },
+    {
+      "at": "rust/app/src/main.rs:2",
+      "type": "imports",
+      "name": "shapes::draw::render",
+      "resolution": "candidate",
+      "rule": "rust_use",
+      "candidates": [
+        "rust/shapes/src/draw:render@rust/shapes/src/draw.rs"
+      ]
+    },
+    {
+      "at": "rust/app/src/main.rs:3",
+      "type": "imports",
+      "name": "crate::util::helper",
+      "resolution": "candidate",
+      "rule": "rust_use",
+      "candidates": [
+        "rust/app/src/util:helper@rust/app/src/util.rs"
+      ]
+    },
+    {
+      "at": "rust/app/src/main.rs:4",
+      "type": "imports",
+      "name": "shapes::draw",
+      "resolution": "candidate",
+      "rule": "rust_use",
+      "candidates": [
+        "rust/shapes/src/draw@rust/shapes/src/draw.rs"
+      ]
+    },
+    {
+      "at": "rust/shapes/src/lib.rs:1",
+      "type": "imports",
+      "name": "draw",
+      "resolution": "candidate",
+      "rule": "rust_mod_file",
+      "candidates": [
+        "rust/shapes/src/draw@rust/shapes/src/draw.rs"
+      ]
+    },
+    {
+      "at": "c/app/main.c:1",
+      "type": "imports",
+      "name": "../lib/util.h",
+      "resolution": "candidate",
+      "rule": "c_include_path",
+      "candidates": [
+        "c/lib/util@c/lib/util.h"
+      ]
+    },
+    {
+      "at": "c/app/main.c:2",
+      "type": "imports",
+      "name": "local.h",
+      "resolution": "candidate",
+      "rule": "c_include_path",
+      "candidates": [
+        "c/app/local@c/app/local.h"
+      ]
+    },
+    {
+      "at": "c/app/main.c:3",
+      "type": "imports",
+      "name": "stdio.h",
+      "resolution": "unresolved",
+      "reason": "outside_capability"
+    },
+    {
+      "at": "c/app/main.c:4",
+      "type": "imports",
+      "name": "util.h",
+      "resolution": "candidate",
+      "rule": "c_include_name",
+      "candidates": [
+        "c/lib/util@c/lib/util.h"
+      ]
+    },
+    {
+      "at": "c/lib/util.c:1",
+      "type": "imports",
+      "name": "util.h",
+      "resolution": "candidate",
+      "rule": "c_include_path",
+      "candidates": [
+        "c/lib/util@c/lib/util.h"
+      ]
+    },
+    {
+      "at": "c/cpp/shape.cpp:1",
+      "type": "imports",
+      "name": "shape.hpp",
+      "resolution": "candidate",
+      "rule": "c_include_path",
+      "candidates": [
+        "c/cpp/shape@c/cpp/shape.hpp"
+      ]
+    },
+    {
+      "at": "c/cpp/use.cpp:1",
+      "type": "imports",
+      "name": "shape.hpp",
+      "resolution": "candidate",
+      "rule": "c_include_path",
+      "candidates": [
+        "c/cpp/shape@c/cpp/shape.hpp"
+      ]
+    },
+    {
+      "at": "rust/shapes/src/lib.rs:7",
+      "type": "imports",
+      "name": "super::draw::*",
+      "resolution": "candidate",
+      "rule": "rust_use",
+      "candidates": [
+        "rust/shapes/src/draw@rust/shapes/src/draw.rs"
+      ]
+    },
+    {
+      "at": "rust/app/src/main.rs:39",
+      "type": "imports",
+      "name": "shapes::draw::render",
+      "resolution": "candidate",
+      "rule": "rust_use",
+      "candidates": [
+        "rust/shapes/src/draw:render@rust/shapes/src/draw.rs"
+      ]
     }
   ]
 }

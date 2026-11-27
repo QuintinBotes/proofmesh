@@ -44,16 +44,9 @@
           ]
         },
         "implements": {
-          "rows": [],
-          "not_at_tier": [
-            {
-              "role": "Circle",
-              "reason": "slice 59a, languages.md (Kotlin, Rust, PHP and Ruby, FR222): `impl Shape for Circle` is recorded as an implements row (FR222) but unresolved, with no target, so no row reaches Shape; constrained name matching does not cover Rust yet"
-            },
-            {
-              "role": "Square",
-              "reason": "slice 59a, languages.md (Kotlin, Rust, PHP and Ruby, FR222): `impl Shape for Circle` is recorded as an implements row (FR222) but unresolved, with no target, so no row reaches Shape; constrained name matching does not cover Rust yet"
-            }
+          "rows": [
+            { "role": "Circle", "row": "Circle src/shapes.rs:9 candidate inferred" },
+            { "role": "Square", "row": "Square src/shapes.rs:19 candidate inferred" }
           ]
         },
         "calls_shape_area": {
@@ -71,20 +64,29 @@
           "not_at_tier": [
             {
               "role": "circleArea",
-              "reason": "languages.md (constrained name matching): Rust is not covered yet, so its call sites stay unresolved"
+              "reason": "languages.md (constrained name matching in Rust, C and C++, FR750): `Circle { radius: 1.0 }.area()` has an expression as receiver, whose type the tier does not know, so it binds to nothing"
             },
             {
               "role": "total",
-              "reason": "languages.md (constrained name matching): Rust is not covered yet, so its call sites stay unresolved"
+              "reason": "languages.md (constrained name matching in Rust, C and C++, FR750): the receiver s is a variable, whose type the tier does not know, so the call through Shape binds to nothing"
             }
           ]
         },
         "imports": {
-          "rows": [],
+          "rows": [
+            {
+              "extra": "languages.md (constrained name matching in Rust, C and C++, FR754): lib.rs declares `pub mod shapes;`, a candidate of the module file the crate's layout fixes (rust_mod_file)",
+              "row": "src/lib.rs:2 candidate inferred"
+            },
+            {
+              "extra": "languages.md (constrained name matching in Rust, C and C++, FR754): the test module's `use super::*` is a glob use of its parent module, which is this file (rust_use)",
+              "row": "src/shapes.rs:39 candidate inferred"
+            }
+          ],
           "not_at_tier": [
             {
               "role": "report",
-              "reason": "slice 59a, languages.md (Kotlin, Rust, PHP and Ruby, FR221): the tier records each Rust import as an unresolved row with no target, so no row points at the file; constrained name matching does not cover Rust yet"
+              "reason": "languages.md (constrained name matching in Rust, C and C++, FR754): report.rs's `use crate::shapes::{total, Circle}` binds the items it names, total and Circle, not the module symbol of the file"
             }
           ]
         },
@@ -93,19 +95,19 @@
           "not_at_tier": [
             {
               "role": "circleArea",
-              "reason": "languages.md (constrained name matching): Rust is not covered yet, so its call sites stay unresolved"
+              "reason": "languages.md (constrained name matching in Rust, C and C++, FR750): `Circle { radius: 1.0 }.area()` has an expression as receiver, whose type the tier does not know, so it binds to nothing"
             },
             {
               "role": "total",
-              "reason": "languages.md (constrained name matching): Rust is not covered yet, so its call sites stay unresolved"
+              "reason": "languages.md (constrained name matching in Rust, C and C++, FR750): the receiver s is a variable, whose type the tier does not know, so the call through Shape binds to nothing"
             },
             {
               "role": "report",
-              "reason": "languages.md (constrained name matching): Rust is not covered yet, so its call sites stay unresolved"
+              "reason": "reached only through total"
             },
             {
               "role": "totalOfTwo",
-              "reason": "languages.md (constrained name matching): Rust is not covered yet, so its call sites stay unresolved"
+              "reason": "reached only through total"
             }
           ]
         },
@@ -114,7 +116,7 @@
           "not_at_tier": [
             {
               "role": "totalOfTwo",
-              "reason": "languages.md (constrained name matching): Rust is not covered yet, so its call sites stay unresolved"
+              "reason": "observed: the test calls total inside `assert_eq!`, whose arguments the grammar reads as a token tree and not as calls, so no call row reaches total"
             }
           ]
         },
