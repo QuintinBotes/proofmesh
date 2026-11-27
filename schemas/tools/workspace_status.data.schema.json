@@ -841,6 +841,14 @@
         }
       }
     },
+    "ffi_seams": {
+      "type": "object",
+      "description": "The FFI seams of the snapshot by mechanism (FR467): the count of calls the FFI rules linked or named external, under each rule (`jni`, `pinvoke`, `cgo`, `cgo_export`, `rust_extern_c`, `rust_no_mangle`, `python_c_extension`). A mechanism with none is absent; empty for a snapshot sealed before the FFI rules.",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 1
+      }
+    },
     "analysis": {
       "type": "object",
       "additionalProperties": false,

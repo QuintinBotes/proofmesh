@@ -673,6 +673,8 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
         files,
         file_summary: fileSummary,
         languages,
+        // The FFI seams by mechanism (FR467); empty for a snapshot sealed before the FFI rules, or with none.
+        ffi_seams: (meta.ffi_seams ? JSON.parse(meta.ffi_seams) : {}) as Record<string, number>,
         hubs: input.include_generated === true ? hubsOf(ctx.db, true) : snapshotSummary(ctx.db, ctx.snapshot.id).hubs,
         module_cycles: cycles,
         jobs: ctx.catalog.openJobs(ctx.repo.id),

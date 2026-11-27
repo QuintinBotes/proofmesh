@@ -26,6 +26,7 @@ import { vendoredGoImports } from './vendored-imports.js'
 import { constrain, RESOLUTION_VERSION, type Sym } from './constrained/index.js'
 import { type EndpointSym, linkHttp, SEAMS_VERSION } from './seams-http.js'
 import { isContract, linkSchemas, SCHEMA_SEAMS_VERSION } from './seams-schema.js'
+import { ffiCensus, FFI_PRODUCER, FFI_SEAMS_VERSION, linkFfi } from './seams-ffi.js'
 import { moduleCycles } from './module-cycles.js'
 
 export type IndexResult = {
@@ -224,7 +225,7 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
     const configs = Object.fromEntries(runs.map((r) => [r.spec.id, r.config!]))
     // Raising a budget must index again: a file the old budget failed is not the answer under the new one. Facts do not change with it.
     const budgets = Object.fromEntries(runs.map((r) => [r.spec.id, r.budgetMb!]))
-    const identity = { repository_id: repo.id, manifest_hash: manifest, config_hash: sha256(canonicalJson({ ...analysisConfig(), generated_policy: GENERATED_POLICY, adapters: configs, adapter_memory_mb: budgets })), analysis_mode: analysisMode, adapters, format_version: FORMAT_VERSION, format_ddl: sha256(readSql(`snapshot-format/${FORMAT_VERSION}.sql`)), ownership: OWNERSHIP_VERSION, resolution: RESOLUTION_VERSION, seams: SEAMS_VERSION, schema_seams: SCHEMA_SEAMS_VERSION }
+    const identity = { repository_id: repo.id, manifest_hash: manifest, config_hash: sha256(canonicalJson({ ...analysisConfig(), generated_policy: GENERATED_POLICY, adapters: configs, adapter_memory_mb: budgets })), analysis_mode: analysisMode, adapters, format_version: FORMAT_VERSION, format_ddl: sha256(readSql(`snapshot-format/${FORMAT_VERSION}.sql`)), ownership: OWNERSHIP_VERSION, resolution: RESOLUTION_VERSION, seams: SEAMS_VERSION, schema_seams: SCHEMA_SEAMS_VERSION, ffi_seams: FFI_SEAMS_VERSION }
     // The fallbacks a published snapshot recorded. One made while analysing (an adapter died) is not a function of the inputs, so it is never the answer to a later index:
     // the identity takes a `retry` number past each such snapshot, and the adapter is asked again.
     const recorded = (id: string): Array<{ adapter: string; files: number; reason: string; kind: string }> => {
@@ -472,11 +473,14 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
       if (moved.length) throw new ProofmeshError('UNSTABLE_WORKTREE', `${moved.length} file${moved.length === 1 ? '' : 's'} changed while indexing (${moved.slice(0, 3).join(', ')}); index again when the tree is quiet`, { detail: 'changed_during_capture', paths: moved.slice(0, 20) })
       progress({ phase: 'write', done: 0, total: pending.length })
       // The names the language's rules can bind are bound before anything is written, from the whole workspace's facts (FR171).
-      const bound = vendoredGoImports(constrain(declared, pending, (p) => { const h = hashOf.get(p); return h ? store.read(h) : undefined }), discovered, (p) => fs.readFileSync(path.join(root, p), 'utf8'))
+      const readCaptured = (p: string) => { const h = hashOf.get(p); return h ? store.read(h) : undefined }
+      const bound = vendoredGoImports(constrain(declared, pending, readCaptured), discovered, (p) => fs.readFileSync(path.join(root, p), 'utf8'))
+      // A call across a foreign-function interface is bound to the other side by its mechanism's naming rule (FR460); the other seam passes read the rows as the adapters wrote them.
+      const ffi = linkFfi(declared, bound, readCaptured, { id: FFI_PRODUCER, version: FFI_SEAMS_VERSION, mode: analysisMode })
       // Millions of relationships take minutes to write: progress inside the transaction keeps the job and the index lease alive.
       // Each HTTP client is then linked to the handler of the endpoint it names, whatever language either is in (FR255), and each gRPC or
       // GraphQL contract to the code that implements and calls it (FR403, FR404).
-      const linked = [...bound, ...linkHttp(declared, endpoints.filter((e) => !isContract(e.qualified_name)), bound, { id: 'seams-http', version: SEAMS_VERSION, mode: analysisMode }), ...linkSchemas(declared, endpoints, bound, { id: 'seams-schema', version: SCHEMA_SEAMS_VERSION, mode: analysisMode })]
+      const linked = [...ffi, ...linkHttp(declared, endpoints.filter((e) => !isContract(e.qualified_name)), bound, { id: 'seams-http', version: SEAMS_VERSION, mode: analysisMode }), ...linkSchemas(declared, endpoints, bound, { id: 'seams-schema', version: SCHEMA_SEAMS_VERSION, mode: analysisMode })]
       db.transaction(() => writer.relationships(linked, (done) => progress({ phase: 'write', done, total: linked.length })))()
       const ownershipFiles = captured.filter((c) => c.role === 'ownership')
       const ownersFile = effectiveCodeowners(ownershipFiles.map((c) => c.path))
@@ -515,6 +519,7 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
       if (writer.disambiguated.length) db.prepare("insert into meta (key, value) values ('key_disambiguated', ?)").run(canonicalJson({ count: writer.disambiguated.length, truncated: false, keys: writer.disambiguated }))
       // Build modules a syntax-tier edge ties into a cycle, in an ecosystem whose builds forbid one (FR178).
       const cycles = moduleCycles(db)
+      db.prepare("insert into meta (key, value) values ('ffi_seams', ?)").run(ffiCensus(ffi))
       if (cycles.length) db.prepare("insert into meta (key, value) values ('module_cycles', ?)").run(canonicalJson(cycles))
       progress({ phase: 'check', done: 0, total: 0 })
       validate(db, store)
