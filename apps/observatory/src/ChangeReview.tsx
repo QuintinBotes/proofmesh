@@ -167,7 +167,7 @@ export function ChangePanel({ row, tests, onClose }: { row: Row; tests: Reach[] 
       ) : <p className="dim">{row.changed.change} at {visible(`${row.changed.path}:${row.changed.line}`)}; {plural(row.changed.dependents.length, 'dependent')}.</p>}
       <section aria-label="Tests">
         <h3>Tests</h3>
-        {d?.status === 'changed' && <p className="dim">Changed in this diff, so no test is asked of it.</p>}
+        {d?.status === 'changed' && <p className="dim">Changed in this diff, so the gate needs no test of it.</p>}
         {tests instanceof Error ? <p className="error" role="alert">{visible(tests.message)}</p>
           : tests === null ? <p className="dim" role="status">Asking find_tests…</p>
           : tests.length === 0 ? <p className="dim">No test reaches it.</p>
