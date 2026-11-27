@@ -71,3 +71,34 @@ The first measurement of the large snapshot missed two budgets: the moving 95th 
 ### Decision
 
 Keep cosmos.gl. Its per-press GPU read-back and the shader pipelines it builds for a filtered view are its costs on very large galaxies; Proofmesh now schedules around them rather than paying them inside an interaction.
+
+## Renderer (#42, decided 2026-11-25)
+
+### Question
+
+Observatory shipped two WebGL stacks: sigma with graphology for Explore, Map, Trace and Ecosystem, and cosmos.gl with luma.gl for the Galaxy's force simulation, together 66% of the source in its bundle. Which one does it keep, and does the force-directed Galaxy retire for the Terrain (#46)?
+
+### Options, measured by building the app with each stack marked external
+
+| Option | Initial JS, gzip | Notes |
+|---|---|---|
+| Both stacks (before) | 418 KB | Sent uncompressed: 1.56 MB per cold load |
+| (a) cosmos.gl only, simulation off | 309 KB | A force-graph engine; cells, curves and labels drawn around it |
+| (b) sigma only | 205 KB | Already draws the small views; takes precomputed positions; custom programs can draw cells |
+| (c) A purpose-built WebGL2 renderer, SVG for small views | about 96 KB, plus the renderer | No rendering dependency, new code to own |
+
+### Decision
+
+The owner chose (b) on 2026-11-25: keep sigma, remove cosmos.gl and luma.gl, and retire the force-directed Galaxy for the Terrain; if the Terrain missed pan and zoom p95 33 ms at 250,000 symbols on a GPU, move to (c).
+
+The Terrain (#46, ProofMesh commit after d483c83) draws areas, directories and files as sigma rectangle nodes, bundles as sigma edges (curved, dashed for inferred, with arrowheads), and symbols as one custom layer on sigma's WebGL context (`apps/observatory/src/points.ts`): two buffers of positions and colours drawn in one call, so showing an area's points or a search's matches rewrites bytes rather than adding graph nodes one by one, which froze the page at 250,000 symbols. With it the built bundle is 213 KB gzipped (206 KB as the benchmark counts it), `@cosmos.gl/graph` and luma.gl are gone, and THIRD_PARTY_NOTICES.md lists 32 packages fewer.
+
+Measured on 2026-11-27 with `pnpm bench:observatory --check` (3 cold runs each, Chromium 158 drawing through ANGLE on Metal, Apple M5 Max shared with other jobs, one-minute load average about 5):
+
+| Fixture | First drawn map, cold | Pan and zoom p95 | Search | Terrain switch | Longest task, cold | `--check` |
+|---|---|---|---|---|---|---|
+| TypeORM sample (7,033 symbols) | 148 ms | 16.7 ms | 28 ms | 50 ms | 59 ms | exits 0 |
+| Synthetic, 50,000 symbols | 172 ms | 16.7 ms | 22 ms | 83 ms | 84 ms | exits 0 |
+| Synthetic, 250,000 symbols | 211 ms | 16.8 ms | 53 ms | 204 ms | 168 ms | exits 1, longest task alone (#208) |
+
+The Terrain meets its frame budget at 250,000 symbols (16.8 ms against 33 ms), so the decision stays (b) and option (c) is not needed. The one budget missed, the longest main-thread task at 250,000 symbols, was missed before the change too (115 ms after #44, 280 ms before it); its largest parts are sigma processing the layout's 32,000 file cells and compiling shaders, and #208 and #47 track it.

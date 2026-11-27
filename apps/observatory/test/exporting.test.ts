@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { areasSvg, caveatLines, offlineHtml, pngText, pngWithText, sceneSvg, sceneTable, type Caveats } from '../src/exporting'
+import { areasSvg, caveatLines, CONTAINMENT, NO_MEANING, offlineHtml, pngText, pngWithText, sceneSvg, sceneTable, type Caveats } from '../src/exporting'
 import type { Scene } from '../src/scene'
 
 const caveats: Caveats = { view: 'Trace', repository: 'invoicing', snapshotId: 'snap_0123456789abcdef01234567', analysisMode: 'no_execution', scope: 'handleInvoice → formatAmount, depth 6', limits: ['max_depth 6 reached'], coverage: ['3 of 10 call sites unresolved'] }
@@ -23,6 +23,12 @@ describe('FR064 FR052 FR065 exports carry their caveats, load nothing, and inclu
     expect(html).toContain('unresolved: the target is unknown')
     expect(html).toContain('no source code included')
     expect(html).toContain('<td>unresolved</td><td>api:handleInvoice → ?</td><td>dynamic_element_access · line 7</td>')
+  })
+
+  it('FR1224 a Terrain export says position shows containment, as its legend does; every other view says position carries no meaning', () => {
+    expect(caveatLines({ ...caveats, view: 'Terrain' }, null)).toContain(CONTAINMENT)
+    expect(caveatLines({ ...caveats, view: 'Terrain' }, null)).not.toContain(NO_MEANING)
+    expect(caveatLines(caveats, null)).toContain(NO_MEANING)
   })
 
   it('repository text is escaped and its invisible characters shown', () => {
