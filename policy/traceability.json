@@ -1519,6 +1519,15 @@
     ],
     "FR487": [
       "packages/proofmesh-plugin/tests/status.test.ts"
+    ],
+    "FR550": [
+      "packages/proofmesh/test/ts-accessors.test.ts"
+    ],
+    "FR551": [
+      "packages/proofmesh/test/ts-accessors.test.ts"
+    ],
+    "FR552": [
+      "packages/proofmesh/test/ts-accessors.test.ts"
     ]
   },
   "manual": {

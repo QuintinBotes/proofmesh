@@ -704,6 +704,9 @@ The Claude Code plugin's hooks module (a mod, Claude Code 2.1.287 and later) is 
 - FR086: MUST emit a TypeScript `references` for every non-declaration use of a repository class, interface, enum or type alias, cited at the use's file and line: type annotations, generics, `implements` and `extends`, `satisfies` and `typeof` count; import and export specifiers do not.
 - FR087: MUST include by default, in a caller query on a concrete member, the calls that reach it by dispatch: calls resolved to an interface or base member that it implements or overrides through any chain of `implements` and `extends`, each marked `via` the member the call resolved to. Abstract members are not dispatch targets.
 - FR088: MUST make `analyze_impact` and `trace_paths` follow dispatch as caller queries do, or say in their limitations where they do not.
+- FR550: MUST make TypeScript and JavaScript `get` and `set` accessors (of a class, an interface or a typed module-level object literal) symbols of kind `method`, qualified `<module>:<Owner>.<member>` as methods are; a get/set pair of one name, static and instance apart, is one symbol, declared at its first accessor, so its stable key is the plain `<path>#<qualified name>#method` and needs no suffix.
+- FR551: MUST record a call inside a `get` or `set` accessor body from the accessor's method symbol, never from the enclosing class.
+- FR552: MUST do the same in the syntax tier for TypeScript and JavaScript: one method symbol per get/set pair, with the same key as the precise tier, and the calls in either body recorded from it.
 
 ## 5. Nonfunctional requirements
 
