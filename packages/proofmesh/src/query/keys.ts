@@ -14,6 +14,9 @@ const KEYED: Partial<Record<ToolName, Array<[string, string, string]>>> = {
   analyze_impact: [['dependents[]', 'id', 'key']],
   find_tests: [['tests[]', 'id', 'key']],
   find_query_source: [['candidates[]', 'id', 'key']],
+  find_unused: [['symbols[]', 'id', 'key']],
+  find_entry_points: [['entries[]', 'id', 'key']],
+  find_hubs: [['hubs[]', 'id', 'key']],
   // A file child's key is its path; only a symbol child's is an id, and so only a file scope's links name symbols (FR440).
   get_overview: [['children[]', 'key', 'symbol_key'], ['links[]', 'from', 'from_key'], ['links[]', 'to', 'to_key']],
   get_property_reads: [['reads[]', 'symbol_id', 'symbol_key'], ['unread_mapped_properties[]', 'symbol_id', 'symbol_key'], ['static_reads[]', 'symbol_id', 'symbol_key']],

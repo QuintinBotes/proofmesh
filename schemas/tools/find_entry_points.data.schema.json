@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "find_entry_points.data.schema.json",
+  "title": "find_entry_points data",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "entries",
+    "totals"
+  ],
+  "properties": {
+    "entries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "reason",
+          "path",
+          "line",
+          "name",
+          "kind",
+          "id"
+        ],
+        "properties": {
+          "reason": {
+            "enum": [
+              "not_imported",
+              "endpoint",
+              "job",
+              "main",
+              "bin",
+              "exports"
+            ]
+          },
+          "path": {
+            "type": "string"
+          },
+          "line": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kind": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "key": {
+            "type": "string"
+          },
+          "manifest": {
+            "type": "string",
+            "description": "The package.json that names the entry."
+          },
+          "target": {
+            "type": "string",
+            "description": "The path as the manifest writes it; path is the indexed file it names, or the manifest when none matches."
+          },
+          "generated": {
+            "type": "boolean",
+            "description": "Present and true when the file is generated (FR292); absent otherwise."
+          }
+        }
+      }
+    },
+    "totals": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "not_imported",
+        "endpoint",
+        "job",
+        "main",
+        "bin",
+        "exports"
+      ],
+      "properties": {
+        "not_imported": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "endpoint": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "job": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "main": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "bin": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "exports": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

@@ -1,7 +1,7 @@
 # Parity benchmark: ProofMesh and every local alternative
 
-The twelve question classes of `bench/graph-bench` (callers, implementations, importers, dependents, transitive
-callers, call paths, type users, dead code, cycles, entry points), asked of ProofMesh and of each local tool an agent
+The thirteen question classes of `bench/graph-bench` (callers, implementations, importers, dependents, transitive
+callers, call paths, type users, dead code, cycles, entry points, hubs), asked of ProofMesh and of each local tool an agent
 could use instead, on one pinned public fixture, and scored on one truth: the TypeScript compiler's own checker
 (`bench/graph-bench/truth.mjs`), not any tool. Every tool runs offline and none calls a model.
 
@@ -81,8 +81,10 @@ A newer version of a comparator is added as a second column, never by replacing 
   1,024 and 4,096 tokens, inbound (the files of the callers, importers, implementers, dependents or type users) and
   outbound (the target file's own imports). Its build time is the map's own time in a fresh tags cache, without
   Python's start-up.
-- **ProofMesh** is asked over MCP in its default core profile, as `bench/graph-bench` asks it; Q10 to Q12 have no MCP
-  tool yet (#34) and are computed from the sealed snapshot, marked `(data)`. Graphify's Q10 to Q12 are computed from
+- **ProofMesh** is asked over MCP in its default core profile, as `bench/graph-bench` asks it. Q10 to Q13 are asked of
+  `find_unused` (rows tagged `unused`), `find_cycles` (type-only cycles included), `find_entry_points` (rows tagged
+  `not_imported`) and `find_hubs` (top 10 by fan-in) (#34), through a second server started with `--tools extra`, so the
+  `tools/list` bytes below stay those of the default listing. Graphify's Q10 to Q13 are computed from
   `graph.json`, also `(data)`.
 - `tools/list` bytes are the bytes of the JSON of the tool array an MCP server lists.
 - The one-edit rebuild adds `const parityEdit = "<unique>"` after `super(message)` in the constructor of
@@ -92,28 +94,29 @@ A newer version of a comparator is added as a second column, never by replacing 
 
 ## Latest results
 
-Run on 2026-11-27 (`sh bench/parity/run.sh`, medians of three runs), on an Apple M5 Max (18 cores, 64 GB), macOS (Darwin 25.6.0), Node 26.13.1. Other jobs shared the machine (load average about 70), so every time below is several times what it is on an idle machine: an earlier run the same day at a lower load measured full builds of 19.0 s (ProofMesh), 8.7 s (Graphify), 4.2 s (scip-typescript) and 4.8 s (aider), and one-edit rebuilds of 8.2 s, 2.2 s, 3.4 s and 1.2 s. Quality, memory, disk and bytes do not depend on load.
+Run on 2026-11-27 (`sh bench/parity/run.sh`, medians of three runs), on an Apple M5 Max (18 cores, 64 GB), macOS (Darwin 25.6.0), Node 26.13.1, with this branch's change (#34) built on fc33d43 and not yet committed, which is why the header names fc33d43. Other jobs shared the machine (load average about 45), so the times are several times what they are on an idle machine. Quality, memory, disk and bytes do not depend on load.
 
-Fixture: typeorm @ 3d55188c0dd1256f520143379ecf97f45e71acba (src/, 504 files). ProofMesh 0.1.0 @ f85a3cb. Truth: typescript-checker 6.0.3. Run 2026-11-27 on Darwin 25.6.0 arm64, Apple M5 Max x18, 64 GB, Node v26.13.1.
+Fixture: typeorm @ 3d55188c0dd1256f520143379ecf97f45e71acba (src/, 504 files). ProofMesh 0.1.0 @ fc33d43. Truth: typescript-checker 6.0.3. Run 2026-11-27 on Darwin 25.6.0 arm64, Apple M5 Max x18, 64 GB, Node v26.13.1.
 
-Versions: ProofMesh 0.1.0 @ f85a3cb; Graphify 0.9.108; scip-typescript 0.3.15 (scip CLI 0.10.0); Serena 2.1.0 (claude-code context, tools interface); aider 0.86.2.
+Versions: ProofMesh 0.1.0 @ fc33d43; Graphify 0.9.108; scip-typescript 0.3.15 (scip CLI 0.10.0); Serena 2.1.0 (claude-code context, tools interface); aider 0.86.2.
 
 ### Quality: recall / precision (%)
 
 | Q | class | truth | ProofMesh | Graphify | scip-typescript | Serena | aider |
 |---|---|---|---|---|---|---|---|
 | Q1 | callers | 48 | 100 / 100 | 100 / 100 | 100 / 51 | 100 / 51 | 1k: in 2% out 44%; 4k: in 2% out 56% |
-| Q2 | callers | 78 | 100 / 100 | 99 / 100 | 97 / 97 | 100 / 100 | 1k: in 8% out 22%; 4k: in 15% out 59% |
+| Q2 | callers | 78 | 100 / 100 | 99 / 100 | 97 / 97 | 100 / 100 | 1k: in 8% out 19%; 4k: in 15% out 59% |
 | Q3 | callers | 18 | 100 / 100 | 0 / - | 100 / 100 | 100 / 50 | 1k: in 0% out 56%; 4k: in 0% out 78% |
 | Q4 | implementations | 12 | 100 / 100 | 100 / 100 | 100 / 60 | 100 / 57 | 1k: in 0% out 56%; 4k: in 0% out 78% |
-| Q5 | importers | 72 | 100 / 100 | 100 / 100 | 100 / 100 | no tool | 1k: in 0% out -; 4k: in 3% out - |
+| Q5 | importers | 72 | 100 / 100 | 100 / 100 | 100 / 100 | no tool | 1k: in 0% out -; 4k: in 0% out - |
 | Q6 | dependents | 316 | 100 / 100 | 98 / 100 | 100 / 100 (derived) | no tool | 1k: in 0% out -; 4k: in 0% out - |
 | Q7 | transitive_callers | 11 | 100 / 50 | 91 / 100 | 100 / 12 (derived) | 100 / 34 (derived) | 1k: in 0% out -; 4k: in 0% out - |
 | Q8 | path | shortest 3 | valid 3 hops (shortest 3) | valid 3 hops (shortest 3) | valid 3 hops (shortest 3) (derived) | no tool | no tool |
 | Q9 | type_users | 85 | 100 / 100 | 100 / 100 | 100 / 100 | 100 / 100 | 1k: in 0% out -; 4k: in 0% out - |
-| Q10 | dead_code | 80 | 100 / 95 (data) | 93 / 94 (data) | 93 / 100 (data) | no tool | no tool |
-| Q11 | cycles | 300 | 100 / 100 (data) | 94 / 100 (data) | 100 / 100 (data) | no tool | no tool |
-| Q12 | roots | 7 | 100 / 100 (data) | 100 / 78 (data) | 100 / 100 (data) | no tool | no tool |
+| Q10 | dead_code | 80 | 99 / 95 | 93 / 94 (data) | 93 / 100 (data) | no tool | no tool |
+| Q11 | cycles | 300 | 100 / 100 | 94 / 100 (data) | 100 / 100 (data) | no tool | no tool |
+| Q12 | roots | 7 | 100 / 100 | 100 / 78 (data) | 100 / 100 (data) | no tool | no tool |
+| Q13 | hubs | 10 | 70 / 70 | 60 / 60 (data) | no tool | no tool | no tool |
 
 (derived): computed by the harness from an index that has no query for it. (data): computed from stored data; no tool answers it. aider is scored as context: the share of the truth's files its map names, inbound and outbound, at 1k and 4k tokens.
 
@@ -129,16 +132,23 @@ Versions: ProofMesh 0.1.0 @ f85a3cb; Graphify 0.9.108; scip-typescript 0.3.15 (s
 
 | | ProofMesh | Graphify | scip-typescript | Serena | aider |
 |---|---|---|---|---|---|
-| Full build | 31.8 s | 25.3 s | 26.4 s | live | 30.2 s |
-| Peak memory (largest process) | 459 MB | 187 MB | 460 MB | 167 MB (server and language server, whole session) | 284 MB |
-| Disk (own store) | 61 MB | 14 MB | 13 MB | 10 MB | 1 MB |
-| No-change re-index | 8.6 s | 2.2 s | 22.1 s | live | 2.5 s |
-| One edit (a statement in the constructor of src/error/TypeORMError.ts) | 13.3 s | 11.3 s | 28.1 s | live | 3.9 s |
-| ms per question, Q1–Q9 | 9–172 | 824–1639 | n/a (decode 2.5 s once) | 389–7157 | 207–2769 |
-| bytes per answer, Q1–Q9 | 384–24176 | 80–25364 | n/a (decode 2.5 s once) | 3449–191986 | 3450–5464 |
+| Full build | 41.4 s | 10.2 s | 20.6 s | live | 6.1 s |
+| Peak memory (largest process) | 459 MB | 187 MB | 402 MB | 169 MB (server and language server, whole session) | 283 MB |
+| Disk (own store) | 62 MB | 15 MB | 13 MB | 10 MB | 1 MB |
+| No-change re-index | 8.3 s | 770 ms | 15.6 s | live | 811 ms |
+| One edit (a statement in the constructor of src/error/TypeORMError.ts) | 23.5 s | 4.5 s | 9.7 s | live | 800 ms |
+| ms per question, Q1–Q9 | 67–261 | 210–1004 | n/a (decode 939 ms once) | 370–4743 | 58–616 |
+| bytes per answer, Q1–Q9 | 384–24176 | 80–25364 | n/a (decode 939 ms once) | 3449–191986 | 3450–4778 |
 | `tools/list` bytes (MCP) | 18338 (13 tools) | CLI | index file | 25188 (21 tools) | Python API |
 
 Fixture after the edit step: clean (tool caches graphify-out/, .serena/, .aider.tags.cache.v4/ are in .git/info/exclude).
+
+Q13 scores the ten symbols each tool ranks first against the truth's ten with the most distinct callers and referrers;
+recall and precision are both the share of the ten in common. `find_hubs` misses `QueryBuilder.expressionMap`,
+`BaseQueryRunner.connection` and `ColumnMetadata`: the first two are properties the truth ranks by their reads, which the
+TypeScript adapter does not record as references. Q10's four extras (`EJSONserialize`, `EJSONdeserialize`, `parse`,
+`stringify` in `bson.typings.ts`) are used only as `typeof f` in a type (#175), and its one miss, `createConnection`
+of `src/globals.ts`, is `possibly_used`: an unresolved call by that name could reach it.
 
 ### Against the study of 2026-11-20 (scenario 3 of #25)
 

@@ -229,8 +229,8 @@ describe('FR295 build/ is output only where a manifest names it or git ignores i
 })
 
 describe('FR299 the listings issue 34 builds leave generated files out unless asked, through the hook this change names', () => {
-  it('names the listings, and the three that filter are hubs (implemented), dead code and entry points (pending)', () => {
-    expect(GENERATED_LISTINGS).toEqual({ hubs: 'implemented', dead_code: 'pending_issue_34', entry_points: 'pending_issue_34' })
+  it('names the listings, and the three that filter are hubs, dead code (find_unused) and entry points (find_entry_points), all implemented', () => {
+    expect(GENERATED_LISTINGS).toEqual({ hubs: 'implemented', dead_code: 'implemented', entry_points: 'implemented' })
   })
 
   it('the SQL condition keeps the rows of files not flagged generated, in any query that joins file f', async () => {

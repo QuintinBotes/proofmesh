@@ -12,6 +12,7 @@
     { "id": "Q9", "kind": "type_users", "ask": "Which files use the PolicySnapshot type?", "target": { "file": "src/policy/types.ts", "qname": "PolicySnapshot" } },
     { "id": "Q10", "kind": "dead_code", "ask": "Which top-level functions under src/ does nothing use (dead code candidates)?", "scope": "src/" },
     { "id": "Q11", "kind": "cycles", "ask": "Which files under src/ are in an import cycle?", "scope": "src/" },
-    { "id": "Q12", "kind": "roots", "ask": "What are the entry points: modules under src/ that no other src/ module imports, statically or dynamically (the bundle entry src/cli/main.ts, the hook and shim mains, and unused barrels)?", "scope": "src/" }
+    { "id": "Q12", "kind": "roots", "ask": "What are the entry points: modules under src/ that no other src/ module imports, statically or dynamically (the bundle entry src/cli/main.ts, the hook and shim mains, and unused barrels)?", "scope": "src/" },
+    { "id": "Q13", "kind": "hubs", "ask": "Which ten symbols do the most others use (distinct callers and referrers): the hubs?", "top": 10 }
   ]
 }

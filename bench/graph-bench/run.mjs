@@ -34,7 +34,10 @@ let pm, pmStartMs, proofmesh
 const t0 = performance.now()
 pm = new McpClient(PM, ['mcp'], { cwd: REPO, env: { ...process.env, PM_DATA_DIR: PM_DATA } })
 await pm.init(); pmStartMs = performance.now() - t0
-proofmesh = proofmeshAdapter(pm, PM_DATA, truthData, raw)
+// The structure tools (Q10-Q13) are in the extra profile; a second server lists them, so the first keeps the default listing.
+const pmExtra = new McpClient(PM, ['mcp', '--tools', 'extra'], { cwd: REPO, env: { ...process.env, PM_DATA_DIR: PM_DATA } })
+await pmExtra.init()
+proofmesh = proofmeshAdapter(pm, pmExtra, truthData, raw)
 const results = []
 for (const q of Q) {
   const truth = truthFor(q)
@@ -64,7 +67,7 @@ for (const q of Q) {
 // get_symbols_at over MCP stdio on this snapshot, warm: 1,000 single-location calls and 100 calls of 100 locations (FR122).
 const symbol_at_latency = await measureSymbolAt(async (locations) => { const r = await pm.call('get_symbols_at', { locations }); if (r.isError) throw new Error(r.text.slice(0, 300)); return r }, T.symbols)
 console.error(`get_symbols_at p95 ${symbol_at_latency.single_p95_ms} ms single, ${symbol_at_latency.batch_p95_ms} ms for 100 locations`)
-pm.close()
+pm.close(); pmExtra.close()
 const meta = { repo: REPO, commit: spawnSync('git', ['-C', REPO, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).stdout.trim(), graphify: spawnSync('graphify', ['--version'], { encoding: 'utf8' }).stdout.trim(), proofmesh_snapshot: proofmesh.snapshotId(), pm_mcp_startup_ms: Math.round(pmStartMs), truth: T.tool + ' ' + T.ts_version, when: new Date().toISOString() }
 fs.writeFileSync(path.join(OUT, 'results.json'), JSON.stringify({ meta, results, symbol_at_latency }, null, 1))
 // table
