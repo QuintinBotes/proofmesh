@@ -4,7 +4,7 @@ import path from 'node:path'
 import type Database from 'better-sqlite3'
 import { describe, expect, it } from 'vitest'
 import { RESOLUTION_VERSION } from '../src/indexer/constrained/index.js'
-import { cli, expectedFor, fixtureRepo, indexedRepo, ROOT, rows, symbolId, tmpDir, tool, withSnapshot } from './helpers.js'
+import { cli, expectedFor, fixtureRepo, indexedRepo, json, ROOT, rows, symbolId, tmpDir, tool, withSnapshot } from './helpers.js'
 
 const EXPECTED = expectedFor('constrained')
 let indexed: string | undefined
@@ -20,11 +20,11 @@ const constrainedIndex = () => {
 type Fact = { at: string; type: string; name: string; resolution: string; reason?: string; rule?: string; to?: string; candidates?: string[]; detail?: Record<string, string> }
 type Row = { id: string; type: string; resolution: string; reason: string | null; detail: string | null; target_kind: string | null; target_id: string | null; source_kind: string; source_id: string }
 
-/** Every call, supertype and import of the Go, Java, Rust, C and C++ files that the syntax tier read, as the oracle writes them. */
+/** Every call, supertype and import of the Go, Java, Rust, C, C++, Kotlin, PHP and Ruby files that the syntax tier read, as the oracle writes them. */
 function facts(db: Database.Database, keep: (f: Fact) => boolean = () => true, wanted: Record<string, string[]> = {}): Fact[] {
   const found = (db.prepare("select id, type, resolution, reason, detail, target_kind, target_id, source_kind, source_id from assertion where origin = 'syntax' and type in ('calls', 'inherits', 'implements', 'imports') order by id").all() as Row[]).flatMap((r) => {
     const ev = db.prepare('select e.start_line as line, f.path as path from assertion_evidence ae join evidence e on e.id = ae.evidence_id join file f on f.id = e.file_id where ae.assertion_id = ? order by e.start_byte limit 1').get(r.id) as { line: number; path: string }
-    if (!/\.(go|java|rs|c|h|cpp|hpp)$/.test(ev.path)) return []
+    if (!/\.(go|java|rs|c|h|cpp|hpp|kt|php|rb)$/.test(ev.path)) return []
     const detail = (r.detail ? JSON.parse(r.detail) : {}) as Record<string, string>
     const at = `${ev.path}:${ev.line}`
     const name = r.type === 'calls' ? detail.callee! : r.type === 'imports' ? detail.module! : detail.name!
@@ -224,7 +224,7 @@ describe('FR171 issue 16 scenario 7: a candidate is read as inferred, and no edg
     withSnapshot(constrainedIndex(), (db) => {
       const open = (db.prepare("select id, resolution, detail from assertion where origin = 'syntax' and type in ('calls', 'inherits', 'implements', 'imports') and resolution in ('candidate', 'ambiguous')").all() as Array<{ id: string; resolution: string; detail: string }>)
       expect(open.length).toBeGreaterThan(10)
-      for (const r of open) expect(JSON.parse(r.detail)).toMatchObject({ rule: expect.stringMatching(/^(go|java|rust|c|cpp)_/) })
+      for (const r of open) expect(JSON.parse(r.detail)).toMatchObject({ rule: expect.stringMatching(/^(go|java|rust|c|cpp|kotlin|php|ruby)_/) })
       expect((db.prepare("select count(*) as n from edge e join assertion a on a.id = e.assertion_id where a.resolution in ('candidate', 'ambiguous')").get() as { n: number }).n).toBe(0)
       // No syntax-tier import is a resolved edge: a Go package is a directory and an import links files, so its row lists the package's files (FR177).
       expect((db.prepare("select count(*) as n from assertion where type = 'imports' and resolution = 'resolved' and origin = 'syntax'").get() as { n: number }).n).toBe(0)
@@ -271,7 +271,7 @@ describe('FR179 languages.md states the rules, one row per rule the tier applies
   it('FR179 every rule the fixtures show is named in docs/proofmesh/languages.md, and so is the cap and the cycle warning', () => {
     const doc = fs.readFileSync(path.join(ROOT, 'docs', 'proofmesh', 'languages.md'), 'utf8')
     const rules = new Set(all().flatMap((f) => (f.rule ? [f.rule] : [])))
-    expect(rules.size).toBe(21)
+    expect(rules.size).toBe(37)
     for (const rule of rules) expect(doc, rule).toContain(`\`${rule}\``)
     expect(doc).toContain('`module_cycles`')
     expect(doc).toContain('`detail.more`')
@@ -460,6 +460,241 @@ describe('FR751 FR753 FR756 FR757 review of the Rust, C and C++ rules: what Carg
       expect(rows(db, 'calls').filter((r) => r.detail?.callee === 'draw').map((r) => [r.resolution, r.reason])).toEqual([['unresolved', 'outside_capability']])
       const include = db.prepare("select a.resolution, a.detail from assertion a where a.type = 'imports' and a.detail like '%x.h%'").get() as { resolution: string; detail: string }
       expect([include.resolution, JSON.parse(include.detail).rule]).toEqual(['ambiguous', 'c_include_name'])
+    })
+  }, 240000)
+})
+
+const KT = 'kotlin/app/src/main/kotlin/acme/app', KLIB = 'kotlin/lib/src/main/kotlin/acme/lib/Text.kt'
+const candidatesUnder = (prefix: string) => withSnapshot(constrainedIndex(), (db) => (db.prepare('select count(*) as n from assertion_candidate c join symbol s on s.id = c.symbol_id join file f on f.id = s.file_id where f.path like ?').get(`${prefix}%`) as { n: number }).n)
+describe('FR880 FR881 FR882 Kotlin binds a name through its class, its imports, its package and its module, and only what visibility allows', () => {
+  it('FR880 a bare call binds a member of the enclosing class (own or inherited) first, then an explicit import (by its alias too), then the same package, then a star import; never the module other\'s helper or format', () => {
+    expect(actual(`${KT}/Util.kt:9`, 'paint')).toMatchObject({ resolution: 'candidate', rule: 'kotlin_same_class', candidates: [`acme.app.Rush.paint@${KT}/Util.kt`] })
+    expect(actual(`${KT}/Util.kt:11`, 'total')).toMatchObject({ resolution: 'candidate', rule: 'kotlin_inherited', candidates: [`acme.lib.Order.total@${KLIB}`] })
+    expect(actual(`${KT}/Main.kt:10`, 'fmt')).toMatchObject({ resolution: 'candidate', rule: 'kotlin_import', candidates: [`acme.lib.format@${KLIB}`] })
+    expect(actual(`${KT}/Main.kt:12`, 'Order')).toMatchObject({ resolution: 'candidate', rule: 'kotlin_import', candidates: [`acme.lib.Order@${KLIB}`] })
+    expect(actual(`${KT}/Main.kt:11`, 'helper')).toMatchObject({ resolution: 'candidate', rule: 'kotlin_same_package', candidates: [`acme.app.helper@${KT}/Util.kt`] })
+    expect(actual(`${KT}/Main.kt:9`, 'format')).toMatchObject({ resolution: 'candidate', rule: 'kotlin_star_import', candidates: [`acme.lib.format@${KLIB}`] })
+    // A lambda may have a receiver whose members the tier cannot see, so a bare call inside one keeps its row.
+    expect(actual(`${KT}/Main.kt:18`, 'helper')).toMatchObject({ resolution: 'unresolved', reason: 'outside_capability' })
+  }, 240000)
+
+  it('FR881 a private top-level function is seen from its own file only, a private member from its class, an internal one from its own module only: elsewhere unknown_name with detail.visibility and no candidate', () => {
+    expect(actual(`${KT}/Main.kt:15`, 'secret')).toMatchObject({ resolution: 'unresolved', reason: 'unknown_name', detail: { visibility: 'internal' } })
+    expect(actual(`${KT}/Main.kt:16`, 'hidden')).toMatchObject({ resolution: 'unresolved', reason: 'unknown_name', detail: { visibility: 'private' } })
+    expect(actual(`${KT}/Main.kt:15`, 'secret')!.candidates).toBeUndefined()
+    expect(actual('kotlin/lib/src/main/kotlin/acme/lib/Inner.kt:3', 'secret')).toMatchObject({ resolution: 'candidate', rule: 'kotlin_same_package' })
+    expect(actual(`${KLIB}:9`, 'hidden')).toMatchObject({ resolution: 'candidate', rule: 'kotlin_same_package' })
+    expect(actual(`${KLIB}:12`, 'count')).toMatchObject({ resolution: 'candidate', rule: 'kotlin_same_class', candidates: [`acme.lib.Order.count@${KLIB}`] })
+  }, 240000)
+
+  it('FR882 T.f() binds a member of the type T (its companion\'s too), a value receiver binds nothing, a supertype and an import bind by the same rules, and a module app does not depend on is dependency_missing', () => {
+    expect(actual(`${KT}/Main.kt:14`, 'make')).toMatchObject({ resolution: 'candidate', rule: 'kotlin_import', candidates: [`acme.lib.Order.make@${KLIB}`] })
+    expect(actual(`${KT}/Main.kt:13`, 'total')).toMatchObject({ resolution: 'unresolved', reason: 'outside_capability' })
+    expect(actual(`${KT}/Util.kt:10`, 'paint')).toMatchObject({ resolution: 'candidate', rule: 'kotlin_same_class' })
+    expect(actual(`${KT}/Util.kt:7`, 'Order')).toMatchObject({ type: 'inherits', resolution: 'candidate', rule: 'kotlin_import', candidates: [`acme.lib.Order@${KLIB}`] })
+    expect(actual(`${KT}/Main.kt:3`, 'acme.lib.Order')).toMatchObject({ type: 'imports', resolution: 'candidate', rule: 'kotlin_import' })
+    expect(actual(`${KT}/Main.kt:6`, 'acme.other.Thing')).toMatchObject({ resolution: 'unresolved', reason: 'dependency_missing', detail: { undeclared: ':other' } })
+    expect(actual(`${KT}/Main.kt:17`, 'run')).toMatchObject({ resolution: 'unresolved', reason: 'dependency_missing', detail: { undeclared: ':other' } })
+    expect(candidatesUnder('kotlin/other/')).toBe(0)
+  }, 240000)
+
+  it('FR880 FR882 a package-qualified call binds that package\'s function, super.f() the supertype\'s member, and past a supertype the repository does not hold a bare call binds nothing, as a member there could hide the top-level one', async () => {
+    const { dataDir } = await indexedRepo({
+      'src/a/A.kt': 'package a\n\nfun util() {}\n\nopen class Base {\n    open fun draw() {}\n}\n',
+      'src/b/B.kt': 'package b\n\nimport a.Base\n\nfun util() {}\n\nclass Pen : Base() {\n    override fun draw() {\n        super.draw()\n        a.util()\n    }\n}\n\nclass Ext : java.io.Writer() {\n    fun go() {\n        util()\n    }\n}\n',
+    })
+    const calls = withSnapshot(dataDir, (db) => rows(db, 'calls')).map((r) => [r.line, r.detail?.callee, r.resolution, r.detail?.rule, r.candidates])
+    expect(calls.sort((a, b) => Number(a[0]) - Number(b[0]))).toEqual([
+      [9, 'draw', 'candidate', 'kotlin_inherited', ['a.Base.draw@src/a/A.kt']],
+      [10, 'util', 'candidate', 'kotlin_qualified_name', ['a.util@src/a/A.kt']],
+      [16, 'util', 'unresolved', undefined, []],
+    ])
+  }, 240000)
+})
+
+const PHP = 'php/src/Http/Controller.php', USER = 'php/src/Models/User.php'
+describe('FR883 FR884 FR885 FR886 PHP binds a name through its namespace, its use statements, Composer\'s PSR-4 map and its class', () => {
+  it('FR883 a class name binds through a use (by its alias, and a namespace alias for its first part), the namespace, or as fully qualified; new binds the class; PSR-4 keeps only the class in the file it places, never the stray copy in legacy/', () => {
+    expect(actual(`${PHP}:4`, 'Shop\\Models\\User')).toMatchObject({ type: 'imports', resolution: 'candidate', rule: 'php_use', candidates: [`Shop.Models.User@${USER}`], detail: { autoload: 'psr-4' } })
+    expect(actual(`${PHP}:18`, 'User')).toMatchObject({ resolution: 'candidate', rule: 'php_use', candidates: [`Shop.Models.User@${USER}`], detail: { autoload: 'psr-4' } })
+    expect(actual(`${PHP}:20`, 'find')).toMatchObject({ resolution: 'candidate', rule: 'php_use', candidates: [`Shop.Models.User.find@${USER}`] })
+    expect(actual(`${PHP}:21`, 'find')).toMatchObject({ resolution: 'candidate', rule: 'php_use', candidates: [`Shop.Models.User.find@${USER}`] })
+    expect(actual(`${PHP}:22`, 'find')).toMatchObject({ resolution: 'candidate', rule: 'php_fully_qualified', candidates: [`Shop.Models.User.find@${USER}`] })
+    expect(actual(`${USER}:8`, 'User')).toMatchObject({ resolution: 'candidate', rule: 'php_same_namespace', candidates: [`Shop.Models.User@${USER}`] })
+    expect(actual(`${USER}:4`, 'Base')).toMatchObject({ type: 'inherits', resolution: 'candidate', rule: 'php_same_namespace', candidates: ['Shop.Models.Base@php/src/Models/Base.php'] })
+    expect(actual(`${PHP}:30`, 'find')).toMatchObject({ resolution: 'unresolved', reason: 'outside_capability' })
+    expect(candidatesUnder('php/legacy/')).toBe(0)
+  }, 240000)
+
+  it('FR884 a function name binds through use function, the namespace, as fully qualified, else the global function PHP falls back to; one the repository lacks keeps its row', () => {
+    expect(actual(`${PHP}:6`, 'Shop\\Models\\helper')).toMatchObject({ type: 'imports', resolution: 'candidate', rule: 'php_use', candidates: [`Shop.Models.helper@${USER}`] })
+    expect(actual(`${PHP}:24`, 'helper')).toMatchObject({ resolution: 'candidate', rule: 'php_use', candidates: [`Shop.Models.helper@${USER}`] })
+    expect(actual(`${PHP}:23`, 'local')).toMatchObject({ resolution: 'candidate', rule: 'php_same_namespace', candidates: [`Shop.Http.local@${PHP}`] })
+    expect(actual(`${PHP}:25`, 'helper')).toMatchObject({ resolution: 'candidate', rule: 'php_fully_qualified' })
+    expect(actual(`${PHP}:26`, 'global_helper')).toMatchObject({ resolution: 'candidate', rule: 'php_global_function', candidates: ['global_helper@php/src/functions.php'] })
+    expect(actual(`${PHP}:27`, 'strlen')).toMatchObject({ resolution: 'unresolved', reason: 'outside_capability' })
+  }, 240000)
+
+  it('FR885 $this->, self:: and static:: bind the enclosing class, parent:: its parent; a private method from outside its class is unknown_name; a call on any other variable binds nothing', () => {
+    expect(actual(`${USER}:13`, 'validate')).toMatchObject({ resolution: 'candidate', rule: 'php_same_class', candidates: [`Shop.Models.User.validate@${USER}`] })
+    expect(actual(`${USER}:14`, 'find')).toMatchObject({ resolution: 'candidate', rule: 'php_same_class' })
+    expect(actual(`${USER}:15`, 'find')).toMatchObject({ resolution: 'candidate', rule: 'php_same_class' })
+    expect(actual(`${USER}:16`, 'boot')).toMatchObject({ resolution: 'candidate', rule: 'php_inherited', candidates: ['Shop.Models.Base.boot@php/src/Models/Base.php'] })
+    expect(actual(`${PHP}:29`, 'validate')).toMatchObject({ resolution: 'unresolved', reason: 'unknown_name', detail: { visibility: 'private' } })
+    expect(actual(`${PHP}:28`, 'save')).toMatchObject({ resolution: 'unresolved', reason: 'outside_capability' })
+  }, 240000)
+
+  it('FR886 a class of a Composer project the caller\'s project does not require is dependency_missing naming it, in a use and in a static call', () => {
+    expect(actual(`${PHP}:8`, 'Plugin\\Thing')).toMatchObject({ resolution: 'unresolved', reason: 'dependency_missing', detail: { undeclared: 'acme/plugin' } })
+    expect(actual(`${PHP}:31`, 'run')).toMatchObject({ resolution: 'unresolved', reason: 'dependency_missing', detail: { undeclared: 'acme/plugin' } })
+    expect(candidatesUnder('php-plugin/')).toBe(0)
+  }, 240000)
+})
+
+const RB = 'ruby/lib/shop.rb', CART = 'ruby/lib/shop/cart.rb'
+describe('FR887 FR888 FR889 Ruby binds a name through its requires and its module and class nesting', () => {
+  it('FR887 require_relative is a candidate of the file its path names, require one of a file under lib/ ending with it; a library the repository lacks keeps its row', () => {
+    expect(actual(`${RB}:1`, 'shop/cart')).toMatchObject({ type: 'imports', resolution: 'candidate', rule: 'ruby_require_relative', candidates: [`ruby/lib/shop/cart@${CART}`] })
+    expect(actual(`${CART}:1`, '../util')).toMatchObject({ resolution: 'candidate', rule: 'ruby_require_relative', candidates: ['ruby/lib/util@ruby/lib/util.rb'] })
+    expect(actual(`${RB}:2`, 'shop/version')).toMatchObject({ resolution: 'candidate', rule: 'ruby_require', candidates: ['ruby/lib/shop/version@ruby/lib/shop/version.rb'] })
+    expect(actual(`${RB}:3`, 'json')).toMatchObject({ resolution: 'unresolved', reason: 'outside_capability' })
+  }, 240000)
+
+  it('FR887 a require of a file of a gem the requiring gem does not depend on is dependency_missing naming it, and brings nothing into reach; one of a gem it depends on is a candidate', async () => {
+    const gem = (name: string, dep = '') => `Gem::Specification.new do |s|\n  s.name = "${name}"\n${dep}end\n`
+    const { dataDir } = await indexedRepo({
+      'app/app.gemspec': gem('app', '  s.add_dependency "util"\n'), 'app/lib/app.rb': 'require "tool/x"\nrequire "util/y"\n\ndef go\n  x(1)\n  y(2)\nend\n',
+      'tool/tool.gemspec': gem('tool'), 'tool/lib/tool/x.rb': 'def x(a); end\n',
+      'util/util.gemspec': gem('util'), 'util/lib/util/y.rb': 'def y(a); end\n',
+    })
+    withSnapshot(dataDir, (db) => {
+      const imports = db.prepare("select resolution, reason, detail from assertion where type = 'imports' order by detail").all() as Array<{ resolution: string; reason: string | null; detail: string }>
+      expect(imports.map((r) => { const d = JSON.parse(r.detail) as Record<string, string>; return [d.module, r.resolution, r.reason, d.rule ?? d.undeclared] })).toEqual([['tool/x', 'unresolved', 'dependency_missing', 'tool'], ['util/y', 'candidate', 'candidate', 'ruby_require']])
+      expect(rows(db, 'calls').filter((r) => /^[xy]$/.test(r.detail?.callee ?? '')).map((r) => [r.detail?.callee, r.resolution, r.detail?.rule])).toEqual([['x', 'unresolved', undefined], ['y', 'candidate', 'ruby_top_level']])
+    })
+  }, 240000)
+
+  it('FR888 a constant binds through the lexical nesting and the required files: Cart inside module Shop is Shop::Cart, never the Shop::Cart of a file nothing requires; C.new binds the class and C.f its singleton method', () => {
+    expect(actual(`${RB}:7`, 'new')).toMatchObject({ resolution: 'candidate', rule: 'ruby_constant', candidates: [`ruby/lib/shop/cart:Shop.Cart@${CART}`] })
+    expect(actual(`${RB}:8`, 'build')).toMatchObject({ resolution: 'candidate', rule: 'ruby_constant', candidates: [`ruby/lib/shop/cart:Shop.Cart.build@${CART}`] })
+    expect(actual(`${RB}:9`, 'build')).toMatchObject({ resolution: 'candidate', rule: 'ruby_constant', candidates: [`ruby/lib/shop/cart:Shop.Cart.build@${CART}`] })
+    expect(actual(`${CART}:6`, 'Base')).toMatchObject({ type: 'inherits', resolution: 'candidate', rule: 'ruby_constant', candidates: [`ruby/lib/shop/cart:Shop.Base@${CART}`] })
+    expect(actual(`${RB}:13`, 'go')).toMatchObject({ resolution: 'unresolved', reason: 'outside_capability' })
+    expect(candidatesUnder('ruby/other/')).toBe(0)
+  }, 240000)
+
+  it('FR889 a bare call or self.f binds a method of the enclosing class, singleton or instance as the site is, then a top-level def of a required file; an instance never reaches a singleton method, and a call on a value binds nothing', () => {
+    expect(actual(`${RB}:10`, 'helper')).toMatchObject({ resolution: 'candidate', rule: 'ruby_same_class', candidates: [`ruby/lib/shop:Shop.helper@${RB}`] })
+    expect(actual(`${CART}:12`, 'total')).toMatchObject({ resolution: 'candidate', rule: 'ruby_same_class', candidates: [`ruby/lib/shop/cart:Shop.Cart.total@${CART}`] })
+    expect(actual(`${CART}:13`, 'total')).toMatchObject({ resolution: 'candidate', rule: 'ruby_same_class' })
+    expect(actual(`${CART}:14`, 'format_all')).toMatchObject({ resolution: 'candidate', rule: 'ruby_top_level', candidates: ['ruby/lib/util:format_all@ruby/lib/util.rb'] })
+    expect(actual(`${RB}:11`, 'format_all')).toMatchObject({ resolution: 'candidate', rule: 'ruby_top_level' })
+    expect(actual(`${CART}:15`, 'build')).toMatchObject({ resolution: 'unresolved', reason: 'outside_capability' })
+    expect(actual(`${RB}:12`, 'add')).toMatchObject({ resolution: 'unresolved', reason: 'outside_capability' })
+  }, 240000)
+
+  it('FR888 class A::B names its constant whole: a constant inside it is looked up in A::B and at the top level, never in A, and A::B.f binds its own singleton method while a bare Cart does not', async () => {
+    const { dataDir } = await indexedRepo({
+      'lib/a.rb': "require_relative 'b'\n\nclass Shop::Cart\n  def add\n    Item.new\n  end\n\n  def self.make(x); end\nend\n\nShop::Cart.make(1)\nCart.make(2)\n",
+      'lib/b.rb': 'module Shop\n  class Item; end\nend\n\nclass Item; end\n',
+    })
+    const calls = withSnapshot(dataDir, (db) => rows(db, 'calls')).filter((r) => r.detail?.callee !== 'require_relative').map((r) => [r.line, r.detail?.callee, r.resolution, r.detail?.rule, r.candidates])
+    expect(calls.sort((a, b) => Number(a[0]) - Number(b[0]))).toEqual([
+      [5, 'new', 'candidate', 'ruby_constant', ['lib/b:Item@lib/b.rb']],
+      [11, 'make', 'candidate', 'ruby_constant', ['lib/a:Cart.make@lib/a.rb']],
+      [12, 'make', 'unresolved', undefined, []],
+    ])
+  }, 240000)
+
+  it('FR889 a method the class does not declare binds its superclass\'s or an included module\'s; a singleton call reaches the superclass only; a superclass the repository lacks binds nothing past it', async () => {
+    const { dataDir } = await indexedRepo({
+      'lib/a.rb': "module Greet\n  def hello(x); end\nend\n\nclass Base\n  def size(x); end\n\n  def self.build(x); end\nend\n\nclass Box < Base\n  include Greet\n\n  def go\n    size(1)\n    hello(2)\n  end\n\n  def self.make\n    build(3)\n    hello(4)\n  end\nend\n\nclass Far < Unknown\n  def go\n    size(5)\n  end\nend\n",
+    })
+    const calls = withSnapshot(dataDir, (db) => rows(db, 'calls')).filter((r) => r.detail?.callee !== 'include').map((r) => [r.line, r.detail?.callee, r.resolution, r.detail?.rule, r.candidates])
+    expect(calls.sort((a, b) => Number(a[0]) - Number(b[0]))).toEqual([
+      [15, 'size', 'candidate', 'ruby_inherited', ['lib/a:Base.size@lib/a.rb']],
+      [16, 'hello', 'candidate', 'ruby_inherited', ['lib/a:Greet.hello@lib/a.rb']],
+      [20, 'build', 'candidate', 'ruby_inherited', ['lib/a:Base.build@lib/a.rb']],
+      [21, 'hello', 'unresolved', undefined, []],
+      [27, 'size', 'unresolved', undefined, []],
+    ])
+  }, 240000)
+})
+
+describe('FR880 FR882 FR885 FR887 FR888 FR889 review of the Kotlin, PHP and Ruby rules: where a name the tier cannot see would win, the row is kept', () => {
+  const callsOf = (dataDir: string) => withSnapshot(dataDir, (db) => rows(db, 'calls')).map((r) => [`${r.path}:${r.line}`, r.detail?.callee, r.resolution, r.detail?.rule, r.candidates]).sort((a, b) => String(a[0]).localeCompare(String(b[0]), 'en', { numeric: true }) || String(a[1]).localeCompare(String(b[1])))
+
+  it('FR880 FR882 Kotlin: an import of a name the repository lacks hides the package\'s; a lambda\'s receiver, a parameter and a local function are not bound past; a named companion\'s members are the class\'s; a nested class sees only the companions around it', async () => {
+    const { dataDir } = await indexedRepo({
+      'src/acme/Log.kt': 'package acme\n\nclass Log {\n    companion object {\n        fun d(x: String) {}\n    }\n}\n\nfun render(x: Int) {}\n\nfun outer() {\n    fun local() {}\n}\n\nfun x2() {}\n\nfun z() {}\n',
+      'src/acme/Use.kt': 'package acme\n\nimport android.util.Log\n\nclass Shape {\n    fun draw() {}\n}\n\nclass Main {\n    fun draw() {}\n\n    fun run(s: Shape) {\n        Log.d("x")\n        with(s) { draw() }\n        if (true) { draw() }\n        local()\n    }\n\n    fun click(render: (Int) -> Unit) {\n        render(1)\n    }\n}\n\nclass Host {\n    fun a() {\n        z()\n        Host.z()\n    }\n\n    fun x2() {}\n\n    companion object Factory {\n        fun z() {}\n    }\n\n    class Nested {\n        fun b() {\n            x2()\n            z()\n        }\n    }\n}\n',
+    })
+    const F = 'acme.Host.Factory.z@src/acme/Use.kt'
+    expect(callsOf(dataDir).filter((c) => c[1] !== 'with')).toEqual([
+      ['src/acme/Use.kt:13', 'd', 'unresolved', undefined, []],
+      ['src/acme/Use.kt:14', 'draw', 'unresolved', undefined, []],
+      ['src/acme/Use.kt:15', 'draw', 'candidate', 'kotlin_same_class', ['acme.Main.draw@src/acme/Use.kt']],
+      ['src/acme/Use.kt:16', 'local', 'unresolved', undefined, []],
+      ['src/acme/Use.kt:20', 'render', 'unresolved', undefined, []],
+      ['src/acme/Use.kt:26', 'z', 'candidate', 'kotlin_same_class', [F]],
+      ['src/acme/Use.kt:27', 'z', 'candidate', 'kotlin_same_package', [F]],
+      ['src/acme/Use.kt:38', 'x2', 'candidate', 'kotlin_same_package', ['acme.x2@src/acme/Log.kt']],
+      ['src/acme/Use.kt:39', 'z', 'candidate', 'kotlin_same_class', [F]],
+    ])
+  }, 240000)
+
+  it('FR885 PHP: a class that uses a trait binds no inherited method past it, since the trait\'s would override it; a closure\'s use ($x) is no trait', async () => {
+    const { dataDir } = await indexedRepo({
+      'app/Models/User.php': '<?php\nnamespace App\\Models;\n\nclass Base\n{\n    public function notify($x) {}\n}\n\ntrait Notifiable\n{\n    public function notify($x) {}\n}\n\nclass User extends Base\n{\n    use Notifiable;\n\n    public function go()\n    {\n        $this->notify(1);\n    }\n}\n\nclass Plain extends Base\n{\n    public function go()\n    {\n        $f = function () use ($x) { return $x; };\n        $this->notify(2);\n    }\n}\n',
+    })
+    expect(callsOf(dataDir)).toEqual([
+      ['app/Models/User.php:20', 'notify', 'unresolved', undefined, []],
+      ['app/Models/User.php:29', 'notify', 'candidate', 'php_same_class', ['App.Models.Base.notify@app/Models/User.php']],
+    ])
+  }, 240000)
+
+  it('FR887 FR888 FR889 Ruby: class << self holds singleton methods; a def inside a block is no top-level def; a constant of an ancestor comes before the top level; a gem declared for development keeps the row', async () => {
+    const { dataDir } = await indexedRepo({
+      'lib/a.rb': "require_relative 'b'\n\nclass Order < Base\n  class << self\n    def build(a); end\n  end\n\n  def run\n    build(1)\n    helper(2)\n    LIMIT.to_s\n  end\n\n  def self.make\n    build(3)\n  end\nend\n",
+      'lib/b.rb': 'class Base\n  class LIMIT; def self.to_s; end; end\nend\n\nclass LIMIT\n  def self.to_s; end\nend\n\nStruct.new(:a) do\n  def helper(x); end\nend\n',
+      'g/app/app.gemspec': 'Gem::Specification.new do |s|\n  s.name = "app"\n  s.add_development_dependency "tool"\nend\n', 'g/app/spec/app_spec.rb': 'require "tool/x"\n',
+      'g/tool/tool.gemspec': 'Gem::Specification.new do |s|\n  s.name = "tool"\nend\n', 'g/tool/lib/tool/x.rb': 'def x(a); end\n',
+    })
+    expect(callsOf(dataDir).filter((c) => !/^(require|require_relative|new)$/.test(String(c[1])))).toEqual([
+      ['lib/a.rb:9', 'build', 'unresolved', undefined, []],
+      ['lib/a.rb:10', 'helper', 'unresolved', undefined, []],
+      ['lib/a.rb:11', 'to_s', 'candidate', 'ruby_constant', ['lib/b:Base.LIMIT.to_s@lib/b.rb']],
+      ['lib/a.rb:15', 'build', 'candidate', 'ruby_same_class', ['lib/a:Order.build@lib/a.rb']],
+    ])
+    const tool = withSnapshot(dataDir, (db) => db.prepare("select resolution, reason from assertion where type = 'imports' and detail like '%tool/x%'").get())
+    expect(tool).toEqual({ resolution: 'unresolved', reason: 'outside_capability' })
+  }, 240000)
+})
+
+describe('FR890 languages.md names the Kotlin, PHP and Ruby rules, and the rules\' version moved with them', () => {
+  it('FR890 every Kotlin, PHP and Ruby rule has its row in languages.md, and RESOLUTION_VERSION is past the Rust, C and C++ rules\' 4', () => {
+    const doc = fs.readFileSync(path.join(ROOT, 'docs', 'proofmesh', 'languages.md'), 'utf8')
+    for (const rule of ['kotlin_same_class', 'kotlin_inherited', 'kotlin_import', 'kotlin_same_package', 'kotlin_star_import', 'kotlin_qualified_name', 'php_use', 'php_same_namespace', 'php_fully_qualified', 'php_global_function', 'php_same_class', 'php_inherited', 'ruby_require_relative', 'ruby_require', 'ruby_constant', 'ruby_same_class', 'ruby_inherited', 'ruby_top_level']) expect(doc, rule).toContain(`| \`${rule}\``)
+    expect(RESOLUTION_VERSION).toBeGreaterThan(4)
+  })
+})
+
+describe('FR1040 issue 180: a Composer require-dev dependency is of the test scope, so main sources do not bind it', () => {
+  it('FR1040 the require-dev depends_on carries detail.scope test; a call from a main source into the dev-only package keeps outside_capability, and one from an autoload-dev source binds it', async () => {
+    const { dataDir } = await indexedRepo({
+      'app/composer.json': json({ name: 'acme/app', 'require-dev': { 'acme/testkit': '*' }, repositories: [{ type: 'path', url: '../testkit' }], autoload: { 'psr-4': { 'App\\': 'src/' } }, 'autoload-dev': { 'psr-4': { 'App\\Tests\\': 'tests/' } } }),
+      'testkit/composer.json': json({ name: 'acme/testkit', autoload: { 'psr-4': { 'Testkit\\': 'src/' } } }),
+      'testkit/src/Fake.php': '<?php\nnamespace Testkit;\n\nclass Fake\n{\n    public static function make(): self\n    {\n        return new self();\n    }\n}\n',
+      'app/src/Service.php': '<?php\nnamespace App;\n\nuse Testkit\\Fake;\n\nclass Service\n{\n    public function run(): void\n    {\n        Fake::make();\n    }\n}\n',
+      'app/tests/ServiceTest.php': '<?php\nnamespace App\\Tests;\n\nuse Testkit\\Fake;\n\nclass ServiceTest\n{\n    public function testRun(): void\n    {\n        Fake::make();\n    }\n}\n',
+    })
+    withSnapshot(dataDir, (db) => {
+      expect(rows(db, 'depends_on').map((r) => [r.from, r.to, r.resolution, r.detail])).toEqual([['acme/app', 'acme/testkit', 'resolved', { scope: 'test' }]])
+      const make = rows(db, 'calls').filter((r) => r.detail?.callee === 'make').map((r) => [r.path, r.resolution, r.reason, r.detail?.rule, r.candidates])
+      expect(make).toEqual([
+        ['app/src/Service.php', 'unresolved', 'outside_capability', undefined, []],
+        ['app/tests/ServiceTest.php', 'candidate', 'candidate', 'php_use', ['Testkit.Fake.make@testkit/src/Fake.php']],
+      ])
     })
   }, 240000)
 })

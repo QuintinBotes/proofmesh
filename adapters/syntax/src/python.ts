@@ -11,7 +11,7 @@ import { createRequire } from 'node:module'
 import { Parser, type Node } from 'web-tree-sitter'
 import { byteOffsets, lastLine, parser, send, toolchain, type Range } from './common.js'
 
-const VERSION = '0.1.0'
+const VERSION = '0.1.1'
 type Sym = { local_id: string; path: string; kind: string; name: string; qualified_name: string; range: Range; signature: string | null; roles?: string[] }
 type Location = { uri?: string; targetUri?: string; range?: { start: { line: number; character: number } }; targetSelectionRange?: { start: { line: number; character: number } } }
 
@@ -34,7 +34,10 @@ const pending = new Map<number, (v: unknown) => void>()
 // inside them for bounded time.
 let unannotated: 'on' | 'off' = 'on'
 const settings = () => ({ typeCheckingMode: 'off', diagnosticMode: 'openFilesOnly', autoSearchPaths: false, extraPaths, analyzeUnannotatedFunctions: unannotated !== 'off' })
-function write(m: unknown) { const s = JSON.stringify(m); server.stdin!.write(`Content-Length: ${Buffer.byteLength(s)}\r\n\r\n${s}`) }
+// `pyright: off` in the configuration (PROOFMESH_PYRIGHT=off for the core): Pyright never starts. Declarations and imports still come
+// from Tree-sitter, bases and overrides from the imports alone; every call stays unresolved, and the adapter says it resolves none.
+let PYRIGHT_OFF = false
+function write(m: unknown) { if (PYRIGHT_OFF) return; const s = JSON.stringify(m); server.stdin!.write(`Content-Length: ${Buffer.byteLength(s)}\r\n\r\n${s}`) }
 /** How long one Pyright request may take before its call is reported unresolved; a stuck request must not stall the whole index. */
 const REQUEST_MS = 60000
 let timedOut = 0
@@ -298,6 +301,7 @@ async function nameAt(file: string, line: number, character: number): Promise<st
 type Found = { file: string; start: { line: number; character: number } }
 /** Where Pyright says a name is defined, or null when it answered nothing in time. The file must be open: Pyright answers nothing in a closed one. */
 async function definitionsOf(file: string, name: Node): Promise<Found[] | null> {
+  if (PYRIGHT_OFF) return []
   const before = timedOut
   const raw = await request<Location | Location[] | null>('textDocument/definition', { textDocument: { uri: `file://${path.join(workspace, file)}` }, position: { line: name.startPosition.row, character: name.startPosition.column } })
   if (timedOut > before) return null
@@ -331,6 +335,7 @@ async function resolveCall(file: string, f: FileFacts, call: Node): Promise<Reso
     const inner = fn.type === 'call' ? fn.childForFieldName('function') : null
     return { resolution: 'unresolved', reason: inner?.text === 'getattr' ? 'dynamic_element_access' : 'chained_callee' }
   }
+  if (PYRIGHT_OFF) return { resolution: 'unresolved', reason: 'outside_capability', detail: { why: 'pyright_off' } }
   const locations = await definitionsOf(file, name)
   if (!locations) return { resolution: 'unresolved', reason: 'outside_capability', detail: { why: 'pyright_timeout' } }
   if (!locations.length) return { resolution: 'unresolved', reason: fn.type === 'attribute' ? 'untyped_receiver' : 'unknown_name' }
@@ -821,6 +826,7 @@ async function entryPoints(): Promise<{ symbols: Sym[]; relationships: unknown[]
 
 /** Starts Pyright and completes the LSP handshake; called at initialize and again at every restart. */
 async function startSession() {
+  if (PYRIGHT_OFF) return
   startPyright()
   const root = `file://${workspace}`
   await request('initialize', { processId: process.pid, rootUri: root, workspaceFolders: [{ uri: root, name: 'workspace' }], capabilities: { workspace: { configuration: true }, textDocument: { definition: {} } } })
@@ -833,7 +839,7 @@ const SESSION_FILES = 40
 let sessionFiles = 0
 
 async function analyse(file: string) {
-  if (sessionFiles >= SESSION_FILES) {
+  if (!PYRIGHT_OFF && sessionFiles >= SESSION_FILES) {
     server.kill(); buffer = Buffer.alloc(0); pending.clear(); openFiles.clear(); sessionFiles = 0
     await startSession()
     send({ jsonrpc: '2.0', method: 'log', params: { level: 'debug', message: `Pyright restarted before ${file}` } })
@@ -879,6 +885,34 @@ async function analyseWithPyright(file: string) {
         ? { type: 'calls', origin: 'semantic_resolver', source: { symbol: within(call) }, site, ...r, detail: { ...r.detail, ...unbound } }
         : { type: 'calls', origin: 'semantic_resolver', source: { symbol: within(call) }, site, ...r })
   }
+  // A use of a repository class or function other than a call, its declaration or an import (a type, a value): one `references` per
+  // user and target at its first site, with every further site (protocol 1.3). Only the names the file declares or imports are asked about.
+  const declaredHere = f.symbols.filter((s) => s.kind === 'class' || s.kind === 'function').map((s) => s.name)
+  const importedHere = f.tree.rootNode.descendantsOfType('import_from_statement').flatMap((n) => n.childrenForFieldName('name').map((c) => (c.type === 'aliased_import' ? c.childForFieldName('alias')! : c).text))
+  const asked = new Set([...declaredHere, ...importedHere])
+  const isField = (n: Node, type: string, field: string) => n.parent?.type === type && !!n.parent.childForFieldName(field)?.equals(n)
+  const inImport = (n: Node) => { for (let p = n.parent; p; p = p.parent) if (p.type === 'import_from_statement' || p.type === 'import_statement') return true; return false }
+  const uses = f.tree.rootNode.descendantsOfType('identifier').filter((n) => asked.has(n.text) && !isField(n, 'call', 'function') && !isField(n, 'attribute', 'attribute') && !isField(n, 'class_definition', 'name') && !isField(n, 'function_definition', 'name') && !isField(n, 'keyword_argument', 'name') && !inImport(n))
+  const usedAs: Array<string | undefined> = []
+  for (let i = 0; i < uses.length; i += 50) {
+    usedAs.push(...await Promise.all(uses.slice(i, i + 50).map(async (n) => {
+      const ids = [...new Set(await Promise.all(((await definitionsOf(file, n)) ?? []).filter(inRepository).map(declaredAt)))]
+      return ids.length === 1 ? ids[0] : undefined
+    })))
+  }
+  const used = new Map<string, { site: Range; more: Range[]; how: Set<string> }>()
+  for (const [k, n] of uses.entries()) {
+    const target = usedAs[k], owner = within(n)
+    if (!target || target === owner) continue
+    let how = 'value'
+    for (let p = n.parent; p; p = p.parent) if (p.type === 'type') { how = 'type'; break }
+    const u = used.get(`${owner}\n${target}`)
+    if (u) { u.more.push(rangeOf(f, n)); u.how.add(how) } else used.set(`${owner}\n${target}`, { site: rangeOf(f, n), more: [], how: new Set([how]) })
+  }
+  for (const [key, u] of used) {
+    const [owner, target] = key.split('\n')
+    relationships.push({ type: 'references', origin: 'semantic_resolver', source: { symbol: owner }, site: { path: file, range: u.site }, ...(u.more.length ? { sites: u.more } : {}), resolution: 'resolved', target: { symbol: target }, detail: { use: [...u.how].sort().join(',') } })
+  }
   const refs = importRefs(file, f)
   for (const r of refs) for (const to of targets(r)) relationships.push({ type: 'imports', origin: 'semantic_resolver', source: { file }, site: { path: file, range: rangeOf(f, r.node) }, resolution: 'resolved', target: { file: to } })
   await inheritedTestRoles(file, f)
@@ -906,8 +940,8 @@ async function analyseWithPyright(file: string) {
   if (stuck) send({ jsonrpc: '2.0', method: 'log', params: { level: 'warning', message: `${file}: Pyright answered nothing within ${REQUEST_MS / 1000} s for ${stuck} calls; they are unresolved` } })
   // Only imports of repository files are reported, so imports are partial wherever a file imports anything else.
   const external = refs.some((r) => !targets(r).length)
-  // Only references between Pulumi resources are reported, so a file that has them says references are partial.
-  return { symbols: [...f.symbols, ...endpoints.values(), ...resources.values()], relationships, result: { path: file, status: 'ok', capabilities: { text: 'complete', syntax, symbols: 'complete', imports: external ? 'partial' : 'complete', references: resourceReferences ? 'partial' : 'unsupported', resolved_calls: unresolved ? 'partial' : 'complete', framework: endpoints.size || resources.size ? 'partial' : 'unsupported' } } }
+  // Only references between Pulumi resources and uses of classes and functions are reported, so a file that has them says references are partial.
+  return { symbols: [...f.symbols, ...endpoints.values(), ...resources.values()], relationships, result: { path: file, status: 'ok', capabilities: { text: 'complete', syntax, symbols: 'complete', imports: external ? 'partial' : 'complete', references: resourceReferences || used.size ? 'partial' : 'unsupported', resolved_calls: unresolved ? 'partial' : 'complete', framework: endpoints.size || resources.size ? 'partial' : 'unsupported' } } }
 }
 
 /** The repository's installed packages, read from a virtual environment's site-packages, never by running its interpreter (A2). */
@@ -951,6 +985,7 @@ readline.createInterface({ input: process.stdin }).on('line', async (line) => {
       await Parser.init()
       workspace = req.params.workspace
       unannotated = req.params.config?.pyright_unannotated === 'off' ? 'off' : 'on'
+      PYRIGHT_OFF = req.params.config?.pyright === 'off'
       pythonFiles = new Set((req.params.files as Array<{ path: string; language: string }>).filter((x) => x.language === 'python').map((x) => x.path))
       sitePackages = findSitePackages(req.params.repository_root)
       const distributions = sitePackages ? fs.readdirSync(sitePackages).filter((d) => d.endsWith('.dist-info')).map((d) => d.replace(/\.dist-info$/, '')).sort() : []
@@ -958,8 +993,8 @@ readline.createInterface({ input: process.stdin }).on('line', async (line) => {
       extraPaths = sitePackages ? searchPaths(sitePackages, req.params.repository_root) : []
       await startSession()
       reply({
-        adapter: { id: 'python', version: VERSION, protocol_version: '1.1', languages: ['python'], toolchain: { ...toolchain(['python']), pyright: pyrightVersion, pyright_unannotated: unannotated } },
-        capabilities: { symbols: true, imports: true, resolved_calls: true }, external_inputs: distributions.map((d) => `pypi:${d.replace(/-(?=[^-]*$)/, '/')}`), units: await units(),
+        adapter: { id: 'python', version: VERSION, protocol_version: '1.3', languages: ['python'], toolchain: { ...toolchain(['python']), pyright: PYRIGHT_OFF ? 'off' : pyrightVersion, pyright_unannotated: unannotated } },
+        capabilities: { symbols: true, imports: true, resolved_calls: !PYRIGHT_OFF }, external_inputs: distributions.map((d) => `pypi:${d.replace(/-(?=[^-]*$)/, '/')}`), units: await units(),
       })
     } else if (req.method === 'workspace') {
       // A mistake in the table or entry-point rules costs their facts, not the index.

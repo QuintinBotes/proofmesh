@@ -12,6 +12,7 @@
     { "id": "Q9", "kind": "type_users", "ask": "Which files use the ObjectLiteral type?", "target": { "file": "src/common/ObjectLiteral.ts", "qname": "ObjectLiteral" } },
     { "id": "Q10", "kind": "dead_code", "ask": "Which top-level functions under src/ does nothing use?", "scope": "src/" },
     { "id": "Q11", "kind": "cycles", "ask": "Which files under src/ are in an import cycle?", "scope": "src/" },
-    { "id": "Q12", "kind": "roots", "ask": "Which modules under src/ does no other src/ module import?", "scope": "src/" }
+    { "id": "Q12", "kind": "roots", "ask": "Which modules under src/ does no other src/ module import?", "scope": "src/" },
+    { "id": "Q13", "kind": "hubs", "ask": "Which ten symbols do the most others use (distinct callers and referrers)?", "top": 10 }
   ]
 }

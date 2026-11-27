@@ -16,7 +16,7 @@ describe('FR071 FR072 SC014 the public conformance kit', () => {
     const r = await runKit(builtIn('typescript'), fixtureRepo('ts-invoicing'), expectedFor('ts-invoicing'))
     expect(failed(r)).toEqual([])
     expect(r.checks.map((c) => c.id)).toEqual([...ALL, 'golden.dispositions', 'golden.symbols', 'golden.calls', 'golden.imports'])
-    expect(r.adapter).toMatchObject({ id: 'typescript', protocol_version: '1.0' })
+    expect(r.adapter).toMatchObject({ id: 'typescript', protocol_version: '1.3' })
   }, 240000)
 
   it('SC014 the C# adapter passes on its fixture and reviewed expected facts', async () => {

@@ -53,6 +53,7 @@
     "127.0.0.1",
     "example.invalid",
     "evil.example",
-    "status.example.com"
+    "status.example.com",
+    "datasets-server.huggingface.co"
   ]
 }

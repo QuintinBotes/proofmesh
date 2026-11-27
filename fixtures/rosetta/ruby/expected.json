@@ -32,10 +32,22 @@
       "calls": {
         "find_symbols": {
           "rows": [
-            { "role": "Circle.area", "row": "Circle.area lib/shapes.rb:14 method" },
-            { "role": "Shape.area", "row": "Shape.area lib/shapes.rb:2 method" },
-            { "role": "Square.area", "row": "Square.area lib/shapes.rb:26 method" },
-            { "role": "circleArea", "row": "circle_area lib/shapes.rb:35 method" }
+            {
+              "role": "Circle.area",
+              "row": "Circle.area lib/shapes.rb:14 method"
+            },
+            {
+              "role": "Shape.area",
+              "row": "Shape.area lib/shapes.rb:2 method"
+            },
+            {
+              "role": "Square.area",
+              "row": "Square.area lib/shapes.rb:26 method"
+            },
+            {
+              "role": "circleArea",
+              "row": "circle_area lib/shapes.rb:35 method"
+            }
           ]
         },
         "implements": {
@@ -43,11 +55,11 @@
           "not_at_tier": [
             {
               "role": "Circle",
-              "reason": "slice 59a, languages.md (Kotlin, Rust, PHP and Ruby, FR222): `include Shape` is recorded as an unresolved inherits row with relation include (FR222), never implements, and no target is bound"
+              "reason": "slice 59a, languages.md (Kotlin, Rust, PHP and Ruby, FR222): `include Shape` is recorded as an inherits row with relation include (FR222), never implements; constrained name matching binds it as an inherits candidate of the module Shape (FR888)"
             },
             {
               "role": "Square",
-              "reason": "slice 59a, languages.md (Kotlin, Rust, PHP and Ruby, FR222): `include Shape` is recorded as an unresolved inherits row with relation include (FR222), never implements, and no target is bound"
+              "reason": "slice 59a, languages.md (Kotlin, Rust, PHP and Ruby, FR222): `include Shape` is recorded as an inherits row with relation include (FR222), never implements; constrained name matching binds it as an inherits candidate of the module Shape (FR888)"
             }
           ]
         },
@@ -56,7 +68,7 @@
           "not_at_tier": [
             {
               "role": "total",
-              "reason": "languages.md (constrained name matching): Ruby is not covered yet, so its call sites stay unresolved"
+              "reason": "languages.md (constrained name matching in Kotlin, PHP and Ruby, FR889): the receiver s is a block variable, whose class the tier does not know, so the call binds to nothing"
             }
           ]
         },
@@ -65,20 +77,19 @@
           "not_at_tier": [
             {
               "role": "circleArea",
-              "reason": "languages.md (constrained name matching): Ruby is not covered yet, so its call sites stay unresolved"
+              "reason": "languages.md (constrained name matching in Kotlin, PHP and Ruby, FR889): `Circle.new(1).area` has an expression as receiver, whose class the tier does not know, so it binds to nothing"
             },
             {
               "role": "total",
-              "reason": "languages.md (constrained name matching): Ruby is not covered yet, so its call sites stay unresolved"
+              "reason": "languages.md (constrained name matching in Kotlin, PHP and Ruby, FR889): the receiver s is a block variable, whose class the tier does not know, so the call binds to nothing"
             }
           ]
         },
         "imports": {
-          "rows": [],
-          "not_at_tier": [
+          "rows": [
             {
               "role": "report",
-              "reason": "slice 59a, languages.md (Kotlin, Rust, PHP and Ruby, FR221): the tier records each Ruby import as an unresolved row with no target, so no row points at the file; constrained name matching does not cover Ruby yet"
+              "row": "lib/report.rb:1 candidate inferred"
             }
           ]
         },
@@ -87,28 +98,27 @@
           "not_at_tier": [
             {
               "role": "circleArea",
-              "reason": "languages.md (constrained name matching): Ruby is not covered yet, so its call sites stay unresolved"
+              "reason": "languages.md (constrained name matching in Kotlin, PHP and Ruby, FR889): `Circle.new(1).area` has an expression as receiver, whose class the tier does not know, so it binds to nothing"
             },
             {
               "role": "total",
-              "reason": "languages.md (constrained name matching): Ruby is not covered yet, so its call sites stay unresolved"
+              "reason": "languages.md (constrained name matching in Kotlin, PHP and Ruby, FR889): the receiver s is a block variable, whose class the tier does not know, so the call binds to nothing"
             },
             {
               "role": "report",
-              "reason": "languages.md (constrained name matching): Ruby is not covered yet, so its call sites stay unresolved"
+              "reason": "reached only through total"
             },
             {
               "role": "totalOfTwo",
-              "reason": "languages.md (constrained name matching): Ruby is not covered yet, so its call sites stay unresolved"
+              "reason": "reached only through total"
             }
           ]
         },
         "find_tests": {
-          "rows": [],
-          "not_at_tier": [
+          "rows": [
             {
               "role": "totalOfTwo",
-              "reason": "languages.md (constrained name matching): Ruby is not covered yet, so its call sites stay unresolved"
+              "row": "\"shapes.it \\\"totals two\\\"\" spec/shapes_spec.rb:5 depth=1 inferred"
             }
           ]
         },
@@ -117,15 +127,15 @@
           "not_at_tier": [
             {
               "role": "totalOfTwo",
-              "reason": "languages.md (constrained name matching): Ruby is not covered yet, so its call sites stay unresolved"
+              "reason": "languages.md (constrained name matching in Kotlin, PHP and Ruby, FR889): the example reaches total (ruby_top_level, through require_relative), but total calls area on the block variable s, whose class the tier does not know, so no path reaches Shape.area"
             },
             {
               "role": "total",
-              "reason": "languages.md (constrained name matching): Ruby is not covered yet, so its call sites stay unresolved"
+              "reason": "the path stops at total, see totalOfTwo"
             },
             {
               "role": "Shape.area",
-              "reason": "languages.md (constrained name matching): Ruby is not covered yet, so its call sites stay unresolved"
+              "reason": "the path stops at total, see totalOfTwo"
             }
           ]
         }

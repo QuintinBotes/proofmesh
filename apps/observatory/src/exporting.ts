@@ -1,4 +1,5 @@
 // Exports of a view (FR064): an SVG drawing, an offline HTML page, and PNG metadata. Pure functions, so they are testable without a DOM.
+import { plural } from './plural'
 import { type Scene, TOKENS } from './scene'
 import { visible } from './visible'
 
@@ -25,6 +26,8 @@ export const LEGEND: Array<{ label: string; color: string; dashed?: boolean }> =
 
 /** Layout is derived, never evidence (FR068): every view and every export says so. */
 export const NO_MEANING = 'Position carries no meaning; only drawn lines are relationships.'
+/** The Galaxy's positions come from the path tree (FR1224): they show containment, and nearness is still no relationship. */
+export const CONTAINMENT = 'Position shows containment: directory, then file, then name. Nearness is not a relationship; only drawn lines are relationships.'
 
 const ESCAPES: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }
 /** Repository text is untrusted: escaped for markup, with bidirectional and invisible characters made visible (FR065). */
@@ -99,10 +102,10 @@ export function areasSvg(areas: Array<{ name: string; count: number; matches?: n
     const r = Math.max(3, (cell / 2 - 14) * Math.sqrt(a.count / max))
     // Incomplete coverage is drawn as a dashed grey ring and said in words, so a gap never looks like an empty or small area (FR059).
     const fog = a.fog ? `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="${Math.max(r + 4, 10).toFixed(1)}" fill="none" stroke="#cbd5e1" stroke-opacity="0.7" stroke-dasharray="4 3"/><text x="${cx.toFixed(1)}" y="${(cy + cell / 2 + 9).toFixed(1)}" font-size="10" text-anchor="middle" fill="#cbd5e1"><title>${esc(a.fog)}</title>${esc(a.fog.slice(a.name.length + 2))}</text>` : ''
-    return `${a.count ? `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="${r.toFixed(1)}" fill="${TOKENS.area}" fill-opacity="0.35"/>` : ''}${fog}<text x="${cx.toFixed(1)}" y="${(cy + cell / 2 - 4).toFixed(1)}" font-size="11" text-anchor="middle" fill="#e6e9f2">${esc(a.name)} · ${a.count.toLocaleString('en')}${a.matches !== undefined ? ` · ${a.matches} matches` : ''}</text>`
+    return `${a.count ? `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="${r.toFixed(1)}" fill="${TOKENS.area}" fill-opacity="0.35"/>` : ''}${fog}<text x="${cx.toFixed(1)}" y="${(cy + cell / 2 - 4).toFixed(1)}" font-size="11" text-anchor="middle" fill="#e6e9f2">${esc(a.name)} · ${a.count.toLocaleString('en')}${a.matches !== undefined ? ` · ${plural(a.matches, 'match', 'matches')}` : ''}</text>`
   }).join('')
   const total = height + block.height
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${total}" viewBox="0 0 ${width} ${total}" role="img" aria-label="${esc(`${caveats.view}: ${areas.length} areas`)}"><rect width="100%" height="100%" fill="#0b0f1a"/><text x="24" y="36" font-size="18" fill="#e6e9f2">${esc(`${areas.length} areas, sized by their symbols`)}</text>${cells}${block.svg}</svg>`
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${total}" viewBox="0 0 ${width} ${total}" role="img" aria-label="${esc(`${caveats.view}: ${plural(areas.length, 'area')}`)}"><rect width="100%" height="100%" fill="#0b0f1a"/><text x="24" y="36" font-size="18" fill="#e6e9f2">${esc(`${plural(areas.length, 'area')}, sized by their symbols`)}</text>${cells}${block.svg}</svg>`
 }
 
 /** A self-contained page: the drawing, the caveats, the legend, a table of what is drawn, and source only with consent. It loads nothing. */

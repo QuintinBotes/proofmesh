@@ -944,6 +944,39 @@
     "FR758": [
       "packages/proofmesh/test/constrained.test.ts"
     ],
+    "FR880": [
+      "packages/proofmesh/test/constrained.test.ts"
+    ],
+    "FR881": [
+      "packages/proofmesh/test/constrained.test.ts"
+    ],
+    "FR882": [
+      "packages/proofmesh/test/constrained.test.ts"
+    ],
+    "FR883": [
+      "packages/proofmesh/test/constrained.test.ts"
+    ],
+    "FR884": [
+      "packages/proofmesh/test/constrained.test.ts"
+    ],
+    "FR885": [
+      "packages/proofmesh/test/constrained.test.ts"
+    ],
+    "FR886": [
+      "packages/proofmesh/test/constrained.test.ts"
+    ],
+    "FR887": [
+      "packages/proofmesh/test/constrained.test.ts"
+    ],
+    "FR888": [
+      "packages/proofmesh/test/constrained.test.ts"
+    ],
+    "FR889": [
+      "packages/proofmesh/test/constrained.test.ts"
+    ],
+    "FR890": [
+      "packages/proofmesh/test/constrained.test.ts"
+    ],
     "FR181": [
       "packages/proofmesh/test/basis.test.ts"
     ],
@@ -1290,7 +1323,8 @@
       "packages/proofmesh/test/generated-vendored.test.ts"
     ],
     "FR299": [
-      "packages/proofmesh/test/generated-vendored.test.ts"
+      "packages/proofmesh/test/generated-vendored.test.ts",
+      "packages/proofmesh/test/structure-tools.test.ts"
     ],
     "FR330": [
       "packages/proofmesh/test/max-bytes-exact.test.ts"
@@ -1716,6 +1750,30 @@
     "FR516": [
       "packages/proofmesh/test/parity-bench.test.ts"
     ],
+    "FR1030": [
+      "packages/proofmesh/test/parity-bench.test.ts"
+    ],
+    "FR1031": [
+      "packages/proofmesh/test/parity-bench.test.ts"
+    ],
+    "FR1032": [
+      "packages/proofmesh/test/parity-bench.test.ts"
+    ],
+    "FR1100": [
+      "packages/proofmesh/test/parity-bench.test.ts"
+    ],
+    "FR1101": [
+      "packages/proofmesh/test/parity-bench.test.ts"
+    ],
+    "FR1102": [
+      "packages/proofmesh/test/parity-bench.test.ts"
+    ],
+    "FR1110": [
+      "packages/proofmesh/test/parity-bench.test.ts"
+    ],
+    "FR1111": [
+      "packages/proofmesh/test/parity-bench.test.ts"
+    ],
     "FR600": [
       "packages/proofmesh/test/syntax-rust-turbofish-calls.test.ts"
     ],
@@ -1786,6 +1844,372 @@
       "packages/proofmesh/test/plugin.test.ts",
       "packages/proofmesh-plugin/tests/status.test.ts"
     ],
+    "FR900": [
+      "packages/proofmesh/test/xrepo-symbols.test.ts"
+    ],
+    "FR901": [
+      "packages/proofmesh/test/xrepo-symbols.test.ts"
+    ],
+    "FR902": [
+      "packages/proofmesh/test/xrepo-symbols.test.ts"
+    ],
+    "FR903": [
+      "packages/proofmesh/test/xrepo-symbols.test.ts"
+    ],
+    "FR904": [
+      "packages/proofmesh/test/xrepo-symbols.test.ts"
+    ],
+    "FR940": [
+      "packages/proofmesh/test/structure-tools.test.ts"
+    ],
+    "FR941": [
+      "packages/proofmesh/test/structure-tools.test.ts"
+    ],
+    "FR942": [
+      "packages/proofmesh/test/structure-tools.test.ts"
+    ],
+    "FR943": [
+      "packages/proofmesh/test/structure-tools.test.ts"
+    ],
+    "FR944": [
+      "packages/proofmesh/test/structure-tools.test.ts"
+    ],
+    "FR945": [
+      "packages/proofmesh/test/structure-tools.test.ts"
+    ],
+    "FR946": [
+      "packages/proofmesh/test/parity-bench.test.ts",
+      "bench/graph-bench/lib.mjs"
+    ],
+    "FR1000": [
+      "packages/proofmesh/test/jobs.test.ts"
+    ],
+    "FR1001": [
+      "e2e/no-snapshot.spec.ts"
+    ],
+    "FR920": [
+      "packages/proofmesh/test/context-map.test.ts"
+    ],
+    "FR921": [
+      "packages/proofmesh/test/context-map.test.ts"
+    ],
+    "FR922": [
+      "packages/proofmesh/test/context-map.test.ts"
+    ],
+    "FR923": [
+      "packages/proofmesh/test/context-map.test.ts"
+    ],
+    "FR924": [
+      "packages/proofmesh/test/parity-bench.test.ts"
+    ],
+    "FR980": [
+      "packages/proofmesh/test/rename-plan.test.ts"
+    ],
+    "FR981": [
+      "packages/proofmesh/test/rename-plan.test.ts"
+    ],
+    "FR982": [
+      "packages/proofmesh/test/rename-plan.test.ts"
+    ],
+    "FR983": [
+      "packages/proofmesh/test/rename-plan.test.ts"
+    ],
+    "FR984": [
+      "packages/proofmesh/test/rename-plan.test.ts"
+    ],
+    "FR985": [
+      "packages/proofmesh/test/rename-plan.test.ts"
+    ],
+    "FR986": [
+      "packages/proofmesh/test/rename-plan.test.ts"
+    ],
+    "FR987": [
+      "packages/proofmesh/test/rename-plan.test.ts"
+    ],
+    "FR988": [
+      "packages/proofmesh/test/rename-plan.test.ts"
+    ],
+    "FR1280": [
+      "packages/proofmesh/test/move-plan.test.ts"
+    ],
+    "FR1281": [
+      "packages/proofmesh/test/move-plan.test.ts"
+    ],
+    "FR1282": [
+      "packages/proofmesh/test/move-plan.test.ts"
+    ],
+    "FR1283": [
+      "packages/proofmesh/test/move-plan.test.ts"
+    ],
+    "FR1284": [
+      "packages/proofmesh/test/move-plan.test.ts"
+    ],
+    "FR1285": [
+      "packages/proofmesh/test/move-plan.test.ts"
+    ],
+    "FR1286": [
+      "packages/proofmesh/test/rename-plan.test.ts"
+    ],
+    "FR1287": [
+      "packages/proofmesh/test/rename-plan.test.ts"
+    ],
+    "FR1288": [
+      "packages/proofmesh/test/rename-plan.test.ts"
+    ],
+    "FR1289": [
+      "packages/proofmesh/test/rename-plan.test.ts"
+    ],
+    "FR1040": [
+      "packages/proofmesh/test/constrained.test.ts"
+    ],
+    "FR1080": [
+      "packages/proofmesh/test/snapshot-transfer.test.ts"
+    ],
+    "FR1081": [
+      "packages/proofmesh/test/snapshot-transfer.test.ts"
+    ],
+    "FR1082": [
+      "packages/proofmesh/test/snapshot-transfer.test.ts"
+    ],
+    "FR1083": [
+      "packages/proofmesh/test/snapshot-transfer.test.ts"
+    ],
+    "FR1084": [
+      "packages/proofmesh/test/snapshot-transfer.test.ts"
+    ],
+    "FR1085": [
+      "packages/proofmesh/test/snapshot-transfer.test.ts"
+    ],
+    "FR1160": [
+      "packages/proofmesh/test/observatory-bench.test.ts"
+    ],
+    "FR1161": [
+      "packages/proofmesh/test/observatory-bench.test.ts"
+    ],
+    "FR1162": [
+      "packages/proofmesh/test/observatory-bench.test.ts"
+    ],
+    "FR1163": [
+      "packages/proofmesh/test/observatory-bench.test.ts"
+    ],
+    "FR1164": [
+      "packages/proofmesh/test/observatory-bench.test.ts"
+    ],
+    "FR1165": [
+      "packages/proofmesh/test/observatory-bench.test.ts"
+    ],
+    "FR1166": [
+      "packages/proofmesh/test/observatory-bench.test.ts"
+    ],
+    "FR1167": [
+      "packages/proofmesh/test/observatory-bench.test.ts"
+    ],
+    "FR1168": [
+      "packages/proofmesh/test/observatory-bench.test.ts"
+    ],
+    "FR1169": [
+      "packages/proofmesh/test/observatory-bench.test.ts"
+    ],
+    "FR1010": [
+      "packages/proofmesh/test/typescript-references.test.ts"
+    ],
+    "FR1020": [
+      "packages/proofmesh/test/typescript-property-references.test.ts"
+    ],
+    "FR1021": [
+      "packages/proofmesh/test/typescript-property-references.test.ts"
+    ],
+    "FR1060": [
+      "packages/proofmesh/test/search-structure.test.ts"
+    ],
+    "FR1061": [
+      "packages/proofmesh/test/search-structure.test.ts"
+    ],
+    "FR1062": [
+      "packages/proofmesh/test/search-structure.test.ts"
+    ],
+    "FR1063": [
+      "packages/proofmesh/test/search-structure.test.ts"
+    ],
+    "FR1064": [
+      "packages/proofmesh/test/search-structure.test.ts",
+      "bench/structure/run.mjs"
+    ],
+    "FR1065": [
+      "packages/proofmesh/test/search-structure.test.ts"
+    ],
+    "FR1066": [
+      "packages/proofmesh/test/search-structure.test.ts"
+    ],
+    "FR1067": [
+      "packages/proofmesh/test/search-structure.test.ts"
+    ],
+    "FR1140": [
+      "e2e/palette.spec.ts",
+      "e2e/accessibility.spec.ts"
+    ],
+    "FR1141": [
+      "apps/observatory/test/palette.test.ts",
+      "e2e/palette.spec.ts"
+    ],
+    "FR1142": [
+      "apps/observatory/test/palette.test.ts",
+      "e2e/palette.spec.ts"
+    ],
+    "FR1143": [
+      "e2e/palette.spec.ts"
+    ],
+    "FR1144": [
+      "e2e/palette.spec.ts"
+    ],
+    "FR1145": [
+      "e2e/accessibility.spec.ts",
+      "e2e/palette.spec.ts"
+    ],
+    "FR1146": [
+      "e2e/a11y.spec.ts",
+      "e2e/palette.spec.ts"
+    ],
+    "FR1200": [
+      "apps/observatory/test/galaxy.test.ts",
+      "e2e/casefold.spec.ts"
+    ],
+    "FR1210": [
+      "apps/observatory/test/plural.test.ts",
+      "e2e/galaxy.spec.ts"
+    ],
+    "FR1220": [
+      "packages/proofmesh/test/layout.test.ts",
+      "apps/observatory/test/galaxy.test.ts",
+      "e2e/galaxy.spec.ts"
+    ],
+    "FR1221": [
+      "apps/observatory/test/galaxy.test.ts"
+    ],
+    "FR1222": [
+      "packages/proofmesh/test/layout.test.ts"
+    ],
+    "FR1223": [
+      "e2e/galaxy.spec.ts"
+    ],
+    "FR1224": [
+      "e2e/legend.spec.ts"
+    ],
+    "FR1225": [
+      "packages/proofmesh/test/layout.test.ts"
+    ],
+    "FR580": [
+      "packages/proofmesh/test/concepts.test.ts"
+    ],
+    "FR581": [
+      "packages/proofmesh/test/concepts.test.ts"
+    ],
+    "FR582": [
+      "packages/proofmesh/test/concepts.test.ts"
+    ],
+    "FR583": [
+      "packages/proofmesh/test/concepts.test.ts"
+    ],
+    "FR584": [
+      "packages/proofmesh/test/concepts.test.ts"
+    ],
+    "FR585": [
+      "packages/proofmesh/test/concepts.test.ts"
+    ],
+    "FR1120": [
+      "packages/proofmesh/test/fast-rebuild.test.ts"
+    ],
+    "FR1121": [
+      "packages/proofmesh/test/fast-rebuild.test.ts"
+    ],
+    "FR1122": [
+      "packages/proofmesh/test/fast-rebuild.test.ts"
+    ],
+    "FR1123": [
+      "packages/proofmesh/test/fast-rebuild.test.ts"
+    ],
+    "FR1124": [
+      "packages/proofmesh/test/fast-rebuild.test.ts"
+    ],
+    "FR1125": [
+      "packages/proofmesh/test/fast-rebuild.test.ts"
+    ],
+    "FR1126": [
+      "packages/proofmesh/test/fast-rebuild.test.ts"
+    ],
+    "FR1180": [
+      "packages/proofmesh/test/symbol-card.test.ts",
+      "apps/observatory/test/card.test.ts",
+      "e2e/lens.spec.ts"
+    ],
+    "FR1181": [
+      "packages/proofmesh/test/symbol-card.test.ts",
+      "e2e/lens.spec.ts"
+    ],
+    "FR1182": [
+      "packages/proofmesh/test/symbol-card.test.ts",
+      "e2e/lens.spec.ts"
+    ],
+    "FR1183": [
+      "apps/observatory/test/card.test.ts",
+      "e2e/lens.spec.ts"
+    ],
+    "FR1184": [
+      "e2e/lens.spec.ts"
+    ],
+    "FR1185": [
+      "packages/proofmesh/test/symbol-card.test.ts",
+      "e2e/lens.spec.ts"
+    ],
+    "FR1186": [
+      "e2e/lens.spec.ts"
+    ],
+    "FR1260": [
+      "packages/proofmesh/test/xrepo-symbols.test.ts"
+    ],
+    "FR1261": [
+      "packages/proofmesh/test/xrepo-symbols.test.ts"
+    ],
+    "FR1262": [
+      "packages/proofmesh/test/xrepo-symbols.test.ts"
+    ],
+    "FR1263": [
+      "packages/proofmesh/test/xrepo-symbols.test.ts"
+    ],
+    "FR1264": [
+      "packages/proofmesh/test/xrepo-symbols.test.ts"
+    ],
+    "FR1265": [
+      "packages/proofmesh/test/xrepo-symbols.test.ts"
+    ],
+    "FR1300": [
+      "e2e/lens.spec.ts",
+      "e2e/accessibility.spec.ts",
+      "e2e/palette.spec.ts",
+      "e2e/hostile.spec.ts"
+    ],
+    "FR1301": [
+      "e2e/diff.spec.ts",
+      "apps/observatory/test/diff.test.ts"
+    ],
+    "FR1302": [
+      "e2e/diff.spec.ts"
+    ],
+    "FR1240": [
+      "packages/proofmesh/test/cold-build.test.ts"
+    ],
+    "FR1241": [
+      "packages/proofmesh/test/cold-build.test.ts"
+    ],
+    "FR1242": [
+      "packages/proofmesh/test/cold-build.test.ts"
+    ],
+    "FR1243": [
+      "packages/proofmesh/test/cold-build.test.ts"
+    ],
+    "FR1244": [
+      "packages/proofmesh/test/cold-build.test.ts"
+    ],
     "FR960": [
       "packages/proofmesh/test/graph-query.test.ts"
     ],
@@ -1814,6 +2238,7 @@
     "FR074": "No CI exists in this repository. When CI is added, a maintainer reviews that pull-request workflows run on pull_request (not pull_request_target), with read-only permissions and no secrets or release credentials; release signing runs only on tags (docs/proofmesh/release.md).",
     "SC006": "A maintainer registers Proofmesh in Claude Code and in Codex with proofmesh mcp-config, asks both the same snapshot-pinned questions (bench/eval/samples/invoicing-questions.json), records the sessions, scores them with bench/eval/run.mjs, and confirms both cite the same snapshot id. Last run on 2026-11-12 on the final build, over fixtures/ts-invoicing (snapshot snap_7278727f7dee33d0928b30e7): headless Claude Code 2.1.322 (claude -p, only the Proofmesh MCP server and its tools) and Codex 0.163.0 (codex exec, read-only sandbox, the server passed with -c and its tools approved for that server only) answered the same three snapshot-pinned questions identically, citing the same snapshot id, and both answers equal the fixture oracle.",
     "FR049.publication": "A maintainer publishes the signed npm packages and the OCI image, with checksums, SBOM, signatures, provenance and release notes, to the registries; publication is never automated.",
-    "SC016.tag": "A maintainer tags the release commit of the public fresh-history repository; CI builds, signs (keyless) and attests the artifacts from that tag, including the C# adapter."
+    "SC016.tag": "A maintainer tags the release commit of the public fresh-history repository; CI builds, signs (keyless) and attests the artifacts from that tag, including the C# adapter.",
+    "FR1187": "A maintainer indexes the TypeORM parity fixture (bench/parity/run.sh builds it at commit 3d55188c) into a fresh data directory and runs node bench/observatory/evidence.mjs --data-dir <dir> --symbol src/data-source/DataSource:DataSource.initialize --runs 10 --check, which exits 0 when the warm and first-open p95 and the requests per open are within SC-001 and SC-002 of #45, and records the machine and its load beside the times."
   }
 }

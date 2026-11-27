@@ -4,7 +4,7 @@
 export interface Envelope {
 schema_version: "0.1"
 query_id: string
-tool: ("workspace_status" | "list_repositories" | "list_snapshots" | "list_workspaces" | "find_symbols" | "get_symbol" | "get_relationships" | "trace_paths" | "read_evidence" | "get_overview" | "analyze_impact" | "find_tests" | "search_sources" | "get_memory" | "verify_claim" | "request_index" | "get_job" | "get_claims" | "save_memory" | "get_table_reach" | "get_property_reads" | "get_external_usage" | "find_query_source" | "compare_snapshots" | "list_queries" | "get_ecosystem" | "prepare_verification" | "get_verification" | "impact_completeness" | "get_symbols_at" | "get_session_trail" | "find_stale_mentions" | "query_graph")
+tool: ("workspace_status" | "list_repositories" | "list_snapshots" | "list_workspaces" | "find_symbols" | "get_symbol" | "get_relationships" | "trace_paths" | "read_evidence" | "get_overview" | "analyze_impact" | "find_tests" | "search_sources" | "get_memory" | "verify_claim" | "request_index" | "get_job" | "get_claims" | "save_memory" | "get_table_reach" | "get_property_reads" | "get_external_usage" | "find_query_source" | "compare_snapshots" | "list_queries" | "get_ecosystem" | "prepare_verification" | "get_verification" | "impact_completeness" | "get_symbols_at" | "get_session_trail" | "find_stale_mentions" | "find_unused" | "find_cycles" | "find_entry_points" | "find_hubs" | "get_context_map" | "plan_rename" | "plan_move" | "search_structure" | "search_concepts" | "get_symbol_card" | "query_graph")
 /**
  * The sealed snapshot or link file that answered; null for a catalog tool, which answers from the list of registered repositories.
  */
@@ -40,6 +40,19 @@ behind_ref?: (string | null)
  * When that remote branch was last fetched; behind_remote is only as current as this.
  */
 fetched_at?: (string | null)
+/**
+ * Present only when the snapshot was built in another data directory and imported (FR1084): its origin as the export recorded it, when it was imported, and how many of its files differed from the working tree then. The limitations name those files.
+ */
+imported?: {
+origin: {
+repository_id: string
+repository_name: string
+writer: string
+exported_at: string
+}
+imported_at: string
+stale_count: number
+}
 } | null)
 freshness: {
 mode: ("snapshot" | "strict")
@@ -199,6 +212,14 @@ generated?: boolean
  * The stable_key of the dependent (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file.
  */
 key?: string
+/**
+ * Present on a row of another repository of the workspace (include_workspace): that repository, and the commit its snapshot was built from. Its ids and evidence ids are of that snapshot.
+ */
+repository?: {
+id: string
+name: string
+commit: (string | null)
+}
 }[]
 totals: {
 dependents: number
@@ -230,6 +251,20 @@ stopped_by: ("max_depth" | "node_budget" | null)
  * Members nested in type subjects, included as starting points because calls reach a type through them.
  */
 subject_members: number
+/**
+ * With include_workspace: each workspace that holds this repository, its link file (null when none is sealed), and each member's side of it: the snapshot and commit the link file was built from, and whether that snapshot is still the member's current one.
+ */
+workspace?: {
+name: string
+link_file_id: (string | null)
+members: {
+id: string
+name: string
+commit: (string | null)
+snapshot_id: string
+current: boolean
+}[]
+}[]
 }
 
 /**
@@ -304,6 +339,10 @@ envelope?: ("full" | "compact" | "lean")
  * Whether the walk follows candidate edges: a call site that binds one candidate, or an ambiguous one of at most five. true follows them, false never does, auto (the default) follows them when every subject's file was analysed by the syntax tier alone. Every row reached through one is inferred; a site with more than five candidates is never followed.
  */
 include_inferred?: (boolean | "auto")
+/**
+ * true continues the walk into the other repositories of this repository's workspaces through the packages it builds (an npm package.json), read from the workspace's sealed link file: a site there that reaches a dependent is one deeper, and its own dependents follow. Each such dependent carries its repository and commit.
+ */
+include_workspace?: boolean
 }
 
 /**
@@ -421,6 +460,251 @@ max_depth?: number
  * compact leaves out the snapshot-wide parts of the envelope (unresolved reasons, standing limitations) that an earlier answer from the same snapshot already gave; query-specific limits stay. Over MCP, answers after the first full one per snapshot are compact unless full is asked for.
  */
 envelope?: ("full" | "compact")
+}
+
+export interface FindCyclesData {
+cycles: {
+cycle: number
+type_only: boolean
+/**
+ * True when the cycle holds only through an inferred import.
+ */
+inferred: boolean
+files: string[]
+/**
+ * Imports between its files.
+ */
+edges: number
+}[]
+/**
+ * By cycle, importing file and line.
+ */
+edges: {
+cycle: number
+from: string
+to: string
+line: number
+/**
+ * static, re_export, type_only or dynamic.
+ */
+kind: string
+inferred: boolean
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
+}[]
+totals: {
+cycles: number
+type_only: number
+files: number
+edges: number
+}
+}
+
+/**
+ * Import cycles among files (FR941): each strongly connected set of files under path_prefix once, with one row per pair of its files that import, at the first import's path:line. Runtime cycles come first; a set that is strongly connected only when type-only imports count is listed apart, marked type_only, with only the imports no runtime cycle inside it lists. A cycle that holds only through an inferred import is marked inferred. Lean over MCP: `<imported file> <importing file>:<line> cycle=<n>`, tagged with the import kind when not static (re_export, type_only, dynamic) and inferred; pages with a cursor.
+ */
+export interface FindCyclesInput {
+/**
+ * Optional when exactly one repository is registered.
+ */
+repository_id?: string
+/**
+ * Null pins the current published snapshot.
+ */
+snapshot_id?: (string | null)
+limits?: {
+timeout_ms?: number
+max_rows?: number
+max_bytes?: number
+max_depth?: number
+}
+/**
+ * snapshot (default) answers from the published snapshot. strict first checks that the working tree is exactly what the snapshot was built from; if not, it starts an index and refuses with STALE_INPUT naming the changed files.
+ */
+freshness?: ("snapshot" | "strict")
+/**
+ * lean, the default over MCP: plain text with no JSON and no structuredContent. A header `# <tool> · <n> rows · <snapshot> current` (stale when the snapshot is older than the repository's current one), one `<name> <path>:<line>` row per result, then `# ` lines for the limitations of this answer and `# more: cursor <c>` when a next page exists. The line is the call, import or reference site for relationship, impact and path rows and the declaration for symbol rows; tags follow: in or out when both directions are asked, depth=<n>, dispatch, external, candidate, ambiguous, unresolved:<reason>, and the relationship type when the query mixes types. A name or path with a space, quote or # is quoted as JSON. compact: the JSON envelope without the snapshot-wide parts an earlier answer gave (coverage, unresolved reasons, standing limitations). full: the whole JSON envelope. Ask for compact or full for ids, evidence and totals.
+ */
+envelope?: ("full" | "compact" | "lean")
+/**
+ * The next_cursor of the previous page. It continues the same query on the same snapshot; it expires after an hour.
+ */
+cursor?: string
+/**
+ * Only files whose repository-relative path starts with this, such as `src/`. Default: the whole repository.
+ */
+path_prefix?: string
+/**
+ * Default true: also list the cycles that exist only through type-only imports, marked type_only. False lists runtime cycles alone.
+ */
+include_type_only?: boolean
+/**
+ * Default true. False leaves test files out of the graph.
+ */
+include_tests?: boolean
+}
+
+export interface FindEntryPointsData {
+entries: {
+reason: ("not_imported" | "endpoint" | "job" | "main" | "bin" | "exports")
+path: string
+line: number
+name: (string | null)
+kind: (string | null)
+id: (string | null)
+key?: string
+/**
+ * The package.json that names the entry.
+ */
+manifest?: string
+/**
+ * The path as the manifest writes it; path is the indexed file it names, or the manifest when none matches.
+ */
+target?: string
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
+}[]
+totals: {
+not_imported: number
+endpoint: number
+job: number
+main: number
+bin: number
+exports: number
+}
+}
+
+/**
+ * Where execution enters (FR942): modules under path_prefix that no file under it imports (statically, dynamically or by re-export), then the framework entry points the snapshot knows (endpoints and jobs) and the entries of package.json manifests (main, module, types, exports, bin), each with its kind and path:line. Lean over MCP: a module is `<path>:1 not_imported`; another entry its name, path:line and kind; pages with a cursor.
+ */
+export interface FindEntryPointsInput {
+/**
+ * Optional when exactly one repository is registered.
+ */
+repository_id?: string
+/**
+ * Null pins the current published snapshot.
+ */
+snapshot_id?: (string | null)
+limits?: {
+timeout_ms?: number
+max_rows?: number
+max_bytes?: number
+max_depth?: number
+}
+/**
+ * snapshot (default) answers from the published snapshot. strict first checks that the working tree is exactly what the snapshot was built from; if not, it starts an index and refuses with STALE_INPUT naming the changed files.
+ */
+freshness?: ("snapshot" | "strict")
+/**
+ * lean, the default over MCP: plain text with no JSON and no structuredContent. A header `# <tool> · <n> rows · <snapshot> current` (stale when the snapshot is older than the repository's current one), one `<name> <path>:<line>` row per result, then `# ` lines for the limitations of this answer and `# more: cursor <c>` when a next page exists. The line is the call, import or reference site for relationship, impact and path rows and the declaration for symbol rows; tags follow: in or out when both directions are asked, depth=<n>, dispatch, external, candidate, ambiguous, unresolved:<reason>, and the relationship type when the query mixes types. A name or path with a space, quote or # is quoted as JSON. compact: the JSON envelope without the snapshot-wide parts an earlier answer gave (coverage, unresolved reasons, standing limitations). full: the whole JSON envelope. Ask for compact or full for ids, evidence and totals.
+ */
+envelope?: ("full" | "compact" | "lean")
+/**
+ * The next_cursor of the previous page. It continues the same query on the same snapshot; it expires after an hour.
+ */
+cursor?: string
+/**
+ * Only files whose repository-relative path starts with this, such as `src/`. Default: the whole repository.
+ */
+path_prefix?: string
+/**
+ * Default false: files the generated-code policy flags are left out, and a limitation says how many (FR299). True lists them.
+ */
+include_generated?: boolean
+/**
+ * Default false: test files are not listed as entry points (their imports still count).
+ */
+include_tests?: boolean
+}
+
+export interface FindHubsData {
+hubs: {
+id: string
+/**
+ * The stable_key of the symbol (FR280).
+ */
+key?: string
+kind: string
+name: string
+qualified_name: string
+path: string
+line: number
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
+fan_in: number
+fan_out: number
+betweenness?: number
+}[]
+by: ("fan_in" | "fan_out" | "betweenness")
+/**
+ * For betweenness: the sources it was computed from when not every node was one; null when exact.
+ */
+sampled_sources: (number | null)
+}
+
+/**
+ * The symbols the most code depends on (FR943), ranked by fan_in (distinct symbols that call, reference, import, inherit or inject it through a resolved relationship), fan_out (distinct symbols it uses) or betweenness (shortest use paths that pass through it), with both counts. Lean over MCP: `<name> <path>:<line> <kind> fan_in=<n> fan_out=<n>`.
+ */
+export interface FindHubsInput {
+/**
+ * Optional when exactly one repository is registered.
+ */
+repository_id?: string
+/**
+ * Null pins the current published snapshot.
+ */
+snapshot_id?: (string | null)
+limits?: {
+timeout_ms?: number
+max_rows?: number
+max_bytes?: number
+max_depth?: number
+}
+/**
+ * snapshot (default) answers from the published snapshot. strict first checks that the working tree is exactly what the snapshot was built from; if not, it starts an index and refuses with STALE_INPUT naming the changed files.
+ */
+freshness?: ("snapshot" | "strict")
+/**
+ * lean, the default over MCP: plain text with no JSON and no structuredContent. A header `# <tool> · <n> rows · <snapshot> current` (stale when the snapshot is older than the repository's current one), one `<name> <path>:<line>` row per result, then `# ` lines for the limitations of this answer and `# more: cursor <c>` when a next page exists. The line is the call, import or reference site for relationship, impact and path rows and the declaration for symbol rows; tags follow: in or out when both directions are asked, depth=<n>, dispatch, external, candidate, ambiguous, unresolved:<reason>, and the relationship type when the query mixes types. A name or path with a space, quote or # is quoted as JSON. compact: the JSON envelope without the snapshot-wide parts an earlier answer gave (coverage, unresolved reasons, standing limitations). full: the whole JSON envelope. Ask for compact or full for ids, evidence and totals.
+ */
+envelope?: ("full" | "compact" | "lean")
+/**
+ * The next_cursor of the previous page. It continues the same query on the same snapshot; it expires after an hour.
+ */
+cursor?: string
+/**
+ * Default 10.
+ */
+top?: number
+/**
+ * Default fan_in. betweenness is sampled from at most 1,000 evenly spaced sources on a larger graph, and says so.
+ */
+by?: ("fan_in" | "fan_out" | "betweenness")
+/**
+ * Only symbols of these kinds. Default every kind.
+ * 
+ * @minItems 1
+ */
+kinds?: [("function" | "class" | "method" | "interface" | "type_alias" | "variable" | "module" | "struct" | "enum" | "property" | "field" | "constructor" | "namespace" | "endpoint" | "job"), ...(("function" | "class" | "method" | "interface" | "type_alias" | "variable" | "module" | "struct" | "enum" | "property" | "field" | "constructor" | "namespace" | "endpoint" | "job"))[]]
+/**
+ * Only files whose repository-relative path starts with this, such as `src/`. Default: the whole repository.
+ */
+path_prefix?: string
+/**
+ * Default false: files the generated-code policy flags are left out, and a limitation says how many (FR299). True lists them.
+ */
+include_generated?: boolean
+/**
+ * Default true. False leaves test code out of the graph: neither ranked nor counted as a user.
+ */
+include_tests?: boolean
 }
 
 export interface FindQuerySourceData {
@@ -701,6 +985,14 @@ generated?: boolean
  * The stable_key of the test (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file.
  */
 key?: string
+/**
+ * Present on a test of another repository of the workspace (include_workspace): that repository, and the commit its snapshot was built from. Its id is of that snapshot.
+ */
+repository?: {
+id: string
+name: string
+commit: (string | null)
+}
 }[]
 totals: {
 /**
@@ -732,6 +1024,20 @@ available: boolean
 reason: string
 }
 stopped_by: ("max_depth" | "node_budget" | null)
+/**
+ * With include_workspace: each workspace that holds this repository, its link file (null when none is sealed), and each member's side of it: the snapshot and commit the link file was built from, and whether that snapshot is still the member's current one.
+ */
+workspace?: {
+name: string
+link_file_id: (string | null)
+members: {
+id: string
+name: string
+commit: (string | null)
+snapshot_id: string
+current: boolean
+}[]
+}[]
 }
 
 /**
@@ -804,6 +1110,112 @@ cursor?: string
  * Whether the walk follows candidate edges: a call site that binds one candidate, or an ambiguous one of at most five. true follows them, false never does, auto (the default) follows them when every subject's file was analysed by the syntax tier alone. Every row reached through one is inferred; a site with more than five candidates is never followed.
  */
 include_inferred?: (boolean | "auto")
+/**
+ * true adds the tests in the other repositories of this repository's workspaces that reach the subjects through a package it builds (an npm package.json), or through a repository that does, read from the workspace's sealed link file. Each such test carries its repository and commit, one deeper than the site that crosses into this repository; its chain runs in its own repository and ends at that site.
+ */
+include_workspace?: boolean
+}
+
+export interface FindUnusedData {
+/**
+ * unused first, then reachable_only_by, then possibly_used; each by path and line.
+ */
+symbols: {
+id: string
+/**
+ * The stable_key of the symbol (FR280).
+ */
+key?: string
+kind: string
+name: string
+qualified_name: string
+path: string
+line: number
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
+group: ("unused" | "reachable_only_by" | "possibly_used")
+/**
+ * For reachable_only_by: what alone reaches the symbol.
+ */
+by?: ("test" | "framework" | "public_export")
+/**
+ * For possibly_used: inferred edges and unresolved calls by name that could reach it.
+ */
+sites?: number
+/**
+ * For possibly_used: true when an inferred (candidate) edge names it.
+ */
+inferred?: boolean
+}[]
+/**
+ * Over every symbol checked, before row limits.
+ */
+totals: {
+checked: number
+unused: number
+reachable_only_by: {
+test: number
+framework: number
+public_export: number
+}
+possibly_used: number
+}
+}
+
+/**
+ * Code nothing in the repository uses (FR940): symbols under path_prefix with no resolved use (call, reference, import, inheritance, injection) from another symbol, each with its path:line. Symbols only test code, a framework registration (route, job, handler, DI), or a package's public exports reach are listed apart under reachable_only_by; symbols an inferred edge or an unresolved call by their name could reach are listed under possibly_used with the count of such sites. Lean over MCP: unused rows first, tagged unused, reachable_only_by=<why> or possibly_used sites=<n>. A missing use is evidence only as far as the snapshot resolves calls: read the limitations.
+ */
+export interface FindUnusedInput {
+/**
+ * Optional when exactly one repository is registered.
+ */
+repository_id?: string
+/**
+ * Null pins the current published snapshot.
+ */
+snapshot_id?: (string | null)
+limits?: {
+timeout_ms?: number
+max_rows?: number
+max_bytes?: number
+max_depth?: number
+}
+/**
+ * snapshot (default) answers from the published snapshot. strict first checks that the working tree is exactly what the snapshot was built from; if not, it starts an index and refuses with STALE_INPUT naming the changed files.
+ */
+freshness?: ("snapshot" | "strict")
+/**
+ * lean, the default over MCP: plain text with no JSON and no structuredContent. A header `# <tool> · <n> rows · <snapshot> current` (stale when the snapshot is older than the repository's current one), one `<name> <path>:<line>` row per result, then `# ` lines for the limitations of this answer and `# more: cursor <c>` when a next page exists. The line is the call, import or reference site for relationship, impact and path rows and the declaration for symbol rows; tags follow: in or out when both directions are asked, depth=<n>, dispatch, external, candidate, ambiguous, unresolved:<reason>, and the relationship type when the query mixes types. A name or path with a space, quote or # is quoted as JSON. compact: the JSON envelope without the snapshot-wide parts an earlier answer gave (coverage, unresolved reasons, standing limitations). full: the whole JSON envelope. Ask for compact or full for ids, evidence and totals.
+ */
+envelope?: ("full" | "compact" | "lean")
+/**
+ * The next_cursor of the previous page. It continues the same query on the same snapshot; it expires after an hour.
+ */
+cursor?: string
+/**
+ * Symbol kinds to check. Default function, class, interface, type_alias, enum and variable. module checks files: a file no other file imports and none of whose symbols another file uses.
+ * 
+ * @minItems 1
+ */
+kinds?: [("function" | "class" | "method" | "interface" | "type_alias" | "variable" | "module" | "struct" | "enum" | "property" | "field" | "constructor" | "namespace" | "endpoint" | "job"), ...(("function" | "class" | "method" | "interface" | "type_alias" | "variable" | "module" | "struct" | "enum" | "property" | "field" | "constructor" | "namespace" | "endpoint" | "job"))[]]
+/**
+ * Only files whose repository-relative path starts with this, such as `src/`. Default: the whole repository.
+ */
+path_prefix?: string
+/**
+ * Default true: only symbols not nested in another symbol of their file (no members or locals).
+ */
+top_level_only?: boolean
+/**
+ * Default false: files the generated-code policy flags are left out, and a limitation says how many (FR299). True lists them.
+ */
+include_generated?: boolean
+/**
+ * Default false: symbols in test code are not checked, and a symbol only test code uses is listed under reachable_only_by test. True checks test code too and counts its uses.
+ */
+include_tests?: boolean
 }
 
 export interface GetClaimsData {
@@ -860,6 +1272,83 @@ freshness?: ("snapshot" | "strict")
 envelope?: ("full" | "compact")
 }
 
+export interface GetContextMapData {
+rows: {
+/**
+ * The symbol id, or the file id for a file and its module.
+ */
+id: string
+name: string
+path: string
+line: number
+relation: ("changed" | "implements" | "implemented_by" | "calls" | "called_by" | "tests" | "references" | "referenced_by" | "imports" | "imported_by")
+depth: number
+basis?: "inferred"
+generated?: boolean
+}[]
+totals: {
+/**
+ * Rows in the whole map, on every page.
+ */
+rows: number
+}
+}
+
+/**
+ * The declarations around a focus, in both directions, ranked, in one answer of at most budget_bytes: what calls, implements, imports, references or tests the focus, and what the focus calls, implements, imports and references, to max_depth hops. One lean row per declaration, `<name> <path>:<line> <relation> depth=<n>`, at its least depth and there its strongest relation; a row reached only through a candidate edge ends inferred. Ranked by depth, observed rows before inferred ones at each depth; then a file's first row comes before any file's second, and rows the focus uses alternate with rows that use it, each side by relation strength (implements, calls, tests, references, imports), then weight, path and line. The rest of the map is a cursor away.
+ */
+export interface GetContextMapInput {
+/**
+ * Optional when exactly one repository is registered.
+ */
+repository_id?: string
+/**
+ * Null pins the current published snapshot.
+ */
+snapshot_id?: (string | null)
+/**
+ * What the task is about: files (repository-relative paths), symbols (a row name such as Driver.escape, a plain name, or a symbol id; a name may match several), or the declarations a diff changed (base, a commit, against head or, with no head, the working tree), which are rows of their own marked changed.
+ */
+focus: {
+/**
+ * @minItems 1
+ * @maxItems 100
+ */
+paths?: [string, ...(string)[]]
+/**
+ * @minItems 1
+ * @maxItems 100
+ */
+symbols?: [string, ...(string)[]]
+base?: string
+head?: string
+}
+/**
+ * The most bytes the answer may take, header, rows, limitations and cursor line included (default 4096).
+ */
+budget_bytes?: number
+/**
+ * Hops from the focus (default 2).
+ */
+max_depth?: number
+limits?: {
+timeout_ms?: number
+max_rows?: number
+}
+/**
+ * snapshot (default) answers from the published snapshot. strict first checks that the working tree is exactly what the snapshot was built from; if not, it starts an index and refuses with STALE_INPUT naming the changed files.
+ */
+freshness?: ("snapshot" | "strict")
+/**
+ * lean, the default over MCP: plain text with no JSON and no structuredContent. A header `# <tool> · <n> rows · <snapshot> current` (stale when the snapshot is older than the repository's current one), one `<name> <path>:<line>` row per result, then `# ` lines for the limitations of this answer and `# more: cursor <c>` when a next page exists. The line is the call, import or reference site for relationship, impact and path rows and the declaration for symbol rows; tags follow: in or out when both directions are asked, depth=<n>, dispatch, external, candidate, ambiguous, unresolved:<reason>, and the relationship type when the query mixes types. A name or path with a space, quote or # is quoted as JSON. compact: the JSON envelope without the snapshot-wide parts an earlier answer gave (coverage, unresolved reasons, standing limitations). full: the whole JSON envelope. Ask for compact or full for ids, evidence and totals.
+ */
+envelope?: ("full" | "compact" | "lean")
+/**
+ * The next_cursor of the previous page. It continues the same query on the same snapshot; it expires after an hour.
+ */
+cursor?: string
+}
+
 /**
  * The ecosystem overview (A11): a workspace's repositories as nodes and the links between them as edges, from one sealed link file.
  */
@@ -895,7 +1384,7 @@ projects: number
 links: {
 source_repository_id: string
 target_repository_id: string
-type: ("calls_endpoint" | "messages" | "depends_on_package" | "calls_service" | "deploys" | "uses_resource")
+type: ("calls_endpoint" | "messages" | "depends_on_package" | "calls_service" | "deploys" | "uses_resource" | "calls" | "inherits" | "implements" | "references")
 resolved: number
 candidate: number
 min_confidence: number
@@ -930,7 +1419,7 @@ rule: string
  */
 boundaries: {
 repository_id: string
-type: ("calls_endpoint" | "messages" | "depends_on_package" | "calls_service" | "deploys" | "uses_resource")
+type: ("calls_endpoint" | "messages" | "depends_on_package" | "calls_service" | "deploys" | "uses_resource" | "calls" | "inherits" | "implements" | "references")
 count: number
 /**
  * @maxItems 5
@@ -1501,6 +1990,14 @@ qualified_name: string
  */
 key?: string
 }
+/**
+ * Present on a row of another repository of the workspace (include_workspace): that repository, and the commit its snapshot was built from. Its ids and evidence ids are of that snapshot.
+ */
+repository?: {
+id: string
+name: string
+commit: (string | null)
+}
 }[]
 boundaries: {
 assertion_id: string
@@ -1544,6 +2041,20 @@ boundaries_calling_name?: number
  */
 out_external?: number
 }
+/**
+ * With include_workspace: each workspace that holds this repository, its link file (null when none is sealed), and each member's side of it: the snapshot and commit the link file was built from, and whether that snapshot is still the member's current one.
+ */
+workspace?: {
+name: string
+link_file_id: (string | null)
+members: {
+id: string
+name: string
+commit: (string | null)
+snapshot_id: string
+current: boolean
+}[]
+}[]
 }
 
 /**
@@ -1614,6 +2125,10 @@ envelope?: ("full" | "compact" | "lean")
  * Default false: outbound rows leave out calls that resolved to code outside the repository (framework and library members), and totals.out_external counts them; relationship types whose targets are external by nature, such as depends_on_package, keep them. True lists those calls too. Ignored when resolutions is given, and for an external subject.
  */
 include_external?: boolean
+/**
+ * true adds inbound calls, inherits, implements and references from the other repositories of this repository's workspaces whose sites reach the subject through a package it builds (an npm package.json), read from the workspace's sealed link file; each row carries its repository and commit. The same version installed as built is observed; another version is inferred, with the mismatch stated.
+ */
+include_workspace?: boolean
 }
 
 export interface GetSessionTrailData {
@@ -1803,6 +2318,328 @@ freshness?: ("snapshot" | "strict")
  * lean, the default over MCP: plain text with no JSON and no structuredContent. A header `# <tool> · <n> rows · <snapshot> current` (stale when the snapshot is older than the repository's current one), one `<name> <path>:<line>` row per result, then `# ` lines for the limitations of this answer and `# more: cursor <c>` when a next page exists. The line is the call, import or reference site for relationship, impact and path rows and the declaration for symbol rows; tags follow: in or out when both directions are asked, depth=<n>, dispatch, external, candidate, ambiguous, unresolved:<reason>, and the relationship type when the query mixes types. A name or path with a space, quote or # is quoted as JSON. compact: the JSON envelope without the snapshot-wide parts an earlier answer gave (coverage, unresolved reasons, standing limitations). full: the whole JSON envelope. Ask for compact or full for ids, evidence and totals.
  */
 envelope?: ("full" | "compact" | "lean")
+}
+
+export interface GetSymbolCardData {
+symbol: {
+id: string
+kind: ("function" | "class" | "method" | "interface" | "type_alias" | "variable" | "module" | "struct" | "enum" | "property" | "field" | "constructor" | "namespace" | "project" | "package" | "endpoint" | "table" | "message" | "channel" | "job" | "feature_flag" | "config_key" | "team" | "service")
+name: string
+qualified_name: string
+path: string
+start_line: number
+end_line: number
+signature: (string | null)
+evidence_id: string
+/**
+ * path#qualified_name#kind, as this snapshot stores it.
+ */
+stable_key: string
+/**
+ * SHA-256 of the declaration text with line endings, common indentation, trailing whitespace and the symbol's own name normalised (a module: its file text); null when the span is no more than the name, or the snapshot was sealed before hashes existed.
+ */
+body_hash: (string | null)
+/**
+ * The roles the adapter gave the symbol, when it gave any: test (a test entry point) or test_support (test code that is no entry point).
+ */
+roles?: ("test" | "test_support")[]
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
+/**
+ * What the adapter recorded beside the symbol's name, when it recorded any: scip, the SCIP index's own symbol for a definition the SCIP importer declared (FR441). Absent when the adapter sent none (no built-in adapter but the SCIP importer sends it), and in a snapshot sealed before format 0.11.
+ */
+detail?: {
+/**
+ * The SCIP index's own symbol for this definition, as the index wrote it (FR441).
+ */
+scip?: string
+}
+}
+/**
+ * The declaration's evidence, as read_evidence answers it; text is null when the object fails its integrity check or is missing.
+ */
+declaration: {
+id: string
+path: string
+start_line: number
+end_line: number
+object_hash: string
+extractor: string
+extractor_version: string
+analysis_mode: ("no_execution" | "trusted_build")
+integrity: {
+status: ("verified" | "failed" | "unavailable")
+actual_hash?: string
+}
+text: (string | null)
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
+}
+/**
+ * Null when direction asks only for the other side.
+ */
+incoming: ({
+rows: {
+assertion_id: string
+type: ("calls" | "imports" | "contains" | "inherits" | "implements" | "overrides" | "references" | "injects" | "registered_as" | "exposes" | "maps_to" | "runs" | "dispatches_to" | "handles" | "publishes" | "consumes" | "sends_to" | "listens_on" | "evaluates_flag" | "reads_config" | "depends_on" | "depends_on_package" | "owned_by" | "calls_service" | "renders" | "uses_hook" | "provides_context" | "uses_context" | "mentions")
+direction: ("in" | "out")
+resolution: ("resolved" | "resolved_external" | "candidate" | "ambiguous" | "unresolved")
+origin: ("syntax" | "semantic_resolver" | "configuration_adapter" | "framework_adapter" | "contract_match" | "runtime_observation" | "documentation" | "human_assertion" | "model_hypothesis")
+/**
+ * observed: a compiler, an index or a declared configuration proves it. inferred: a convention, a name match or a contract match suggests it. Derived when the answer is built. Absent on an unresolved boundary, which is not a relationship.
+ */
+basis?: ("observed" | "inferred")
+other: {
+kind: ("symbol" | "file" | "external" | "none")
+id?: string
+name?: string
+qualified_name?: string
+path?: string
+module?: string
+symbol_kind?: string
+start_line?: number
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
+/**
+ * The stable_key of the symbol on the far side (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file.
+ */
+key?: string
+}
+site: {
+path: string
+start_line: number
+end_line: number
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
+}
+reason: (string | null)
+evidence_ids: string[]
+detail: ({
+[k: string]: string
+} | null)
+/**
+ * On an inbound row: the member the subject implements or overrides that the call or reference names, through which it may dispatch to the subject.
+ */
+via?: {
+id: string
+qualified_name: string
+/**
+ * The stable_key of the member the call or reference names (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file.
+ */
+key?: string
+}
+/**
+ * Present on a row of another repository of the workspace (include_workspace): that repository, and the commit its snapshot was built from. Its ids and evidence ids are of that snapshot.
+ */
+repository?: {
+id: string
+name: string
+commit: (string | null)
+}
+/**
+ * The call site's evidence: its span and integrity, and the whole lines of the site (at most 8) with the cited span as character offsets in them. context is null when the object fails its integrity check or is missing. Null when the row has no evidence.
+ */
+evidence: ({
+id: string
+path: string
+start_line: number
+end_line: number
+integrity: {
+status: ("verified" | "failed" | "unavailable")
+actual_hash?: string
+}
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
+context: ({
+start_line: number
+text: string
+/**
+ * The cited span's start and end, as character offsets in text.
+ * 
+ * @minItems 2
+ * @maxItems 2
+ */
+highlight: [number, number, ...(number)[]]
+} | null)
+} | null)
+}[]
+/**
+ * Every row of this side, listed or not.
+ */
+total: number
+/**
+ * Pass as offset, with direction, for the next rows of this side; null when every row is listed.
+ */
+next_offset: (number | null)
+} | null)
+/**
+ * Null when direction asks only for the other side.
+ */
+outgoing: ({
+rows: {
+assertion_id: string
+type: ("calls" | "imports" | "contains" | "inherits" | "implements" | "overrides" | "references" | "injects" | "registered_as" | "exposes" | "maps_to" | "runs" | "dispatches_to" | "handles" | "publishes" | "consumes" | "sends_to" | "listens_on" | "evaluates_flag" | "reads_config" | "depends_on" | "depends_on_package" | "owned_by" | "calls_service" | "renders" | "uses_hook" | "provides_context" | "uses_context" | "mentions")
+direction: ("in" | "out")
+resolution: ("resolved" | "resolved_external" | "candidate" | "ambiguous" | "unresolved")
+origin: ("syntax" | "semantic_resolver" | "configuration_adapter" | "framework_adapter" | "contract_match" | "runtime_observation" | "documentation" | "human_assertion" | "model_hypothesis")
+/**
+ * observed: a compiler, an index or a declared configuration proves it. inferred: a convention, a name match or a contract match suggests it. Derived when the answer is built. Absent on an unresolved boundary, which is not a relationship.
+ */
+basis?: ("observed" | "inferred")
+other: {
+kind: ("symbol" | "file" | "external" | "none")
+id?: string
+name?: string
+qualified_name?: string
+path?: string
+module?: string
+symbol_kind?: string
+start_line?: number
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
+/**
+ * The stable_key of the symbol on the far side (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file.
+ */
+key?: string
+}
+site: {
+path: string
+start_line: number
+end_line: number
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
+}
+reason: (string | null)
+evidence_ids: string[]
+detail: ({
+[k: string]: string
+} | null)
+/**
+ * On an inbound row: the member the subject implements or overrides that the call or reference names, through which it may dispatch to the subject.
+ */
+via?: {
+id: string
+qualified_name: string
+/**
+ * The stable_key of the member the call or reference names (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file.
+ */
+key?: string
+}
+/**
+ * Present on a row of another repository of the workspace (include_workspace): that repository, and the commit its snapshot was built from. Its ids and evidence ids are of that snapshot.
+ */
+repository?: {
+id: string
+name: string
+commit: (string | null)
+}
+/**
+ * The call site's evidence: its span and integrity, and the whole lines of the site (at most 8) with the cited span as character offsets in them. context is null when the object fails its integrity check or is missing. Null when the row has no evidence.
+ */
+evidence: ({
+id: string
+path: string
+start_line: number
+end_line: number
+integrity: {
+status: ("verified" | "failed" | "unavailable")
+actual_hash?: string
+}
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
+context: ({
+start_line: number
+text: string
+/**
+ * The cited span's start and end, as character offsets in text.
+ * 
+ * @minItems 2
+ * @maxItems 2
+ */
+highlight: [number, number, ...(number)[]]
+} | null)
+} | null)
+}[]
+/**
+ * Every row of this side, listed or not.
+ */
+total: number
+/**
+ * Pass as offset, with direction, for the next rows of this side; null when every row is listed.
+ */
+next_offset: (number | null)
+} | null)
+}
+
+/**
+ * A symbol's card in one request (FR1180): the symbol, its declaration evidence with integrity and text, and the first page of its incoming and outgoing relationships, each with its call site's evidence (span, integrity, the site's lines and the cited span within them), basis, resolution and reason, and totals. Read-only, and bounded by limits: max_rows applies to each side, max_bytes to the whole answer.
+ */
+export interface GetSymbolCardInput {
+/**
+ * Optional when exactly one repository is registered.
+ */
+repository_id?: string
+/**
+ * Null pins the current published snapshot.
+ */
+snapshot_id?: (string | null)
+limits?: {
+timeout_ms?: number
+max_rows?: number
+max_bytes?: number
+max_depth?: number
+}
+/**
+ * Or { name, path }: the symbol of that name in that file. Give symbol_id or key.
+ */
+symbol_id?: (string | {
+/**
+ * The name a lean row shows (BudgetLedger.consume), or the plain name (consume); it must name one symbol in the file.
+ */
+name: string
+/**
+ * The repository-relative path of the file that declares the symbol.
+ */
+path: string
+})
+/**
+ * A symbol by its stable_key (FR149): the key get_symbol and every other row names it with, unique in a snapshot and the same in every tier. An unknown key is NOT_FOUND. In place of the id.
+ */
+key?: string
+/**
+ * The relationship types listed on each side; default calls.
+ * 
+ * @minItems 1
+ */
+types?: [("calls" | "imports" | "contains" | "inherits" | "implements" | "overrides" | "references" | "injects" | "registered_as" | "exposes" | "maps_to" | "runs" | "dispatches_to" | "handles" | "publishes" | "consumes" | "sends_to" | "listens_on" | "evaluates_flag" | "reads_config" | "depends_on" | "depends_on_package" | "owned_by" | "calls_service" | "renders" | "uses_hook" | "provides_context" | "uses_context" | "mentions"), ...(("calls" | "imports" | "contains" | "inherits" | "implements" | "overrides" | "references" | "injects" | "registered_as" | "exposes" | "maps_to" | "runs" | "dispatches_to" | "handles" | "publishes" | "consumes" | "sends_to" | "listens_on" | "evaluates_flag" | "reads_config" | "depends_on" | "depends_on_package" | "owned_by" | "calls_service" | "renders" | "uses_hook" | "provides_context" | "uses_context" | "mentions"))[]]
+/**
+ * Only this side, to page it with offset; both sides when absent.
+ */
+direction?: ("in" | "out")
+/**
+ * The row each side starts at: a side's next_offset.
+ */
+offset?: number
+/**
+ * compact: the JSON envelope without the snapshot-wide parts an earlier answer gave. full (default): the whole envelope.
+ */
+envelope?: ("full" | "compact")
 }
 
 export interface GetSymbolsAtData {
@@ -2335,6 +3172,10 @@ adapter_protocol: string
  */
 bundle_format: string
 /**
+ * schemas/snapshot-export/<version>.schema.json, the manifest of a file proofmesh snapshot export writes.
+ */
+snapshot_export: string
+/**
  * The newest schemas/catalog/NNNN.sql migration.
  */
 catalog_migration: number
@@ -2452,6 +3293,244 @@ name: string
  * The named workspaces and their member repositories: the names get_ecosystem takes. Needs no repository_id; answers from the catalog.
  */
 export interface ListWorkspacesInput {
+/**
+ * compact leaves out the snapshot-wide parts of the envelope (unresolved reasons, standing limitations) that an earlier answer from the same snapshot already gave; query-specific limits stay. Over MCP, answers after the first full one per snapshot are compact unless full is asked for.
+ */
+envelope?: ("full" | "compact")
+}
+
+/**
+ * Every site a move must change, by file and line (FR1280 to FR1284).
+ */
+export interface PlanMoveData {
+/**
+ * The file (kind file) or the symbol that moves.
+ */
+subject: {
+/**
+ * file, or the symbol's kind.
+ */
+kind: string
+id?: string
+key?: string
+name?: string
+path: string
+line?: number
+}
+to_path: string
+/**
+ * One row per site, in path then line order.
+ */
+sites: {
+path: string
+line: number
+/**
+ * import or export: a statement that imports or re-exports the moved code, or the moved file's own import. add_import: the first use of a moved symbol in its old file, which must import it from to_path. dependency: the first use, inside a moved symbol, of a declaration its new file must import. string: a string literal that names the moved file's path. mention: a doc's link or inline code that names it.
+ */
+kind: ("import" | "export" | "add_import" | "dependency" | "string" | "mention")
+/**
+ * observed: the snapshot resolved the import or the use. inferred: a path seam, to review before changing.
+ */
+basis: ("observed" | "inferred")
+/**
+ * The module specifier, path or mention as written at the line.
+ */
+specifier?: string
+/**
+ * What it must be after the move, in the same style (extension, ./, a directory index); absent when it is written through a path alias, a package name or a relative Python import.
+ */
+new_specifier?: string
+/**
+ * For add_import and dependency: the name to import.
+ */
+name?: string
+/**
+ * true when the statement names other things of the old file too, which stay: split it.
+ */
+split?: boolean
+seam?: ("path" | "doc_mention")
+/**
+ * The rule that found the seam.
+ */
+rule?: string
+}[]
+counts: {
+observed: number
+inferred: number
+}
+}
+
+/**
+ * A read-only plan of every site a move of a file, or of a top-level symbol to another file, must change, with file and line: each statement that imports or re-exports it, with its specifier as written and as it must be; for a file, its own relative imports that its new place changes; for a symbol, the use in its old file that will need an import and what it uses that its new file must import, each observed; and strings and doc mentions that name the file's path, each inferred and to be reviewed. Changes no file.
+ */
+export interface PlanMoveInput {
+repository_id?: string
+/**
+ * Default is the repository's current snapshot.
+ */
+snapshot_id?: string
+/**
+ * The top-level symbol to move to to_path: its id, or { name, path }. Give path, subject_id or key.
+ */
+subject_id?: (string | {
+/**
+ * The name a lean row shows (Driver.escape), or the plain name (escape); it must name one symbol in the file.
+ */
+name: string
+/**
+ * The repository-relative path of the file that declares the symbol.
+ */
+path: string
+})
+/**
+ * The symbol to move by its stable_key, in place of subject_id.
+ */
+key?: string
+/**
+ * The repository-relative path of a file to move, in place of a symbol.
+ */
+path?: string
+/**
+ * Where it goes: for a file, the repository-relative path it is to have, which no file has yet; for a symbol, the file it is to be declared in, new or existing.
+ */
+to_path: string
+limits?: {
+timeout_ms?: number
+max_rows?: number
+max_bytes?: number
+max_depth?: number
+}
+/**
+ * compact leaves out the snapshot-wide parts of the envelope (unresolved reasons, standing limitations) that an earlier answer from the same snapshot already gave; query-specific limits stay. Over MCP, answers after the first full one per snapshot are compact unless full is asked for.
+ */
+envelope?: ("full" | "compact")
+}
+
+/**
+ * Every site a rename must change, by file and line (FR980 to FR987).
+ */
+export interface PlanRenameData {
+subject: Member
+new_name: string
+/**
+ * One row per file and line, in path then line order; with include_workspace, the sites in other repositories follow.
+ */
+sites: {
+path: string
+line: number
+/**
+ * declaration, implementation, override, call, reference, import or export for a code site; mention, string or the relationship type for a seam.
+ */
+kind: string
+/**
+ * observed: the compiler or the syntax bound the name here. inferred: a seam that binds the symbol by its name, to review before changing.
+ */
+basis: ("observed" | "inferred")
+/**
+ * The stable_key of the symbol named at the site: the subject, or a member renamed with it.
+ */
+key: string
+seam?: ("route" | "rpc" | "graphql" | "ffi" | "di_key" | "serialised_key" | "doc_mention")
+/**
+ * The rule that found the seam.
+ */
+rule?: string
+/**
+ * For a seam, what names the symbol there: the mention, the source line of a string, or the name on the other side.
+ */
+text?: string
+/**
+ * Present when the seam's link is not resolved to this symbol alone (candidate or ambiguous).
+ */
+resolution?: string
+/**
+ * With include_workspace, the other repository a site is in, and the commit its snapshot was built from; absent for a site in this repository.
+ */
+repository?: {
+id: string
+name: string
+commit: (string | null)
+}
+}[]
+/**
+ * Members that implement or override the subject, or that it implements or overrides, at any distance: renaming one alone breaks dispatch.
+ */
+must_rename_together: Member[]
+/**
+ * Calls that did not resolve and call the same name, or resolved to several candidates among them this symbol: not sites, but places that might reach it.
+ */
+possibly_affected: {
+path: string
+line: number
+callee: string
+resolution: string
+}[]
+/**
+ * Totals before max_rows.
+ */
+counts: {
+observed: number
+inferred: number
+must_rename_together: number
+possibly_affected: number
+}
+}
+export interface Member {
+id: string
+key: string
+name: string
+kind: string
+path: string
+/**
+ * The line of the name in its declaration.
+ */
+line: number
+/**
+ * How the member is linked to the subject, or to another member linked to it.
+ */
+relationship?: ("implements" | "overrides")
+}
+
+/**
+ * A read-only plan of every site a rename of one symbol must change, with file and line: its declaration, calls, references, import and export specifiers, and the implementations and overrides that must be renamed with it, each observed; seams that bind it by name (an OpenAPI operationId, a gRPC or GraphQL handler, an FFI name, a dependency-injection or serialised string key, a doc mention), each inferred and to be reviewed; and calls that did not resolve but might reach it, apart. Changes no file.
+ */
+export interface PlanRenameInput {
+repository_id?: string
+/**
+ * Default is the repository's current snapshot.
+ */
+snapshot_id?: string
+/**
+ * The symbol to rename: its id, or { name, path }. Give subject_id or key.
+ */
+subject_id?: (string | {
+/**
+ * The name a lean row shows (Driver.escape), or the plain name (escape); it must name one symbol in the file.
+ */
+name: string
+/**
+ * The repository-relative path of the file that declares the symbol.
+ */
+path: string
+})
+/**
+ * The symbol to rename by its stable_key, in place of subject_id.
+ */
+key?: string
+/**
+ * The name it is to have; the plan says when a symbol of the same scope already has it.
+ */
+new_name: string
+/**
+ * true adds the calls and references in the other repositories of this repository's workspaces that reach the symbol, or a member renamed with it, through a package it builds, read from the workspace's sealed link file; each site carries its repository. A public export then lists those consumers instead of saying none outside the repository are listed.
+ */
+include_workspace?: boolean
+limits?: {
+timeout_ms?: number
+max_rows?: number
+max_bytes?: number
+max_depth?: number
+}
 /**
  * compact leaves out the snapshot-wide parts of the envelope (unresolved reasons, standing limitations) that an earlier answer from the same snapshot already gave; query-specific limits stay. Over MCP, answers after the first full one per snapshot are compact unless full is asked for.
  */
@@ -2790,6 +3869,108 @@ freshness?: ("snapshot" | "strict")
 envelope?: ("full" | "compact")
 }
 
+export interface SearchConceptsData {
+symbols: {
+id: string
+kind: ("function" | "class" | "method" | "interface" | "type_alias" | "variable" | "module" | "struct" | "enum" | "property" | "field" | "constructor" | "namespace" | "project" | "package" | "endpoint" | "table" | "message" | "channel" | "job" | "feature_flag" | "config_key" | "team" | "service")
+name: string
+qualified_name: string
+path: string
+start_line: number
+/**
+ * The rank score: lexical relevance plus any graph-proximity boost (docs/proofmesh/mcp.md states the formula).
+ */
+score: number
+/**
+ * Up to five query terms that matched, the heaviest first.
+ * 
+ * @maxItems 5
+ */
+terms: string[]
+/**
+ * The best lexical match this symbol is one or two resolved relationships from, when that proximity raised its score.
+ */
+via?: string
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
+/**
+ * The stable_key of the symbol (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file.
+ */
+key?: string
+}[]
+files: {
+path: string
+/**
+ * Where to start reading: the declaration of the file's best symbol, else the first line a term occurs on.
+ */
+line: number
+/**
+ * The rank score: lexical relevance plus any graph-proximity boost (docs/proofmesh/mcp.md states the formula).
+ */
+score: number
+/**
+ * Up to five query terms that matched, the heaviest first.
+ * 
+ * @maxItems 5
+ */
+terms: string[]
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
+}[]
+/**
+ * The query terms ranked by, the heaviest first: the words of the text the index holds, stop words left out.
+ */
+terms: string[]
+/**
+ * Present when the text had more indexed terms than the 32 kept: how many lighter ones were left out.
+ */
+terms_dropped?: number
+}
+
+/**
+ * Rank the symbols and files that match a description (an issue, a task in prose), with no model; each row has file:line, a score and the words that matched.
+ */
+export interface SearchConceptsInput {
+/**
+ * Optional when exactly one repository is registered.
+ */
+repository_id?: string
+/**
+ * Null pins the current published snapshot.
+ */
+snapshot_id?: (string | null)
+limits?: {
+timeout_ms?: number
+max_rows?: number
+max_bytes?: number
+max_depth?: number
+}
+/**
+ * The description, up to a whole issue body. Its heaviest terms are kept, at most 32, and the answer says when it was cut.
+ */
+text: string
+/**
+ * Only symbols of these kinds; files are ranked all the same.
+ */
+kinds?: ("function" | "class" | "method" | "interface" | "type_alias" | "variable" | "module" | "struct" | "enum" | "property" | "field" | "constructor" | "namespace" | "project" | "package" | "endpoint" | "table" | "message" | "channel" | "job" | "feature_flag" | "config_key" | "team" | "service")[]
+/**
+ * Only symbols and files under this path prefix.
+ */
+path_prefix?: string
+/**
+ * true ranks test code by its score alone; by default it ranks below production code, recognised as find_symbols recognises it.
+ */
+include_tests?: boolean
+/**
+ * lean, the default over MCP: plain text. Each row is `<name> <path>:<line> <kind>` for a symbol, then `<path>:<line> file` for a file, tagged score=<n>, terms=<a,b> (up to five) and via=<name> when graph proximity raised it. compact or full: the JSON envelope, with ids.
+ */
+envelope?: ("full" | "compact" | "lean")
+}
+
 export interface SearchSourcesData {
 hits: {
 path: string
@@ -2859,6 +4040,145 @@ cursor?: string
  * compact leaves out the snapshot-wide parts of the envelope (unresolved reasons, standing limitations) that an earlier answer from the same snapshot already gave; query-specific limits stay. Over MCP, answers after the first full one per snapshot are compact unless full is asked for.
  */
 envelope?: ("full" | "compact")
+}
+
+export interface SearchStructureData {
+/**
+ * By path, then by position in the file; a match inside another is listed after it.
+ */
+matches: {
+path: string
+/**
+ * The first line of the match.
+ */
+line: number
+end_line: number
+/**
+ * The first line of the matched code, cut at 120 characters.
+ */
+text: string
+/**
+ * The innermost symbol that holds the match whole, its module when nothing smaller does; null only in a file with no symbol.
+ */
+symbol: (null | {
+id: string
+/**
+ * The stable_key of the symbol (FR280).
+ */
+key: string
+kind: string
+name: string
+qualified_name: string
+})
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
+}[]
+totals: {
+/**
+ * Every match in scope, before row limits; when the search stopped at timeout_ms, those found before it.
+ */
+matches: number
+/**
+ * Files in the pattern's language under the prefix and scope.
+ */
+files_searched: number
+/**
+ * Symbols in the reachable_from and reaching scope, when one is given.
+ */
+scope_symbols?: number
+/**
+ * Files importing the importing files, when given.
+ */
+scope_files?: number
+}
+}
+
+/**
+ * Code found by its shape, with ast-grep's pattern syntax over the syntax tier's Tree-sitter grammars (FR1060): every await in a loop, every call of escape with a string, every catch that swallows its error. Optionally only inside the symbols reachable from or reaching a symbol, or the files importing a file (scope). Read-only, over the snapshot's captured content, not the working tree. Lean over MCP: one `<enclosing name> <path>:<line> "<first line of the match>"` row per match, the text cut at 120 characters; pages with a cursor, and completion.total counts every match. Time, matches and bytes are the usual limits; files over 1 MiB are not parsed.
+ */
+export interface SearchStructureInput {
+/**
+ * Optional when exactly one repository is registered.
+ */
+repository_id?: string
+/**
+ * Null pins the current published snapshot.
+ */
+snapshot_id?: (string | null)
+limits?: {
+timeout_ms?: number
+max_rows?: number
+max_bytes?: number
+max_depth?: number
+}
+/**
+ * snapshot (default) answers from the published snapshot. strict first checks that the working tree is exactly what the snapshot was built from; if not, it starts an index and refuses with STALE_INPUT naming the changed files.
+ */
+freshness?: ("snapshot" | "strict")
+/**
+ * lean, the default over MCP: plain text with no JSON and no structuredContent. A header `# <tool> · <n> rows · <snapshot> current` (stale when the snapshot is older than the repository's current one), one `<name> <path>:<line>` row per result, then `# ` lines for the limitations of this answer and `# more: cursor <c>` when a next page exists. The line is the call, import or reference site for relationship, impact and path rows and the declaration for symbol rows; tags follow: in or out when both directions are asked, depth=<n>, dispatch, external, candidate, ambiguous, unresolved:<reason>, and the relationship type when the query mixes types. A name or path with a space, quote or # is quoted as JSON. compact: the JSON envelope without the snapshot-wide parts an earlier answer gave (coverage, unresolved reasons, standing limitations). full: the whole JSON envelope. Ask for compact or full for ids, evidence and totals.
+ */
+envelope?: ("full" | "compact" | "lean")
+/**
+ * The next_cursor of the previous page. It continues the same query on the same snapshot; it expires after an hour.
+ */
+cursor?: string
+/**
+ * Code in the language, with ast-grep's metavariables: $X matches one node, $$$X (or $$$) any number of nodes, $_ one node without capturing, $$X an unnamed node too. A repeated metavariable must match equal code. Matching is ast-grep's default (smart): comments and punctuation the pattern leaves out are skipped. A pattern that does not parse is refused with the parse error and its syntax tree.
+ */
+pattern: string
+/**
+ * The pattern's language: only files with its extensions are searched, as ast-grep chooses them (typescript: .ts .cts .mts; tsx; javascript, read with the TSX grammar; python; go; ...). Omitted: every file whose extension has a grammar here, with the pattern parsed in each file's language; a language it does not parse in is skipped and named, and files with no grammar are counted.
+ */
+language?: ("typescript" | "tsx" | "javascript" | "python" | "go" | "rust" | "java" | "c" | "cpp" | "csharp" | "ruby" | "kotlin" | "scala" | "swift" | "bash" | "hcl")
+/**
+ * Only files whose repository-relative path starts with this. Default: the whole repository.
+ */
+path_prefix?: string
+/**
+ * Only matches inside what the graph names; several keys intersect. A match counts when a symbol of the scope holds it whole.
+ */
+scope?: {
+/**
+ * Symbols, each with every symbol trace_paths reaches from it (resolved calls, and dispatch both ways through implements and overrides), within max_depth.
+ * 
+ * @minItems 1
+ * @maxItems 20
+ * 
+ * Items: A symbol id (sym_...), a name the snapshot holds once (`DataSource.initialize`, as a lean row shows it, or a plain name), or { name, path }.
+ */
+reachable_from?: [(string | {
+name: string
+path: string
+}), ...((string | {
+name: string
+path: string
+}))[]]
+/**
+ * Symbols, each with every symbol that reaches it the same way, within max_depth.
+ * 
+ * @minItems 1
+ * @maxItems 20
+ * 
+ * Items: A symbol id (sym_...), a name the snapshot holds once (`DataSource.initialize`, as a lean row shows it, or a plain name), or { name, path }.
+ */
+reaching?: [(string | {
+name: string
+path: string
+}), ...((string | {
+name: string
+path: string
+}))[]]
+/**
+ * Repository-relative file paths: only matches in the files whose resolved imports name one of them.
+ * 
+ * @minItems 1
+ * @maxItems 20
+ */
+importing?: [string, ...(string)[]]
+}
 }
 
 export interface TracePathsData {
@@ -2938,6 +4258,14 @@ key?: string
  * Present and true when the file is generated (FR292); absent otherwise.
  */
 generated?: boolean
+/**
+ * Present on a node of another repository of the workspace (include_workspace): that repository, and the commit its snapshot was built from. Its id is of that snapshot.
+ */
+repository?: {
+id: string
+name: string
+commit: (string | null)
+}
 }
 }
 /**
@@ -2952,8 +4280,33 @@ origin: string
  */
 basis: ("observed" | "inferred")
 rule: (string | null)
+/**
+ * On a hop of a path: where the relationship is written, its first evidence's file and line. Absent on an edge the search only explored.
+ */
+site?: {
+path: string
+start_line: number
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
 }
 }
+}
+/**
+ * With include_workspace: each workspace that holds this repository, its link file (null when none is sealed), and each member's side of it: the snapshot and commit the link file was built from, and whether that snapshot is still the member's current one.
+ */
+workspace?: {
+name: string
+link_file_id: (string | null)
+members: {
+id: string
+name: string
+commit: (string | null)
+snapshot_id: string
+current: boolean
+}[]
+}[]
 }
 
 /**
@@ -3038,6 +4391,10 @@ envelope?: ("full" | "compact" | "lean")
  * Whether the walk follows candidate edges: a call site that binds one candidate, or an ambiguous one of at most five. true follows them, false never does, auto (the default) follows them when every subject's file was analysed by the syntax tier alone. Every row reached through one is inferred; a site with more than five candidates is never followed.
  */
 include_inferred?: (boolean | "auto")
+/**
+ * true lets source_id or target_id be a symbol of another repository of this repository's workspaces, by its id in the snapshot the workspace's sealed link file was built from, and lets a path cross into another repository where a call reaches a package that repository builds (an npm package.json). Each node of another repository carries its repository and commit; a crossing hop's rule is package_symbol, inferred when the installed version is not the built one.
+ */
+include_workspace?: boolean
 }
 
 export interface VerifyClaimData {
@@ -3606,6 +4963,15 @@ start_line: number
 end_line: number
 }
 }
+/**
+ * Optional (protocol 1.3). Further sites of the same relationship in the same file, such as every later use of a type a function names more than once: each is evidence of the one relationship, which site still names and orders. Absent: site alone.
+ */
+sites?: {
+start_byte: number
+end_byte: number
+start_line: number
+end_line: number
+}[]
 resolution: ("resolved" | "resolved_external" | "candidate" | "ambiguous" | "unresolved")
 target?: {
 symbol?: string

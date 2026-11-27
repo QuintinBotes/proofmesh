@@ -61,6 +61,15 @@
       "signature": null
     },
     {
+      "kind": "property",
+      "qualified_name": "packages/billing/src/invoice:Line.cents",
+      "lines": [
+        4,
+        4
+      ],
+      "signature": null
+    },
+    {
       "kind": "function",
       "qualified_name": "packages/billing/src/invoice:invoiceTotal",
       "lines": [

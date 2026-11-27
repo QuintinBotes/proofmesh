@@ -1,0 +1,131 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "tools/plan_move.data.schema.json",
+  "title": "plan_move data",
+  "description": "Every site a move must change, by file and line (FR1280 to FR1284).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "subject",
+    "to_path",
+    "sites",
+    "counts"
+  ],
+  "properties": {
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "path"
+      ],
+      "description": "The file (kind file) or the symbol that moves.",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "description": "file, or the symbol's kind."
+        },
+        "id": {
+          "type": "string"
+        },
+        "key": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "line": {
+          "type": "integer"
+        }
+      }
+    },
+    "to_path": {
+      "type": "string"
+    },
+    "sites": {
+      "type": "array",
+      "description": "One row per site, in path then line order.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "line",
+          "kind",
+          "basis"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "line": {
+            "type": "integer"
+          },
+          "kind": {
+            "enum": [
+              "import",
+              "export",
+              "add_import",
+              "dependency",
+              "string",
+              "mention"
+            ],
+            "description": "import or export: a statement that imports or re-exports the moved code, or the moved file's own import. add_import: the first use of a moved symbol in its old file, which must import it from to_path. dependency: the first use, inside a moved symbol, of a declaration its new file must import. string: a string literal that names the moved file's path. mention: a doc's link or inline code that names it."
+          },
+          "basis": {
+            "enum": [
+              "observed",
+              "inferred"
+            ],
+            "description": "observed: the snapshot resolved the import or the use. inferred: a path seam, to review before changing."
+          },
+          "specifier": {
+            "type": "string",
+            "description": "The module specifier, path or mention as written at the line."
+          },
+          "new_specifier": {
+            "type": "string",
+            "description": "What it must be after the move, in the same style (extension, ./, a directory index); absent when it is written through a path alias, a package name or a relative Python import."
+          },
+          "name": {
+            "type": "string",
+            "description": "For add_import and dependency: the name to import."
+          },
+          "split": {
+            "type": "boolean",
+            "description": "true when the statement names other things of the old file too, which stay: split it."
+          },
+          "seam": {
+            "enum": [
+              "path",
+              "doc_mention"
+            ]
+          },
+          "rule": {
+            "type": "string",
+            "description": "The rule that found the seam."
+          }
+        }
+      }
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "observed",
+        "inferred"
+      ],
+      "properties": {
+        "observed": {
+          "type": "integer"
+        },
+        "inferred": {
+          "type": "integer"
+        }
+      }
+    }
+  }
+}

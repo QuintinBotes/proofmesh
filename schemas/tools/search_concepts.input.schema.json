@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "search_concepts.input.schema.json",
+  "title": "search_concepts input",
+  "description": "Rank the symbols and files that match a description (an issue, a task in prose), with no model; each row has file:line, a score and the words that matched.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "text"
+  ],
+  "properties": {
+    "repository_id": {
+      "type": "string",
+      "pattern": "^repo_[0-9a-z]+$",
+      "description": "Optional when exactly one repository is registered."
+    },
+    "snapshot_id": {
+      "oneOf": [
+        {
+          "type": "string",
+          "pattern": "^snap_[0-9a-z]+$"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Null pins the current published snapshot."
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "timeout_ms": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_rows": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_depth": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "text": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 65536,
+      "description": "The description, up to a whole issue body. Its heaviest terms are kept, at most 32, and the answer says when it was cut."
+    },
+    "kinds": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "function",
+          "class",
+          "method",
+          "interface",
+          "type_alias",
+          "variable",
+          "module",
+          "struct",
+          "enum",
+          "property",
+          "field",
+          "constructor",
+          "namespace",
+          "project",
+          "package",
+          "endpoint",
+          "table",
+          "message",
+          "channel",
+          "job",
+          "feature_flag",
+          "config_key",
+          "team",
+          "service"
+        ]
+      },
+      "uniqueItems": true,
+      "description": "Only symbols of these kinds; files are ranked all the same."
+    },
+    "path_prefix": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Only symbols and files under this path prefix."
+    },
+    "include_tests": {
+      "type": "boolean",
+      "default": false,
+      "description": "true ranks test code by its score alone; by default it ranks below production code, recognised as find_symbols recognises it."
+    },
+    "envelope": {
+      "enum": [
+        "full",
+        "compact",
+        "lean"
+      ],
+      "description": "lean, the default over MCP: plain text. Each row is `<name> <path>:<line> <kind>` for a symbol, then `<path>:<line> file` for a file, tagged score=<n>, terms=<a,b> (up to five) and via=<name> when graph proximity raised it. compact or full: the JSON envelope, with ids."
+    }
+  }
+}

@@ -1,6 +1,9 @@
+import crypto from 'node:crypto'
 import zlib from 'node:zlib'
+import fc from 'fast-check'
 import { beforeAll, describe, expect, it } from 'vitest'
-import { JITTER, areaFog, areaLabel, ghostAreas, legendAreas, placeLabels, seeds, layoutKey, matchIndices, nameHashes, parseGalaxy, rankMatches, shortName, warmStart, type GalaxyData } from '../src/galaxyData'
+import { buildIndex, LIMIT, searchIndex } from '../src/paletteIndex'
+import { areaFog, areaLabel, ghostAreas, graphPositions, legendAreas, placeLabels, matchIndices, parseGalaxy, rankMatches, shortName, type GalaxyData } from '../src/galaxyData'
 import { galaxyFor } from '../../../packages/proofmesh/src/query/galaxy.js'
 import { indexedDataDir } from '../../../packages/proofmesh/test/helpers.js'
 
@@ -13,23 +16,23 @@ describe('A11 the Galaxy payload: every symbol of the snapshot in one compact bi
     const g = load()
     expect(g.names.slice().sort()).toEqual([
       'packages/api/src/handler:dispatch', 'packages/api/src/handler:handleInvoice', 'packages/api/src/handler:handlers',
-      'packages/billing/src/invoice:Line', 'packages/billing/src/invoice:invoiceTotal',
+      'packages/billing/src/invoice:Line', 'packages/billing/src/invoice:Line.cents', 'packages/billing/src/invoice:invoiceTotal',
       'packages/format/src/currency:formatAmount', 'packages/legacy/src/format:formatAmount',
     ])
     const name = (i: number) => g.names[i]!
     const links = Array.from({ length: g.links.length / 2 }, (_, j) => `${name(g.links[j * 2]!)} -> ${name(g.links[j * 2 + 1]!)}`).sort()
-    // invoiceTotal's use of the Line type is a TypeScript reference (FR086), and dispatch's read of the handlers variable is one too
-    // (FR102), so each is a resolved link.
-    expect(links).toEqual(['packages/api/src/handler:dispatch -> packages/api/src/handler:handlers', 'packages/api/src/handler:handleInvoice -> packages/billing/src/invoice:invoiceTotal', 'packages/billing/src/invoice:invoiceTotal -> packages/billing/src/invoice:Line', 'packages/billing/src/invoice:invoiceTotal -> packages/format/src/currency:formatAmount'])
-    expect(g.areas.map((a) => [a.name, a.count])).toEqual([['packages/api/src', 3], ['packages/billing/src', 2], ['packages/format/src', 1], ['packages/legacy/src', 1], ['(root)', 0], ['packages/api', 0], ['packages/billing/dist', 0]])
+    // invoiceTotal's use of the Line type is a TypeScript reference (FR086), its read of line.cents is one too (FR1021), and dispatch's
+    // read of the handlers variable is one (FR102), so each is a resolved link.
+    expect(links).toEqual(['packages/api/src/handler:dispatch -> packages/api/src/handler:handlers', 'packages/api/src/handler:handleInvoice -> packages/billing/src/invoice:invoiceTotal', 'packages/billing/src/invoice:invoiceTotal -> packages/billing/src/invoice:Line', 'packages/billing/src/invoice:invoiceTotal -> packages/billing/src/invoice:Line.cents', 'packages/billing/src/invoice:invoiceTotal -> packages/format/src/currency:formatAmount'])
+    expect(g.areas.map((a) => [a.name, a.count])).toEqual([['packages/billing/src', 3], ['packages/api/src', 3], ['packages/format/src', 1], ['packages/legacy/src', 1], ['(root)', 0], ['packages/api', 0], ['packages/billing/dist', 0]])
     expect(g.names.map((n, i) => [n.split(':')[0]!.split('/').slice(0, 3).join('/'), g.areas[g.area[i]!]!.name]).every(([a, b]) => a === b)).toBe(true)
   })
 
   it('FR059 each area carries its coverage: files by disposition, call sites, unresolved calls, and why files were not analysed', () => {
     const none = { indexed: 0, unsupported: 0, excluded: 0, failed: 0, pending: 0 }
     expect(load().areas).toEqual([
+      { name: 'packages/billing/src', count: 3, files: { ...none, indexed: 2 }, calls: { sites: 2, unresolved: 0 }, gaps: [] },
       { name: 'packages/api/src', count: 3, files: { ...none, indexed: 1 }, calls: { sites: 2, unresolved: 1 }, gaps: [] },
-      { name: 'packages/billing/src', count: 2, files: { ...none, indexed: 2 }, calls: { sites: 2, unresolved: 0 }, gaps: [] },
       { name: 'packages/format/src', count: 1, files: { ...none, indexed: 2 }, calls: { sites: 1, unresolved: 0 }, gaps: [] },
       { name: 'packages/legacy/src', count: 1, files: { ...none, indexed: 1 }, calls: { sites: 1, unresolved: 0 }, gaps: [] },
       { name: '(root)', count: 0, files: { ...none, indexed: 1, unsupported: 1 }, calls: { sites: 0, unresolved: 0 }, gaps: [['no_adapter:.md', 1]] },
@@ -59,36 +62,33 @@ describe('A11 the Galaxy payload: every symbol of the snapshot in one compact bi
     const g = load()
     expect(matchIndices(g, 'FORMAT').map((i) => g.names[i]).sort()).toEqual(['packages/format/src/currency:formatAmount', 'packages/legacy/src/format:formatAmount'])
     expect(matchIndices(g, 'f')).toEqual([])
-    expect(rankMatches(g, matchIndices(g, 'invoice'), 'invoice').map((i) => g.names[i])).toEqual(['packages/billing/src/invoice:invoiceTotal', 'packages/api/src/handler:handleInvoice', 'packages/billing/src/invoice:Line'])
+    expect(rankMatches(g, matchIndices(g, 'invoice'), 'invoice').map((i) => g.names[i])).toEqual(['packages/billing/src/invoice:invoiceTotal', 'packages/api/src/handler:handleInvoice', 'packages/billing/src/invoice:Line', 'packages/billing/src/invoice:Line.cents'])
     expect(shortName('Demo.Garden.Watering.Schedules.SprinklerScheduleDiagnostics')).toBe('SprinklerScheduleDiagnostics')
   })
 })
 
-describe('A11 B18 settle-once layouts are cached by snapshot and seed, and a new snapshot starts from the last layout', () => {
-  const none = { indexed: 1, unsupported: 0, excluded: 0, failed: 0, pending: 0 }
-  const galaxy = (snapshotId: string, names: string[], area: number[], areas: Array<[string, number]>) => ({
-    snapshotId, n: names.length, names, area: Uint16Array.from(area), areas: areas.map(([name, count]) => ({ name, count, files: none, calls: { sites: 0, unresolved: 0 }, gaps: [] })),
-  }) as unknown as GalaxyData
-
-  it('the cache key names the snapshot and changes when the seed inputs change', () => {
-    const a = galaxy('snap_a', ['x', 'y'], [0, 0], [['src', 2]])
-    expect(layoutKey(a)).toMatch(/^snap_a:[0-9a-f]{8}$/)
-    expect(layoutKey(galaxy('snap_a', ['x', 'y'], [0, 0], [['src', 2]]))).toBe(layoutKey(a))
-    expect(layoutKey(galaxy('snap_a', ['x', 'y'], [0, 1], [['src', 1], ['lib', 1]]))).not.toBe(layoutKey(a))
-    expect(layoutKey(galaxy('snap_b', ['x', 'y'], [0, 0], [['src', 2]])).split(':')[1]).toBe(layoutKey(a).split(':')[1])
+describe('FR1220 FR1221 the payload carries every symbol\'s position, computed with the snapshot', () => {
+  it('B13 positions are 16 bits per axis in the map\'s frame, one place for each symbol, in format 4', () => {
+    const raw = zlib.gunzipSync(galaxyFor(d).gz)
+    expect(JSON.parse(raw.subarray(4, 4 + raw.readUInt32LE(0)).toString('utf8')).format).toBe(4)
+    const g = load()
+    expect(g.positions).toHaveLength(g.n * 2)
+    expect(new Set(Array.from({ length: g.n }, (_, i) => `${g.positions[i * 2]},${g.positions[i * 2 + 1]}`)).size).toBe(g.n)
+    const p = graphPositions(g)
+    expect(Math.min(...p)).toBeGreaterThanOrEqual(0)
+    expect(Math.max(...p)).toBeLessThanOrEqual(4096)
+    // Containment: a symbol sits nearer another of its file than any symbol of another package.
+    const at = (name: string) => g.names.indexOf(name)
+    const gap = (a: number, b: number) => Math.hypot(p[a * 2]! - p[b * 2]!, p[a * 2 + 1]! - p[b * 2 + 1]!)
+    const line = at('packages/billing/src/invoice:Line'), total = at('packages/billing/src/invoice:invoiceTotal')
+    const others = g.names.flatMap((n, i) => (n.startsWith('packages/billing/') ? [] : [i]))
+    expect(gap(line, total)).toBeLessThan(Math.min(...others.map((o) => gap(line, o))))
   })
 
-  it('a symbol kept between snapshots keeps its place, and a new one starts at the centre of its area', () => {
-    const before = galaxy('snap_a', ['src:a', 'src:b', 'lib:c'], [0, 0, 1], [['src', 2], ['lib', 1]])
-    const after = galaxy('snap_b', ['src:a', 'src:new', 'lib:d', 'docs:e'], [0, 0, 1, 2], [['src', 2], ['lib', 1], ['docs', 1]])
-    const previous = { names: nameHashes(before), positions: Float32Array.from([10, 20, 30, 40, 500, 600]) }
-    const seed = Float32Array.from([1, 1, 2, 2, 3, 3, 4, 4])
-    const { positions, reused } = warmStart(after, previous, seed)
-    expect(reused).toBe(1)
-    // src:a kept; src:new near the centre of src's kept points; lib and docs kept no points, so their new symbols use the seed.
-    expect([positions[0], positions[1], positions[4], positions[5], positions[6], positions[7]]).toEqual([10, 20, 3, 3, 4, 4])
-    expect(Math.hypot(positions[2]! - 10, positions[3]! - 20)).toBeLessThanOrEqual(JITTER)
-    expect(warmStart(after, null, seed)).toEqual({ positions: seed, reused: 0 })
+  it('two indexes of the same repository, in two data directories, send byte-identical payloads', async () => {
+    const other = (await indexedDataDir()).dataDir
+    const digest = (dir: string) => crypto.createHash('sha256').update(zlib.gunzipSync(galaxyFor(dir).gz)).digest('hex')
+    expect(digest(other)).toBe(digest(d))
   })
 })
 
@@ -108,15 +108,7 @@ describe('B20 area labels say which area they are', () => {
   })
 })
 
-describe('B13 B14 points never collapse onto one place, and labels never pile up', () => {
-  it('B13 seeds every point of an area at its own place, even with no links', () => {
-    const none = { indexed: 1, unsupported: 0, excluded: 0, failed: 0, pending: 0 }
-    const n = 344
-    const g = { n, area: new Uint16Array(n), areas: [{ name: 'Gears/Cogs', count: n, files: none, calls: { sites: 0, unresolved: 0 }, gaps: [] }] } as unknown as GalaxyData
-    const p = seeds(g)
-    expect(new Set(Array.from({ length: n }, (_, i) => `${p[i * 2]!.toFixed(3)},${p[i * 2 + 1]!.toFixed(3)}`)).size).toBe(n)
-  })
-
+describe('B14 labels never pile up', () => {
   it('B14 keeps labels in order and drops one that would overlap a label already placed', () => {
     const labels = [{ name: 'Demo.Garden.App', x: 100, y: 100 }, { name: 'Shed', x: 130, y: 105 }, { name: 'Orchard', x: 100, y: 140 }, { name: 'Meadows', x: 400, y: 100 }]
     expect(placeLabels(labels).map((l) => l.name)).toEqual(['Demo.Garden.App', 'Orchard', 'Meadows'])
@@ -130,6 +122,30 @@ describe('B13 B14 points never collapse onto one place, and labels never pile up
       const plain = names.flatMap((n, i) => (n.toLowerCase().includes(q.toLowerCase()) ? [i] : []))
       expect(matchIndices(g, q), q).toEqual(plain)
     }
+  })
+})
+
+describe('FR1200 search maps each match to its own name when lowering changes the length of a name before it', () => {
+  // İ lowers to two code units; ẞ, ß, combining marks, final sigma and an emoji are case-folding traps of their own.
+  const units = ['İ', 'i', '\u0307', 'ẞ', 'ß', 's', 'S', 'e', '\u0301', 'é', '🚀', 'Σ', 'ς', 'a', 'b', ':', '/']
+  const galaxy = (names: string[]) => ({ n: names.length, names }) as unknown as GalaxyData
+
+  it('finds the name the text is in, after a name holding İ, in the Galaxy and the palette', () => {
+    const names = ['src/a:' + 'İ'.repeat(20), 'src/b:ab', 'src/c:xy']
+    expect(matchIndices(galaxy(names), 'src/b:ab').map((i) => names[i])).toEqual(['src/b:ab'])
+    expect(searchIndex(buildIndex(names, []), 'src/b:ab').items.map((i) => names[i])).toEqual(['src/b:ab'])
+  })
+
+  it('agrees with a plain filter on any names and query built from case-folding traps', () => {
+    const text = (min: number, max: number) => fc.array(fc.constantFrom(...units), { minLength: min, maxLength: max }).map((a) => a.join(''))
+    fc.assert(fc.property(fc.array(text(1, 12), { maxLength: 40 }), text(2, 4), (names, q) => {
+      const want = names.flatMap((n, i) => (n.toLowerCase().includes(q.toLowerCase()) ? [i] : []))
+      expect(matchIndices(galaxy(names), q)).toEqual(want)
+      const r = searchIndex(buildIndex(names, []), q)
+      expect(r.total).toBe(want.length)
+      expect(r.items.length).toBe(Math.min(want.length, LIMIT))
+      for (const i of r.items) expect(want).toContain(i)
+    }), { numRuns: 500 })
   })
 })
 

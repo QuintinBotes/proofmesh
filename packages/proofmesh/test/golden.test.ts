@@ -23,7 +23,9 @@ describe('golden facts for fixtures/ts-invoicing', () => {
       for (const r of rows) {
         const ev = db.prepare('select source_kind from evidence where id = ?').get(r.evidence_id) as { source_kind: string }
         expect(ev.source_kind).toBe('declaration')
-        if (r.kind !== 'module') expect(slice(db, r.evidence_id)).toMatch(new RegExp(`^(export )?(function|interface|const|class|type) `))
+        // A property's declaration is its member line, which starts with its name.
+        if (r.kind === 'property') expect(slice(db, r.evidence_id)).toMatch(new RegExp(`^${r.qualified_name.split('.').pop()}\\b`))
+        else if (r.kind !== 'module') expect(slice(db, r.evidence_id)).toMatch(new RegExp(`^(export )?(function|interface|const|class|type) `))
       }
     })
   })

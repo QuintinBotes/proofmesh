@@ -26,9 +26,9 @@ export function leanRow(name: string | null, path: string | null, line: number |
   return [...(name === null || name === path ? [] : [quote(name)]), `${quote(path)}:${line}`, ...tags].join(' ')
 }
 
-export function leanText(tool: string, snapshotId: string, current: boolean, rows: string[], notes: string[], cursor: string | null): string {
+export function leanText(tool: string, snapshotId: string, current: boolean, rows: string[], notes: string[], cursor: string | null, imported = false): string {
   return [
-    `# ${tool} · ${rows.length} row${rows.length === 1 ? '' : 's'} · ${snapshotId} ${current ? 'current' : 'stale'}`,
+    `# ${tool} · ${rows.length} row${rows.length === 1 ? '' : 's'} · ${snapshotId} ${current ? 'current' : 'stale'}${imported ? ' imported' : ''}`,
     ...rows,
     ...notes.map((n) => `# ${n}`),
     ...(cursor ? [`# more: cursor ${cursor}`] : []),

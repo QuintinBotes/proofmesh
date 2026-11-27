@@ -1,15 +1,16 @@
 // Pure mapping from a get_ecosystem answer (A11) to a scene: one node per member repository, one edge per linked pair, and a stub
 // per boundary where a member's client facts matched nothing in the workspace. No DOM, so it is testable without a browser.
 import { forceLayout } from './layout'
+import { plural } from './plural'
 import { TOKENS, type Scene, type SceneEdge, type SceneNode } from './scene'
 
-export type LinkType = 'calls_endpoint' | 'messages' | 'depends_on_package' | 'calls_service' | 'deploys' | 'uses_resource'
+export type LinkType = 'calls_endpoint' | 'messages' | 'depends_on_package' | 'calls_service' | 'deploys' | 'uses_resource' | 'calls' | 'inherits' | 'implements' | 'references'
 export type EcosystemMember = { repository_id: string; name: string; snapshot_id: string; current: boolean; symbols: number; files_indexed: number; endpoints: number; channels: number; projects: number }
 export type EcosystemLink = { source_repository_id: string; target_repository_id: string; type: LinkType; resolved: number; candidate: number; min_confidence: number; max_confidence: number; sample: Array<{ link_id: string; source: string; target: string | null; confidence: number; rule: string }> }
 export type EcosystemBoundary = { repository_id: string; type: LinkType; count: number; sample: Array<{ link_id: string; source: string; reason: string }> }
 export type Ecosystem = { workspace: { name: string; link_file_id: string; sealed_at: string; rules: Record<string, string> }; members: EcosystemMember[]; links: EcosystemLink[]; boundaries: EcosystemBoundary[] }
 
-export const LINK_WORDS: Record<LinkType, string> = { calls_endpoint: 'calls endpoints of', messages: 'sends messages to', depends_on_package: 'depends on packages of', calls_service: 'calls the service', deploys: 'deploys', uses_resource: 'uses the cloud resource' }
+export const LINK_WORDS: Record<LinkType, string> = { calls_endpoint: 'calls endpoints of', messages: 'sends messages to', depends_on_package: 'depends on packages of', calls_service: 'calls the service', deploys: 'deploys', uses_resource: 'uses the cloud resource', calls: 'calls code of', inherits: 'extends types of', implements: 'implements types of', references: 'uses types of' }
 /** How a member relates to the selected repository, read from the link file's pairs (A11). */
 export type Relation = 'selected' | 'links_to' | 'linked_from' | 'both' | 'indirect' | 'unlinked'
 export const RELATION_COLOURS: Record<Relation, string> = { selected: '#ffd166', links_to: '#7fd4ff', linked_from: '#c49bff', both: '#5ee2a0', indirect: '#8f99ad', unlinked: '#4d566b' }
@@ -89,6 +90,6 @@ export function toEcosystem(e: Ecosystem, selected: string | null = defaultSelec
   }
   const stale = members.filter((m) => !m.current).length
   const unresolved = e.boundaries.reduce((n, b) => n + b.count, 0)
-  const conclusion = `${e.workspace.name}: ${members.length} repositories, ${ps.length} linked pairs, ${unresolved.toLocaleString('en')} unresolved boundaries${stale ? `; ${stale} linked from a snapshot that is no longer current` : ''}. Click a repository to see its links and open only it.`
+  const conclusion = `${e.workspace.name}: ${plural(members.length, 'repository', 'repositories')}, ${plural(ps.length, 'linked pair')}, ${plural(unresolved, 'unresolved boundary', 'unresolved boundaries')}${stale ? `; ${stale} linked from a snapshot that is no longer current` : ''}. Click a repository to see its links and open only it.`
   return { nodes, edges, badges: [], stubs, conclusion }
 }

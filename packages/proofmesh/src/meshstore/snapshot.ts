@@ -6,7 +6,7 @@ import { ProofmeshError } from '../core/errors.js'
 import { readSql } from '../core/schemas.js'
 import type { Catalog, SnapshotRow } from './catalog.js'
 
-export const FORMAT_VERSION = '0.12'
+export const FORMAT_VERSION = '0.13'
 
 export const stagingDir = (dataDir: string, snapshotId: string) => path.join(dataDir, 'staging', snapshotId)
 export const sealedPath = (dataDir: string, snapshotId: string) => path.join(dataDir, 'snapshots', `${snapshotId}.db`)
@@ -25,10 +25,11 @@ export function openStagingStore(file: string): Database.Database {
   db.pragma('journal_mode = WAL')
   db.pragma('synchronous = NORMAL')
   db.pragma('foreign_keys = OFF')
+  db.pragma('cache_size = -65536')
   return db
 }
 
-function fsyncPath(p: string): void {
+export function fsyncPath(p: string): void {
   const fd = fs.openSync(p, 'r')
   try {
     fs.fsyncSync(fd)

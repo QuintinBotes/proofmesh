@@ -144,7 +144,7 @@ describe('FR182 FR184 FR185 issue 10 scenario 4: analyze_impact labels a depende
   it('FR182 on fixtures/ts-typeorm a table is reached through the entity that maps to it: inferred for a bare @Entity(), observed for a named one', async () => {
     const { dataDir: t } = await indexedDataDir(fixtureRepo('ts-typeorm'))
     const deps = (table: string) => (tool(t, 'analyze_impact', { subject_ids: [symbolId(t, table)] }).data as unknown as { dependents: Dep[] }).dependents.map((x) => [x.name, x.basis])
-    expect(deps('payment')).toEqual([['Payment', 'inferred'], ['CardPayment', 'inferred'], ['chargeCard', 'inferred'], ['charge', 'inferred'], ['POST payments', 'inferred']])
+    expect(deps('payment')).toEqual([['Payment', 'inferred'], ['id', 'inferred'], ['CardPayment', 'inferred'], ['last4', 'inferred'], ['chargeCard', 'inferred'], ['charge', 'inferred'], ['POST payments', 'inferred']])
     expect(deps('orders').length).toBeGreaterThan(0)
     expect(deps('orders').map((x) => x[1])).toEqual(deps('orders').map(() => 'observed'))
   }, 240000)
@@ -307,7 +307,7 @@ describe('FR187 FR188 the name matching of issue 16 stays inferred without its s
     withSnapshot(d, (db) => {
       const open = db.prepare("select detail from assertion where origin = 'syntax' and type in ('calls', 'inherits', 'implements', 'imports') and resolution in ('candidate', 'ambiguous')").all() as Array<{ detail: string }>
       expect(open.length).toBeGreaterThan(10)
-      for (const r of open) { const detail = JSON.parse(r.detail); expect(detail.rule).toMatch(/^(go|java|rust|c|cpp)_/); expect(detail.inferred).toBeUndefined() }
+      for (const r of open) { const detail = JSON.parse(r.detail); expect(detail.rule).toMatch(/^(go|java|rust|c|cpp|kotlin|php|ruby)_/); expect(detail.inferred).toBeUndefined() }
     })
     const rows = relationships(d, { subject_id: symbolId(d, 'lib/lib:Format'), direction: 'in', types: ['calls'] }).relationships
     expect(rows).toHaveLength(1)

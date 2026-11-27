@@ -173,6 +173,10 @@
     "include_external": {
       "type": "boolean",
       "description": "Default false: outbound rows leave out calls that resolved to code outside the repository (framework and library members), and totals.out_external counts them; relationship types whose targets are external by nature, such as depends_on_package, keep them. True lists those calls too. Ignored when resolutions is given, and for an external subject."
+    },
+    "include_workspace": {
+      "type": "boolean",
+      "description": "true adds inbound calls, inherits, implements and references from the other repositories of this repository's workspaces whose sites reach the subject through a package it builds (an npm package.json), read from the workspace's sealed link file; each row carries its repository and commit. The same version installed as built is observed; another version is inferred, with the mismatch stated."
     }
   }
 }

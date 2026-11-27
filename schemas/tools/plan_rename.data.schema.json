@@ -1,0 +1,211 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "tools/plan_rename.data.schema.json",
+  "title": "plan_rename data",
+  "description": "Every site a rename must change, by file and line (FR980 to FR987).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "subject",
+    "new_name",
+    "sites",
+    "must_rename_together",
+    "possibly_affected",
+    "counts"
+  ],
+  "$defs": {
+    "member": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "key",
+        "name",
+        "kind",
+        "path",
+        "line"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "key": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "line": {
+          "type": "integer",
+          "description": "The line of the name in its declaration."
+        },
+        "relationship": {
+          "enum": [
+            "implements",
+            "overrides"
+          ],
+          "description": "How the member is linked to the subject, or to another member linked to it."
+        }
+      }
+    }
+  },
+  "properties": {
+    "subject": {
+      "$ref": "#/$defs/member"
+    },
+    "new_name": {
+      "type": "string"
+    },
+    "sites": {
+      "type": "array",
+      "description": "One row per file and line, in path then line order; with include_workspace, the sites in other repositories follow.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "line",
+          "kind",
+          "basis",
+          "key"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "line": {
+            "type": "integer"
+          },
+          "kind": {
+            "type": "string",
+            "description": "declaration, implementation, override, call, reference, import or export for a code site; mention, string or the relationship type for a seam."
+          },
+          "basis": {
+            "enum": [
+              "observed",
+              "inferred"
+            ],
+            "description": "observed: the compiler or the syntax bound the name here. inferred: a seam that binds the symbol by its name, to review before changing."
+          },
+          "key": {
+            "type": "string",
+            "description": "The stable_key of the symbol named at the site: the subject, or a member renamed with it."
+          },
+          "seam": {
+            "enum": [
+              "route",
+              "rpc",
+              "graphql",
+              "ffi",
+              "di_key",
+              "serialised_key",
+              "doc_mention"
+            ]
+          },
+          "rule": {
+            "type": "string",
+            "description": "The rule that found the seam."
+          },
+          "text": {
+            "type": "string",
+            "description": "For a seam, what names the symbol there: the mention, the source line of a string, or the name on the other side."
+          },
+          "resolution": {
+            "type": "string",
+            "description": "Present when the seam's link is not resolved to this symbol alone (candidate or ambiguous)."
+          },
+          "repository": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "name",
+              "commit"
+            ],
+            "description": "With include_workspace, the other repository a site is in, and the commit its snapshot was built from; absent for a site in this repository.",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "commit": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "must_rename_together": {
+      "type": "array",
+      "description": "Members that implement or override the subject, or that it implements or overrides, at any distance: renaming one alone breaks dispatch.",
+      "items": {
+        "$ref": "#/$defs/member"
+      }
+    },
+    "possibly_affected": {
+      "type": "array",
+      "description": "Calls that did not resolve and call the same name, or resolved to several candidates among them this symbol: not sites, but places that might reach it.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "line",
+          "callee",
+          "resolution"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "line": {
+            "type": "integer"
+          },
+          "callee": {
+            "type": "string"
+          },
+          "resolution": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "observed",
+        "inferred",
+        "must_rename_together",
+        "possibly_affected"
+      ],
+      "description": "Totals before max_rows.",
+      "properties": {
+        "observed": {
+          "type": "integer"
+        },
+        "inferred": {
+          "type": "integer"
+        },
+        "must_rename_together": {
+          "type": "integer"
+        },
+        "possibly_affected": {
+          "type": "integer"
+        }
+      }
+    }
+  }
+}

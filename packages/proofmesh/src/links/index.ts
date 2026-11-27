@@ -7,18 +7,18 @@ import { canonicalJson, randomToken, sha256, sha256File } from '../core/hash.js'
 import { hardenDatabase } from '../core/busy.js'
 import { EvidenceStore } from '../evidence/store.js'
 import { readSql } from '../core/schemas.js'
-import { Catalog, type LinkFileRecord } from '../meshstore/catalog.js'
+import { Catalog, noSnapshot, type LinkFileRecord } from '../meshstore/catalog.js'
 import { openSnapshot } from '../meshstore/snapshot.js'
 
-export const LINK_FORMAT_VERSION = '0.2'
+export const LINK_FORMAT_VERSION = '0.3'
 /** Each rule's version, and the link format's, join the link file's identity: a changed rule or format seals a new file. */
-export const RULES = { http_route: '3', messaging: '1', package: '1', service_name: '1', service_registry: '1', cloud_deploy: '1', cloud_messaging: '1' } as const
+export const RULES = { http_route: '3', messaging: '1', package: '1', service_name: '1', service_registry: '1', cloud_deploy: '1', cloud_messaging: '1', package_symbol: '1' } as const
 export const linkPath = (dataDir: string, id: string) => path.join(dataDir, 'links', `${id}.db`)
 
 type Member = { repository_id: string; snapshot_id: string; name: string; db: Database.Database; registry?: Registry }
 type Target = { repository_id: string; symbol_id: string | null; confidence: number }
 /** ambiguous: the fact matched several members equally well, so even a link with one target is a candidate. */
-type Link = { type: string; rule: keyof typeof RULES; source_repository_id: string; source_symbol_id: string; source_assertion_id: string; targets: Target[]; ambiguous?: boolean }
+type Link = { type: string; rule: keyof typeof RULES; source_repository_id: string; source_symbol_id: string; source_assertion_id: string; targets: Target[]; ambiguous?: boolean; detail?: Record<string, unknown> }
 
 /** One caller a service registry grants (A7): its name, and optionally the repository or service it is. */
 export type RegistryEntry = { name: string; repository?: string; service?: string }
@@ -223,6 +223,71 @@ function cloudResources(m: Member, store: EvidenceStore): CloudResource[] {
   return out
 }
 
+/** Relationship types the package_symbol rule extends: a site whose target is a symbol of an installed package. */
+export const PACKAGE_SYMBOL_TYPES = ['calls', 'inherits', 'implements', 'references']
+type NpmPackage = { name: string; version: string | null; symbols: Map<string, string[]> }
+/**
+ * The npm packages a member builds (#28): each `package.json` its snapshot declares a project for, with the version its captured bytes
+ * name, and the symbols under that manifest's directory by their name inside their file (`Point.norm` for `src/point:Point.norm`), which is
+ * how an installed declaration file names them.
+ */
+function npmPackages(m: Member, store: EvidenceStore): NpmPackage[] {
+  const out: NpmPackage[] = []
+  for (const p of q<{ name: string; path: string; content_hash: string }>(m.db, "select s.qualified_name as name, f.path, f.content_hash from symbol s join file f on f.id = s.file_id where s.kind in ('project', 'package') and (f.path = 'package.json' or f.path like '%/package.json') and f.content_hash is not null")) {
+    const bytes = captured(store, p.content_hash, `manifest ${p.path} of ${m.name}`)
+    let version: unknown = null
+    // A manifest that does not parse names no version, so every site into it is inferred.
+    try { version = (JSON.parse(bytes.toString('utf8')) as { version?: unknown }).version } catch { version = null }
+    const dir = path.posix.dirname(p.path), symbols = new Map<string, string[]>()
+    for (const s of q<Sym>(m.db, "select s.id, s.qualified_name from symbol s join file f on f.id = s.file_id where s.kind not in ('module', 'project', 'package') and (? = '.' or f.path like ? || '/%') order by f.path, s.start_byte", dir, dir)) {
+      const local = s.qualified_name.slice(s.qualified_name.indexOf(':') + 1)
+      symbols.set(local, [...(symbols.get(local) ?? []), s.id])
+    }
+    out.push({ name: p.name, version: typeof version === 'string' ? version : null, symbols })
+  }
+  return out
+}
+
+/** The versions of each npm package a member's TypeScript adapter read when its snapshot was built, from its external inputs (A2). */
+function installedVersions(m: Member): Map<string, string[]> {
+  const out = new Map<string, string[]>()
+  const adapters = JSON.parse((m.db.prepare("select value from meta where key = 'adapters'").get() as { value: string } | undefined)?.value ?? '[]') as Array<{ id: string; external_inputs?: string[] }>
+  for (const input of adapters.find((a) => a.id === 'typescript')?.external_inputs ?? []) {
+    const hit = /^npm:(.+)\/([^/ ]+)$/.exec(input)
+    if (hit) out.set(hit[1]!, [...(out.get(hit[1]!) ?? []), hit[2]!])
+  }
+  return out
+}
+
+/**
+ * package_symbol: a TypeScript site whose target resolved to a symbol of an installed npm package, to that symbol in the member that builds
+ * the package. The same version installed as built is observed (1.0); another or an unknown version is inferred (0.8), and the detail
+ * names both. Two members building the package, or several symbols of the name, make a candidate; a package no other member builds is no
+ * link, so the site stays resolved_external.
+ */
+// shortcut: a symbol is matched by its name inside its file, not by the declaration file's path, so two files of a package declaring one
+// name are candidates; map declaration files to sources through the manifest's types and the tsconfig's outDir if that proves common.
+function packageSymbolLinks(m: Member, members: Member[], packages: Map<Member, NpmPackage[]>): Link[] {
+  const links: Link[] = []
+  const own = new Set(packages.get(m)!.map((p) => p.name))
+  const installed = installedVersions(m)
+  const types = PACKAGE_SYMBOL_TYPES.map((t) => `'${t}'`).join(', ')
+  for (const f of q<Fact & { type: string; module: string }>(m.db, `select a.id as assertion_id, a.source_id, a.type, x.module, x.name from assertion a join external_symbol x on x.id = a.target_id where a.resolution = 'resolved_external' and a.adapter = 'typescript' and a.source_kind = 'symbol' and a.type in (${types})`)) {
+    if (own.has(f.module)) continue
+    const builders = members.filter((o) => o !== m).flatMap((o) => packages.get(o)!.filter((p) => p.name === f.module).map((p) => ({ o, p })))
+    if (!builders.length) continue
+    const versions = [...new Set(installed.get(f.module) ?? [])], used = versions.length === 1 ? versions[0]! : null
+    const targets = builders.flatMap(({ o, p }) => (p.symbols.get(f.name) ?? []).map((symbol_id) => ({ repository_id: o.repository_id, symbol_id, confidence: used !== null && used === p.version ? 1 : 0.8 })))
+    const built = builders.length === 1 ? builders[0]!.p.version : null
+    const mismatch = builders.length === 1 && (used === null || used !== built)
+    links.push({
+      type: f.type, rule: 'package_symbol', source_repository_id: m.repository_id, source_symbol_id: f.source_id, source_assertion_id: f.assertion_id, targets, ambiguous: targets.length > 1,
+      detail: { package: f.module, name: f.name, installed: versions.length ? versions.join(', ') : null, built, ...(mismatch ? { inferred: 'version_mismatch' } : {}) },
+    })
+  }
+  return links
+}
+
 /** A route as `VERB path`, lower-cased, trimmed of slashes, with each `{param}` a wildcard segment. */
 export function route(qualified: string): { verb: string; segments: string[] } {
   const [verb = '', ...rest] = qualified.split(' ')
@@ -275,6 +340,7 @@ function matchAll(members: Member[], store: EvidenceStore): Link[] {
     return [m, byName]
   }))
   const resources = new Map(members.map((m) => [m, cloudResources(m, store)]))
+  const packages = new Map(members.map((m) => [m, npmPackages(m, store)]))
   for (const m of members) {
     // http_route: an outbound HTTP client fact to an endpoint another member exposes.
     const own = exposed.get(m)!
@@ -320,7 +386,7 @@ function matchAll(members: Member[], store: EvidenceStore): Link[] {
       if (across(best)) links.push({ type: 'uses_resource', rule: 'cloud_messaging', source_repository_id: m.repository_id, source_symbol_id: f.source_id, source_assertion_id: f.assertion_id, targets: best })
     }
   }
-  return [...links, ...registryLinks(members)]
+  return [...links, ...registryLinks(members), ...members.flatMap((m) => packageSymbolLinks(m, members, packages))]
 }
 
 /** Seals the link file of a workspace's current member snapshots, or returns the one already sealed for the same identity. */
@@ -329,7 +395,7 @@ export function buildLinkFile(catalog: Catalog, dataDir: string, workspace: stri
   if (ws.members.length < 2) throw new ProofmeshError('INVALID_ARGUMENT', `workspace ${workspace} needs at least two repositories to link`)
   const members: Member[] = ws.members.sort().map((repository_id) => {
     const snap = catalog.currentSnapshot(repository_id)
-    if (!snap) throw new ProofmeshError('SNAPSHOT_UNAVAILABLE', `no published snapshot for ${catalog.repository(repository_id).name}; run "proofmesh index" first`, { detail: 'none' })
+    if (!snap) throw noSnapshot(catalog, repository_id, catalog.repository(repository_id).name)
     return { repository_id, snapshot_id: snap.id, name: catalog.repository(repository_id).name, db: openSnapshot(catalog, snap) }
   })
   try {
@@ -350,18 +416,18 @@ export function buildLinkFile(catalog: Catalog, dataDir: string, workspace: stri
     const meta = db.prepare('insert into meta (key, value) values (?, ?)')
     for (const [k, v] of Object.entries({ format_version: LINK_FORMAT_VERSION, link_file_id: id, workspace, identity, rules: JSON.stringify(RULES), sealed_at: new Date().toISOString() })) meta.run(k, v)
     const member = db.prepare('insert into member (repository_id, snapshot_id, name) values (?, ?, ?)')
-    const link = db.prepare('insert into link (id, type, rule, source_repository_id, source_symbol_id, source_assertion_id, target_repository_id, target_symbol_id, confidence, resolution, reason) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+    const link = db.prepare('insert into link (id, type, rule, source_repository_id, source_symbol_id, source_assertion_id, target_repository_id, target_symbol_id, confidence, resolution, reason, detail) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
     const candidate = db.prepare('insert into link_candidate (link_id, target_repository_id, target_symbol_id, confidence) values (?, ?, ?, ?)')
     db.transaction(() => {
       for (const m of members) member.run(m.repository_id, m.snapshot_id, m.name)
       for (const l of links) {
         // One fact can be the source of links of several rules, as a published channel is of messaging and cloud_messaging.
         const linkId = `lk_${sha256(canonicalJson({ id, a: l.source_assertion_id, r: l.source_repository_id, rule: l.rule })).slice(0, 24)}`
-        const [only] = l.targets
-        if (l.targets.length === 1 && !l.ambiguous) link.run(linkId, l.type, l.rule, l.source_repository_id, l.source_symbol_id, l.source_assertion_id, only!.repository_id, only!.symbol_id, only!.confidence, 'resolved', null)
-        else if (l.targets.length === 0) link.run(linkId, l.type, l.rule, l.source_repository_id, l.source_symbol_id, l.source_assertion_id, null, null, 1, 'unresolved', 'no_match')
+        const [only] = l.targets, detail = l.detail ? canonicalJson(l.detail) : null
+        if (l.targets.length === 1 && !l.ambiguous) link.run(linkId, l.type, l.rule, l.source_repository_id, l.source_symbol_id, l.source_assertion_id, only!.repository_id, only!.symbol_id, only!.confidence, 'resolved', null, detail)
+        else if (l.targets.length === 0) link.run(linkId, l.type, l.rule, l.source_repository_id, l.source_symbol_id, l.source_assertion_id, null, null, 1, 'unresolved', 'no_match', detail)
         else {
-          link.run(linkId, l.type, l.rule, l.source_repository_id, l.source_symbol_id, l.source_assertion_id, null, null, only!.confidence, 'candidate', 'ambiguous')
+          link.run(linkId, l.type, l.rule, l.source_repository_id, l.source_symbol_id, l.source_assertion_id, null, null, only!.confidence, 'candidate', 'ambiguous', detail)
           for (const t of l.targets) candidate.run(linkId, t.repository_id, t.symbol_id, t.confidence)
         }
       }

@@ -60,6 +60,16 @@
         "get_symbols_at",
         "get_session_trail",
         "find_stale_mentions",
+        "find_unused",
+        "find_cycles",
+        "find_entry_points",
+        "find_hubs",
+        "get_context_map",
+        "plan_rename",
+        "plan_move",
+        "search_structure",
+        "search_concepts",
+        "get_symbol_card",
         "query_graph"
       ]
     },
@@ -149,6 +159,27 @@
                 "null"
               ],
               "description": "When that remote branch was last fetched; behind_remote is only as current as this."
+            },
+            "imported": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["origin", "imported_at", "stale_count"],
+              "description": "Present only when the snapshot was built in another data directory and imported (FR1084): its origin as the export recorded it, when it was imported, and how many of its files differed from the working tree then. The limitations name those files.",
+              "properties": {
+                "origin": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["repository_id", "repository_name", "writer", "exported_at"],
+                  "properties": {
+                    "repository_id": { "type": "string" },
+                    "repository_name": { "type": "string" },
+                    "writer": { "type": "string" },
+                    "exported_at": { "type": "string" }
+                  }
+                },
+                "imported_at": { "type": "string" },
+                "stale_count": { "type": "integer", "minimum": 0 }
+              }
             }
           },
           "description": "The sealed file the answer came from: a repository snapshot, or for a workspace tool the link file, whose members are the snapshots it was built from (A28)."

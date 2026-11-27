@@ -5,7 +5,7 @@ import { pathToFileURL } from 'node:url'
 import path from 'node:path'
 import { asProofmeshError, ProofmeshError, storedMessage } from '../core/errors.js'
 import { resolveDataDir } from '../core/paths.js'
-import { Catalog, initDataDir, LEASE_OWNER, type IndexJob } from '../meshstore/catalog.js'
+import { Catalog, initDataDir, lastIndexFailure, LEASE_OWNER, noSnapshot, type IndexJob } from '../meshstore/catalog.js'
 import { runVerificationCommand } from './verification.js'
 import { indexCoverage } from '../scip/coverage.js'
 import { runScip } from '../scip/run.js'
@@ -17,7 +17,7 @@ import { indexRepository, testMs } from '../indexer/coordinator.js'
 import { watch } from '../indexer/watch.js'
 import { BUILT_IN, Registry, registryFor } from '../indexer/languages.js'
 import { runKit } from '../conformance/kit.js'
-import { lastIndexFailure, noSnapshot, runTool, treeFreshness } from '../query/tools.js'
+import { runTool, treeFreshness } from '../query/tools.js'
 import { serveHttp, serveStdio, toolProfiles } from '../mcp/server.js'
 import { startViewServer } from '../http/server.js'
 import { galaxyFor } from '../query/galaxy.js'
@@ -30,6 +30,7 @@ import { heapLimitMb, needsHeap, runUnderHeap, stopWithOuterProcess } from './ho
 import { runClone } from './clone.js'
 import { runBundle } from './bundle.js'
 import { backup, restore } from './backup.js'
+import { exportSnapshot, importSnapshot } from '../meshstore/transfer.js'
 import { runGc } from './gc.js'
 import { runTrail } from './trail.js'
 import { runMcpConfig } from './mcp-config.js'
@@ -38,6 +39,7 @@ import { weakestCapability, type CensusRow } from '../indexer/census.js'
 import { countLabel, duration, phaseLabel, progressReporter } from './progress.js'
 
 export const VERSION = '0.1.0'
+const SNAPSHOT_USAGE = 'usage: proofmesh snapshot pin <id> | snapshot unpin <id> | snapshot export <repository> [--snapshot <id>] --out <file> | snapshot import <repository> <file>'
 const MCP_USAGE = 'mcp [--http [--port P]]           MCP server on stdio, or Streamable HTTP on loopback with a bearer token; [--tools P[,P]] lists tool profiles other than core (data, claims, extra, all)'
 const USAGE = `proofmesh ${VERSION}: a code graph that shows its work
 
@@ -75,6 +77,8 @@ Usage: proofmesh [--data-dir DIR] <command>
   trail on <repo> | trail off <repo>   record the session trail of Claude Code sessions in this repository (off by default): the paths and symbol ids they search, open, change and claim, never source text
   trail record | trail purge [--session <id>]   append trail entries (JSON lines on stdin; the plugin does this) | delete one session's trail, or all
   snapshot pin <id> | snapshot unpin <id>
+  snapshot export <repository> [--snapshot <id>] --out <file>   write a snapshot built here, with a manifest of its commit, adapters and file hashes, and no source
+  snapshot import <repository> <file>   start from a snapshot built elsewhere for the same commit: verified against its hashes, the adapters here and the working tree, refused when anything does not match, and never over a snapshot the repository has
   mcp-config [--client claude-code|codex] [--scope project|user] [--write .mcp.json]   print the client registration
   index <repository-id or path> [--rev <commit-ish>] [--no-wait] [--allow-partial]   capture, analyse, seal, and publish a snapshot; --rev indexes a commit without touching the working tree; one index per repository at a time: a second waits, or with --no-wait exits INDEX_IN_PROGRESS; progress on stderr
   watch <repository> [--interval S] [--quiet-ms MS] [--poll]   keep the snapshot current; --poll ignores file notifications
@@ -127,7 +131,7 @@ export async function main(argv: string[]): Promise<number> {
           if (rest[0] === 'accept' && rest[1]) {
             const repo = catalog.resolveRepository(take([...rest.slice(2)], '--repository'))
             const snapshot = catalog.currentSnapshot(repo.id)
-            if (!snapshot) throw new ProofmeshError('SNAPSHOT_UNAVAILABLE', 'index the repository before accepting a note')
+            if (!snapshot) throw noSnapshot(catalog, repo.id)
             const note = catalog.notes().find((n) => n.id === rest[1])
             if (!note) throw new ProofmeshError('NOT_FOUND', `no note ${rest[1]}; run proofmesh notes sync first`)
             const db = openSnapshot(catalog, snapshot)
@@ -533,7 +537,7 @@ export async function main(argv: string[]): Promise<number> {
             const snapshot = catalog.currentSnapshot(repo.id)
             if (!snapshot) throw noSnapshot(catalog, repo.id)
             const db = openSnapshot(catalog, snapshot)
-            const t = (() => { try { return treeFreshness(db, dataDir, repo.root) } finally { db.close() } })()
+            const t = (() => { try { return treeFreshness(db, dataDir, repo.root, repo.id) } finally { db.close() } })()
             const failed = lastIndexFailure(catalog, repo.id)
             const out = { repository_id: repo.id, name: repo.name, snapshot_id: snapshot.id, current: t.current, changed_count: t.changed.length, changed: t.changed.slice(0, 20), trail_recording: catalog.trailRecording(repo.id), failed_job: failed && { id: failed.job.id, state: failed.job.state, finished_at: failed.job.finished_at, error: failed.job.error } }
             if (json) console.log(JSON.stringify(out, null, 2))
@@ -637,7 +641,22 @@ export async function main(argv: string[]): Promise<number> {
       case 'gc': return runGc(dataDir, rest, take, has)
       case 'trail': return await runTrail(dataDir, rest, take)
       case 'snapshot': {
-        if ((rest[0] !== 'pin' && rest[0] !== 'unpin') || !rest[1]) throw new ProofmeshError('INVALID_ARGUMENT', 'usage: proofmesh snapshot pin <id> | snapshot unpin <id>')
+        if (rest[0] === 'export' && rest[1]) {
+          const opts = [...rest], out = take(opts, '--out'), id = take(opts, '--snapshot')
+          if (!out) throw new ProofmeshError('INVALID_ARGUMENT', SNAPSHOT_USAGE)
+          const m = exportSnapshot(dataDir, opts[1]!, id, path.resolve(out), `proofmesh by ${os.userInfo().username}`)
+          console.log(`snapshot ${m.snapshot.id} of commit ${m.commit} written to ${path.resolve(out)}: ${Object.keys(m.files).length} file hashes, ${m.store.bytes} bytes of facts, no source`)
+          console.log(`on a clone at that commit: proofmesh snapshot import <repository> ${path.resolve(out)}`)
+          return 0
+        }
+        if (rest[0] === 'import' && rest[1] && rest[2]) {
+          const started = Date.now()
+          const r = await importSnapshot(dataDir, rest[1], path.resolve(rest[2]), os.userInfo().username)
+          console.log(`snapshot ${r.snapshotId} imported from ${r.origin.writer} (repository ${r.origin.repository_name}, exported ${r.origin.exported_at}), commit ${r.commit}, in ${((Date.now() - started) / 1000).toFixed(1)} s`)
+          console.log(r.stale.length ? `${r.stale.length} of ${r.files} files differ from the working tree and are stale: ${r.stale.slice(0, 10).join(', ')}${r.stale.length > 10 ? ', ...' : ''}; proofmesh index replaces the snapshot with one built here` : `all ${r.files} files match the working tree`)
+          return 0
+        }
+        if ((rest[0] !== 'pin' && rest[0] !== 'unpin') || !rest[1]) throw new ProofmeshError('INVALID_ARGUMENT', SNAPSHOT_USAGE)
         const catalog = Catalog.open(dataDir)
         try { catalog.pin(rest[1], rest[0] === 'pin') } finally { catalog.close() }
         console.log(`snapshot ${rest[1]} ${rest[0] === 'pin' ? 'pinned: retention keeps it until you unpin it' : 'unpinned'}`)

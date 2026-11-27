@@ -12,8 +12,11 @@ import { EXECUTING, importedNames, testReach } from './test-reach.js'
 
 /** Changed line ranges by path, on one side of a diff. */
 type Ranges = Map<string, Array<[number, number]>>
-/** The changed lines of each side of a diff, and the files renamed (new path to old). */
-export type Diff = { head: Ranges; base: Ranges; renamed: Map<string, string> }
+/**
+ * The changed lines of each side of a diff, and the files renamed (new path to old). `gaps` holds, for lines removed with nothing added in
+ * their place, the head line where their hunk starts: a deletion inside a declaration that still exists touches it there.
+ */
+export type Diff = { head: Ranges; base: Ranges; renamed: Map<string, string>; gaps: Ranges }
 /** One side of the comparison: its snapshot database, its id and its changed ranges. */
 type Snap = { db: Database.Database; id: string; ranges: Ranges }
 type Sym = { id: string; stable_key: string; kind: string; name: string; qualified_name: string; path: string; file_id: string; start_line: number; end_line: number }
@@ -39,18 +42,18 @@ export function diffLines(root: string, base: string, head: string | null): Diff
     if (r.status !== 0) throw new ProofmeshError('INTERNAL_ERROR', `git ${args[0]} failed: ${r.stderr.trim()}`)
     return r.stdout
   }
-  const diff: Diff = { head: new Map(), base: new Map(), renamed: new Map() }
+  const diff: Diff = { head: new Map(), base: new Map(), renamed: new Map(), gaps: new Map() }
   const add = (side: Ranges, p: string, from: number, count: number) => { if (count > 0) side.set(p, [...(side.get(p) ?? []), [from, from + count - 1]]) }
   // One file's removed and added lines, by text; a text on both sides is matched off as moved, once per occurrence.
-  let a = '', b = '', from = '', inHunk = false, at = { base: 0, head: 0 }
-  let removed: Array<[number, string]> = [], added: Array<[number, string]> = []
+  let a = '', b = '', from = '', inHunk = false, at = { base: 0, head: 0 }, hunkHead = 0
+  let removed: Array<[number, string, number]> = [], added: Array<[number, string]> = []
   const flush = () => {
     const left = new Map<string, number>()
     for (const [, t] of removed) left.set(t, (left.get(t) ?? 0) + 1)
     const kept = added.filter(([, t]) => { const n = left.get(t) ?? 0; if (n) left.set(t, n - 1); return !n })
     const right = new Map<string, number>()
     for (const [, t] of added) right.set(t, (right.get(t) ?? 0) + 1)
-    for (const [l, t] of removed) { const n = right.get(t) ?? 0; if (n) right.set(t, n - 1); else add(diff.base, a, l, 1) }
+    for (const [l, t, h] of removed) { const n = right.get(t) ?? 0; if (n) right.set(t, n - 1); else { add(diff.base, a, l, 1); if (b) add(diff.gaps, b, h, 1) } }
     for (const [l] of kept) add(diff.head, b, l, 1)
     removed = []
     added = []
@@ -68,7 +71,9 @@ export function diffLines(root: string, base: string, head: string | null): Diff
       const h = /^@@ -(\d+)(?:,\d+)? \+(\d+)/.exec(line)!
       inHunk = true
       at = { base: Number(h[1]), head: Number(h[2]) }
-    } else if (inHunk && line.startsWith('-')) removed.push([at.base++, line.slice(1)])
+      // A hunk that adds nothing names the head line before the gap; 0 when the gap is at the top of the file.
+      hunkHead = Math.max(1, at.head)
+    } else if (inHunk && line.startsWith('-')) removed.push([at.base++, line.slice(1), hunkHead])
     else if (inHunk && line.startsWith('+')) added.push([at.head++, line.slice(1)])
   }
   flush()
@@ -88,7 +93,7 @@ const notAStatement = (text: string) => /^\s*($|\/\/|\/\*|\*|export\s*(\{|\*|def
  * The innermost symbol of each changed line on one side (a method, not its class); a changed top-level line that is a statement makes the
  * module changed (FR110). `text` reads a file of that side.
  */
-function touched(db: Database.Database, ranges: Ranges, text: (path: string) => string | undefined): Sym[] {
+export function touched(db: Database.Database, ranges: Ranges, text: (path: string) => string | undefined): Sym[] {
   const out = new Map<string, Sym>()
   for (const [p, rs] of ranges) {
     const syms = db.prepare(`${SYMBOL_SQL} where f.path = ? and f.disposition = 'indexed'`).all(p) as Sym[]

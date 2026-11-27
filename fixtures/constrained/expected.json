@@ -1,5 +1,5 @@
 {
-  "closed_world": "Every call, supertype and import statement of the Go, Java, Rust, C and C++ files, with how the rules bind it: its resolution, its reason when unresolved, the rule that bound it, and its candidates in rank order (qualified name at path). Written by hand from the language rules, never from the output.",
+  "closed_world": "Every call, supertype and import statement of the Go, Java, Rust, C, C++, Kotlin, PHP and Ruby files, with how the rules bind it: its resolution, its reason when unresolved, the rule that bound it, and its candidates in rank order (qualified name at path). Written by hand from the language rules, never from the output.",
   "calls": [
     {
       "at": "svc/main.go:6",
@@ -562,6 +562,522 @@
       "name": "drawn",
       "resolution": "unresolved",
       "reason": "outside_capability"
+    },
+    {
+      "at": "kotlin/app/src/main/kotlin/acme/app/Main.kt:9",
+      "type": "calls",
+      "name": "format",
+      "resolution": "candidate",
+      "rule": "kotlin_star_import",
+      "candidates": [
+        "acme.lib.format@kotlin/lib/src/main/kotlin/acme/lib/Text.kt"
+      ]
+    },
+    {
+      "at": "kotlin/app/src/main/kotlin/acme/app/Main.kt:10",
+      "type": "calls",
+      "name": "fmt",
+      "resolution": "candidate",
+      "rule": "kotlin_import",
+      "candidates": [
+        "acme.lib.format@kotlin/lib/src/main/kotlin/acme/lib/Text.kt"
+      ]
+    },
+    {
+      "at": "kotlin/app/src/main/kotlin/acme/app/Main.kt:11",
+      "type": "calls",
+      "name": "helper",
+      "resolution": "candidate",
+      "rule": "kotlin_same_package",
+      "candidates": [
+        "acme.app.helper@kotlin/app/src/main/kotlin/acme/app/Util.kt"
+      ]
+    },
+    {
+      "at": "kotlin/app/src/main/kotlin/acme/app/Main.kt:12",
+      "type": "calls",
+      "name": "Order",
+      "resolution": "candidate",
+      "rule": "kotlin_import",
+      "candidates": [
+        "acme.lib.Order@kotlin/lib/src/main/kotlin/acme/lib/Text.kt"
+      ]
+    },
+    {
+      "at": "kotlin/app/src/main/kotlin/acme/app/Main.kt:13",
+      "type": "calls",
+      "name": "total",
+      "resolution": "unresolved",
+      "reason": "outside_capability"
+    },
+    {
+      "at": "kotlin/app/src/main/kotlin/acme/app/Main.kt:14",
+      "type": "calls",
+      "name": "make",
+      "resolution": "candidate",
+      "rule": "kotlin_import",
+      "candidates": [
+        "acme.lib.Order.make@kotlin/lib/src/main/kotlin/acme/lib/Text.kt"
+      ]
+    },
+    {
+      "at": "kotlin/app/src/main/kotlin/acme/app/Main.kt:15",
+      "type": "calls",
+      "name": "secret",
+      "resolution": "unresolved",
+      "reason": "unknown_name",
+      "detail": {
+        "visibility": "internal"
+      }
+    },
+    {
+      "at": "kotlin/app/src/main/kotlin/acme/app/Main.kt:16",
+      "type": "calls",
+      "name": "hidden",
+      "resolution": "unresolved",
+      "reason": "unknown_name",
+      "detail": {
+        "visibility": "private"
+      }
+    },
+    {
+      "at": "kotlin/app/src/main/kotlin/acme/app/Main.kt:17",
+      "type": "calls",
+      "name": "run",
+      "resolution": "unresolved",
+      "reason": "dependency_missing",
+      "detail": {
+        "undeclared": ":other"
+      }
+    },
+    {
+      "at": "kotlin/app/src/main/kotlin/acme/app/Main.kt:18",
+      "type": "calls",
+      "name": "forEach",
+      "resolution": "unresolved",
+      "reason": "outside_capability"
+    },
+    {
+      "at": "kotlin/app/src/main/kotlin/acme/app/Main.kt:18",
+      "type": "calls",
+      "name": "helper",
+      "resolution": "unresolved",
+      "reason": "outside_capability"
+    },
+    {
+      "at": "kotlin/app/src/main/kotlin/acme/app/Main.kt:18",
+      "type": "calls",
+      "name": "listOf",
+      "resolution": "unresolved",
+      "reason": "outside_capability"
+    },
+    {
+      "at": "kotlin/app/src/main/kotlin/acme/app/Util.kt:9",
+      "type": "calls",
+      "name": "paint",
+      "resolution": "candidate",
+      "rule": "kotlin_same_class",
+      "candidates": [
+        "acme.app.Rush.paint@kotlin/app/src/main/kotlin/acme/app/Util.kt"
+      ]
+    },
+    {
+      "at": "kotlin/app/src/main/kotlin/acme/app/Util.kt:10",
+      "type": "calls",
+      "name": "paint",
+      "resolution": "candidate",
+      "rule": "kotlin_same_class",
+      "candidates": [
+        "acme.app.Rush.paint@kotlin/app/src/main/kotlin/acme/app/Util.kt"
+      ]
+    },
+    {
+      "at": "kotlin/app/src/main/kotlin/acme/app/Util.kt:11",
+      "type": "calls",
+      "name": "total",
+      "resolution": "candidate",
+      "rule": "kotlin_inherited",
+      "candidates": [
+        "acme.lib.Order.total@kotlin/lib/src/main/kotlin/acme/lib/Text.kt"
+      ]
+    },
+    {
+      "at": "kotlin/lib/src/main/kotlin/acme/lib/Inner.kt:3",
+      "type": "calls",
+      "name": "secret",
+      "resolution": "candidate",
+      "rule": "kotlin_same_package",
+      "candidates": [
+        "acme.lib.secret@kotlin/lib/src/main/kotlin/acme/lib/Text.kt"
+      ]
+    },
+    {
+      "at": "kotlin/lib/src/main/kotlin/acme/lib/Text.kt:9",
+      "type": "calls",
+      "name": "hidden",
+      "resolution": "candidate",
+      "rule": "kotlin_same_package",
+      "candidates": [
+        "acme.lib.hidden@kotlin/lib/src/main/kotlin/acme/lib/Text.kt"
+      ]
+    },
+    {
+      "at": "kotlin/lib/src/main/kotlin/acme/lib/Text.kt:12",
+      "type": "calls",
+      "name": "count",
+      "resolution": "candidate",
+      "rule": "kotlin_same_class",
+      "candidates": [
+        "acme.lib.Order.count@kotlin/lib/src/main/kotlin/acme/lib/Text.kt"
+      ]
+    },
+    {
+      "at": "kotlin/lib/src/main/kotlin/acme/lib/Text.kt:17",
+      "type": "calls",
+      "name": "Order",
+      "resolution": "candidate",
+      "rule": "kotlin_same_package",
+      "candidates": [
+        "acme.lib.Order@kotlin/lib/src/main/kotlin/acme/lib/Text.kt"
+      ]
+    },
+    {
+      "at": "php/src/Http/Controller.php:18",
+      "type": "calls",
+      "name": "User",
+      "resolution": "candidate",
+      "rule": "php_use",
+      "candidates": [
+        "Shop.Models.User@php/src/Models/User.php"
+      ],
+      "detail": {
+        "autoload": "psr-4"
+      }
+    },
+    {
+      "at": "php/src/Http/Controller.php:19",
+      "type": "calls",
+      "name": "find",
+      "resolution": "candidate",
+      "rule": "php_use",
+      "candidates": [
+        "Shop.Models.User.find@php/src/Models/User.php"
+      ],
+      "detail": {
+        "autoload": "psr-4"
+      }
+    },
+    {
+      "at": "php/src/Http/Controller.php:20",
+      "type": "calls",
+      "name": "find",
+      "resolution": "candidate",
+      "rule": "php_use",
+      "candidates": [
+        "Shop.Models.User.find@php/src/Models/User.php"
+      ],
+      "detail": {
+        "autoload": "psr-4"
+      }
+    },
+    {
+      "at": "php/src/Http/Controller.php:21",
+      "type": "calls",
+      "name": "find",
+      "resolution": "candidate",
+      "rule": "php_use",
+      "candidates": [
+        "Shop.Models.User.find@php/src/Models/User.php"
+      ],
+      "detail": {
+        "autoload": "psr-4"
+      }
+    },
+    {
+      "at": "php/src/Http/Controller.php:22",
+      "type": "calls",
+      "name": "find",
+      "resolution": "candidate",
+      "rule": "php_fully_qualified",
+      "candidates": [
+        "Shop.Models.User.find@php/src/Models/User.php"
+      ],
+      "detail": {
+        "autoload": "psr-4"
+      }
+    },
+    {
+      "at": "php/src/Http/Controller.php:23",
+      "type": "calls",
+      "name": "local",
+      "resolution": "candidate",
+      "rule": "php_same_namespace",
+      "candidates": [
+        "Shop.Http.local@php/src/Http/Controller.php"
+      ]
+    },
+    {
+      "at": "php/src/Http/Controller.php:24",
+      "type": "calls",
+      "name": "helper",
+      "resolution": "candidate",
+      "rule": "php_use",
+      "candidates": [
+        "Shop.Models.helper@php/src/Models/User.php"
+      ]
+    },
+    {
+      "at": "php/src/Http/Controller.php:25",
+      "type": "calls",
+      "name": "helper",
+      "resolution": "candidate",
+      "rule": "php_fully_qualified",
+      "candidates": [
+        "Shop.Models.helper@php/src/Models/User.php"
+      ]
+    },
+    {
+      "at": "php/src/Http/Controller.php:26",
+      "type": "calls",
+      "name": "global_helper",
+      "resolution": "candidate",
+      "rule": "php_global_function",
+      "candidates": [
+        "global_helper@php/src/functions.php"
+      ]
+    },
+    {
+      "at": "php/src/Http/Controller.php:27",
+      "type": "calls",
+      "name": "strlen",
+      "resolution": "unresolved",
+      "reason": "outside_capability"
+    },
+    {
+      "at": "php/src/Http/Controller.php:28",
+      "type": "calls",
+      "name": "save",
+      "resolution": "unresolved",
+      "reason": "outside_capability"
+    },
+    {
+      "at": "php/src/Http/Controller.php:29",
+      "type": "calls",
+      "name": "validate",
+      "resolution": "unresolved",
+      "reason": "unknown_name",
+      "detail": {
+        "visibility": "private"
+      }
+    },
+    {
+      "at": "php/src/Http/Controller.php:30",
+      "type": "calls",
+      "name": "find",
+      "resolution": "unresolved",
+      "reason": "outside_capability"
+    },
+    {
+      "at": "php/src/Http/Controller.php:31",
+      "type": "calls",
+      "name": "run",
+      "resolution": "unresolved",
+      "reason": "dependency_missing",
+      "detail": {
+        "undeclared": "acme/plugin"
+      }
+    },
+    {
+      "at": "php/src/Models/User.php:8",
+      "type": "calls",
+      "name": "User",
+      "resolution": "candidate",
+      "rule": "php_same_namespace",
+      "candidates": [
+        "Shop.Models.User@php/src/Models/User.php"
+      ],
+      "detail": {
+        "autoload": "psr-4"
+      }
+    },
+    {
+      "at": "php/src/Models/User.php:13",
+      "type": "calls",
+      "name": "validate",
+      "resolution": "candidate",
+      "rule": "php_same_class",
+      "candidates": [
+        "Shop.Models.User.validate@php/src/Models/User.php"
+      ]
+    },
+    {
+      "at": "php/src/Models/User.php:14",
+      "type": "calls",
+      "name": "find",
+      "resolution": "candidate",
+      "rule": "php_same_class",
+      "candidates": [
+        "Shop.Models.User.find@php/src/Models/User.php"
+      ]
+    },
+    {
+      "at": "php/src/Models/User.php:15",
+      "type": "calls",
+      "name": "find",
+      "resolution": "candidate",
+      "rule": "php_same_class",
+      "candidates": [
+        "Shop.Models.User.find@php/src/Models/User.php"
+      ]
+    },
+    {
+      "at": "php/src/Models/User.php:16",
+      "type": "calls",
+      "name": "boot",
+      "resolution": "candidate",
+      "rule": "php_inherited",
+      "candidates": [
+        "Shop.Models.Base.boot@php/src/Models/Base.php"
+      ]
+    },
+    {
+      "at": "ruby/lib/shop.rb:1",
+      "type": "calls",
+      "name": "require_relative",
+      "resolution": "unresolved",
+      "reason": "outside_capability"
+    },
+    {
+      "at": "ruby/lib/shop.rb:2",
+      "type": "calls",
+      "name": "require",
+      "resolution": "unresolved",
+      "reason": "outside_capability"
+    },
+    {
+      "at": "ruby/lib/shop.rb:3",
+      "type": "calls",
+      "name": "require",
+      "resolution": "unresolved",
+      "reason": "outside_capability"
+    },
+    {
+      "at": "ruby/lib/shop.rb:7",
+      "type": "calls",
+      "name": "new",
+      "resolution": "candidate",
+      "rule": "ruby_constant",
+      "candidates": [
+        "ruby/lib/shop/cart:Shop.Cart@ruby/lib/shop/cart.rb"
+      ]
+    },
+    {
+      "at": "ruby/lib/shop.rb:8",
+      "type": "calls",
+      "name": "build",
+      "resolution": "candidate",
+      "rule": "ruby_constant",
+      "candidates": [
+        "ruby/lib/shop/cart:Shop.Cart.build@ruby/lib/shop/cart.rb"
+      ]
+    },
+    {
+      "at": "ruby/lib/shop.rb:9",
+      "type": "calls",
+      "name": "build",
+      "resolution": "candidate",
+      "rule": "ruby_constant",
+      "candidates": [
+        "ruby/lib/shop/cart:Shop.Cart.build@ruby/lib/shop/cart.rb"
+      ]
+    },
+    {
+      "at": "ruby/lib/shop.rb:10",
+      "type": "calls",
+      "name": "helper",
+      "resolution": "candidate",
+      "rule": "ruby_same_class",
+      "candidates": [
+        "ruby/lib/shop:Shop.helper@ruby/lib/shop.rb"
+      ]
+    },
+    {
+      "at": "ruby/lib/shop.rb:11",
+      "type": "calls",
+      "name": "format_all",
+      "resolution": "candidate",
+      "rule": "ruby_top_level",
+      "candidates": [
+        "ruby/lib/util:format_all@ruby/lib/util.rb"
+      ]
+    },
+    {
+      "at": "ruby/lib/shop.rb:12",
+      "type": "calls",
+      "name": "add",
+      "resolution": "unresolved",
+      "reason": "outside_capability"
+    },
+    {
+      "at": "ruby/lib/shop.rb:12",
+      "type": "calls",
+      "name": "new",
+      "resolution": "candidate",
+      "rule": "ruby_constant",
+      "candidates": [
+        "ruby/lib/shop/cart:Shop.Cart@ruby/lib/shop/cart.rb"
+      ]
+    },
+    {
+      "at": "ruby/lib/shop.rb:13",
+      "type": "calls",
+      "name": "go",
+      "resolution": "unresolved",
+      "reason": "outside_capability"
+    },
+    {
+      "at": "ruby/lib/shop/cart.rb:1",
+      "type": "calls",
+      "name": "require_relative",
+      "resolution": "unresolved",
+      "reason": "outside_capability"
+    },
+    {
+      "at": "ruby/lib/shop/cart.rb:12",
+      "type": "calls",
+      "name": "total",
+      "resolution": "candidate",
+      "rule": "ruby_same_class",
+      "candidates": [
+        "ruby/lib/shop/cart:Shop.Cart.total@ruby/lib/shop/cart.rb"
+      ]
+    },
+    {
+      "at": "ruby/lib/shop/cart.rb:13",
+      "type": "calls",
+      "name": "total",
+      "resolution": "candidate",
+      "rule": "ruby_same_class",
+      "candidates": [
+        "ruby/lib/shop/cart:Shop.Cart.total@ruby/lib/shop/cart.rb"
+      ]
+    },
+    {
+      "at": "ruby/lib/shop/cart.rb:14",
+      "type": "calls",
+      "name": "format_all",
+      "resolution": "candidate",
+      "rule": "ruby_top_level",
+      "candidates": [
+        "ruby/lib/util:format_all@ruby/lib/util.rb"
+      ]
+    },
+    {
+      "at": "ruby/lib/shop/cart.rb:15",
+      "type": "calls",
+      "name": "build",
+      "resolution": "unresolved",
+      "reason": "outside_capability"
     }
   ],
   "heritage": [
@@ -637,6 +1153,39 @@
       "rule": "rust_path",
       "candidates": [
         "rust/shapes/src/lib:Shape@rust/shapes/src/lib.rs"
+      ]
+    },
+    {
+      "at": "kotlin/app/src/main/kotlin/acme/app/Util.kt:7",
+      "type": "inherits",
+      "name": "Order",
+      "resolution": "candidate",
+      "rule": "kotlin_import",
+      "candidates": [
+        "acme.lib.Order@kotlin/lib/src/main/kotlin/acme/lib/Text.kt"
+      ]
+    },
+    {
+      "at": "php/src/Models/User.php:4",
+      "type": "inherits",
+      "name": "Base",
+      "resolution": "candidate",
+      "rule": "php_same_namespace",
+      "candidates": [
+        "Shop.Models.Base@php/src/Models/Base.php"
+      ],
+      "detail": {
+        "autoload": "psr-4"
+      }
+    },
+    {
+      "at": "ruby/lib/shop/cart.rb:6",
+      "type": "inherits",
+      "name": "Base",
+      "resolution": "candidate",
+      "rule": "ruby_constant",
+      "candidates": [
+        "ruby/lib/shop/cart:Shop.Base@ruby/lib/shop/cart.rb"
       ]
     }
   ],
@@ -983,6 +1532,143 @@
       "rule": "rust_use",
       "candidates": [
         "rust/shapes/src/draw:render@rust/shapes/src/draw.rs"
+      ]
+    },
+    {
+      "at": "kotlin/app/src/main/kotlin/acme/app/Main.kt:3",
+      "type": "imports",
+      "name": "acme.lib.Order",
+      "resolution": "candidate",
+      "rule": "kotlin_import",
+      "candidates": [
+        "acme.lib.Order@kotlin/lib/src/main/kotlin/acme/lib/Text.kt"
+      ]
+    },
+    {
+      "at": "kotlin/app/src/main/kotlin/acme/app/Main.kt:4",
+      "type": "imports",
+      "name": "acme.lib.format",
+      "resolution": "candidate",
+      "rule": "kotlin_import",
+      "candidates": [
+        "acme.lib.format@kotlin/lib/src/main/kotlin/acme/lib/Text.kt"
+      ]
+    },
+    {
+      "at": "kotlin/app/src/main/kotlin/acme/app/Main.kt:5",
+      "type": "imports",
+      "name": "acme.lib.*",
+      "resolution": "unresolved",
+      "reason": "outside_capability"
+    },
+    {
+      "at": "kotlin/app/src/main/kotlin/acme/app/Main.kt:6",
+      "type": "imports",
+      "name": "acme.other.Thing",
+      "resolution": "unresolved",
+      "reason": "dependency_missing",
+      "detail": {
+        "undeclared": ":other"
+      }
+    },
+    {
+      "at": "kotlin/app/src/main/kotlin/acme/app/Util.kt:3",
+      "type": "imports",
+      "name": "acme.lib.Order",
+      "resolution": "candidate",
+      "rule": "kotlin_import",
+      "candidates": [
+        "acme.lib.Order@kotlin/lib/src/main/kotlin/acme/lib/Text.kt"
+      ]
+    },
+    {
+      "at": "php/src/Http/Controller.php:4",
+      "type": "imports",
+      "name": "Shop\\Models\\User",
+      "resolution": "candidate",
+      "rule": "php_use",
+      "candidates": [
+        "Shop.Models.User@php/src/Models/User.php"
+      ],
+      "detail": {
+        "autoload": "psr-4"
+      }
+    },
+    {
+      "at": "php/src/Http/Controller.php:5",
+      "type": "imports",
+      "name": "Shop\\Models\\User",
+      "resolution": "candidate",
+      "rule": "php_use",
+      "candidates": [
+        "Shop.Models.User@php/src/Models/User.php"
+      ],
+      "detail": {
+        "autoload": "psr-4"
+      }
+    },
+    {
+      "at": "php/src/Http/Controller.php:6",
+      "type": "imports",
+      "name": "Shop\\Models\\helper",
+      "resolution": "candidate",
+      "rule": "php_use",
+      "candidates": [
+        "Shop.Models.helper@php/src/Models/User.php"
+      ]
+    },
+    {
+      "at": "php/src/Http/Controller.php:7",
+      "type": "imports",
+      "name": "Shop\\Models",
+      "resolution": "unresolved",
+      "reason": "outside_capability"
+    },
+    {
+      "at": "php/src/Http/Controller.php:8",
+      "type": "imports",
+      "name": "Plugin\\Thing",
+      "resolution": "unresolved",
+      "reason": "dependency_missing",
+      "detail": {
+        "undeclared": "acme/plugin"
+      }
+    },
+    {
+      "at": "ruby/lib/shop.rb:1",
+      "type": "imports",
+      "name": "shop/cart",
+      "resolution": "candidate",
+      "rule": "ruby_require_relative",
+      "candidates": [
+        "ruby/lib/shop/cart@ruby/lib/shop/cart.rb"
+      ]
+    },
+    {
+      "at": "ruby/lib/shop.rb:2",
+      "type": "imports",
+      "name": "shop/version",
+      "resolution": "candidate",
+      "rule": "ruby_require",
+      "candidates": [
+        "ruby/lib/shop/version@ruby/lib/shop/version.rb"
+      ]
+    },
+    {
+      "at": "ruby/lib/shop.rb:3",
+      "type": "imports",
+      "name": "json",
+      "resolution": "unresolved",
+      "reason": "outside_capability"
+    },
+    {
+      "at": "ruby/lib/shop/cart.rb:1",
+      "type": "imports",
+      "name": "../util",
+      "resolution": "candidate",
+      "rule": "ruby_require_relative",
+      "candidates": [
+        "ruby/lib/util@ruby/lib/util.rb"
       ]
     }
   ]

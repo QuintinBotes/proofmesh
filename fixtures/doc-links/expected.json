@@ -9,7 +9,7 @@
     { "path": "docs/guide.md", "line": 3, "text": "Ledger", "target": "symbol:src/ledger:Ledger" },
     { "path": "docs/guide.md", "line": 3, "text": "Wallet", "target": "symbol:src/wallet:Wallet" },
     { "path": "docs/guide.md", "line": 5, "text": "Wallet.open(id)", "target": "symbol:src/wallet:Wallet.open" },
-    { "path": "docs/guide.md", "line": 5, "text": "Wallet.id", "target": "none" },
+    { "path": "docs/guide.md", "line": 5, "text": "Wallet.id", "target": "symbol:src/wallet:Wallet.id" },
     { "path": "docs/guide.md", "line": 5, "text": "id", "target": "none" },
     { "path": "docs/guide.md", "line": 7, "text": "total()", "target": "ambiguous:src/ledger:Ledger.total,src/wallet:Wallet.total" },
     { "path": "docs/guide.md", "line": 7, "text": "Ledger.total", "target": "symbol:src/ledger:Ledger.total" },

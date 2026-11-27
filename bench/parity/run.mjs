@@ -4,6 +4,9 @@
 //
 // Usage: node run.mjs --fixture <dir>   (run.sh builds the fixture). Writes out/parity.md, out/results.json, out/raw/
 // (PARITY_OUT moves out/). PARITY_RUNS sets the runs each median is taken over (3).
+// Each run works in a directory of its own under $TMPDIR, removed when it ends: a copy of the fixture, which is only read,
+// the ProofMesh data, the SCIP index, Serena's home and the results, which go into out/ by rename at the end. So runs
+// started together never edit, index or clean up each other's files (#177).
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
@@ -15,18 +18,31 @@ import { makeTruth, score, graphifyAdapter, proofmeshAdapter, queryGraphAdapter,
 const HERE = path.dirname(new URL(import.meta.url).pathname)
 const ROOT = path.resolve(HERE, '../..')
 const argv = process.argv.slice(2)
-const FIX = path.resolve(argv[argv.indexOf('--fixture') + 1] ?? '')
-if (!argv.includes('--fixture') || !fs.existsSync(path.join(FIX, 'tsconfig.json'))) { console.error('usage: node run.mjs --fixture <dir>'); process.exit(2) }
+const SRC = path.resolve(argv[argv.indexOf('--fixture') + 1] ?? '')
+if (!argv.includes('--fixture') || !fs.existsSync(path.join(SRC, 'tsconfig.json'))) { console.error('usage: node run.mjs --fixture <dir>'); process.exit(2) }
 const OUT = path.resolve(process.env.PARITY_OUT ?? path.join(HERE, 'out'))
 const RUNS = Number(process.env.PARITY_RUNS ?? 3)
-const PM_DATA = path.join(OUT, 'pm-data')
+const WORK = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'parity-run-')))
+process.on('exit', () => fs.rmSync(WORK, { recursive: true, force: true, maxRetries: 3 }))
+for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(sig, () => process.exit(128 + os.constants.signals[sig]))
+const FIX = path.join(WORK, 'fixture')
+const CACHES = ['graphify-out/', '.serena/', '.aider.tags.cache.v4/']
+fs.cpSync(SRC, FIX, { recursive: true, filter: (f) => !CACHES.includes(`${path.relative(SRC, f)}/`) }) // a fixture an older harness ran in holds caches
+const PM_DATA = path.join(WORK, 'pm-data')
 const PIN = { graphify: '0.9.108', 'scip-typescript': '0.3.15', scip: '0.10.0', serena: '2.1.0', aider: '0.86.2' }
 const EDIT_FILE = 'src/error/TypeORMError.ts'
-fs.rmSync(path.join(OUT, 'raw'), { recursive: true, force: true })
-fs.mkdirSync(path.join(OUT, 'raw'), { recursive: true })
-const raw = (name, data) => fs.writeFileSync(path.join(OUT, 'raw', name), typeof data === 'string' ? data : JSON.stringify(data, null, 1))
+fs.mkdirSync(path.join(WORK, 'raw'))
+const raw = (name, data) => fs.writeFileSync(path.join(WORK, 'raw', name), typeof data === 'string' ? data : JSON.stringify(data, null, 1))
 const Q = JSON.parse(fs.readFileSync(path.join(HERE, 'questions.json'), 'utf8')).questions
 const log = (s) => console.error(`parity: ${s}`)
+log(`fixture copy ${FIX}`)
+// Serena rewrites serena_config.yml (its project list) at each start and logs into its home: each run has a home of its own,
+// linked to the shared home's language servers, so none is downloaded.
+const SERENA_SHARED = process.env.SERENA_HOME || path.join(os.homedir(), '.serena')
+process.env.SERENA_HOME = path.join(WORK, 'serena-home')
+fs.mkdirSync(process.env.SERENA_HOME)
+if (fs.existsSync(path.join(SERENA_SHARED, 'language_servers'))) fs.symlinkSync(path.join(SERENA_SHARED, 'language_servers'), path.join(process.env.SERENA_HOME, 'language_servers'))
+if (fs.existsSync(path.join(SERENA_SHARED, 'serena_config.yml'))) fs.copyFileSync(path.join(SERENA_SHARED, 'serena_config.yml'), path.join(process.env.SERENA_HOME, 'serena_config.yml'))
 const run = (cmd, args, opts = {}) => spawnSync(cmd, args, { encoding: 'utf8', maxBuffer: 1 << 30, ...opts })
 const median = (xs) => { const s = [...xs].sort((a, b) => a - b); return s.length ? s[(s.length - 1) >> 1] : null }
 const du = (p) => (fs.existsSync(p) ? Number(run('du', ['-sk', p]).stdout.split('\t')[0]) * 1024 : 0)
@@ -51,14 +67,13 @@ function pinned(name, cmd = name) {
 // ---------- fixture and truth ----------
 const fixtureCommit = /^Commit: (\S+)/m.exec(fs.readFileSync(path.join(FIX, 'PROVENANCE'), 'utf8'))?.[1] ?? 'unknown'
 const git = (...args) => run('git', ['-C', FIX, ...args])
-const CACHES = ['graphify-out/', '.serena/', '.aider.tags.cache.v4/']
 const exclude = path.join(FIX, '.git/info/exclude')
 const excluded = fs.existsSync(exclude) ? fs.readFileSync(exclude, 'utf8') : ''
 fs.appendFileSync(exclude, CACHES.filter((c) => !excluded.split('\n').includes(c)).map((c) => c + '\n').join(''))
 log('truth (TypeScript checker)')
-const tr = run('node', [path.join(ROOT, 'bench/graph-bench/truth.mjs'), FIX, path.join(OUT, 'truth.json')])
+const tr = run('node', [path.join(ROOT, 'bench/graph-bench/truth.mjs'), FIX, path.join(WORK, 'truth.json')])
 if (tr.status !== 0) throw new Error(`truth.mjs failed: ${tr.stderr}`)
-const truth = makeTruth(JSON.parse(fs.readFileSync(path.join(OUT, 'truth.json'), 'utf8')))
+const truth = makeTruth(JSON.parse(fs.readFileSync(path.join(WORK, 'truth.json'), 'utf8')))
 const { T, truthFor, callKeys, srcFiles } = truth
 const fileOf = (key) => key.split('::')[0]
 
@@ -97,18 +112,35 @@ async function runProofMesh() {
   const pm = new McpClient('node', pmArgs('mcp'), { cwd: FIX })
   const t0 = performance.now(); await pm.init(); const startMs = performance.now() - t0
   const tools = await pm.tools()
-  const ask = proofmeshAdapter(pm, PM_DATA, truth, raw)
+  // Q10 to Q13 are asked of the structure tools, in the extra profile; a second server lists them, so tools/list above stays core.
+  const pmExtra = new McpClient('node', pmArgs('mcp', '--tools', 'extra'), { cwd: FIX })
+  await pmExtra.init()
+  const ask = proofmeshAdapter(pm, pmExtra, truth, raw)
   const answers = {}
-  for (const q of Q) answers[q.id] = { ...(await ask(q)), ...(['dead_code', 'cycles', 'roots'].includes(q.kind) ? { mark: 'data' } : {}) }
-  pm.close()
-  // The same twelve questions, each as one query_graph query (#36), from a server that lists the extra profile; asked RUNS times each.
-  const pmx = new McpClient('node', pmArgs('mcp', '--tools', 'extra'), { cwd: FIX })
-  await pmx.init()
-  const query = queryGraphAdapter(pmx, truth, raw, RUNS)
+  for (const q of Q) answers[q.id] = await ask(q)
+  // The same questions, each as one query_graph query (#36), over the extra-profile client; asked RUNS times each.
+  const query = queryGraphAdapter(pmExtra, truth, raw, RUNS)
   const query_graph = {}
   for (const q of Q) query_graph[q.id] = await query(q)
-  pmx.close()
-  return { cost, answers, query_graph, tools_list_bytes: Buffer.byteLength(JSON.stringify(tools)), tools: tools.length, startup_ms: startMs }
+  pm.close(); pmExtra.close()
+  // The context map (get_context_map, in the data profile) is scored as aider's map is: the target file as the focus, at each budget.
+  const cm = new McpClient('node', pmArgs('mcp', '--tools', 'data'), { cwd: FIX })
+  await cm.init()
+  const contextMap = {}
+  for (const q of CONTEXT_ASKED) {
+    contextMap[q.id] = []
+    // A target the fixture lacks has no map to score; the tool refuses a path that is no file of the snapshot.
+    if (!fs.existsSync(path.join(FIX, q.target.file))) { contextMap[q.id] = PM_BUDGETS.map((bytes) => ({ bytes, inbound: null, outbound: null })); continue }
+    for (const bytes of PM_BUDGETS) {
+      const r = await cm.call('get_context_map', { focus: { paths: [q.target.file] }, budget_bytes: bytes })
+      if (r.isError) throw new Error(`get_context_map ${q.target.file}: ${r.text.slice(0, 200)}`)
+      raw(`proofmesh-context-${q.id}-${bytes}.txt`, r.text)
+      const named = new Set(r.text.split('\n').filter((l) => !l.startsWith('#')).map((l) => /(\S+):\d+ /.exec(l)?.[1]).filter(Boolean))
+      contextMap[q.id].push({ bytes, ...contextShares(q, named), ms: r.ms, answer_bytes: r.bytes })
+    }
+  }
+  cm.close()
+  return { cost, answers, query_graph, context_map: contextMap, tools_list_bytes: Buffer.byteLength(JSON.stringify(tools)), tools: tools.length, startup_ms: startMs }
 }
 
 // ---------- Graphify (CLI, code-only update) ----------
@@ -157,7 +189,7 @@ function scipIndex(json) {
   return { info, refs, impls, key, find }
 }
 function runScip() {
-  const dir = path.join(OUT, 'scip'), index = path.join(dir, 'index.scip')
+  const dir = path.join(WORK, 'scip'), index = path.join(dir, 'index.scip')
   const cost = costs({ store: dir, cold: () => { fs.rmSync(dir, { recursive: true, force: true }); fs.mkdirSync(dir) }, build: () => ['scip-typescript', ['index', '--cwd', FIX, '--output', index, '--no-progress-bar']] })
   const t0 = performance.now()
   const S = scipIndex(JSON.parse(run('scip', ['print', '--json', index]).stdout))
@@ -189,6 +221,7 @@ function runScip() {
         case 'dead_code': return { answer: new Set([...S.info].filter(([sym, p]) => p.file.startsWith(q.scope) && /^[\w$]+\(\)\.$/.test(p.desc) && !callersOf(sym).some((r) => r.from !== sym)).map(([sym]) => S.key(sym))), mark: 'data' }
         case 'cycles': { const adj = new Map(); for (const [to, from] of importers) for (const f of from) { if (!adj.has(f)) adj.set(f, new Set()); adj.get(f).add(to) } return { answer: new Set(tarjan(new Set(srcFiles), adj).flat()), mark: 'data' } }
         case 'roots': { const imported = new Set([...importers].filter(([, from]) => [...from].some((f) => f.startsWith(q.scope))).map(([to]) => to)); return { answer: new Set(srcFiles.filter((f) => modules.has(f) && !imported.has(f))), mark: 'data' } }
+        default: return { none: true }
       }
     })()
     answers[q.id] = { ...a, ms: null, bytes: null }
@@ -270,6 +303,16 @@ async function runSerena() {
 // Scored as context: the share of the truth's files its map names, at 1,024 and 4,096 tokens, inbound (callers,
 // importers, implementers, type users) and outbound (the target file's imports).
 const AIDER_TOKENS = [1024, 4096]
+/** ProofMesh's context map at about aider's two sizes: 4,096 bytes is about 1,024 tokens (aider's 1k map measured 4.5 KB), 16,384 about 4,096. */
+const PM_BUDGETS = [4096, 16384]
+const CONTEXT_ASKED = Q.filter((q) => q.target && q.kind !== 'path')
+/** The share of the truth's inbound files (callers, importers, implementers, dependents, type users) and of the target file's imports a map names. */
+function contextShares(q, named) {
+  const inbound = new Set([...truthFor(q).items].map((k) => (k.includes('::') ? fileOf(k) : k)))
+  const outbound = new Set(T.imports.filter((x) => x.from === q.target.file).map((x) => x.to))
+  const share = (set) => (set.size ? [...set].filter((f) => named.has(f)).length / set.size : null)
+  return { inbound: share(inbound), outbound: share(outbound) }
+}
 function aiderPython() {
   const bin = run('sh', ['-c', 'command -v aider']).stdout.trim()
   const shebang = bin && fs.readFileSync(bin, 'utf8').split('\n')[0]
@@ -280,35 +323,39 @@ function runAider() {
   const py = aiderPython()
   if (!py) throw new Error('aider has no Python interpreter to run its RepoMap')
   const files = git('ls-files').stdout
-  const maps = (jobs) => {
-    const r = run(py, ['-I', path.join(HERE, 'aider-map.py'), FIX], { cwd: FIX, input: JSON.stringify(jobs) + '\n' + files })
+  // As -I isolates, but with string hashing fixed, which aider's maps need to be the same each run (#191; aider-map.py).
+  const env = { ...Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('PYTHON'))), PYTHONHASHSEED: '0' }
+  const aiderMap = (root, jobs) => [py, ['-s', '-P', path.join(HERE, 'aider-map.py'), root], { cwd: root, env, input: JSON.stringify(jobs) + '\n' + files }]
+  const maps = (root, jobs) => {
+    const r = run(...aiderMap(root, jobs))
     if (r.status !== 0) throw new Error(`aider-map.py exited ${r.status}: ${r.stderr.trim().split('\n').slice(-2).join(' ')}`)
     return lastJson(r.stdout)
   }
   const store = path.join(FIX, '.aider.tags.cache.v4')
   const job = [{ file: EDIT_FILE, ident: 'TypeORMError', tokens: 1024 }]
   // The map's own time, read from the run; Python start-up is not index building.
-  const cost = costs({ store, cold: () => fs.rmSync(store, { recursive: true, force: true }), build: () => [py, ['-I', path.join(HERE, 'aider-map.py'), FIX], { input: JSON.stringify(job) + '\n' + files }], ms: (r) => lastJson(r.stdout)[0].ms })
-  const asked = Q.filter((q) => q.target && q.kind !== 'path')
+  const cost = costs({ store, cold: () => fs.rmSync(store, { recursive: true, force: true }), build: () => aiderMap(FIX, job), ms: (r) => lastJson(r.stdout)[0].ms })
+  const asked = CONTEXT_ASKED
   const jobs = asked.flatMap((q) => AIDER_TOKENS.map((tokens) => ({ file: q.target.file, ident: q.target.qname ? last(q.target.qname) : path.basename(q.target.file).replace(/\.\w+$/, ''), tokens })))
-  const res = maps(jobs)
+  const res = maps(FIX, jobs)
+  // #191: every map again, in a second copy at another path with a fresh tags cache; parity.md says whether each is the same.
+  const again = path.join(WORK, 'fixture-again')
+  fs.cpSync(FIX, again, { recursive: true, filter: (f) => path.basename(f) !== '.aider.tags.cache.v4' })
+  const res2 = maps(again, jobs)
+  const varying = jobs.flatMap((j, i) => (res2[i].map === res[i].map ? [] : [`${asked[Math.floor(i / AIDER_TOKENS.length)].id} at ${j.tokens} tokens`]))
   const answers = {}
   for (const q of Q) {
     const i = asked.indexOf(q)
     if (i < 0) { answers[q.id] = { none: true }; continue }
-    const t = truthFor(q)
-    const inbound = new Set([...t.items].map((k) => (k.includes('::') ? fileOf(k) : k)))
-    const outbound = new Set(T.imports.filter((x) => x.from === q.target.file).map((x) => x.to))
     const ctx = AIDER_TOKENS.map((tokens, j) => {
       const m = res[i * AIDER_TOKENS.length + j]
       raw(`aider-${q.id}-${tokens}.txt`, m.map)
       const named = new Set(m.map.split('\n').filter((l) => /^\S.*:$/.test(l)).map((l) => l.slice(0, -1)))
-      const share = (set) => (set.size ? [...set].filter((f) => named.has(f)).length / set.size : null)
-      return { tokens, inbound: share(inbound), outbound: share(outbound), ms: m.ms, bytes: Buffer.byteLength(m.map) }
+      return { tokens, ...contextShares(q, named), ms: m.ms, bytes: Buffer.byteLength(m.map) }
     })
     answers[q.id] = { context: ctx, ms: ctx[0].ms, bytes: ctx[0].bytes }
   }
-  return { cost, answers, tools_list_bytes: null, transport: 'Python API' }
+  return { cost, answers, tools_list_bytes: null, transport: 'Python API', repeat: { maps: jobs.length, varying } }
 }
 
 // ---------- run every tool ----------
@@ -369,9 +416,9 @@ const qg = Q.map((q) => {
   const cellOf = () => a.error ? `error: ${short(a.error)}` : q.kind === 'path' ? `${a.path_valid ? 'valid' : 'invalid'} ${a.path_hops ?? '-'} hops (shortest ${t.shortest})` : `${rp(score(t.items, a.answer))}${a.cut ? ' (cut)' : ''}`
   return { id: q.id, kind: q.kind, query: a.query, cell: cellOf(), same, ms: a.ms, all_ms: a.all_ms, bytes: a.bytes, ...(a.answer ? score(t.items, a.answer) : {}) }
 })
-const allMs = qg.flatMap((r) => r.all_ms ?? []).sort((a, b) => a - b)
+const allMs = qg.filter((r) => Number(r.id.slice(1)) <= 12).flatMap((r) => r.all_ms ?? []).sort((a, b) => a - b)
 const p95 = allMs.length ? allMs[Math.ceil(allMs.length * 0.95) - 1] : null
-fs.writeFileSync(path.join(OUT, 'results.json'), JSON.stringify({ meta, query_graph: { questions: qg, p95_ms: p95 }, tools: Object.fromEntries(Object.entries(results).map(([k, v]) => [k, { ...v, answers: undefined }])), questions: scored }, (k, v) => (v instanceof Set ? [...v] : v), 1))
+fs.writeFileSync(path.join(WORK, 'results.json'), JSON.stringify({ meta, query_graph: { questions: qg, p95_ms: p95 }, tools: Object.fromEntries(Object.entries(results).map(([k, v]) => [k, { ...v, answers: undefined }])), questions: scored }, (k, v) => (v instanceof Set ? [...v] : v), 1))
 
 const head = `| Q | class | truth | ${TOOLS.map((t) => t.label).join(' | ')} |`
 const sep = `|---|---|---|${TOOLS.map(() => '---|').join('')}`
@@ -389,6 +436,17 @@ const range = (xs) => { const v = xs.filter((x) => x != null); return v.length ?
 const perQ = (field) => TOOLS.map((t) => (results[t.id].not_run ? 'not run' : t.id === 'scip' ? `n/a (decode ${s(results.scip.decode_ms)} once)` : range(scored.filter((r) => Number(r.id.slice(1)) <= 9).map((r) => r[t.id][field]))))
 costRows.push(`| ms per question, Q1–Q9 | ${perQ('ms').join(' | ')} |`, `| bytes per answer, Q1–Q9 | ${perQ('bytes').join(' | ')} |`)
 costRows.push(`| \`tools/list\` bytes (MCP) | ${TOOLS.map((t) => { const r = results[t.id]; return r.not_run ? 'not run' : r.tools_list_bytes != null ? `${r.tools_list_bytes} (${r.tools} tools)` : r.transport }).join(' | ')} |`)
+// The context map beside aider's map: per question, then the mean over the questions (outbound over those whose target imports anything).
+const io = (c) => `in ${pc(c.inbound)} out ${pc(c.outbound)}`
+const aiderCtx = (id) => (results.aider.not_run ? null : results.aider.answers[id]?.context)
+const cmCell = (id, j) => io(results.proofmesh.context_map[id][j])
+const aiderCell = (id, j) => (results.aider.not_run ? 'not run' : io(aiderCtx(id)[j]))
+const meanOf = (cells) => { const v = cells.filter((x) => x != null); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null }
+const meanCell = (get) => io({ inbound: meanOf(CONTEXT_ASKED.map((q) => get(q.id)?.inbound)), outbound: meanOf(CONTEXT_ASKED.map((q) => get(q.id)?.outbound)) })
+const contextRows = [
+  ...CONTEXT_ASKED.map((q) => `| ${q.id} | \`${q.target.file}\` | ${PM_BUDGETS.map((_, j) => cmCell(q.id, j)).join(' | ')} | ${AIDER_TOKENS.map((_, j) => aiderCell(q.id, j)).join(' | ')} |`),
+  `| mean | | ${PM_BUDGETS.map((_, j) => meanCell((id) => results.proofmesh.context_map[id][j])).join(' | ')} | ${AIDER_TOKENS.map((_, j) => (results.aider.not_run ? 'not run' : meanCell((id) => aiderCtx(id)[j]))).join(' | ')} |`,
+]
 const md = [
   '# Parity benchmark',
   '',
@@ -401,6 +459,13 @@ const md = [
   head, sep, ...quality,
   '',
   '(derived): computed by the harness from an index that has no query for it. (data): computed from stored data; no tool answers it. aider is scored as context: the share of the truth\'s files its map names, inbound and outbound, at 1k and 4k tokens.',
+  '',
+  '## Context map: the share of the truth\'s files named, inbound / outbound (%)',
+  '',
+  `| Q | focus | ${PM_BUDGETS.map((b) => `ProofMesh get_context_map ${b} bytes`).join(' | ')} | ${AIDER_TOKENS.map((t) => `aider ${t / 1024}k tokens`).join(' | ')} |`, `|---|---|${[...PM_BUDGETS, ...AIDER_TOKENS].map(() => '---|').join('')}`, ...contextRows,
+  '',
+  'Each map is asked with the question\'s target file as its focus (aider: in the chat, its file and name mentioned). Inbound: the files of the truth\'s callers, importers, implementers, dependents or type users; outbound: the files the target file imports.',
+  ...(results.aider.repeat ? ['', `aider's ${results.aider.repeat.maps} maps, made again in a second copy of the fixture at another path with a fresh tags cache: ${results.aider.repeat.varying.length ? `they differ for ${results.aider.repeat.varying.join(', ')}` : 'every one is the same'}.`] : []),
   '',
   '## Callers at three levels: items · `file:line` sites · files',
   '',
@@ -422,5 +487,15 @@ const md = [
   `Fixture after the edit step: ${meta.fixture_clean ? 'clean' : `NOT clean: ${status.replace(/\n/g, ', ')}`} (tool caches ${CACHES.join(', ')} are in .git/info/exclude).`,
   '',
 ].join('\n')
-fs.writeFileSync(path.join(OUT, 'parity.md'), md)
+fs.writeFileSync(path.join(WORK, 'parity.md'), md)
+
+// Into out/ by rename, so a run that shares PARITY_OUT never reads or removes a file half written. Each file is whole, but
+// two runs that end at the same moment can leave files of both.
+fs.mkdirSync(OUT, { recursive: true })
+const staged = (name) => path.join(OUT, `.${name}.${process.pid}`)
+for (const name of ['truth.json', 'results.json', 'parity.md']) { fs.copyFileSync(path.join(WORK, name), staged(name)); fs.renameSync(staged(name), path.join(OUT, name)) }
+fs.cpSync(path.join(WORK, 'raw'), staged('raw'), { recursive: true })
+try { fs.renameSync(path.join(OUT, 'raw'), staged('raw-old')) } catch (e) { if (e.code !== 'ENOENT') throw e }
+try { fs.renameSync(staged('raw'), path.join(OUT, 'raw')) } catch (e) { if (e.code !== 'ENOTEMPTY' && e.code !== 'EEXIST') throw e } // another run's raw/ went in first
+for (const name of ['raw', 'raw-old']) fs.rmSync(staged(name), { recursive: true, force: true })
 console.log(md)

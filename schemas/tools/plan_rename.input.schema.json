@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "tools/plan_rename.input.schema.json",
+  "title": "plan_rename input",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "new_name"
+  ],
+  "properties": {
+    "repository_id": {
+      "type": "string",
+      "pattern": "^repo_[0-9a-z]+$"
+    },
+    "snapshot_id": {
+      "type": "string",
+      "pattern": "^snap_[0-9a-z]+$",
+      "description": "Default is the repository's current snapshot."
+    },
+    "subject_id": {
+      "oneOf": [
+        {
+          "type": "string",
+          "pattern": "^sym_[0-9a-z]+$"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "path"
+          ],
+          "description": "A symbol by name and file, in place of its id.",
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The name a lean row shows (Driver.escape), or the plain name (escape); it must name one symbol in the file."
+            },
+            "path": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The repository-relative path of the file that declares the symbol."
+            }
+          }
+        }
+      ],
+      "description": "The symbol to rename: its id, or { name, path }. Give subject_id or key."
+    },
+    "key": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The symbol to rename by its stable_key, in place of subject_id."
+    },
+    "new_name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The name it is to have; the plan says when a symbol of the same scope already has it."
+    },
+    "include_workspace": {
+      "type": "boolean",
+      "description": "true adds the calls and references in the other repositories of this repository's workspaces that reach the symbol, or a member renamed with it, through a package it builds, read from the workspace's sealed link file; each site carries its repository. A public export then lists those consumers instead of saying none outside the repository are listed."
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "timeout_ms": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_rows": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_depth": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "envelope": {
+      "enum": [
+        "full",
+        "compact"
+      ],
+      "description": "compact leaves out the snapshot-wide parts of the envelope (unresolved reasons, standing limitations) that an earlier answer from the same snapshot already gave; query-specific limits stay. Over MCP, answers after the first full one per snapshot are compact unless full is asked for."
+    }
+  },
+  "description": "A read-only plan of every site a rename of one symbol must change, with file and line: its declaration, calls, references, import and export specifiers, and the implementations and overrides that must be renamed with it, each observed; seams that bind it by name (an OpenAPI operationId, a gRPC or GraphQL handler, an FFI name, a dependency-injection or serialised string key, a doc mention), each inferred and to be reviewed; and calls that did not resolve but might reach it, apart. Changes no file."
+}

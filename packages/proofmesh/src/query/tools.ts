@@ -2,14 +2,14 @@ import type Database from 'better-sqlite3'
 import { ProofmeshError } from '../core/errors.js'
 import { queryId } from '../core/hash.js'
 import { applyLimits, type AppliedLimits } from '../core/limits.js'
-import { BUNDLE_FORMAT_VERSION, check, ENVELOPE_VERSION } from '../core/schemas.js'
+import { BUNDLE_FORMAT_VERSION, check, ENVELOPE_VERSION, SNAPSHOT_EXPORT_VERSION } from '../core/schemas.js'
 import type { Envelope, Limits, ListQueriesData } from '../core/generated.js'
-import { CATALOG_VERSION, Catalog, LEASE_OWNER, type IndexJob, type PropertyRead, type SnapshotRow } from '../meshstore/catalog.js'
+import { CATALOG_VERSION, Catalog, LEASE_OWNER, lastIndexFailure, noSnapshot, type ImportedSnapshot, type PropertyRead, type SnapshotRow } from '../meshstore/catalog.js'
 import { FORMAT_VERSION, openSnapshot } from '../meshstore/snapshot.js'
 import { PROTOCOL_VERSION } from '../indexer/adapter-host.js'
 import { LINK_FORMAT_VERSION } from '../links/index.js'
 import { DISPATCH_TYPES, SqliteEdges, trace } from '../meshstore/traversal.js'
-import { assertionKey, bySite, byKey, evidenceKey, hasSites, nodeKey, siteCols, siteOrder, type Sited } from '../meshstore/order.js'
+import { assertionKey, bySite, byKey, cmp, evidenceKey, hasSites, nodeKey, siteCols, siteOrder, type Sited } from '../meshstore/order.js'
 import { staticPropertyReads } from './static-reads.js'
 import { externalUsage, type UsageGroup } from './external-usage.js'
 import { findQuerySource, WEIGHED } from './query-source.js'
@@ -19,15 +19,19 @@ import type { ModuleCycle } from '../indexer/module-cycles.js'
 import { overview } from './overview.js'
 import { getEcosystem } from './ecosystem.js'
 import { type Basis, basisOf, byBasis, inferredSql } from './basis.js'
-import { analyzeImpact, IMPACT_TYPES, type Impact } from './impact.js'
+import { analyzeImpact, IMPACT_TYPES, structure, type Impact } from './impact.js'
+import { mismatchNotes, repoTag, withWorkspace, workspaceDependents, type Inbound, type Side, type Workspace, type WorkspaceDependent } from './workspace.js'
 import { CANDIDATE_TYPES, candidatesFrom, inferredNotes, resolveFollow, sitesNaming } from './inferred.js'
 import { ADAPTER_LANGUAGE_NAMES } from '../indexer/language-detect.js'
 import { hasRoles, isTestCode, isTestPath, parseRoles, roleTest, rolesSql } from './tests.js'
 import { EXECUTING, testReach, type TestRow } from './test-reach.js'
-import { changedSymbols, complete, completenessRows, diffLines, inTestCode, summaryLine, type Changed } from './completeness.js'
+import { changedSymbols, complete, touched, completenessRows, diffLines, inTestCode, summaryLine, type Changed } from './completeness.js'
 import { gitInfo } from '../indexer/discovery.js'
 import { findTables, tableReach } from './table-reach.js'
 import { searchSources } from './sources.js'
+import { planRename, publicEntry } from './rename.js'
+import { planMove } from './move.js'
+import { MAX_TERMS, searchConcepts } from './concepts.js'
 import { NOTE_KINDS, notesMatching, resolveRef, resolveRefs, staleness } from './notes.js'
 import { verify, type Proposition } from './claims.js'
 import { openCursor, queryHash, sealCursor } from './cursor.js'
@@ -36,7 +40,10 @@ import { leanName, leanRow, leanText, quote } from './lean.js'
 import { leanQueryRows, parseGraphQuery, runGraphQuery, type Param, type QueryRow } from './graph-query.js'
 import { generatedLeftOut, generatedPaths, markGenerated, withGeneratedPaths } from './generated-policy.js'
 import { innermost } from './symbol-at.js'
+import { findCycles, findEntryPoints, findHubs, findUnused, type CycleEdge, type EntryPoint, type Hub, type UnusedRow } from './structure.js'
+import { contextMap } from './context-map.js'
 import { compare, hasBodyHash, unreadableFiles } from './compare.js'
+import { importersOf, MAX_FILE_BYTES, MAX_SOURCE_BYTES, reachSet, searchStructure, type StructureMatch } from './structure-search.js'
 import { loadSchema } from '../core/schemas.js'
 import { changes, workingTree } from '../indexer/freshness.js'
 import { registryFor } from '../indexer/languages.js'
@@ -46,10 +53,10 @@ import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 
-export const TOOLS = ['workspace_status', 'list_repositories', 'list_snapshots', 'list_workspaces', 'find_symbols', 'get_symbol', 'get_relationships', 'trace_paths', 'read_evidence', 'get_overview', 'analyze_impact', 'find_tests', 'search_sources', 'get_memory', 'verify_claim', 'request_index', 'get_job', 'get_claims', 'save_memory', 'get_table_reach', 'get_property_reads', 'get_external_usage', 'find_query_source', 'compare_snapshots', 'list_queries', 'get_ecosystem', 'prepare_verification', 'get_verification', 'impact_completeness', 'get_symbols_at', 'get_session_trail', 'find_stale_mentions', 'query_graph'] as const
+export const TOOLS = ['workspace_status', 'list_repositories', 'list_snapshots', 'list_workspaces', 'find_symbols', 'get_symbol', 'get_relationships', 'trace_paths', 'read_evidence', 'get_overview', 'analyze_impact', 'find_tests', 'search_sources', 'get_memory', 'verify_claim', 'request_index', 'get_job', 'get_claims', 'save_memory', 'get_table_reach', 'get_property_reads', 'get_external_usage', 'find_query_source', 'compare_snapshots', 'list_queries', 'get_ecosystem', 'prepare_verification', 'get_verification', 'impact_completeness', 'get_symbols_at', 'get_session_trail', 'find_stale_mentions', 'find_unused', 'find_cycles', 'find_entry_points', 'find_hubs', 'get_context_map', 'plan_rename', 'plan_move', 'search_structure', 'search_concepts', 'get_symbol_card', 'query_graph'] as const
 export type ToolName = (typeof TOOLS)[number]
 /** The query tools whose results are code locations: they answer in the lean envelope on request, and by default over MCP (FR099). */
-export const LEAN = new Set<string>(['find_symbols', 'get_symbol', 'get_symbols_at', 'get_relationships', 'trace_paths', 'analyze_impact', 'find_tests', 'get_session_trail', 'query_graph'])
+export const LEAN = new Set<string>(['find_symbols', 'search_concepts', 'get_symbol', 'get_symbols_at', 'get_relationships', 'trace_paths', 'analyze_impact', 'find_tests', 'get_session_trail', 'find_unused', 'find_cycles', 'find_entry_points', 'find_hubs', 'get_context_map', 'search_structure', 'query_graph'])
 /** A lean answer is its text; the envelope beside it is what the text was rendered from, for in-process callers. */
 export type Answer = Envelope & { text?: string }
 
@@ -63,7 +70,8 @@ export const CAPABILITY: Record<ToolName, ListQueriesData['tools'][number]['capa
   read_evidence: 'read', get_overview: 'read', analyze_impact: 'read', find_tests: 'read', search_sources: 'read', get_memory: 'read',
   verify_claim: 'read', request_index: 'management', get_job: 'read', get_claims: 'read', save_memory: 'management', get_table_reach: 'read',
   get_property_reads: 'read', get_external_usage: 'read', find_query_source: 'read', compare_snapshots: 'read', list_queries: 'read',
-  get_ecosystem: 'read', prepare_verification: 'management', get_verification: 'read', impact_completeness: 'management', get_symbols_at: 'read', get_session_trail: 'read', find_stale_mentions: 'read', query_graph: 'read',
+  get_ecosystem: 'read', prepare_verification: 'management', get_verification: 'read', impact_completeness: 'management', get_symbols_at: 'read', get_session_trail: 'read', find_stale_mentions: 'read',
+  find_unused: 'read', find_cycles: 'read', find_entry_points: 'read', find_hubs: 'read', get_context_map: 'read', plan_rename: 'read', plan_move: 'read', search_structure: 'read', search_concepts: 'read', get_symbol_card: 'read', query_graph: 'read',
 }
 
 /**
@@ -72,12 +80,21 @@ export const CAPABILITY: Record<ToolName, ListQueriesData['tools'][number]['capa
  */
 export const PROFILE: Record<ToolName, ListQueriesData['tools'][number]['profile']> = {
   workspace_status: 'core', list_repositories: 'core', find_symbols: 'core', get_symbol: 'core', get_symbols_at: 'core', get_relationships: 'core', trace_paths: 'core',
-  read_evidence: 'core', get_overview: 'core', analyze_impact: 'core', find_tests: 'core', search_sources: 'core', list_queries: 'core',
-  get_table_reach: 'data', get_property_reads: 'data', get_external_usage: 'data', find_query_source: 'data', get_session_trail: 'data',
+  read_evidence: 'core', get_overview: 'core', analyze_impact: 'core', find_tests: 'core', search_sources: 'core', search_concepts: 'core', list_queries: 'core',
+  get_table_reach: 'data', get_property_reads: 'data', get_external_usage: 'data', find_query_source: 'data', get_session_trail: 'data', get_context_map: 'data',
   verify_claim: 'claims', get_claims: 'claims', prepare_verification: 'claims', get_verification: 'claims',
   list_snapshots: 'extra', list_workspaces: 'extra', get_ecosystem: 'extra', compare_snapshots: 'extra', impact_completeness: 'extra', request_index: 'extra',
   // A maintainer's question after a refactor, like compare_snapshots; workspace_status (core) counts the stale mentions and says how to list them.
-  get_job: 'extra', get_memory: 'extra', save_memory: 'extra', find_stale_mentions: 'extra', query_graph: 'extra',
+  get_job: 'extra', get_memory: 'extra', save_memory: 'extra', find_stale_mentions: 'extra',
+  find_unused: 'extra', find_cycles: 'extra', find_entry_points: 'extra', find_hubs: 'extra',
+  // Asked before a rename, not for most questions: core's tools/list has little room left, and analyze_impact (core) covers what a change reaches.
+  plan_rename: 'extra', plan_move: 'extra',
+  // Structural search runs a matcher process over captured source: a question for a pattern, not most questions (#37).
+  search_structure: 'extra',
+  // What Observatory opens a symbol with (FR1180); an assistant asks get_symbol and get_relationships, so core's list stays as it is.
+  get_symbol_card: 'extra',
+  // A composed question no typed tool answers in one call: an escape hatch, not for most questions (#36).
+  query_graph: 'extra',
 }
 /** How a client loads the tools of another profile, said by list_queries, which lists them all (FR422). */
 const PROFILES_NOTE = 'Over MCP, proofmesh mcp lists the core profile; start it with --tools <profile[,profile]> (core, data, claims, extra) or --tools all to list the others. A tool outside the profiles it was started with answers INVALID_ARGUMENT naming its profile.'
@@ -85,7 +102,7 @@ const PROFILES_NOTE = 'Over MCP, proofmesh mcp lists the core profile; start it 
 /** The version of every public contract this build speaks (FR037, FR076); COMPATIBILITY.md states the same versions and their policy. */
 export const CONTRACT: ListQueriesData['contract'] = {
   envelope: ENVELOPE_VERSION, snapshot_format: FORMAT_VERSION, link_format: LINK_FORMAT_VERSION, adapter_protocol: PROTOCOL_VERSION,
-  bundle_format: BUNDLE_FORMAT_VERSION, catalog_migration: CATALOG_VERSION,
+  bundle_format: BUNDLE_FORMAT_VERSION, snapshot_export: SNAPSHOT_EXPORT_VERSION, catalog_migration: CATALOG_VERSION,
 }
 
 /** What a snapshot's references capability means for an answer, said once per snapshot. */
@@ -130,7 +147,7 @@ type Partial = {
 }
 
 /** Tools whose shrink list has a total order and honours ctx.page.offset, so a cursor continues it with no omission or duplicate. */
-const PAGED = new Set<ToolName>(['get_symbols_at', 'find_symbols', 'get_relationships', 'search_sources', 'workspace_status', 'find_tests', 'impact_completeness'])
+const PAGED = new Set<ToolName>(['get_symbols_at', 'find_symbols', 'get_relationships', 'search_sources', 'workspace_status', 'find_tests', 'impact_completeness', 'find_unused', 'find_cycles', 'find_entry_points', 'get_context_map', 'search_structure'])
 /** Tools that answer over a workspace's link file rather than one repository snapshot (A28). None yet in this file; get_ecosystem joins at integration. */
 const WORKSPACE_SCOPED = new Set<ToolName>([])
 
@@ -144,7 +161,8 @@ export function runTool(dataDir: string, tool: string, input: Record<string, unk
   if (!(TOOLS as readonly string[]).includes(tool)) throw new ProofmeshError('NOT_FOUND', `unknown tool ${tool}`)
   const problem = check(`tools/${tool}.input.schema.json`, input ?? {})
   if (problem) throw new ProofmeshError('INVALID_ARGUMENT', `invalid input: ${problem}; ${tool} accepts ${Object.keys((loadSchema(`tools/${tool}.input.schema.json`) as { properties?: Record<string, unknown> }).properties ?? {}).join(', ')}`)
-  const out = answer(dataDir, tool as ToolName, input, session)
+  // get_context_map's budget_bytes is its answer's max_bytes, so the cut that holds every answer to max_bytes holds it (FR922).
+  const out = answer(dataDir, tool as ToolName, tool === 'get_context_map' ? { ...input, limits: { ...(input.limits as object | undefined), max_bytes: input.budget_bytes ?? CONTEXT_BUDGET } } : input, session)
   // An answer that breaks its own schema is a defect: refused as one rather than sent as if it were right (FR037). A lean answer's
   // text is rendered from the envelope checked here.
   const { text: _text, ...env } = out
@@ -277,22 +295,11 @@ function runRepositoryTool(dataDir: string, tool: string, input: Record<string, 
   }
 }
 
-/** The repository's last index job when it failed or was interrupted, with the one line every status surface shows for it (FR870). */
-export function lastIndexFailure(catalog: Catalog, repositoryId: string): { job: IndexJob; note: string } | null {
-  const last = catalog.lastJob(repositoryId)
-  if (last?.state !== 'failed' && last?.state !== 'interrupted') return null
-  // An interrupted job recorded no error: its process stopped before it could.
-  const job = { ...last, error: last.error ?? (last.state === 'interrupted' ? 'its process stopped before it recorded an outcome' : null) }
-  return { job, note: `last index job ${job.id} ${job.state}${job.finished_at ? ` at ${job.finished_at}` : ''}${job.error ? `: ${job.error}` : ''}` }
-}
-
-/** The refusal for a repository with no published snapshot: it names the open index job, else the last one when that failed, else says to index. */
-export function noSnapshot(catalog: Catalog, repositoryId: string): ProofmeshError {
-  const job = catalog.openJobs(repositoryId).at(-1)
-  if (job) return new ProofmeshError('SNAPSHOT_UNAVAILABLE', `no published snapshot for this repository; index job ${job.id} is ${job.state}${job.phase ? ` (${job.phase}${job.total ? ` ${job.done}/${job.total}` : job.done ? ` ${job.done} files found` : ''})` : ''}; poll it with get_job`, { detail: 'none', job_id: job.id })
-  const failed = lastIndexFailure(catalog, repositoryId)
-  if (!failed) return new ProofmeshError('SNAPSHOT_UNAVAILABLE', 'no published snapshot for this repository; run "proofmesh index" first', { detail: 'none' })
-  return new ProofmeshError('SNAPSHOT_UNAVAILABLE', `no published snapshot for this repository; ${failed.note}; run "proofmesh index" again`, { detail: 'none', job_id: failed.job.id, job_state: failed.job.state, job_finished_at: failed.job.finished_at, job_error: failed.job.error })
+/** What every answer from an imported snapshot says: where it came from, that it is only as honest as its producer, and which files were stale. */
+function importedLimitation(id: string, i: ImportedSnapshot): string {
+  const o = i.origin, shown = i.stale.slice(0, 10)
+  return `imported: snapshot ${id} was built elsewhere (${o.writer}, repository ${o.repository_name}, exported ${o.exported_at}) and imported ${i.imported_at}; its facts are only as honest as the data directory that built it. `
+    + (i.stale.length ? `${i.stale.length} file${i.stale.length === 1 ? '' : 's'} differed from the working tree on import, so answers about ${i.stale.length === 1 ? 'it' : 'them'} are stale: ${shown.join(', ')}${i.stale.length > shown.length ? `, and ${i.stale.length - shown.length} more` : ''}. Index the repository to replace it with a snapshot built here.` : 'Every file it read matched the working tree on import.')
 }
 
 const SNAPSHOT_FRESHNESS: Envelope['freshness'] = { mode: 'snapshot', status: 'as_of_snapshot' }
@@ -309,8 +316,8 @@ const mentionCounts = (db: Database.Database): { resolved: number; ambiguous: nu
  * job starts (or the open one is reused) and the call is refused with the changed files, so no answer passes for current when it is not.
  */
 /** Whether the working tree, read now, is exactly what a snapshot was built from, and if not which files changed. Reads files; starts nothing. */
-export function treeFreshness(db: Database.Database, dataDir: string, root: string): { current: boolean; changed: ReturnType<typeof changes> } {
-  const repositoryId = (db.prepare("select value from meta where key = 'repository_id'").get() as { value: string }).value
+/** repositoryId: the catalog's, which for an imported snapshot is not the one its sealed meta names (FR1083). */
+export function treeFreshness(db: Database.Database, dataDir: string, root: string, repositoryId = (db.prepare("select value from meta where key = 'repository_id'").get() as { value: string }).value): { current: boolean; changed: ReturnType<typeof changes> } {
   const tree = workingTree(root, registryFor(dataDir, repositoryId))
   const identity = JSON.parse((db.prepare("select value from meta where key = 'identity'").get() as { value: string }).value) as { manifest_hash: string }
   if (tree.manifest === identity.manifest_hash) return { current: true, changed: [] }
@@ -322,7 +329,7 @@ export function treeFreshness(db: Database.Database, dataDir: string, root: stri
 }
 
 function strictFreshness(ctx: Ctx, root: string): Envelope['freshness'] {
-  const { current, changed } = treeFreshness(ctx.db, ctx.dataDir, root)
+  const { current, changed } = treeFreshness(ctx.db, ctx.dataDir, root, ctx.repo.id)
   if (current) {
     return { mode: 'strict', status: 'current', checked_at: new Date().toISOString(), boundary: 'Repository files as discovered now; packages and other external inputs as recorded when the snapshot was built.' }
   }
@@ -375,13 +382,16 @@ function envelope(ctx: Ctx, tool: ToolName, requested: Limits | undefined, r: Pa
   ].filter((x): x is string => !!x)
   // A snapshot published with files missing says so in every answer, compact and lean included (FR343).
   const partialNote = partialLimitations(db, ctx.snapshot.id)
-  const limitations = [...partialNote, ...clampNotes, ...(r.limitations ?? []), ...(ctx.compact ? [] : standing)]
+  // An imported snapshot says so in every answer, compact and lean included, with its origin and the files that were stale on import (FR1084).
+  const imported = ctx.catalog.imported(ctx.snapshot.id)
+  const importNote = imported ? [importedLimitation(ctx.snapshot.id, imported)] : []
+  const limitations = [...importNote, ...partialNote, ...clampNotes, ...(r.limitations ?? []), ...(ctx.compact ? [] : standing)]
   const order = ['max_rows', 'max_depth', 'max_bytes', 'timeout'] as const
   const env: Envelope = {
     schema_version: ENVELOPE_VERSION,
     query_id: queryId(),
     tool,
-    snapshot: { id: ctx.snapshot.id, repository_id: ctx.snapshot.repository_id, analysis_mode: ctx.snapshot.analysis_mode, published_at: ctx.snapshot.published_at!, commit: git.commit ?? null, ref: git.ref ?? null, behind_remote: git.behind_remote ?? null, behind_ref: git.behind_ref ?? null, fetched_at: git.fetched_at ?? null },
+    snapshot: { id: ctx.snapshot.id, repository_id: ctx.snapshot.repository_id, analysis_mode: ctx.snapshot.analysis_mode, published_at: ctx.snapshot.published_at!, commit: git.commit ?? null, ref: git.ref ?? null, behind_remote: git.behind_remote ?? null, behind_ref: git.behind_ref ?? null, fetched_at: git.fetched_at ?? null, ...(imported ? { imported: { origin: imported.origin, imported_at: imported.imported_at, stale_count: imported.stale.length } } : {}) },
     freshness,
     // Compact: coverage, like the standing limitations, came with the first answer from this snapshot.
     coverage: ctx.compact ? null : { inventory_complete: true, files_discovered: summary.files_discovered, dispositions: summary.dispositions, capabilities: summary.capabilities },
@@ -409,7 +419,7 @@ function envelope(ctx: Ctx, tool: ToolName, requested: Limits | undefined, r: Pa
     // A lean answer's last line carries the cursor, in place of the note pointing at completion.next_cursor.
     const notes = stop.size && !(ctx.lean && next_cursor) ? [...limitations, next_cursor ? CONTINUED : PAGED.has(tool) ? NARROW : TRUNCATED] : limitations
     const done: Envelope = { ...env, limitations: notes, completion: { truncated: stop.size > 0, stop_reasons: order.filter((o) => stop.has(o)), timed_out: stop.has('timeout'), next_cursor, ...(r.total === undefined ? {} : { total: r.total }) } }
-    return ctx.lean ? { ...done, envelope: 'lean', text: leanText(r.header ? `${tool} · ${r.header}` : tool, ctx.snapshot.id, current === ctx.snapshot.id, r.lean!(r.data), notes, next_cursor) } : done
+    return ctx.lean ? { ...done, envelope: 'lean', text: leanText(r.header ? `${tool} · ${r.header}` : tool, ctx.snapshot.id, current === ctx.snapshot.id, r.lean!(r.data), notes, next_cursor, !!imported) } : done
   }
   const size = (a: Answer) => Buffer.byteLength(ctx.lean ? a.text! : JSON.stringify(a))
   // A key `a[].b` is the list b of every item of a, shortened from the last item's: a nested list the answer holds per table or per row.
@@ -478,12 +488,25 @@ function symbolNamed(db: Database.Database, named: { name: string; path: string 
   throw new ProofmeshError('INVALID_ARGUMENT', `${named.name} names ${hits.length} symbols in ${named.path}; pass one by id:\n${candidates.join('\n')}`, { detail: 'ambiguous_name', candidates })
 }
 
+/** Source text in a lean row, control and bidirectional characters escaped, so the code cannot reorder or hide what the row shows. */
+const visible = (t: string) => t.replace(/[\u0000-\u001f\u007f-\u009f\u200E\u200F\u202A-\u202E\u2066-\u2069]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`)
+/** The one symbol a name names in the whole snapshot: its lean name (`DataSource.initialize`), else its plain name. */
+function symbolByName(db: Database.Database, name: string): string {
+  const rows = db.prepare(`${SYMBOL_SQL} where s.name = ? and s.kind <> 'module' order by f.path, s.start_line, s.id`).all(name.slice(name.lastIndexOf('.') + 1)) as SymbolRow[]
+  const exact = rows.filter((s) => leanName(s) === name)
+  const hits = exact.length ? exact : rows.filter((s) => s.name === name)
+  if (hits.length === 1) return hits[0]!.id
+  if (!hits.length) throw new ProofmeshError('NOT_FOUND', `no symbol named ${name} in this snapshot`)
+  const candidates = hits.slice(0, 10).map((s) => symbolRow(s, true))
+  throw new ProofmeshError('INVALID_ARGUMENT', `${name} names ${hits.length} symbols; pass one by id or as { name, path }:\n${candidates.join('\n')}`, { detail: 'ambiguous_name', candidates })
+}
+
 /** The input with every `{ name, path }` given in place of a symbol id replaced by that id. */
 function withNamedIds(db: Database.Database, tool: string, input: Record<string, unknown>): Record<string, unknown> {
   const id = (v: unknown) => (v !== null && typeof v === 'object' ? symbolNamed(db, v as { name: string; path: string }) : v)
   const out = { ...input }
   // A `key` is a stable_key, the same in every tier (FR149): it stands in for the id the tool takes.
-  const ids: Record<string, [string, string]> = { get_symbol: ['key', 'symbol_id'], get_memory: ['key', 'symbol_id'], get_relationships: ['key', 'subject_id'], analyze_impact: ['key', 'subject_ids'], find_tests: ['key', 'subject_ids'] }
+  const ids: Record<string, [string, string]> = { get_symbol: ['key', 'symbol_id'], get_memory: ['key', 'symbol_id'], get_relationships: ['key', 'subject_id'], analyze_impact: ['key', 'subject_ids'], find_tests: ['key', 'subject_ids'], plan_rename: ['key', 'subject_id'], plan_move: ['key', 'subject_id'], get_symbol_card: ['key', 'symbol_id'] }
   const keyed = (name: string, into: string) => {
     if (!(name in out)) return
     // A key is one way to name the subject: with an id or a path as well, the call does not say which it means.
@@ -525,7 +548,9 @@ function siteOf(db: Database.Database, assertionId: string): { path: string; sta
  * Each dependent at the site of the edge that first reached it, or at its declaration when dispatch reached it (FR097, FR860): the
  * row's line in its own file and the relationship, and `site` when that edge is recorded in another file (a registration, say).
  */
-const impactRows = (ctx: Ctx, dependents: Impact['dependents'], reached: Impact['reached_by']) => dependents.map((x) => {
+const impactRows = (ctx: Ctx, dependents: Array<Impact['dependents'][number] & { repository?: WorkspaceDependent['repository'] }>, reached: Impact['reached_by']) => dependents.map((x) => {
+  // A dependent in another repository already holds its line, relationship and site, read from its own snapshot.
+  if (x.repository) return x as WorkspaceDependent
   const via = reached.get(x.id), site = via ? siteOf(ctx.db, via) : null
   const line = site?.path === x.path ? site.start_line : (ctx.db.prepare('select start_line from symbol where id = ?').get(x.id) as { start_line: number }).start_line
   const relationship = via ? (ctx.db.prepare('select type from assertion where id = ?').get(via) as { type: string }).type : 'dispatch'
@@ -653,6 +678,145 @@ const fileAlias = (db: Database.Database, id: string): string | undefined => id.
   ? (db.prepare("select id from symbol where file_id = ? and kind = 'module' order by id limit 1").get(id) as { id: string } | undefined)?.id
   : (db.prepare("select file_id as id from symbol where id = ? and kind = 'module'").get(id) as { id: string } | undefined)?.id
 
+/** The note a structure listing carries when it left generated files under its prefix out (FR299). */
+const generatedNote = (ctx: Ctx, listing: string, input: Record<string, unknown>): string[] => {
+  const prefix = String(input.path_prefix ?? '')
+  const note = generatedLeftOut(listing, [...generatedPaths(ctx.db)].filter((p) => p.startsWith(prefix)).length, input.include_generated === true)
+  return note ? [note] : []
+}
+
+/** get_context_map's default budget_bytes and max_depth (FR920). */
+const CONTEXT_BUDGET = 4096, CONTEXT_DEPTH = 2
+
+/** The symbols a name in get_context_map's focus names: an id, else every symbol whose row name is it, else every symbol of that plain name. */
+function symbolsNamed(db: Database.Database, name: string): string[] {
+  if (db.prepare('select 1 from symbol where id = ?').get(name)) return [name]
+  const plain = name.slice(Math.max(name.lastIndexOf('.'), name.lastIndexOf(':')) + 1)
+  const all = db.prepare(`${SYMBOL_SQL} where s.name = ? and s.kind <> 'module' order by f.path, s.start_line, s.id`).all(plain) as SymbolRow[]
+  const exact = all.filter((s) => leanName(s) === name || s.qualified_name === name)
+  const hits = exact.length ? exact : name === plain ? all : []
+  if (!hits.length) throw new ProofmeshError('NOT_FOUND', `no symbol named ${name} in this snapshot; find_symbols searches by part of a name`)
+  return hits.map((s) => s.id)
+}
+
+/** trace_paths over this snapshot, and with a workspace over the member sides of its link files too (FR1261, FR1262). */
+function tracePaths(ctx: Ctx, input: Record<string, unknown>, ws: Workspace | null): Partial {
+  // The snapshot that holds a node or an assertion: this one, or a member's side of the link file.
+  const sideOf = (id: string) => (ws && !id.startsWith('ext_') ? ws.sideOf(id) : null)
+  const dbOf = (id: string) => sideOf(id)?.db ?? ctx.db
+  const end = (id: unknown, file: unknown, name: string) => {
+    if (id === undefined && file === undefined) throw new ProofmeshError('INVALID_ARGUMENT', `give ${name}_id or ${name}_path`)
+    // A file is traced as its module symbol, from which its top-level calls go.
+    if (file !== undefined) { const f = fileAt(ctx, String(file)).id; return fileAlias(ctx.db, f) ?? f }
+    if (!ctx.db.prepare('select 1 from symbol where id = ?').get(id) && !sideOf(String(id))) throw new ProofmeshError('NOT_FOUND', `symbol ${String(id)} is not in snapshot ${ctx.snapshot.id}${ws ? ' nor in a linked workspace member' : ''}`)
+    return String(id)
+  }
+  const types = (input.types as string[]) ?? ['calls', ...DISPATCH_TYPES]
+  const resolutions = (input.resolutions as string[]) ?? ['resolved']
+  // A file and its module symbol are one node (FR090): imports run between files, calls from the module, so a path is
+  // traced over both and shows the module symbol.
+  const moduleOf = new Map<string, string>(), fileOf = new Map<string, string>()
+  if (types.includes('imports')) for (const r of ctx.db.prepare("select id, file_id from symbol where kind = 'module' order by id desc").all() as Array<{ id: string; file_id: string }>) { moduleOf.set(r.file_id, r.id); fileOf.set(r.id, r.file_id) }
+  const one = (id: string) => moduleOf.get(id) ?? id
+  const source = end(input.source_id, input.source_path, 'source'), target = end(input.target_id, input.target_path, 'target')
+  const follow = resolveFollow(ctx.db, input.include_inferred, [source, target].filter((id) => !sideOf(id)))
+  const sqlite = new SqliteEdges(ctx.db, follow.on ? (nodes) => candidatesFrom(ctx.db, nodes, types) : undefined)
+  const withFiles = (nodes: string[]) => [...nodes, ...nodes.flatMap((n) => fileOf.get(n) ?? [])]
+  // A hop into another member: the site's assertion, with the link's basis and the repository it enters.
+  const crossing = new Map<string, { basis: Basis }>()
+  const edges = {
+    outEdges: (nodes: string[], ty: string[], rs: string[]) => {
+      const here = nodes.filter((n) => !sideOf(n))
+      const out = sqlite.outEdges(withFiles(here), ty, rs).map((e) => ({ ...e, src: one(e.src), dst: one(e.dst) }))
+      if (!ws) return out
+      // Each member's nodes over its own side, then the links out of every side's nodes, this snapshot's included.
+      const bySide = new Map<Side, string[]>()
+      for (const n of nodes) { const s = sideOf(n); if (s) bySide.set(s, [...(bySide.get(s) ?? []), n]) }
+      for (const [s, ns] of bySide) out.push(...new SqliteEdges(s.db).outEdges(ns, ty, rs))
+      const links = [...ws.outbound(ctx.repo.id, ctx.snapshot.id, here, ty), ...[...bySide].flatMap(([s, ns]) => ws.outbound(s.id, s.snapshot_id, ns, ty))]
+      for (const l of links) { crossing.set(l.assertion_id, { basis: l.basis }); out.push({ src: l.src, dst: l.target, assertion_id: l.assertion_id }) }
+      return out
+    },
+  }
+  const rank = (id: string) => (id.startsWith('as_') ? assertionKey(dbOf(id), id) : nodeKey(dbOf(id), id))
+  const t = trace(edges, { source, target, types, resolutions, maxDepth: ctx.limits.max_depth, maxRows: ctx.limits.max_rows, deadline: ctx.started + ctx.limits.timeout_ms, rank })
+  // Boundaries and candidate notes are this snapshot's: a member's unresolved sites are its own.
+  const expanded = withFiles(t.expanded.filter((n) => !sideOf(n)))
+  const boundaries = expanded.length
+    // A candidate site the walk followed is no gap in it; one it never follows, for its cap, still is.
+    ? boundariesFrom(ctx.db, types, `a.source_id in (${expanded.map(() => '?').join(',')})${follow.on ? ` and not (a.resolution in ('candidate', 'ambiguous') and a.type in (${CANDIDATE_TYPES.map((x) => `'${x}'`).join(',')}) and json_extract(a.detail, '$.more') is null)` : ''}`, ctx.limits.max_rows, ...expanded)
+    : NO_BOUNDARIES
+  const conclusion = t.paths.length ? 'path_found' : t.stopped_by ? 'no_path_within_bounds' : boundaries.count ? 'no_resolved_path' : 'no_path_exhaustive'
+  const limitations = conclusion === 'no_path_within_bounds' ? ['No path was found within the limits. This is not evidence that no path exists.']
+    : conclusion === 'no_resolved_path' ? ['Unresolved call sites in the explored region could lead to the target.']
+    : conclusion === 'no_path_exhaustive' ? ['Exhaustive only for the declared relationship types and resolutions in this snapshot.', 'Calls made from code outside the repository, such as library callbacks, are not modelled.']
+    : []
+  const hopType = (a: string) => (dbOf(a).prepare('select type from assertion where id = ?').get(a) as { type: string }).type
+  const isDispatch = (type: string) => (DISPATCH_TYPES as readonly string[]).includes(type)
+  // Lean states the dispatch caveat only when the path it shows has a dispatch hop, and says when it shows one of several paths.
+  if (types.some(isDispatch) && (!ctx.lean || !!t.paths[0]?.assertions.some((a) => isDispatch(hopType(a))))) limitations.push('implements and overrides hops run both ways: a call to an interface or virtual member may dispatch to any implementation, and the path shows the one found.')
+  limitations.push(...leanReferencesNote(ctx, types))
+  limitations.push(...inferredNotes(follow, sitesNaming(ctx.db, expanded, types, 'src'), 2))
+  if (ctx.lean && t.paths.length > 1) limitations.push(`${t.paths.length - 1} other shortest path${t.paths.length === 2 ? '' : 's'} of the same length; envelope compact lists them.`)
+  if (ws) limitations.push(...ws.limitations, 'A hop into another repository follows its sealed package_symbol link from the call site; dispatch is not followed across repositories. Nodes of another repository carry it; their ids and evidence are of its snapshot.')
+  const ids = new Set<string>([source, target, ...t.paths.flatMap((p) => p.nodes), ...t.horizon.map((h) => h.id), ...boundaries.items.map((b) => b.from_id), ...t.explored.flatMap((e) => [e.from, e.to])])
+  const nodes: Record<string, unknown> = {}
+  for (const id of [...ids].sort(byKey((i) => nodeKey(dbOf(i), i)))) {
+    const db = dbOf(id), side = sideOf(id), repository = side ? { repository: { id: side.id, name: side.name, commit: side.commit } } : {}
+    const s = db.prepare(`${SYMBOL_SQL} where s.id = ?`).get(id) as SymbolRow | undefined
+    if (s) { nodes[id] = { kind: s.kind, name: s.name, qualified_name: s.qualified_name, path: s.path, start_line: s.start_line, ...repository }; continue }
+    const x = db.prepare('select module, name from external_symbol where id = ?').get(id) as { module: string; name: string } | undefined
+    if (x) { nodes[id] = { kind: 'external', name: x.name, qualified_name: `${x.module}:${x.name}`, path: x.module, start_line: 0 }; continue }
+    // A file with no module symbol, such as an imported JSON file.
+    const f = db.prepare('select path from file where id = ?').get(id) as { path: string } | undefined
+    if (f) nodes[id] = { kind: 'file', name: f.path.slice(f.path.lastIndexOf('/') + 1), qualified_name: f.path, path: f.path, start_line: 1, ...repository }
+  }
+  const relationships: Record<string, unknown> = {}
+  const hopBasis = new Map<string, Basis>()
+  // A hop of a path carries its call site, so a reader sees each hop's proof with no request per hop (FR1185).
+  const onPath = new Set(t.paths.flatMap((p) => p.assertions))
+  for (const id of [...new Set([...t.paths.flatMap((p) => p.assertions), ...t.explored.map((e) => e.assertion_id)])].sort(byKey((i) => assertionKey(dbOf(i), i)))) {
+    const a = dbOf(id).prepare('select type, origin, resolution, detail from assertion where id = ?').get(id) as { type: string; origin: string; resolution: string; detail: string | null }
+    const across = crossing.get(id)
+    const basis = across?.basis ?? basisOf(a) ?? 'observed'
+    hopBasis.set(id, basis)
+    const site = onPath.has(id) ? siteOf(dbOf(id), id) : null
+    relationships[id] = { type: a.type, origin: a.origin, basis, rule: across ? 'package_symbol' : a.detail ? ((JSON.parse(a.detail) as { rule?: string }).rule ?? null) : null, ...(site ? { site: { path: site.path, start_line: site.start_line } } : {}) }
+  }
+  // A path is inferred when any hop is.
+  const paths = t.paths.map((p) => ({ ...p, basis: p.assertions.some((a) => hopBasis.get(a) === 'inferred') ? 'inferred' as const : 'observed' as const }))
+  const stop = t.stopped_by ? [t.stopped_by] : []
+  // Under the byte budget the explored edges go first, then boundaries, then paths beyond the first: a found path is never cut away.
+  const exploredTotal = t.explored.length
+  const prune = (data: Record<string, unknown>) => {
+    const d = data as { paths: typeof paths; search: { horizon: typeof t.horizon; explored: typeof t.explored; explored_truncated: boolean }; boundaries: Boundary[]; nodes: Record<string, unknown>; relationships: Record<string, unknown> }
+    const keep = new Set<string>([source, target, ...d.paths.flatMap((p) => p.nodes), ...d.search.horizon.map((h) => h.id), ...d.boundaries.map((b) => b.from_id), ...d.search.explored.flatMap((e) => [e.from, e.to])])
+    const edges = new Set<string>([...d.paths.flatMap((p) => p.assertions), ...d.search.explored.map((e) => e.assertion_id)])
+    for (const k of Object.keys(d.nodes)) if (!keep.has(k)) delete d.nodes[k]
+    for (const k of Object.keys(d.relationships)) if (!edges.has(k)) delete d.relationships[k]
+    if (d.search.explored.length < exploredTotal) d.search.explored_truncated = true
+  }
+  // The first path's hops, read now: a member's snapshot is closed by the time a lean answer is written.
+  const hops = new Map((t.paths[0]?.assertions ?? []).map((a) => [a, { type: hopType(a), site: siteOf(dbOf(a), a) }]))
+  return {
+    data: { conclusion, paths, search: { levels: t.levels, stopped_by: t.stopped_by, horizon: t.horizon, explored: t.explored, explored_truncated: t.explored_truncated }, boundaries: boundaries.items, nodes, relationships, ...(ws ? { workspace: ws.header } : {}) },
+    // The envelope's evidence is this snapshot's; a hop in another repository has its own.
+    evidence_ids: [...new Set(t.paths.flatMap((p) => p.assertions.filter((a) => !sideOf(a)).flatMap((a) => siteOf(ctx.db, a).evidence)))].sort(byKey((i) => evidenceKey(ctx.db, i))),
+    unresolved: { scope: 'query', items: boundaries.items, count: boundaries.count, by_reason: boundaries.by_reason }, stop_reasons: stop, limitations, shrink: ['search.explored', 'boundaries', 'search.horizon', 'paths'], keep: 1, prune,
+    // The first path's hops in order: each node at its call to the next (at its declaration for a dispatch hop), then the target (FR098).
+    lean: (data) => {
+      const p = (data.paths as typeof paths)[0], nodes = data.nodes as Record<string, { kind: string; name: string; qualified_name: string; path: string; start_line: number; repository?: Inbound['repository'] }>
+      return (p?.nodes ?? []).map((id, i) => {
+        const n = nodes[id]!, hop = i < p!.assertions.length ? hops.get(p!.assertions[i]!)! : null, type = hop?.type ?? null
+        if (n.kind === 'external') return leanRow(n.name, null, null)
+        const tags = [...(type !== null && hopBasis.get(p!.assertions[i]!) === 'inferred' ? ['inferred'] : []), ...(n.repository ? [repoTag(n.repository)] : [])]
+        if (type === null || isDispatch(type)) return leanRow(leanName(n), n.path, n.start_line, [...(type ? ['dispatch'] : []), ...tags])
+        return leanRow(leanName(n), hop!.site.path, hop!.site.start_line, [...(type === 'calls' ? [] : [type]), ...tags])
+      })
+    },
+  }
+}
+
 const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Partial> = {
   workspace_status(ctx, input) {
     const meta = Object.fromEntries((ctx.db.prepare('select key, value from meta').all() as Array<{ key: string; value: string }>).map((m) => [m.key, m.value]))
@@ -752,7 +916,23 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     for (const id of subjects) if (!ctx.db.prepare(`select 1 from ${id.startsWith('ext_') ? 'external_symbol' : id.startsWith('file_') ? 'file' : 'symbol'} where id = ?`).get(id)) throw new ProofmeshError('NOT_FOUND', `symbol ${id} is not in snapshot ${ctx.snapshot.id}`)
     const types = (input.types as string[] | undefined) ?? [...IMPACT_TYPES]
     const follow = resolveFollow(ctx.db, input.include_inferred, subjects)
-    const { reached_by, sites, ...r } = analyzeImpact(ctx.db, ctx.snapshot.id, subjects, types, ctx.limits.max_depth, ctx.limits.max_rows, undefined, follow.on)
+    const across = input.include_workspace === true
+    const { reached_by, sites, ...r } = analyzeImpact(ctx.db, ctx.snapshot.id, subjects, types, ctx.limits.max_depth, across ? Number.MAX_SAFE_INTEGER : ctx.limits.max_rows, undefined, follow.on)
+    // FR903: dependents in the other members of this repository's workspaces, through the packages it builds, after the local walk.
+    const ws = across ? withWorkspace(ctx.catalog, ctx.repo, ctx.snapshot, ctx.db, (w) => {
+      const reached = new Map<string, number>(), { membersOf } = structure(ctx.db, ctx.snapshot.id)
+      for (const id of subjects) for (const m of [id, ...(membersOf.get(id) ?? [])]) reached.set(m, 0)
+      for (const d of r.dependents) if (!reached.has(d.id)) reached.set(d.id, d.depth)
+      return { header: w.header, limitations: w.limitations, ...workspaceDependents(w, reached, types, ctx.limits.max_depth) }
+    }) : null
+    if (ws) {
+      const all: Array<Impact['dependents'][number] & { repository?: WorkspaceDependent['repository'] }> = [...r.dependents, ...ws.dependents]
+      all.sort((a, b) => a.depth - b.depth || (a.repository?.name ?? '').localeCompare(b.repository?.name ?? '') || a.qualified_name.localeCompare(b.qualified_name) || a.path.localeCompare(b.path))
+      r.dependents = all.slice(0, ctx.limits.max_rows)
+      r.totals.dependents += ws.dependents.length
+      for (const d of ws.dependents) { r.totals.by_basis[d.basis]++; r.totals.by_depth[String(d.depth)] = (r.totals.by_depth[String(d.depth)] ?? 0) + 1 }
+      if (ws.stopped && !r.stopped_by) r.stopped_by = 'max_depth'
+    }
     const calls = snapshotSummary(ctx.db, ctx.snapshot.id).unresolved_calls
     // Lean states only what applies to this answer; the tool description carries the standing caveat.
     const limitations = [
@@ -762,12 +942,13 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
       ...inferredNotes(follow, sites, subjects.length),
       ...(!types.includes('imports') && subjects.some((id) => id.startsWith('file_') || fileAlias(ctx.db, id) !== undefined) ? ['A file is reached only through imports; add imports to types for the files that depend on it.'] : []),
       ...leanReferencesNote(ctx, types),
+      ...(ws ? [...ws.limitations, ...mismatchNotes(ws.notes), ...(ws.dependents.length ? ['Dependents in other repositories carry their repository; by_project, by_area and by_team count this repository\'s dependents only.'] : [])] : []),
     ]
     const stop: Array<'max_depth' | 'max_rows'> = [...(r.stopped_by === 'max_depth' ? ['max_depth' as const] : []), ...(r.stopped_by === 'node_budget' || r.totals.dependents > ctx.limits.max_rows ? ['max_rows' as const] : [])]
     const rows = impactRows(ctx, r.dependents, reached_by)
     return {
-      data: { subjects, types, ...r, dependents: rows }, stop_reasons: stop, limitations, shrink: 'dependents', total: r.totals.dependents,
-      lean: (data) => (data.dependents as typeof rows).map((x) => leanRow(leanName(x), x.site?.path ?? x.path, x.site?.start_line ?? x.line, [`depth=${x.depth}`, ...(x.relationship === 'dispatch' ? ['dispatch'] : types.length > 1 ? [x.relationship] : []), ...(x.basis === 'inferred' ? ['inferred'] : [])])),
+      data: { subjects, types, ...r, dependents: rows, ...(ws ? { workspace: ws.header } : {}) }, stop_reasons: stop, limitations, shrink: 'dependents', total: r.totals.dependents,
+      lean: (data) => (data.dependents as typeof rows).map((x) => leanRow(leanName(x), x.site?.path ?? x.path, x.site?.start_line ?? x.line, [`depth=${x.depth}`, ...(x.relationship === 'dispatch' ? ['dispatch'] : types.length > 1 ? [x.relationship] : []), ...('repository' in x && x.repository ? [repoTag(x.repository)] : []), ...(x.basis === 'inferred' ? ['inferred'] : [])])),
     }
   },
 
@@ -786,7 +967,7 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     const base = commit(String(input.base)), head = input.head === undefined ? null : commit(String(input.head))
     // Each side is the sealed snapshot of its commit, or for the working tree the current snapshot while it matches the tree (FR109).
     const baseRow = ctx.catalog.snapshotOfCommit(ctx.repo.id, base)
-    const headRow = head ? ctx.catalog.snapshotOfCommit(ctx.repo.id, head) : ctx.catalog.currentSnapshot(ctx.repo.id)?.id === ctx.snapshot.id && treeFreshness(ctx.db, ctx.dataDir, root).current ? ctx.snapshot : undefined
+    const headRow = head ? ctx.catalog.snapshotOfCommit(ctx.repo.id, head) : ctx.catalog.currentSnapshot(ctx.repo.id)?.id === ctx.snapshot.id && treeFreshness(ctx.db, ctx.dataDir, root, ctx.repo.id).current ? ctx.snapshot : undefined
     const sides = { base: { commit: base, snapshot_id: baseRow?.id ?? null }, head: { commit: head, snapshot_id: headRow?.id ?? null } }
     const zero = { changed_symbols: 0, dependents: 0, changed: 0, tested: 0, neither: 0, by_basis: { observed: 0, inferred: 0 } }
     const missing = [...(headRow ? [] : [head]), ...(baseRow ? [] : [base])]
@@ -844,6 +1025,47 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     }
   },
 
+  get_context_map(ctx, input) {
+    const focus = input.focus as { paths?: string[]; symbols?: string[]; base?: string; head?: string }
+    const ids: string[] = [], changed = new Set<string>(), limitations: string[] = []
+    for (const p of focus.paths ?? []) {
+      try { ids.push(fileAt(ctx, p).id) } catch (e) {
+        // A file no adapter analyses has an empty map, and the answer says why (FR923).
+        if (!(e instanceof ProofmeshError) || e.details.detail !== 'path_not_indexed' || e.details.disposition === 'not found') throw e
+        limitations.push(`${String(e.details.path)} is ${String(e.details.disposition)} in snapshot ${ctx.snapshot.id}, so it has no declarations to map.`)
+      }
+    }
+    for (const name of focus.symbols ?? []) ids.push(...symbolsNamed(ctx.db, name))
+    if (focus.base !== undefined) {
+      const root = ctx.repo.root
+      const commit = (rev: string) => {
+        const g = gitInfo(root, rev)
+        if (!g.commit) throw new ProofmeshError('INVALID_ARGUMENT', g.available ? `${rev} names no commit in ${ctx.repo.name}` : `${root} is not the top of a git working tree, so it has no commits`, { detail: 'unknown_commit', rev })
+        return g.commit
+      }
+      const base = commit(focus.base), head = focus.head === undefined ? null : commit(focus.head)
+      const text = (p: string) => { const f = ctx.db.prepare('select content_hash from file where path = ?').get(p) as { content_hash: string | null } | undefined; return f?.content_hash ? ctx.store.read(f.content_hash)?.toString('utf8') : undefined }
+      // The changed lines are placed on this snapshot's declarations: the declarations of head, or of the working tree with no head.
+      const diff = diffLines(root, base, head)
+      // A declaration that only lost lines has none on the head side: the head line at its gap places it.
+      // shortcut: a gap at a declaration's first or last line can fall on its neighbour; read the base side's declarations if that misleads.
+      const lines = new Map(diff.head)
+      for (const [p, rs] of diff.gaps) lines.set(p, [...(lines.get(p) ?? []), ...rs])
+      for (const s of touched(ctx.db, lines, text)) { ids.push(s.id); changed.add(s.id) }
+      const snapCommit = (JSON.parse((ctx.db.prepare("select value from meta where key = 'git'").get() as { value: string } | undefined)?.value ?? '{}') as { commit?: string }).commit
+      if (head ? snapCommit !== head : !treeFreshness(ctx.db, ctx.dataDir, root).current) limitations.push(`Snapshot ${ctx.snapshot.id} is not of ${head ?? 'the working tree'}, so changed lines may fall on other declarations than they changed; index ${head ? 'that commit' : 'again'} first.`)
+      if (!changed.size) limitations.push(`The diff from ${focus.base} changes no declaration this snapshot holds.`)
+    }
+    if (!ids.length && !limitations.length) throw new ProofmeshError('INVALID_ARGUMENT', 'focus names nothing: give paths, symbols, or base')
+    const rows = contextMap(ctx.db, ids, changed, Number(input.max_depth ?? CONTEXT_DEPTH))
+    const end = ctx.page.offset + ctx.limits.max_rows
+    return {
+      data: { rows: rows.slice(ctx.page.offset, end).map(({ direction: _d, weight: _w, inferred, ...r }) => ({ ...r, ...(inferred ? { basis: 'inferred' } : {}) })), totals: { rows: rows.length } },
+      stop_reasons: rows.length > end ? ['max_rows'] : [], more: rows.length > end, shrink: 'rows', keep: 1, limitations,
+      lean: (data) => (data.rows as Array<{ name: string; path: string; line: number; relation: string; depth: number; basis?: string }>).map((r) => leanRow(r.name, r.path, r.line, [r.relation, `depth=${r.depth}`, ...(r.basis ? ['inferred'] : [])])),
+    }
+  },
+
   get_symbols_at(ctx, input) {
     const all = input.locations as string[]
     if (all.length > MAX_LOCATIONS) throw new ProofmeshError('INVALID_ARGUMENT', `get_symbols_at takes at most ${MAX_LOCATIONS} locations per call; ${all.length} were given`, { detail: 'too_many_locations', limit: MAX_LOCATIONS })
@@ -891,6 +1113,74 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     const job = ctx.catalog.job(String(input.job_id))
     if (!job || job.repository_id !== ctx.repo.id) throw new ProofmeshError('NOT_FOUND', `no index job ${String(input.job_id)} for this repository`)
     return { data: { job }, limitations: job.state === 'interrupted' ? ['The process running this job stopped before finishing; request a new index.'] : [] }
+  },
+
+  plan_rename(ctx, input) {
+    if (input.subject_id === undefined) throw new ProofmeshError('INVALID_ARGUMENT', 'give subject_id or key')
+    const id = String(input.subject_id)
+    if (!ctx.db.prepare("select 1 from symbol where id = ? and kind <> 'module'").get(id)) throw new ProofmeshError('NOT_FOUND', `${id} is no symbol of snapshot ${ctx.snapshot.id}; plan_rename takes a symbol, not a file`)
+    const p = planRename(ctx.db, ctx.store, id, ctx.started + ctx.limits.timeout_ms)
+    const s = p.subject, newName = String(input.new_name)
+    const row = (x: typeof s) => ({ id: x.id, key: x.key, name: x.name, kind: x.kind, path: x.path, line: p.declared.get(x.id) ?? x.start_line })
+    // A name the new one would collide with: a symbol of that name in the container of the subject or of a member renamed with it,
+    // or at the top of the same file.
+    const named = ctx.db.prepare('select f.path, s.start_line as line, s.kind from symbol s join file f on f.id = s.file_id where s.qualified_name = ? order by f.path, s.start_line')
+    const clash = [s, ...p.group].flatMap((m) => named.all(`${m.qualified_name.slice(0, (m.qualified_name.includes('.') ? m.qualified_name.lastIndexOf('.') : m.qualified_name.indexOf(':')) + 1)}${newName}`) as Array<{ path: string; line: number; kind: string }>)
+    const entry = publicEntry(ctx.db, ctx.store, [...(p.exported ? [s.path] : []), ...p.carriers])
+    // FR985: with include_workspace, the sites in the other repositories of this repository's workspaces that reach it through a package
+    // it builds, from the sealed link file (FR902), each with its repository; observed when the installed version is the built one.
+    const across = input.include_workspace === true
+      ? withWorkspace(ctx.catalog, ctx.repo, ctx.snapshot, ctx.db, (w) => ({ linked: w.header.some((h) => h.link_file_id), limitations: w.limitations, rows: w.inbound([s.id, ...p.group.map((g) => g.id)], ['calls', 'references', 'inherits', 'implements']) }))
+      : null
+    for (const r of across?.rows ?? []) p.sites.push({ path: r.site.path, line: r.site.start_line, kind: r.type === 'calls' ? 'call' : 'reference', basis: r.basis === 'observed' ? 'observed' : 'inferred', key: r.target === s.id ? s.key : p.group.find((g) => g.id === r.target)?.key ?? s.key, repository: r.repository })
+    const observed = p.sites.filter((x) => x.basis === 'observed').length
+    const sites = p.sites.slice(0, ctx.limits.max_rows)
+    return {
+      data: {
+        subject: row(s), new_name: newName, sites, must_rename_together: p.group.map((g) => ({ ...row(g), relationship: g.relationship })),
+        possibly_affected: p.possibly.slice(0, ctx.limits.max_rows),
+        counts: { observed, inferred: p.sites.length - observed, must_rename_together: p.group.length, possibly_affected: p.possibly.length },
+      },
+      stop_reasons: [...(p.sites.length > sites.length || p.possibly.length > ctx.limits.max_rows ? ['max_rows' as const] : []), ...(p.stopped ? ['timeout' as const] : [])],
+      shrink: ['possibly_affected', 'sites'],
+      limitations: [
+        'A plan only: no file is changed. An observed site is one the compiler or the syntax bound to the symbol; an inferred site is a seam a rule or a string binds by name (route, rpc, graphql, ffi, di_key, serialised_key, doc_mention) and needs review before it is changed.',
+        ...(p.possibly.length ? [`${p.possibly.length} call${p.possibly.length === 1 ? '' : 's'} that did not resolve, or resolved to several candidates, might reach ${s.name}; they are listed under possibly_affected, not as sites.`] : []),
+        ...(entry && !across?.linked ? ['public export: consumers outside this repository are not listed', `${s.name} is exported from ${entry}, a public entry of its package; with include_workspace, a linked workspace's other repositories that call or name it are listed too.`] : []),
+        ...(entry && across?.linked ? [`${s.name} is exported from ${entry}; the sites listed with a repository are its calls and references in this repository's workspaces, from their sealed link file. Their import specifiers are not listed, nor any consumer outside the workspaces.`] : []),
+        ...(across?.limitations ?? []),
+        ...(clash.length ? [`${newName} already names ${clash.map((c) => `a ${c.kind} at ${c.path}:${c.line}`).join(', ')} in the same scope.`] : []),
+        ...(p.stopped ? ['The scan of string literals stopped at the time limit; string seams in later files are not listed.'] : []),
+      ],
+    }
+  },
+
+  plan_move(ctx, input) {
+    const to = String(input.to_path)
+    if (path.posix.isAbsolute(to) || to.includes('\\') || path.posix.normalize(to) !== to || to === '..' || to.startsWith('../')) throw new ProofmeshError('INVALID_ARGUMENT', `to_path ${to} must be a repository-relative path, written with / and normalized`, { detail: 'path_outside_repository', path: to })
+    const one = (id: string) => ctx.db.prepare('select s.id, s.name, s.kind, s.file_id, s.start_byte, s.end_byte, s.start_line, s.stable_key as key, f.path from symbol s join file f on f.id = s.file_id where s.id = ?').get(id) as { id: string; name: string; kind: string; file_id: string; start_byte: number; end_byte: number; start_line: number; key: string; path: string } | undefined
+    if (input.path === undefined && input.subject_id === undefined) throw new ProofmeshError('INVALID_ARGUMENT', 'give path for a file, or subject_id or key for a symbol')
+    if (input.path !== undefined && input.subject_id !== undefined) throw new ProofmeshError('INVALID_ARGUMENT', 'give path or subject_id, not both')
+    const sym = input.subject_id !== undefined ? one(String(input.subject_id)) : undefined
+    if (input.subject_id !== undefined && (!sym || /^(module|method|property|field|constructor|parameter)$/.test(sym.kind))) throw new ProofmeshError('INVALID_ARGUMENT', `${String(input.subject_id)} is no top-level symbol of snapshot ${ctx.snapshot.id}; plan_move moves a file, or a top-level symbol to another file`)
+    const file = sym ? { id: sym.file_id, path: sym.path } : fileAt(ctx, String(input.path))
+    if (!sym && ctx.db.prepare('select 1 from file where path = ?').get(to)) throw new ProofmeshError('INVALID_ARGUMENT', `${to} already exists; a file moves to a path no file has`, { detail: 'path_exists', path: to })
+    if (sym && to === sym.path) throw new ProofmeshError('INVALID_ARGUMENT', `${sym.name} is already in ${to}`)
+    const p = planMove(ctx.db, ctx.store, { fileId: file.id, path: file.path, ...(sym ? { symbol: sym } : {}) }, to, ctx.started + ctx.limits.timeout_ms)
+    const entry = publicEntry(ctx.db, ctx.store, [file.path, ...p.carriers])
+    const observed = p.sites.filter((x) => x.basis === 'observed').length, unspelled = p.sites.filter((x) => x.specifier !== undefined && x.new_specifier === undefined).length
+    const sites = p.sites.slice(0, ctx.limits.max_rows)
+    return {
+      data: { subject: sym ? { kind: sym.kind, id: sym.id, key: sym.key, name: sym.name, path: sym.path, line: sym.start_line } : { kind: 'file', path: file.path }, to_path: to, sites, counts: { observed, inferred: p.sites.length - observed } },
+      stop_reasons: [...(p.sites.length > sites.length ? ['max_rows' as const] : []), ...(p.stopped ? ['timeout' as const] : [])], shrink: 'sites',
+      limitations: [
+        'A plan only: no file is changed. An observed site is an import, a re-export or a use the snapshot resolved; an inferred site is a string or a doc mention that names the path (seam path or doc_mention) and needs review before it is changed. Apply each new_specifier at its line, then move the code.',
+        ...(sym ? [`A dependency declared in ${sym.path} must be exported from it for ${to} to import it, and imports of packages ${sym.name} uses are not listed: carry them over. A namespace import of ${sym.path} (import * as m) that reaches ${sym.name} is not listed.`] : []),
+        ...(unspelled ? [`${unspelled} specifier${unspelled === 1 ? ' is' : 's are'} written through a path alias, a package name or a relative Python import, which the plan does not rewrite: change ${unspelled === 1 ? 'it' : 'them'} by hand.`] : []),
+        ...(entry ? ['public export: consumers outside this repository are not listed', `${file.path} is exported from ${entry}, a public entry of its package; a consumer that imports it by a deep path breaks too.`] : []),
+        ...(p.stopped ? ['The scan of string literals stopped at the time limit; path seams in later files are not listed.'] : []),
+      ],
+    }
   },
 
   find_stale_mentions(ctx, input) {
@@ -1096,6 +1386,30 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     return result
   },
 
+  search_concepts(ctx, input) {
+    // A snapshot sealed before format 0.13 has no term index: said, not answered as if nothing matched.
+    if (!ctx.db.prepare("select 1 from sqlite_master where name = 'term'").get()) {
+      return { data: { symbols: [], files: [], terms: [] }, limitations: [`Snapshot ${ctx.snapshot.id} was built before concept search had a term index (snapshot format 0.13); index the repository again.`], shrink: 'symbols', lean: () => [] }
+    }
+    // A ranking, not a listing: 20 rows of each unless max_rows asks for more or fewer.
+    const rows = (input.limits as Limits | undefined)?.max_rows ?? Math.min(20, ctx.limits.max_rows)
+    const prefix = input.path_prefix as string | undefined
+    const r = searchConcepts(ctx.db, { text: String(input.text), kinds: input.kinds as string[] | undefined, pathPrefix: prefix, includeTests: input.include_tests === true, rows: Math.min(rows, ctx.limits.max_rows), generated: generatedPaths(ctx.db) })
+    const limitations = [
+      ...(r.terms.length ? [] : ['no indexed term matched: no word of the text occurs in the indexed files of this snapshot, so nothing is ranked.']),
+      ...(r.terms.length && !r.matched ? [`No indexed file${prefix ? ` under path_prefix ${prefix}` : ''} holds a term of the text, so nothing is ranked.`] : []),
+      ...(r.dropped ? [`The text has ${r.terms.length + r.dropped} indexed terms; only the ${MAX_TERMS} heaviest were ranked by, and ${r.dropped} lighter ones were left out.`] : []),
+    ]
+    const tags = (x: { score: number; terms: string[]; via?: string }) => [`score=${x.score}`, ...(x.terms.length ? [`terms=${x.terms.join(',')}`] : []), ...(x.via ? [`via=${x.via}`] : [])]
+    return {
+      data: { symbols: r.symbols, files: r.files, terms: r.terms, ...(r.dropped ? { terms_dropped: r.dropped } : {}) }, limitations, shrink: ['files', 'symbols'], keep: 1,
+      lean: (data) => [
+        ...(data.symbols as typeof r.symbols).map((s) => leanRow(leanName(s), s.path, s.start_line, [s.kind, ...tags(s)])),
+        ...(data.files as typeof r.files).map((f) => leanRow(null, f.path, f.line, ['file', ...tags(f)])),
+      ],
+    }
+  },
+
   find_tests(ctx, input) {
     const ids = [...((input.subject_ids as string[] | undefined) ?? [])]
     for (const id of ids) if (!ctx.db.prepare('select 1 from symbol where id = ?').get(id)) throw new ProofmeshError('NOT_FOUND', `symbol ${id} is not in snapshot ${ctx.snapshot.id}`)
@@ -1109,7 +1423,32 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     }
     if (!ids.length) throw new ProofmeshError('INVALID_ARGUMENT', 'name at least one symbol or path')
     const follow = resolveFollow(ctx.db, input.include_inferred, ids)
-    const r = testReach(ctx.db, ctx.snapshot.id, ids, files, (h) => ctx.store.read(h), ctx.limits.max_depth, isTestCode, follow.on)
+    const local = testReach(ctx.db, ctx.snapshot.id, ids, files, (h) => ctx.store.read(h), ctx.limits.max_depth, isTestCode, follow.on)
+    // FR1260: with include_workspace, the tests in the other members of this repository's workspaces that reach the subjects through the
+    // packages this repository builds, or through a member that reaches them (FR1262): each member's tests of the sites linked to what reaches
+    // the subjects, one deeper than that site. Its chain runs in its own repository and ends at the call that crosses out of it.
+    type Row = TestRow & { chain: ReturnType<typeof local.chain>; repository?: Inbound['repository'] }
+    const ws = input.include_workspace === true ? withWorkspace(ctx.catalog, ctx.repo, ctx.snapshot, ctx.db, (w) => {
+      const types = ['calls', ...DISPATCH_TYPES]
+      const walk = analyzeImpact(ctx.db, ctx.snapshot.id, ids, types, ctx.limits.max_depth, Number.MAX_SAFE_INTEGER)
+      const reached = new Map<string, number>([...ids.map((id) => [id, 0] as const), ...walk.dependents.map((d) => [d.id, d.depth] as const)])
+      const across = workspaceDependents(w, reached, types, ctx.limits.max_depth)
+      const found = new Map<string, Row>()
+      for (const g of across.groups) {
+        const side = w.member(g.repository.id, g.snapshot_id)
+        const t = testReach(side.db, side.snapshot_id, g.ids, [], (h) => ctx.store.read(h), ctx.limits.max_depth - g.depth, isTestCode)
+        const crossing = new Map(g.rows.map((x) => [x.source.key, x.site]))
+        for (const row of t.rows) {
+          const chain = t.chain(row), last = chain.at(-1), out = last && crossing.get(last.key)
+          const x: Row = { ...row, depth: row.depth + g.depth, evidence: row.evidence === 'call' ? 'transitive_call' : row.evidence, basis: g.basis === 'inferred' ? 'inferred' : row.basis, chain: out ? [...chain.slice(0, -1), { ...last!, path: out.path, line: out.start_line }] : chain, repository: g.repository }
+          const k = `${g.repository.id}:${row.id}`, had = found.get(k)
+          if (!had || had.depth > x.depth || (had.depth === x.depth && had.basis === 'inferred' && x.basis === 'observed')) found.set(k, x)
+        }
+      }
+      const rows = [...found.values()].sort((a, b) => a.depth - b.depth || cmp(a.repository!.name, b.repository!.name) || cmp(a.path, b.path) || a.line - b.line || cmp(a.id, b.id))
+      return { header: w.header, limitations: [...w.limitations, ...mismatchNotes(across.notes)], rows, stopped: across.stopped }
+    }) : null
+    const r = { ...local, rows: [...local.rows.map((t): Row => ({ ...t, chain: local.chain(t) })), ...(ws?.rows ?? [])] }
     const end = ctx.page.offset + ctx.limits.max_rows, executing = r.rows.filter((t) => EXECUTING.has(t.evidence)).length
     // A subject whose file's calls are not resolved has no call to find a test through: say so, since no row would not mean no test.
     // Not for a subject whose candidate calls were followed: it has candidate sites of its own, so some of its calls are read, as inferred (FR205).
@@ -1119,7 +1458,7 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
       return f?.language && f.calls === 'unsupported' && !(follow.on && ownSites(id)) ? [ADAPTER_LANGUAGE_NAMES[f.language] ?? f.language] : []
     }))].sort()
     const byProject = new Map<string, number>()
-    for (const t of r.rows) byProject.set(t.project ?? '(no project)', (byProject.get(t.project ?? '(no project)') ?? 0) + 1)
+    for (const t of local.rows) byProject.set(t.project ?? '(no project)', (byProject.get(t.project ?? '(no project)') ?? 0) + 1)
     // Lean states only what applies to this answer; the tool description carries the standing caveats.
     const limitations = [
       ...(ctx.lean ? [] : [
@@ -1131,20 +1470,132 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
       ...(r.unfollowed.length ? [`In this snapshot, calls through interfaces and base classes are not followed for ${r.unfollowed.join(', ')} code, so a test that reaches a member only by dispatch is missed.`] : []),
       ...(follow.on ? inferredNotes(follow, r.sites, ids.length) : r.ambiguous ? [`${r.ambiguous} call site${r.ambiguous === 1 ? '' : 's'} with no single resolved target name${r.ambiguous === 1 ? 's' : ''} code on these paths as a candidate; a test that reaches the subject only through one is not listed.`] : []),
       ...(r.rows.some((t) => t.evidence === 'import_only') ? ['An import_only row is a test file that imports the subject by name, its whole module, or for a file subject the file, and in which nothing calls or references it.'] : []),
-      ...(ctx.catalog.workspaces().some((w) => w.members.includes(ctx.repo.id)) ? ['Tests in the other repositories of this workspace are not searched.'] : []),
-      ...(r.stopped_by ? [`The search stopped at the ${r.stopped_by === 'max_depth' ? 'depth limit' : 'node budget'}; more tests may reach this code.`] : []),
+      ...(ws ? [...ws.limitations, ...(ws.rows.length ? ['Tests in other repositories carry their repository; by_project counts this repository\'s tests only.'] : [])]
+        : ctx.catalog.workspaces().some((w) => w.members.includes(ctx.repo.id)) ? ['Tests in the other repositories of this workspace are not searched.'] : []),
+      ...(r.stopped_by || ws?.stopped ? [`The search stopped at the ${r.stopped_by === 'node_budget' ? 'node budget' : 'depth limit'}; more tests may reach this code.`] : []),
     ]
+    const stopped = r.stopped_by ?? (ws?.stopped ? 'max_depth' : null)
     return {
       data: {
-        tests: r.rows.slice(ctx.page.offset, end).map((t) => ({ ...t, chain: r.chain(t) })),
+        tests: r.rows.slice(ctx.page.offset, end),
         totals: { tests: r.rows.length, executing, not_executing: r.rows.length - executing, by_basis: byBasis(r.rows), by_project: [...byProject].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)).map(([name, count]) => ({ name, count })) },
-        observed: { available: false, reason: 'No coverage data has been imported for this snapshot.' }, stopped_by: r.stopped_by,
+        observed: { available: false, reason: 'No coverage data has been imported for this snapshot.' }, stopped_by: stopped, ...(ws ? { workspace: ws.header } : {}),
       },
-      stop_reasons: [...(r.stopped_by === 'max_depth' ? ['max_depth' as const] : []), ...(r.rows.length > end ? ['max_rows' as const] : [])], more: r.rows.length > end, limitations, shrink: 'tests', total: r.rows.length,
+      stop_reasons: [...(stopped === 'max_depth' ? ['max_depth' as const] : []), ...(r.rows.length > end ? ['max_rows' as const] : [])], more: r.rows.length > end, limitations, shrink: 'tests', total: r.rows.length,
       // A lean row is the test at its first call toward the subject, as an impact row is; a call is depth=1, a transitive call deeper (FR097, FR101).
-      lean: (data) => (data.tests as Array<TestRow & { chain: Array<{ path: string; line: number }> }>).map((t) => t.evidence === 'import_only'
-        ? leanRow(null, t.path, t.line, ['import_only', ...(t.basis === 'inferred' ? ['inferred'] : [])])
-        : leanRow(leanName(t), t.chain[0]!.path, t.chain[0]!.line, [`depth=${t.depth}`, ...(t.evidence === 'dispatch' || t.evidence === 'reference' ? [t.evidence] : []), ...(t.basis === 'inferred' ? ['inferred'] : [])])),
+      lean: (data) => (data.tests as Row[]).map((t) => t.evidence === 'import_only'
+        ? leanRow(null, t.path, t.line, ['import_only', ...(t.basis === 'inferred' ? ['inferred'] : []), ...(t.repository ? [repoTag(t.repository)] : [])])
+        : leanRow(leanName(t), t.chain[0]!.path, t.chain[0]!.line, [`depth=${t.depth}`, ...(t.evidence === 'dispatch' || t.evidence === 'reference' ? [t.evidence] : []), ...(t.basis === 'inferred' ? ['inferred'] : []), ...(t.repository ? [repoTag(t.repository)] : [])])),
+    }
+  },
+
+  find_unused(ctx, input) {
+    const kinds = (input.kinds as string[] | undefined) ?? ['function', 'class', 'interface', 'type_alias', 'enum', 'variable']
+    const { rows, checked } = findUnused(ctx.db, ctx.store, { kinds, pathPrefix: input.path_prefix as string | undefined, topLevelOnly: input.top_level_only !== false, includeTests: input.include_tests === true, includeGenerated: input.include_generated === true })
+    const count = (f: (r: UnusedRow) => boolean) => rows.filter(f).length
+    const by = (b: UnusedRow['by']) => count((r) => r.by === b)
+    const totals = { checked, unused: count((r) => r.group === 'unused'), reachable_only_by: { test: by('test'), framework: by('framework'), public_export: by('public_export') }, possibly_used: count((r) => r.group === 'possibly_used') }
+    const refs = referencesNote(snapshotSummary(ctx.db, ctx.snapshot.id).capabilities.references)
+    const end = ctx.page.offset + ctx.limits.max_rows
+    const limitations = [
+      'A symbol is unused when no resolved relationship from another symbol uses it (a call, reference, import, inheritance or injection). A use by reflection, configuration, a string or a call that did not resolve is not seen, so read possibly_used and the unresolved calls before deleting anything.',
+      ...(refs ? [refs] : []),
+      ...(totals.reachable_only_by.public_export ? ['public_export: exported (export, or an export list) from a file that a package.json main, module, types or exports names, or that such a file re-exports; a file re-exported by name counts whole.'] : []),
+      ...(input.include_tests === true ? [] : ['Test code was not checked; a symbol only test code uses is listed under reachable_only_by test.']),
+      ...generatedNote(ctx, 'dead code', input),
+    ]
+    return {
+      data: { symbols: rows.slice(ctx.page.offset, end), totals }, more: rows.length > end, stop_reasons: rows.length > end ? ['max_rows'] : [], limitations, shrink: 'symbols',
+      lean: (data) => (data.symbols as UnusedRow[]).map((r) => leanRow(leanName(r), r.path, r.line, [r.kind, r.group === 'reachable_only_by' ? `reachable_only_by=${r.by}` : r.group, ...(r.sites ? [`sites=${r.sites}`] : []), ...(r.inferred ? ['inferred'] : [])])),
+    }
+  },
+
+  find_cycles(ctx, input) {
+    const r = findCycles(ctx.db, { pathPrefix: input.path_prefix as string | undefined, includeTypeOnly: input.include_type_only !== false, includeTests: input.include_tests !== false, isTest: isTestPath })
+    const end = ctx.page.offset + ctx.limits.max_rows
+    const typeOnly = r.cycles.filter((c) => c.type_only).length
+    const totals = { cycles: r.cycles.length, type_only: typeOnly, files: new Set(r.cycles.flatMap((c) => c.files)).size, edges: r.edges.length }
+    const limitations = [
+      `${totals.cycles} cycle${totals.cycles === 1 ? '' : 's'} over ${totals.files} file${totals.files === 1 ? '' : 's'}: ${totals.cycles - typeOnly} runtime, ${typeOnly} only through type-only imports (type_only); ${totals.edges} import${totals.edges === 1 ? '' : 's'} inside them.`,
+      'Only imports that resolved to a file of the repository, or that bind one module by name (inferred), are edges; an import that did not resolve can hide a cycle.',
+    ]
+    return {
+      data: { cycles: r.cycles, edges: r.edges.slice(ctx.page.offset, end), totals }, more: r.edges.length > end, stop_reasons: r.edges.length > end ? ['max_rows'] : [], limitations, shrink: 'edges',
+      lean: (data) => (data.edges as CycleEdge[]).map((e) => leanRow(e.to, e.from, e.line, [`cycle=${e.cycle}`, ...(e.kind === 'static' ? [] : [e.kind]), ...(e.inferred ? ['inferred'] : [])])),
+    }
+  },
+
+  find_entry_points(ctx, input) {
+    const rows = findEntryPoints(ctx.db, ctx.store, { pathPrefix: input.path_prefix as string | undefined, includeTests: input.include_tests === true, includeGenerated: input.include_generated === true, isTest: isTestPath })
+    const end = ctx.page.offset + ctx.limits.max_rows
+    const totals = { not_imported: 0, endpoint: 0, job: 0, main: 0, bin: 0, exports: 0 }
+    for (const e of rows) totals[e.reason]++
+    const limitations = [
+      'A module is not_imported when no file under the prefix imports it through a resolved import (static, dynamic or re-export): an entry point, a script, or a file nothing uses. A file loaded by path at run time (a worker, a preload, a config) is listed too.',
+      'Framework entry points are the endpoints and jobs the snapshot records; package entries come from package.json main, module, types, exports and bin, mapped to the indexed file they name (a .js path to its .ts source), else shown at the manifest as not_indexed.',
+      ...generatedNote(ctx, 'entry points', input),
+    ]
+    return {
+      data: { entries: rows.slice(ctx.page.offset, end), totals }, more: rows.length > end, stop_reasons: rows.length > end ? ['max_rows'] : [], limitations, shrink: 'entries',
+      lean: (data) => (data.entries as EntryPoint[]).map((e) => e.reason === 'not_imported' ? leanRow(null, e.path, e.line, ['not_imported'])
+        : e.kind ? leanRow(e.name, e.path, e.line, [e.kind]) : e.name === null ? leanRow(null, e.path, e.line, [e.reason]) : leanRow(e.name, e.path, e.line, [e.reason, 'not_indexed'])),
+    }
+  },
+
+  find_hubs(ctx, input) {
+    const by = (input.by as 'fan_in' | 'fan_out' | 'betweenness' | undefined) ?? 'fan_in'
+    const r = findHubs(ctx.db, { top: Math.min(Number(input.top ?? 10), ctx.limits.max_rows), by, kinds: input.kinds as string[] | undefined, pathPrefix: input.path_prefix as string | undefined, includeTests: input.include_tests !== false, includeGenerated: input.include_generated === true, deadline: ctx.started + ctx.limits.timeout_ms })
+    const limitations = [
+      'fan_in counts the distinct symbols that use one through a resolved relationship (a call, reference, import, inheritance or injection); fan_out the distinct symbols it uses. Unresolved calls count for neither, nor do imports between files, so a module ranks by uses of its module symbol alone.',
+      ...generatedNote(ctx, 'hubs', input),
+      ...(r.sampled !== null ? [`betweenness was computed from ${r.sampled} evenly spaced source symbols, not every one, and scaled up${r.timedOut ? ', stopping at timeout_ms' : ''}: an estimate.`] : []),
+    ]
+    return {
+      data: { hubs: r.hubs, by, sampled_sources: r.sampled }, stop_reasons: [...(Number(input.top ?? 10) > ctx.limits.max_rows && r.hubs.length === ctx.limits.max_rows ? ['max_rows' as const] : []), ...(r.timedOut ? ['timeout' as const] : [])], limitations, shrink: 'hubs',
+      lean: (data) => (data.hubs as Hub[]).map((h) => leanRow(leanName(h), h.path, h.line, [h.kind, `fan_in=${h.fan_in}`, `fan_out=${h.fan_out}`, ...(h.betweenness !== undefined ? [`betweenness=${h.betweenness}`] : [])])),
+    }
+  },
+
+  search_structure(ctx, input) {
+    const scope = (input.scope ?? {}) as { reachable_from?: unknown[]; reaching?: unknown[]; importing?: string[] }
+    const deadline = ctx.started + ctx.limits.timeout_ms
+    const symbolRef = (r: unknown): string => {
+      if (r !== null && typeof r === 'object') return symbolNamed(ctx.db, r as { name: string; path: string })
+      const s = String(r)
+      if (!/^sym_[0-9a-z]+$/.test(s)) return symbolByName(ctx.db, s)
+      if (!ctx.db.prepare('select 1 from symbol where id = ?').get(s)) throw new ProofmeshError('NOT_FOUND', `symbol ${s} is not in snapshot ${ctx.snapshot.id}`)
+      return s
+    }
+    // Each scope given narrows the search; together they intersect (FR1062).
+    let symbols = null as Set<string> | null
+    const walkNotes: string[] = []
+    for (const [key, direction] of [['reachable_from', 'out'], ['reaching', 'in']] as const) {
+      if (!scope[key]) continue
+      const r = reachSet(ctx.db, scope[key].map(symbolRef), direction, ctx.limits.max_depth, deadline)
+      symbols = symbols ? new Set([...symbols].filter((id) => r.ids.has(id))) : r.ids
+      if (r.stopped) walkNotes.push(`The ${key} walk stopped at ${r.stopped === 'max_depth' ? `max_depth ${ctx.limits.max_depth}` : 'the time limit'}; symbols further away are outside the scope.`)
+    }
+    const files = scope.importing ? importersOf(ctx.db, scope.importing.map((p) => fileAt(ctx, p).id)) : null
+    const r = searchStructure(ctx.db, ctx.store, { pattern: String(input.pattern), language: input.language as string | undefined, pathPrefix: input.path_prefix as string | undefined, symbols, files, offset: ctx.page.offset, maxRows: ctx.limits.max_rows, deadline })
+    const git = JSON.parse((ctx.db.prepare("select value from meta where key = 'git'").get() as { value: string } | undefined)?.value ?? '{}') as { commit?: string }
+    const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
+    const noGrammar = Object.entries(r.skipped.no_grammar).sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))
+    const skippedFiles = noGrammar.reduce((n, [, c]) => n + c, 0)
+    const limitations = [
+      // The snapshot's captured content, never the working tree: a stale snapshot answers for what it captured (FR1065).
+      `Matched against the content snapshot ${ctx.snapshot.id} captured${git.commit ? ` at commit ${git.commit.slice(0, 12)}` : ''}, not the working tree.`,
+      ...walkNotes,
+      ...(skippedFiles ? [`${plural(skippedFiles, 'file')} in a language with no grammar here ${skippedFiles === 1 ? 'was' : 'were'} not searched: ${noGrammar.slice(0, 5).map(([e, n]) => `${e} ${n}`).join(', ')}${noGrammar.length > 5 ? ', ...' : ''}.`] : []),
+      ...Object.entries(r.failed_languages).map(([lang, why]) => `The pattern does not parse as ${lang} (${why.split('\n')[0]}), so ${lang} files were not searched.`),
+      ...(r.skipped.too_large ? [`${plural(r.skipped.too_large, 'file')} over ${MAX_FILE_BYTES / 1024 / 1024} MiB ${r.skipped.too_large === 1 ? 'was' : 'were'} not parsed.`] : []),
+      ...(r.skipped.over_budget ? [`${plural(r.skipped.over_budget, 'file')} past the ${MAX_SOURCE_BYTES / 1024 / 1024} MiB one search reads ${r.skipped.over_budget === 1 ? 'was' : 'were'} not searched; narrow path_prefix or the scope.`] : []),
+      ...(r.stopped ? [`The search stopped at timeout_ms ${ctx.limits.timeout_ms}; total counts the matches found before it.`] : []),
+    ]
+    const end = ctx.page.offset + r.matches.length
+    return {
+      data: { matches: r.matches, totals: { matches: r.total, files_searched: r.files_searched, ...(symbols ? { scope_symbols: symbols.size } : {}), ...(files ? { scope_files: files.size } : {}) } },
+      total: r.total, more: r.total > end, stop_reasons: [...(r.total > end ? ['max_rows' as const] : []), ...(r.stopped ? ['timeout' as const] : [])], limitations, shrink: 'matches',
+      lean: (data) => (data.matches as StructureMatch[]).map((m) => leanRow(m.symbol ? leanName({ ...m.symbol, path: m.path }) : null, m.path, m.line, [quote(visible(m.text))])),
     }
   },
 
@@ -1327,6 +1778,12 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
       return names.includes(subject) ? undefined : names.find((n) => via.has(n))
     }
     const rows = all.slice(offset, offset + ctx.limits.max_rows + 1)
+    // FR902: inbound sites in the other members of this repository's workspaces, through the packages it builds. They follow every local row
+    // in the total order, so a page reaches them only once the local rows are all listed.
+    const ws = input.include_workspace === true && !isFile && !isExternal && direction !== 'out'
+      ? withWorkspace(ctx.catalog, ctx.repo, ctx.snapshot, ctx.db, (w) => ({ header: w.header, limitations: w.limitations, rows: w.inbound(ids, types).filter((r) => resolutions.includes(r.resolution) && !(input.include_tests === false && isTestPath(r.source.path))) }))
+      : null
+    const across = ws ? ws.rows.slice(Math.max(0, offset - all.length), Math.max(0, offset + ctx.limits.max_rows + 1 - all.length)) : []
     const describe = (kind: string | null, id: string | null) => {
       if (!kind || !id) return { kind: 'none' }
       if (kind === 'symbol') { const s = ctx.db.prepare(`${SYMBOL_SQL} where s.id = ?`).get(id) as SymbolRow; return { kind: 'symbol', id, symbol_kind: s.kind, name: s.name, qualified_name: s.qualified_name, path: s.path, start_line: s.start_line } }
@@ -1341,8 +1798,12 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
         other: a.direction === 'out' ? describe(a.target_kind, a.target_id) : describe(a.source_kind, a.source_id),
         site: { path: site.path, start_line: site.start_line, end_line: site.end_line }, reason: a.reason, detail: a.detail ? (JSON.parse(a.detail) as Record<string, string>) : null, evidence_ids: site.evidence,
         ...(viaOf(a) ? { via: { id: viaOf(a)!, qualified_name: (ctx.db.prepare('select qualified_name from symbol where id = ?').get(viaOf(a)) as { qualified_name: string }).qualified_name } } : {}),
-      }
-    })
+      } as { via?: { id: string; qualified_name: string }; repository?: Inbound['repository'] } & Record<string, unknown> & { assertion_id: string; type: string; direction: 'in' | 'out'; resolution: string; basis?: Basis; other: Record<string, unknown>; site: { path: string; start_line: number; end_line: number }; reason: string | null; detail: Record<string, string> | null; evidence_ids: string[] }
+    }).concat(across.map((r) => ({
+      assertion_id: r.assertion_id, type: r.type, direction: 'in' as const, resolution: r.resolution, origin: r.origin, basis: r.basis,
+      other: { kind: 'symbol', id: r.source.id, symbol_kind: r.source.kind, name: r.source.name, qualified_name: r.source.qualified_name, path: r.source.path, start_line: r.source.start_line, key: r.source.key },
+      site: r.site, reason: null, detail: r.detail, evidence_ids: r.evidence_ids, repository: r.repository,
+    })))
     const boundaries = !isFile && !isExternal && direction !== 'out' && types.includes('calls')
       ? incomingBoundaries(ctx, subject, via)
       : NO_BOUNDARIES
@@ -1361,7 +1822,8 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     const inCount = direction === 'out' ? null : counted(inbound, inboundParams)
     const inheritedBasis = byBasis(inherited.map((a) => ({ basis: basisOf(a) })))
     const outExternal = hideExternal ? (ctx.db.prepare(`select count(*) as n from assertion where source_id in (${sp}) and type = 'calls' and resolution = 'resolved_external'`).get(...ids) as { n: number }).n : 0
-    const totals = { in: inCount?.total ?? 0, out: outCount ? outCount.total + inherited.length : 0, by_basis: { observed: (outCount?.observed ?? 0) + (inCount?.observed ?? 0) + (outCount ? inheritedBasis.observed : 0), inferred: (outCount?.inferred ?? 0) + (inCount?.inferred ?? 0) + (outCount ? inheritedBasis.inferred : 0) }, ...(boundaries !== NO_BOUNDARIES ? { boundaries_calling_name: boundaries.name_matched } : {}), ...(outExternal ? { out_external: outExternal } : {}) }
+    const wsBasis = byBasis(ws?.rows ?? [])
+    const totals = { in: (inCount?.total ?? 0) + (ws?.rows.length ?? 0), out: outCount ? outCount.total + inherited.length : 0, by_basis: { observed: (outCount?.observed ?? 0) + (inCount?.observed ?? 0) + (outCount ? inheritedBasis.observed : 0) + wsBasis.observed, inferred: (outCount?.inferred ?? 0) + (inCount?.inferred ?? 0) + (outCount ? inheritedBasis.inferred : 0) + wsBasis.inferred }, ...(boundaries !== NO_BOUNDARIES ? { boundaries_calling_name: boundaries.name_matched } : {}), ...(outExternal ? { out_external: outExternal } : {}) }
     for (const g of outGroups) byReason[g.reason] = (byReason[g.reason] ?? 0) + g.n
     const truncated = relationships.length > ctx.limits.max_rows
     const limitations = [
@@ -1373,10 +1835,12 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
       ...(isExternal ? ['The subject is an external symbol: only resolved calls into it are listed, and a closed generic is a separate external symbol from its open definition.'] : []),
       ...(input.include_tests === false ? [`Rows whose other side is test code were left out: ${TEST_RECOGNISED}.`] : []),
       ...leanReferencesNote(ctx, types),
+      ...(ws ? [...ws.limitations, ...mismatchNotes(ws.rows), ...(ws.rows.length ? ['Rows from other repositories carry their repository and commit; their ids and evidence ids are of that repository\'s snapshot.'] : [])] : []),
     ]
     return {
-      data: { relationships: relationships.slice(0, ctx.limits.max_rows), boundaries: boundaries.items, totals },
-      evidence_ids: [...new Set(relationships.slice(0, ctx.limits.max_rows).flatMap((r) => r.evidence_ids))].sort(byKey((i) => evidenceKey(ctx.db, i))),
+      data: { relationships: relationships.slice(0, ctx.limits.max_rows), boundaries: boundaries.items, totals, ...(ws ? { workspace: ws.header } : {}) },
+      // The envelope's evidence is this snapshot's; a row of another repository lists its own.
+      evidence_ids: [...new Set(relationships.slice(0, ctx.limits.max_rows).filter((r) => !r.repository).flatMap((r) => r.evidence_ids))].sort(byKey((i) => evidenceKey(ctx.db, i))),
       unresolved: { scope: 'query', items: [...boundaries.items, ...outUnresolved], count: boundaries.count + outGroups.reduce((n, g) => n + g.n, 0), by_reason: byReason },
       stop_reasons: truncated ? ['max_rows'] : [], more: relationships.length > ctx.limits.max_rows, limitations, shrink: ['relationships', 'boundaries'],
       // One row per site: the other side's name at the call, import or reference line, tagged with what a plain row would hide (FR096).
@@ -1387,99 +1851,16 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
           // A query that mixes directions or types says which each row is, as the JSON rows' direction and type fields do.
           ...(direction === 'both' ? [r.direction] : []), ...(types.length > 1 ? [r.type] : []), ...(r.via ? ['dispatch'] : []), ...(o.kind === 'external' ? ['external'] : []),
           ...(r.resolution === 'unresolved' ? [`unresolved:${r.reason}`] : r.resolution === 'candidate' || r.resolution === 'ambiguous' ? [r.resolution] : []),
-          ...(r.basis === 'inferred' ? ['inferred'] : []),
+          ...(r.basis === 'inferred' ? ['inferred'] : []), ...(r.repository ? [repoTag(r.repository)] : []),
         ])
       }),
     }
   },
 
   trace_paths(ctx, input) {
-    const end = (id: unknown, file: unknown, name: string) => {
-      if (id === undefined && file === undefined) throw new ProofmeshError('INVALID_ARGUMENT', `give ${name}_id or ${name}_path`)
-      // A file is traced as its module symbol, from which its top-level calls go.
-      if (file !== undefined) { const f = fileAt(ctx, String(file)).id; return fileAlias(ctx.db, f) ?? f }
-      if (!ctx.db.prepare('select 1 from symbol where id = ?').get(id)) throw new ProofmeshError('NOT_FOUND', `symbol ${String(id)} is not in snapshot ${ctx.snapshot.id}`)
-      return String(id)
-    }
-    const types = (input.types as string[]) ?? ['calls', ...DISPATCH_TYPES]
-    const resolutions = (input.resolutions as string[]) ?? ['resolved']
-    // A file and its module symbol are one node (FR090): imports run between files, calls from the module, so a path is
-    // traced over both and shows the module symbol.
-    const moduleOf = new Map<string, string>(), fileOf = new Map<string, string>()
-    if (types.includes('imports')) for (const r of ctx.db.prepare("select id, file_id from symbol where kind = 'module' order by id desc").all() as Array<{ id: string; file_id: string }>) { moduleOf.set(r.file_id, r.id); fileOf.set(r.id, r.file_id) }
-    const one = (id: string) => moduleOf.get(id) ?? id
-    const source = end(input.source_id, input.source_path, 'source'), target = end(input.target_id, input.target_path, 'target')
-    const follow = resolveFollow(ctx.db, input.include_inferred, [source, target])
-    const sqlite = new SqliteEdges(ctx.db, follow.on ? (nodes) => candidatesFrom(ctx.db, nodes, types) : undefined)
-    const withFiles = (nodes: string[]) => [...nodes, ...nodes.flatMap((n) => fileOf.get(n) ?? [])]
-    const edges = { outEdges: (nodes: string[], ty: string[], rs: string[]) => sqlite.outEdges(withFiles(nodes), ty, rs).map((e) => ({ ...e, src: one(e.src), dst: one(e.dst) })) }
-    const t = trace(edges, { source, target, types, resolutions, maxDepth: ctx.limits.max_depth, maxRows: ctx.limits.max_rows, deadline: ctx.started + ctx.limits.timeout_ms, rank: (id) => (id.startsWith('as_') ? assertionKey(ctx.db, id) : nodeKey(ctx.db, id)) })
-    const expanded = withFiles(t.expanded)
-    const boundaries = expanded.length
-      // A candidate site the walk followed is no gap in it; one it never follows, for its cap, still is.
-      ? boundariesFrom(ctx.db, types, `a.source_id in (${expanded.map(() => '?').join(',')})${follow.on ? ` and not (a.resolution in ('candidate', 'ambiguous') and a.type in (${CANDIDATE_TYPES.map((x) => `'${x}'`).join(',')}) and json_extract(a.detail, '$.more') is null)` : ''}`, ctx.limits.max_rows, ...expanded)
-      : NO_BOUNDARIES
-    const conclusion = t.paths.length ? 'path_found' : t.stopped_by ? 'no_path_within_bounds' : boundaries.count ? 'no_resolved_path' : 'no_path_exhaustive'
-    const limitations = conclusion === 'no_path_within_bounds' ? ['No path was found within the limits. This is not evidence that no path exists.']
-      : conclusion === 'no_resolved_path' ? ['Unresolved call sites in the explored region could lead to the target.']
-      : conclusion === 'no_path_exhaustive' ? ['Exhaustive only for the declared relationship types and resolutions in this snapshot.', 'Calls made from code outside the repository, such as library callbacks, are not modelled.']
-      : []
-    const hopType = (a: string) => (ctx.db.prepare('select type from assertion where id = ?').get(a) as { type: string }).type
-    const isDispatch = (type: string) => (DISPATCH_TYPES as readonly string[]).includes(type)
-    // Lean states the dispatch caveat only when the path it shows has a dispatch hop, and says when it shows one of several paths.
-    if (types.some(isDispatch) && (!ctx.lean || !!t.paths[0]?.assertions.some((a) => isDispatch(hopType(a))))) limitations.push('implements and overrides hops run both ways: a call to an interface or virtual member may dispatch to any implementation, and the path shows the one found.')
-    limitations.push(...leanReferencesNote(ctx, types))
-    limitations.push(...inferredNotes(follow, sitesNaming(ctx.db, expanded, types, 'src'), 2))
-    if (ctx.lean && t.paths.length > 1) limitations.push(`${t.paths.length - 1} other shortest path${t.paths.length === 2 ? '' : 's'} of the same length; envelope compact lists them.`)
-    const ids = new Set<string>([source, target, ...t.paths.flatMap((p) => p.nodes), ...t.horizon.map((h) => h.id), ...boundaries.items.map((b) => b.from_id), ...t.explored.flatMap((e) => [e.from, e.to])])
-    const nodes: Record<string, unknown> = {}
-    for (const id of [...ids].sort(byKey((i) => nodeKey(ctx.db, i)))) {
-      const s = ctx.db.prepare(`${SYMBOL_SQL} where s.id = ?`).get(id) as SymbolRow | undefined
-      if (s) { nodes[id] = { kind: s.kind, name: s.name, qualified_name: s.qualified_name, path: s.path, start_line: s.start_line }; continue }
-      const x = ctx.db.prepare('select module, name from external_symbol where id = ?').get(id) as { module: string; name: string } | undefined
-      if (x) { nodes[id] = { kind: 'external', name: x.name, qualified_name: `${x.module}:${x.name}`, path: x.module, start_line: 0 }; continue }
-      // A file with no module symbol, such as an imported JSON file.
-      const f = ctx.db.prepare('select path from file where id = ?').get(id) as { path: string } | undefined
-      if (f) nodes[id] = { kind: 'file', name: f.path.slice(f.path.lastIndexOf('/') + 1), qualified_name: f.path, path: f.path, start_line: 1 }
-    }
-    const relationships: Record<string, unknown> = {}
-    const hopBasis = new Map<string, Basis>()
-    for (const id of [...new Set([...t.paths.flatMap((p) => p.assertions), ...t.explored.map((e) => e.assertion_id)])].sort(byKey((i) => assertionKey(ctx.db, i)))) {
-      const a = ctx.db.prepare('select type, origin, resolution, detail from assertion where id = ?').get(id) as { type: string; origin: string; resolution: string; detail: string | null }
-      const basis = basisOf(a) ?? 'observed'
-      hopBasis.set(id, basis)
-      relationships[id] = { type: a.type, origin: a.origin, basis, rule: a.detail ? ((JSON.parse(a.detail) as { rule?: string }).rule ?? null) : null }
-    }
-    // A path is inferred when any hop is.
-    const paths = t.paths.map((p) => ({ ...p, basis: p.assertions.some((a) => hopBasis.get(a) === 'inferred') ? 'inferred' as const : 'observed' as const }))
-    const stop = t.stopped_by ? [t.stopped_by] : []
-    // Under the byte budget the explored edges go first, then boundaries, then paths beyond the first: a found path is never cut away.
-    const exploredTotal = t.explored.length
-    const prune = (data: Record<string, unknown>) => {
-      const d = data as { paths: typeof paths; search: { horizon: typeof t.horizon; explored: typeof t.explored; explored_truncated: boolean }; boundaries: Boundary[]; nodes: Record<string, unknown>; relationships: Record<string, unknown> }
-      const keep = new Set<string>([source, target, ...d.paths.flatMap((p) => p.nodes), ...d.search.horizon.map((h) => h.id), ...d.boundaries.map((b) => b.from_id), ...d.search.explored.flatMap((e) => [e.from, e.to])])
-      const edges = new Set<string>([...d.paths.flatMap((p) => p.assertions), ...d.search.explored.map((e) => e.assertion_id)])
-      for (const k of Object.keys(d.nodes)) if (!keep.has(k)) delete d.nodes[k]
-      for (const k of Object.keys(d.relationships)) if (!edges.has(k)) delete d.relationships[k]
-      if (d.search.explored.length < exploredTotal) d.search.explored_truncated = true
-    }
-    return {
-      data: { conclusion, paths, search: { levels: t.levels, stopped_by: t.stopped_by, horizon: t.horizon, explored: t.explored, explored_truncated: t.explored_truncated }, boundaries: boundaries.items, nodes, relationships },
-      evidence_ids: [...new Set(t.paths.flatMap((p) => p.assertions.flatMap((a) => siteOf(ctx.db, a).evidence)))].sort(byKey((i) => evidenceKey(ctx.db, i))),
-      unresolved: { scope: 'query', items: boundaries.items, count: boundaries.count, by_reason: boundaries.by_reason }, stop_reasons: stop, limitations, shrink: ['search.explored', 'boundaries', 'search.horizon', 'paths'], keep: 1, prune,
-      // The first path's hops in order: each node at its call to the next (at its declaration for a dispatch hop), then the target (FR098).
-      lean: (data) => {
-        const p = (data.paths as typeof paths)[0], nodes = data.nodes as Record<string, { kind: string; name: string; qualified_name: string; path: string; start_line: number }>
-        return (p?.nodes ?? []).map((id, i) => {
-          const n = nodes[id]!, type = i < p!.assertions.length ? hopType(p!.assertions[i]!) : null
-          if (n.kind === 'external') return leanRow(n.name, null, null)
-          const inferred = type !== null && hopBasis.get(p!.assertions[i]!) === 'inferred' ? ['inferred'] : []
-          if (type === null || isDispatch(type)) return leanRow(leanName(n), n.path, n.start_line, [...(type ? ['dispatch'] : []), ...inferred])
-          const site = siteOf(ctx.db, p!.assertions[i]!)
-          return leanRow(leanName(n), site.path, site.start_line, [...(type === 'calls' ? [] : [type]), ...inferred])
-        })
-      },
-    }
+    // FR1261: with include_workspace, an end may be a symbol of another member of this repository's workspaces, by its id there, and a path
+    // crosses repositories through their sealed package_symbol links (FR901). The files stay open for the answer's making.
+    return input.include_workspace === true ? withWorkspace(ctx.catalog, ctx.repo, ctx.snapshot, ctx.db, (ws) => tracePaths(ctx, input, ws)) : tracePaths(ctx, input, null)
   },
 
   read_evidence(ctx, input) {
@@ -1496,7 +1877,61 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     })
     return { data: { evidence }, evidence_ids: ids, shrink: 'evidence' }
   },
+
+  // FR1180: a symbol's card in one request, so a reader sees its proof without four round trips. Read-only; every part is what
+  // get_symbol, get_relationships and read_evidence answer, each object verified once per request.
+  get_symbol_card(ctx, input) {
+    const symbol = IMPL.get_symbol(ctx, { symbol_id: input.symbol_id }).data.symbol as SymbolRow & Record<string, unknown>
+    const verified = new Map<string, ReturnType<EvidenceStore['verify']>>()
+    const verify = (hash: string) => { if (!verified.has(hash)) verified.set(hash, ctx.store.verify(hash)); return verified.get(hash)! }
+    const evidenceRow = (id: string) => ctx.db.prepare('select e.*, f.path from evidence e join file f on f.id = e.file_id where e.id = ?').get(id) as Record<string, any>
+    const decl = evidenceRow((ctx.db.prepare('select evidence_id from symbol where id = ?').get(symbol.id) as { evidence_id: string }).evidence_id)
+    const d = verify(decl.object_hash)
+    const declaration = {
+      id: decl.id, path: decl.path, start_line: decl.start_line, end_line: decl.end_line, object_hash: decl.object_hash, extractor: decl.extractor, extractor_version: decl.extractor_version,
+      analysis_mode: decl.analysis_mode, integrity: d.integrity, text: d.integrity.status === 'verified' && d.content ? d.content.subarray(decl.start_byte, decl.end_byte).toString('utf8') : null,
+    }
+    // A row's call site: the whole lines of the cited span, at most CARD_CONTEXT_LINES, with the span's character offsets in them;
+    // no text when the object fails its integrity check, so the lens says why rather than showing unverified source.
+    const cited = (id: string | undefined) => {
+      if (!id) return null
+      const e = evidenceRow(id), v = verify(e.object_hash)
+      const site = { id, path: e.path as string, start_line: e.start_line as number, end_line: e.end_line as number, integrity: v.integrity }
+      if (v.integrity.status !== 'verified' || !v.content) return { ...site, context: null }
+      // Buffer.lastIndexOf counts a negative offset from the end, so a span at the file's first byte starts its line there.
+      const c = v.content, from = e.start_byte === 0 ? 0 : c.lastIndexOf(10, e.start_byte - 1) + 1
+      let to = e.end_byte, lines = 0
+      while (to < c.length && c[to] !== 10) to++
+      for (let i = from; i < to; i++) if (c[i] === 10 && ++lines >= CARD_CONTEXT_LINES) { to = i; break }
+      const before = c.subarray(from, e.start_byte).toString('utf8'), span = c.subarray(e.start_byte, Math.min(e.end_byte, to)).toString('utf8')
+      return { ...site, context: { start_line: e.start_line as number, text: c.subarray(from, to).toString('utf8'), highlight: [before.length, before.length + span.length] } }
+    }
+    const types = (input.types as string[] | undefined) ?? ['calls']
+    const offset = (input.offset as number | undefined) ?? 0
+    const notes = new Set<string>()
+    let more = false
+    const side = (direction: 'in' | 'out') => {
+      if (input.direction && input.direction !== direction) return null
+      const r = IMPL.get_relationships({ ...ctx, page: { ...ctx.page, offset } }, { subject_id: symbol.id, direction, types, include_external: true })
+      for (const l of r.limitations ?? []) notes.add(l)
+      more ||= !!r.more
+      const d = r.data as { relationships: Array<Record<string, unknown> & { evidence_ids: string[] }>; totals: { in: number; out: number } }
+      const total = d.totals[direction]
+      return { rows: d.relationships.map((row) => ({ ...row, evidence: cited(row.evidence_ids[0]) })), total, next_offset: offset + d.relationships.length < total ? offset + d.relationships.length : null }
+    }
+    const incoming = side('in'), outgoing = side('out')
+    return {
+      data: { symbol, declaration, incoming, outgoing },
+      evidence_ids: [decl.id, ...[incoming, outgoing].flatMap((s) => s?.rows.flatMap((r) => r.evidence_ids) ?? [])],
+      stop_reasons: more ? ['max_rows'] : [], limitations: [...notes, ...(more ? ['Each side lists its first rows; pass direction and its next_offset as offset for the rest.'] : [])],
+      // A row that does not fit max_bytes is cut from the end of each side; next_offset still counts from what was listed.
+      shrink: ['outgoing.rows', 'incoming.rows'],
+      prune: (data) => { for (const s of [data.incoming, data.outgoing] as Array<{ rows: unknown[]; total: number; next_offset: number | null } | null>) if (s) s.next_offset = offset + s.rows.length < s.total ? offset + s.rows.length : null },
+    }
+  },
 }
+/** Most lines of source a card row carries of its call site. */
+const CARD_CONTEXT_LINES = 8
 
 /** What impact_completeness says about candidate edges: for the changed symbols that followed them, and for those that did not (FR209). */
 const inferredNotesFor = (done: Array<{ follow: { on: boolean; asked: boolean }; sites: { followable: number; capped: number } }>): string[] => {

@@ -17,6 +17,7 @@ import { effectiveCodeowners, ownerRule, OWNERSHIP_VERSION, parseCodeowners, typ
 import { EvidenceStore } from '../evidence/store.js'
 import { manifestHash, unstable } from './freshness.js'
 import { fillBodyHashes } from './body-hash.js'
+import { fillTerms, TERMS_VERSION } from './terms.js'
 import { adapterBudget, AdapterBudgetError, AdapterProcess, AdapterProtocolError, PROTOCOL_VERSION } from './adapter-host.js'
 import { assemble, FactCache, fileKeys, splitByFile, type FileFacts } from './fact-cache.js'
 import { analysisConfig, checkoutCommit, discoverAsync, gitInfo, type Discovered } from './discovery.js'
@@ -58,6 +59,9 @@ type Captured = Discovered & { hash: string }
 type Rel = AnalyzeResponse['relationships'][number]
 type AdapterRun = { spec: AdapterSpec; sources: Discovered[]; configs: Discovered[]; process?: AdapterProcess; manifest?: InitializeResponse['adapter']; inputs?: string[]; mode: Mode; units?: InitializeResponse['units']; keys?: Map<string, string>; entrySha256?: string; budgetMb?: number; budgetSource?: 'setting' | 'machine'; config?: Record<string, unknown>; unstartable?: AdapterBudgetError; /** The failure an adapter died with: files it has no cached facts for are not asked of it again. */ dead?: AdapterProtocolError; cap?: number; streak?: number; /** Why a fallback adapter could not start or answer workspace: it is not asked again, and its files go to the syntax tier. */ initFailure?: AdapterProtocolError }
 type Producer = { id: string; version: string; mode: Mode }
+/** The versions of this build's analysis that a snapshot's identity names; an imported snapshot must name the same (FR1082). */
+export const analysisVersions = () => ({ format_version: FORMAT_VERSION, format_ddl: sha256(readSql(`snapshot-format/${FORMAT_VERSION}.sql`)), ownership: OWNERSHIP_VERSION, resolution: RESOLUTION_VERSION, seams: SEAMS_VERSION, schema_seams: SCHEMA_SEAMS_VERSION, ffi_seams: FFI_SEAMS_VERSION, doc_links: DOC_LINKS_VERSION, terms: TERMS_VERSION, site_key: 'span' })
+
 /** Import kinds, strongest first: a file that imports another both for its values and for its types depends on it at run time. */
 const IMPORT_KINDS = ['static', 're_export', 'type_only']
 
@@ -184,12 +188,15 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
     const docs: Array<{ path: string; hash: string; generated?: true }> = []
     for (const [i, d] of discovered.entries()) {
       if (i && i % 1000 === 0) progress({ phase: 'capture', done: i, total: discovered.length })
-      if (isDoc(d)) docs.push({ path: d.path, hash: store.put(fs.readFileSync(path.join(root, d.path))), ...(d.generated ? { generated: d.generated } : {}) })
+      if (isDoc(d)) docs.push({ path: d.path, hash: store.put(fs.readFileSync(path.join(root, d.path)), 'later'), ...(d.generated ? { generated: d.generated } : {}) })
       if (d.status !== 'capture') continue
       const bytes = fs.readFileSync(path.join(root, d.path))
       if (d.role !== 'registry' && !isUtf8(bytes)) notUtf8.add(d.path)
-      captured.push({ ...d, hash: store.put(bytes) })
+      captured.push({ ...d, hash: store.put(bytes, 'later') })
     }
+    // The captured objects are made durable while the adapters run, and before the snapshot that cites them is sealed.
+    const durable = store.flush()
+    durable.catch(() => {})
     for (const run of runs) { run.sources = run.sources.filter((d) => !notUtf8.has(d.path)); run.configs = run.configs.filter((d) => !notUtf8.has(d.path)) }
     runs = runs.filter((r) => r.sources.length)
     progress({ phase: 'capture', done: discovered.length, total: discovered.length })
@@ -240,7 +247,7 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
     // Raising a budget must index again: a file the old budget failed is not the answer under the new one. Facts do not change with it.
     const budgets = Object.fromEntries(runs.map((r) => [r.spec.id, r.budgetMb!]))
     // site_key: an assertion is keyed by its site's span, not its start byte (#134), so a snapshot written the old way is not reused.
-    const identity = { repository_id: repo.id, manifest_hash: manifest, config_hash: sha256(canonicalJson({ ...analysisConfig(), generated_policy: GENERATED_POLICY, adapters: configs, adapter_memory_mb: budgets })), analysis_mode: analysisMode, adapters, format_version: FORMAT_VERSION, format_ddl: sha256(readSql(`snapshot-format/${FORMAT_VERSION}.sql`)), ownership: OWNERSHIP_VERSION, resolution: RESOLUTION_VERSION, seams: SEAMS_VERSION, schema_seams: SCHEMA_SEAMS_VERSION, ffi_seams: FFI_SEAMS_VERSION, doc_links: DOC_LINKS_VERSION, site_key: 'span' }
+    const identity = { repository_id: repo.id, manifest_hash: manifest, config_hash: sha256(canonicalJson({ ...analysisConfig(), generated_policy: GENERATED_POLICY, adapters: configs, adapter_memory_mb: budgets })), analysis_mode: analysisMode, adapters, ...analysisVersions() }
     // The fallbacks a published snapshot recorded. One made while analysing (an adapter died) is not a function of the inputs, so it is never the answer to a later index:
     // the identity takes a `retry` number past each such snapshot, and the adapter is asked again.
     const recorded = (id: string): Array<{ adapter: string; files: number; reason: string; kind: string }> => {
@@ -544,6 +551,7 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
       }
       db.prepare("insert into meta (key, value) values ('doc_links', ?)").run(canonicalJson({ docs: Object.fromEntries(docs.map((d) => [d.path, d.hash])), stale }))
       if (unreadable.length) db.prepare("insert into meta (key, value) values ('body_hash_missing', ?)").run(canonicalJson({ count: unreadable.length, paths: unreadable.slice(0, 20) }))
+      fillTerms(db, store)
       // A key the core had to disambiguate means an adapter named two declarations alike: recorded, never silent (FR147).
       if (writer.disambiguated.length) db.prepare("insert into meta (key, value) values ('key_disambiguated', ?)").run(canonicalJson({ count: writer.disambiguated.length, truncated: false, keys: writer.disambiguated }))
       // Build modules a syntax-tier edge ties into a cycle, in an ecosystem whose builds forbid one (FR178).
@@ -570,6 +578,7 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
       const partialResult: IndexResult['partial'] = partial.size ? { adapters: [...partial.keys()].sort(), missing, files: runs.filter((r) => partial.has(r.spec.id)).reduce((n, r) => n + r.sources.length, 0) } : undefined
       if (partialResult) db.prepare("insert into meta (key, value) values ('partial', ?)").run(canonicalJson({ ...partialResult, paths: [...partial.values()].flatMap((p) => p.paths).sort().slice(0, 20), reason: [...partial].map(([a, p]) => `${a}: ${p.reason}`).join('; ') }))
       progress({ phase: 'seal', done: 0, total: 0 })
+      await durable
       sealAndPublish(catalog, db, stagingFile, snapshotId, repo.id, keepCurrent)
       fs.rmSync(stagingDir(dataDir, snapshotId), { recursive: true, force: true })
       for (const run of runs) cache.prune(repo.id, run.spec.id, run.keys!.values())
@@ -820,6 +829,8 @@ class FactWriter {
         this.seenAssertion.add(id)
       }
       this.stmt.assertionEvidence!.run(id, ev)
+      // Further sites of the same relationship (protocol 1.3) are more evidence of it: every use, not only the first, has a line.
+      for (const range of r.sites ?? []) this.stmt.assertionEvidence!.run(id, this.evidence(r.site.path, range, kind, p))
     }
     this.qualified = false
     for (const imp of imports.values()) {

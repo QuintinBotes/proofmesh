@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process'
 import v8 from 'node:v8'
 import { ProofmeshError } from '../core/errors.js'
-import { HOST_MEMORY_ENV, hostHeapMb } from '../indexer/memory.js'
+import { HOST_MEMORY_ENV, hostHeapMb, NODE_GC_FLAGS } from '../indexer/memory.js'
 
 const FLAG = '--max-old-space-size='
 /** V8's fatal error when the heap limit is reached; it then aborts the process, so the exit is SIGABRT (134 under a shell). */
@@ -35,6 +35,9 @@ export function stopWithOuterProcess(): void {
   process.on('disconnect', () => process.kill(process.pid, 'SIGTERM'))
 }
 
+/** The Node flags the index host starts with: the GC flags, then the heap the rule chose, then this process's own flags, which so win. */
+export const hostNodeArgs = (mb: number): string[] => [...NODE_GC_FLAGS, `${FLAG}${mb}`, ...process.execArgv]
+
 /**
  * Runs this CLI again under `--max-old-space-size` from the machine rule and resolves with its exit code, and how it died when that was a
  * signal or a non-zero exit, or rejects with a named error when the child died of heap exhaustion. No shell, an allowlisted environment,
@@ -48,7 +51,7 @@ export function runUnderHeap(argv: string[]): Promise<{ code: number; died?: str
     const env: NodeJS.ProcessEnv = {}
     for (const [k, v] of Object.entries(process.env)) if (KEEP.test(k)) env[k] = v
     env[HOST_MARKER] = '1'
-    const child = spawn(process.execPath, [`${FLAG}${mb}`, ...process.execArgv, process.argv[1]!, ...argv], { stdio: ['inherit', 'inherit', 'pipe', 'ipc'], env })
+    const child = spawn(process.execPath, [...hostNodeArgs(mb), process.argv[1]!, ...argv], { stdio: ['inherit', 'inherit', 'pipe', 'ipc'], env })
     // stderr is passed through and scanned, since V8 names the exhaustion there, once, as it aborts, ahead of a long stack trace.
     let tail = '', exhausted = false
     child.stderr!.on('data', (c: Buffer) => { process.stderr.write(c); const seen = tail + c.toString('utf8'); exhausted ||= OUT_OF_HEAP.test(seen); tail = seen.slice(-64) })

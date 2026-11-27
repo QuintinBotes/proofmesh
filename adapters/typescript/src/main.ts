@@ -1,4 +1,5 @@
 // Proofmesh TypeScript adapter: reads only the captured workspace and the TypeScript library declarations; never runs repository code.
+import { createHash } from 'node:crypto'
 import fs from 'node:fs'
 import { builtinModules, createRequire } from 'node:module'
 import path from 'node:path'
@@ -7,7 +8,7 @@ import type * as TS from 'typescript'
 import { graphqlDocument } from '../../syntax/src/contracts.js'
 
 const ts = createRequire(import.meta.url)('typescript') as typeof TS
-const VERSION = '0.2.1'
+const VERSION = '0.2.6'
 type Range = { start_byte: number; end_byte: number; start_line: number; end_line: number }
 type Ref = { symbol: string } | { file: string } | { external: { module: string; name: string } }
 
@@ -38,16 +39,29 @@ const routeFacts = new Map<string, Array<Record<string, unknown>>>()
 const resolverRoots: TS.PropertyAssignment[] = []
 const keyOf = (n: TS.Node) => `${n.getSourceFile().fileName}|${n.pos}|${n.end}|${n.kind}`
 const symbolsByFile = new Map<string, Array<Record<string, unknown>>>()
+/** Per file, where the nodes are whose facts or symbols a pass over every file reads (resources, routes, resolver maps, Prisma accesses). */
+const globalSites = new Map<string, number[]>()
+/** The digest of every program file's outline, which every file's facts may depend on; see outline(). */
+let outlineDigest = ''
+/**
+ * A local id names no position, so an edit inside a body that moves later declarations leaves other files' facts as they were (#31).
+ * Two ids named alike are told apart by the order they are made in, which only an outline change moves.
+ */
+const named = new Map<string, number>()
+const unique = (id: string) => { const n = (named.get(id) ?? 0) + 1; named.set(id, n); return n === 1 ? id : `${id}~${n}` }
 /**
  * Names that may denote a repository class, interface, enum, type alias, variable, function or method: their own, and the names default
  * imports and renaming imports or exports give; only an identifier with one of these names can reference one, and the checker decides whether it does.
  */
 const refNames = new Set<string>()
 /** Symbol kinds a use can reference. */
-const REFERABLE = /^(class|interface|enum|type_alias|variable|function|method)$/
-const byteMaps = new Map<TS.SourceFile, Int32Array>()
+const REFERABLE = /^(class|interface|enum|type_alias|variable|function|method|property)$/
+/** Per file, the UTF-8 offset of each UTF-16 position; for a file of ASCII text, whose offsets are its positions, only its byte order mark (#32). */
+const byteMaps = new Map<TS.SourceFile, Int32Array | number>()
 
-const rel = (abs: string) => path.relative(workspace, abs).split(path.sep).join('/')
+/** Memoised: it is asked for every declaration and call, and path.relative cost a quarter of a second an index (#31); the workspace is set once. */
+const relOf = new Map<string, string>()
+const rel = (abs: string) => relOf.get(abs) ?? relOf.set(abs, path.relative(workspace, abs).split(path.sep).join('/')).get(abs)!
 const inWorkspace = (abs: string) => !rel(abs).startsWith('..') && !path.isAbsolute(rel(abs)) && !rel(abs).split('/').includes('node_modules')
 /** The package a file under node_modules belongs to, such as `greeter` or `@fx/util`. */
 const packageOf = (file: string): string | undefined => {
@@ -87,10 +101,12 @@ function bomBytes(file: string): number {
 /** UTF-8 byte offset in the file as stored for every UTF-16 position of the file's text. */
 function bytesAt(sf: TS.SourceFile, pos: number): number {
   let map = byteMaps.get(sf)
-  if (!map) {
+  if (map === undefined) {
     const text = sf.text
-    map = new Int32Array(text.length + 1)
     let b = bomBytes(sf.fileName)
+    // A map is 4 bytes per character, kept for every file of the program: only text with a non-ASCII character needs one.
+    if (!/[^\x00-\x7f]/.test(text)) { byteMaps.set(sf, b); return b + pos }
+    map = new Int32Array(text.length + 1)
     for (let i = 0; i < text.length; i++) {
       map[i] = b
       const c = text.charCodeAt(i)
@@ -102,7 +118,7 @@ function bytesAt(sf: TS.SourceFile, pos: number): number {
     map[text.length] = b
     byteMaps.set(sf, map)
   }
-  return map[pos]!
+  return typeof map === 'number' ? map + pos : map[pos]!
 }
 
 function range(sf: TS.SourceFile, start: number, end: number): Range {
@@ -167,6 +183,35 @@ function buildProjects(): void {
   }
   indexRoutes()
   indexResolvers()
+  const digest = createHash('sha256').update(JSON.stringify(files.map((f) => f.path).sort()))
+  projects.forEach((project, i) => {
+    for (const sf of [...project.program.getSourceFiles()].filter((f) => inWorkspace(f.fileName)).sort((a, b) => (a.fileName < b.fileName ? -1 : 1))) digest.update(`\0${i}\0${rel(sf.fileName)}\0${outline(sf)}`)
+  })
+  outlineDigest = digest.digest('hex')
+}
+
+/**
+ * A file's text with each function body that no other file can observe left out (#31, A16): a constructor's, unless the class has a
+ * property whose type the constructor could infer; a setter's; and any other's whose return type is written. A body that holds a node
+ * a pass over every file reads or types (globalSites) or an `import()` stays. JavaScript, whose types bodies declare, stays whole. Another
+ * file's facts read this file through its declarations and their types, and local ids name no position, so they depend on no more.
+ */
+function outline(sf: TS.SourceFile): string {
+  if (!/\.(ts|tsx|mts|cts)$/.test(sf.fileName) || sf.isDeclarationFile) return sf.text
+  const sites = globalSites.get(rel(sf.fileName)) ?? []
+  const cut: Array<[number, number]> = []
+  const visit = (n: TS.Node): void => {
+    const body = (ts.isFunctionLike(n) && 'body' in n ? (n as { body?: TS.Node }).body : undefined)
+    const hidden = body && ts.isBlock(body) && (ts.isConstructorDeclaration(n)
+      ? !n.parent.members.some((m) => ts.isPropertyDeclaration(m) && !m.type && !m.initializer)
+      : ts.isSetAccessor(n) || !!(n as TS.SignatureDeclaration).type)
+    if (hidden && !sites.some((at) => at >= body.pos && at < body.end) && !/\bimport\s*\(/.test(sf.text.slice(body.pos, body.end))) { cut.push([body.pos, body.end]); return }
+    ts.forEachChild(n, visit)
+  }
+  visit(sf)
+  let text = '', from = 0
+  for (const [start, end] of cut) { text += `${sf.text.slice(from, start)}{}`; from = end }
+  return text + sf.text.slice(from)
 }
 
 const readJson = (file: string): Record<string, any> | undefined => { try { return JSON.parse(ts.sys.readFile(file) ?? '') } catch { return undefined } }
@@ -233,7 +278,7 @@ function indexDeclarations(sf: TS.SourceFile): void {
   const p = rel(sf.fileName), base = noExt(p), out: Array<Record<string, unknown>> = []
   const add = (node: TS.Node, kind: string, name: string, qualified: string, signature: string | null, start = node.getStart(sf), end = node.getEnd()) => {
     const r = range(sf, start, end)
-    const local = `${p}#${kind}#${qualified}#${r.start_byte}`
+    const local = unique(`${p}#${kind}#${qualified}`)
     declLocal.set(keyOf(node), local)
     out.push({ local_id: local, path: p, kind, name, qualified_name: qualified, range: r, signature })
     if (REFERABLE.test(kind)) refNames.add(name)
@@ -243,7 +288,8 @@ function indexDeclarations(sf: TS.SourceFile): void {
    * One method symbol per member name, static and instance apart: the implementation, else the first declaration, so an abstract
    * member, an overload set, a get/set accessor pair and an interface member each have one; every overload or accessor resolves to it.
    * Members are methods, method signatures, get and set accessors, and properties holding a function (by initializer, or by type when there is none), of a class, an interface, or the
-   * object literal a typed module-level constant holds.
+   * object literal a typed module-level constant holds. Any other property of a class or an interface, a constructor's parameter
+   * properties included, is a `property` symbol.
    */
   const members = (list: TS.NodeArray<TS.ClassElement | TS.TypeElement | TS.ObjectLiteralElementLike>, owner: string) => {
     const byName = new Map<string, Array<{ node: TS.Node; name: string; signature: () => string | null }>>()
@@ -256,6 +302,9 @@ function indexDeclarations(sf: TS.SourceFile): void {
           : callable ? () => `${name}${checker.signatureToString(callable)}` : undefined
       const key = `${hasModifier(m, ts.SyntaxKind.StaticKeyword) ? 'static ' : ''}${name}`
       if (name && signature) byName.set(key, [...(byName.get(key) ?? []), { node: m, name, signature }])
+      // A class or interface property holding no function is a property symbol, so its reads and writes have a target.
+      else if (name && (ts.isPropertyDeclaration(m) || ts.isPropertySignature(m))) add(m, 'property', name, `${owner}.${name}`, null)
+      if (ts.isConstructorDeclaration(m)) for (const p of m.parameters) if (ts.isParameterPropertyDeclaration(p, m) && ts.isIdentifier(p.name)) add(p, 'property', p.name.text, `${owner}.${p.name.text}`, null)
     }
     for (const decls of byName.values()) {
       const main = decls.find((d) => !ts.isMethodDeclaration(d.node) || d.node.body) ?? decls[0]!
@@ -311,16 +360,20 @@ function indexDeclarations(sf: TS.SourceFile): void {
     }
   }
   visit(sf.statements, '')
+  const sites: number[] = []
+  globalSites.set(p, sites)
   const resources = (n: TS.Node): void => {
     const r = ts.isNewExpression(n) ? pulumiResource(n) : undefined
     if (r) {
-      const local = `${p}#resource#${r.token}::${r.name}#${n.getStart(sf)}`
+      const local = unique(`${p}#resource#${r.token}::${r.name}`)
       resourceLocal.set(keyOf(n), local)
       out.push({ local_id: local, path: p, kind: 'resource', name: r.name, qualified_name: `${base}:${r.token}::${r.name}`, range: range(sf, n.getStart(sf), n.getEnd()), signature: `resource "${r.token}"` })
     }
     if (isRouteSite(n)) routeSites.push(n)
     if (ts.isPropertyAssignment(n) && GRAPHQL_ROOTS.has(keyName(n.name, sf)) && ts.isObjectLiteralExpression(n.initializer)) resolverRoots.push(n)
     const access = prismaAccess(n), table = access && prismaTables.get(access.accessor)
+    // Where a library is in the program, every node its check types counts, found or not: typing it can change how later signatures print.
+    if (isRouteSite(n) || (ts.isPropertyAssignment(n) && GRAPHQL_ROOTS.has(keyName(n.name, sf))) || (ts.isNewExpression(n) && has('pulumi')) || (prismaShape(n) && has('prisma'))) sites.push(n.pos)
     if (table && !declaredTables.has(table.qualified)) {
       declaredTables.add(table.qualified)
       out.push({ local_id: `fw#table#${table.qualified}`, path: p, kind: 'table', name: table.name, qualified_name: table.qualified, range: range(sf, access.site.getStart(sf), access.site.getEnd()), signature: null })
@@ -332,8 +385,22 @@ function indexDeclarations(sf: TS.SourceFile): void {
 }
 
 const PULUMI_BASES = new Set(['CustomResource', 'ComponentResource'])
+/**
+ * Whether the program holds @pulumi/pulumi, or any file importing @prisma/client: without them no `new` can be a Pulumi resource and no
+ * call a Prisma Client access, so neither is typed. Typing every `new` cost a second of each index of TypeORM (#31), and typing a node
+ * inside a body another file cannot observe could change how a later signature prints (union members are ordered by when their types were made).
+ */
+const libraries = new Map<TS.Program, { pulumi: boolean; prisma: boolean }>()
+function has(library: 'pulumi' | 'prisma'): boolean {
+  if (!libraries.has(program!)) {
+    const files = program!.getSourceFiles()
+    libraries.set(program!, { pulumi: files.some((f) => packageOf(f.fileName) === '@pulumi/pulumi'), prisma: files.some((f) => f.text.includes('@prisma/client')) })
+  }
+  return libraries.get(program!)![library]
+}
 /** A Pulumi resource: a class deriving from @pulumi/pulumi's CustomResource or ComponentResource, named as its URN names it, type then name. */
 function pulumiResource(n: TS.NewExpression): { token: string; name: string } | undefined {
+  if (!has('pulumi')) return undefined
   const derives = (t: TS.Type): boolean => {
     const target = (t as TS.TypeReference).target ?? t
     const sym = target.getSymbol(), decl = sym?.declarations?.[0]
@@ -502,12 +569,32 @@ function literalFacts(d: TS.VariableDeclaration, p: string, sf: TS.SourceFile): 
 }
 
 /**
+ * The repository function, method or variable a shorthand destructuring binds (`const { escape } = driver` binds `Driver.escape`):
+ * the local is that member under its own name, so the language service renames both together.
+ */
+function boundMember(decl: TS.Node | undefined): string | undefined {
+  if (!decl || !ts.isBindingElement(decl) || decl.propertyName || !ts.isIdentifier(decl.name) || !ts.isObjectBindingPattern(decl.parent)) return undefined
+  for (const d of checker.getTypeAtLocation(decl.parent).getProperty(decl.name.text)?.declarations ?? []) {
+    const local = declLocal.get(keyOf(d))
+    if (local && /^(variable|function|method)#/.test(local.slice(rel(d.getSourceFile().fileName).length + 1))) return local
+  }
+  return undefined
+}
+
+/**
  * A use of a repository class, interface, enum or type alias other than its declaration or an import or export specifier, and how
  * it is used: a heritage clause (`implements`, `extends`), `typeof`, a type (annotations, generics, `satisfies`, `as`), `new`, or a value.
- * Also a use of a repository variable, read or assigned, or a function or method used as a value without being called, as a `value` use.
+ * Also a use of a repository variable, read or assigned, or a function or method used as a value without being called, as a `value` use,
+ * or named in a type query, as a `typeof` use; and a read or write of a class or interface property, as a `value` use with its
+ * `access`.
  */
-function referenceOf(id: TS.Identifier): { target: string; use: string } | undefined {
+function referenceOf(id: TS.Identifier): { target: string; use: string; access?: string } | undefined {
   const p = id.parent
+  // A shorthand destructuring (`const { escape } = driver`) names the member it reads, as a value use of that member.
+  if (ts.isBindingElement(p) && p.name === id) {
+    const member = refNames.has(id.text) ? boundMember(p) : undefined
+    return member ? { target: member, use: 'value' } : undefined
+  }
   // A shorthand property's name is also its value, a use of what it names.
   if (!refNames.has(id.text) || ((p as { name?: TS.Node }).name === id && !ts.isPropertyAccessExpression(p) && !ts.isShorthandPropertyAssignment(p))) return undefined
   if (ts.isImportSpecifier(p) || ts.isExportSpecifier(p) || ts.isExportAssignment(p)) return undefined
@@ -520,17 +607,30 @@ function referenceOf(id: TS.Identifier): { target: string; use: string } | undef
     : ts.isTypeQueryNode(at) ? 'typeof' : ts.isTypeReferenceNode(at) || ts.isImportTypeNode(at) ? 'type' : ts.isNewExpression(at) && at.expression === n ? 'create' : 'value'
   // A name that is both a value and a type (a constant and the type inferred from it) means the value outside type positions.
   const sym = aliased(ts.isShorthandPropertyAssignment(p) ? checker.getShorthandAssignmentValueSymbol(p) : checker.getSymbolAtLocation(id))
+  const member = use === 'value' ? boundMember(sym?.valueDeclaration) : undefined
+  if (member) return { target: member, use }
   const decls = use === 'value' || use === 'create' || use === 'typeof' ? [sym?.valueDeclaration] : sym?.declarations ?? []
   const decl = decls.find((d) => !!d && (ts.isClassDeclaration(d) || ts.isInterfaceDeclaration(d) || ts.isEnumDeclaration(d) || ts.isTypeAliasDeclaration(d)))
   const target = decl && declLocal.get(keyOf(decl))
   if (target) return { target, use }
   // A function component's JSX tag is a `renders`, not a reference.
-  if (use !== 'value' || ((ts.isJsxOpeningLikeElement(at) || ts.isJsxClosingElement(at)) && at.tagName === n)) return undefined
+  if ((use !== 'value' && use !== 'typeof') || ((ts.isJsxOpeningLikeElement(at) || ts.isJsxClosingElement(at)) && at.tagName === n)) return undefined
   for (const d of sym?.declarations ?? []) {
     const local = declLocal.get(keyOf(d))
-    if (local && /^(variable|function|method)#/.test(local.slice(rel(d.getSourceFile().fileName).length + 1))) return { target: local, use }
+    const kind = local && /^(variable|function|method|property)#/.exec(local.slice(rel(d.getSourceFile().fileName).length + 1))?.[1]
+    // A property is used through `x.name`; a parameter property's bare name in its constructor is the parameter.
+    if (kind === 'property') return ts.isPropertyAccessExpression(p) && p.name === id ? { target: local!, use, access: written(n) ? 'write' : 'read' } : undefined
+    if (kind) return { target: local!, use }
   }
   return undefined
+}
+
+/** Whether an expression is assigned (`=` or a compound assignment), incremented, decremented or deleted. */
+function written(n: TS.Node): boolean {
+  const at = n.parent
+  return (ts.isBinaryExpression(at) && at.left === n && at.operatorToken.kind >= ts.SyntaxKind.FirstAssignment && at.operatorToken.kind <= ts.SyntaxKind.LastAssignment)
+    || ((ts.isPrefixUnaryExpression(at) || ts.isPostfixUnaryExpression(at)) && (at.operator === ts.SyntaxKind.PlusPlusToken || at.operator === ts.SyntaxKind.MinusMinusToken))
+    || ts.isDeleteExpression(at)
 }
 
 /**
@@ -580,10 +680,12 @@ function isPrismaClientType(e: TS.Node, seen = new Set<TS.Node>()): boolean {
  */
 // shortcut: a client typed through an alias, a factory's return type or `$extends` is not recognised, nor a transaction's client
 // parameter; follow the checker's type when a repository needs them.
+const prismaShape = (n: TS.Node): n is TS.CallExpression & { expression: TS.PropertyAccessExpression & { expression: TS.PropertyAccessExpression } } =>
+  ts.isCallExpression(n) && ts.isPropertyAccessExpression(n.expression) && ts.isPropertyAccessExpression(n.expression.expression) && !n.expression.expression.name.text.startsWith('$')
 function prismaAccess(n: TS.Node): { site: TS.PropertyAccessExpression; accessor: string; operation: string } | undefined {
-  if (!ts.isCallExpression(n) || !ts.isPropertyAccessExpression(n.expression) || !ts.isPropertyAccessExpression(n.expression.expression)) return undefined
+  // An import of @prisma/client is how isPrismaClientName knows the client, so without one in the program nothing is typed.
+  if (!prismaShape(n) || !has('prisma')) return undefined
   const model = n.expression.expression, client = model.expression
-  if (model.name.text.startsWith('$')) return undefined
   const decl = aliased(checker.getSymbolAtLocation(ts.isPropertyAccessExpression(client) ? client.name : client))?.valueDeclaration
   if (!decl || !(ts.isVariableDeclaration(decl) || ts.isPropertyDeclaration(decl) || ts.isParameter(decl))) return undefined
   const typed = !!decl.type && ts.isTypeReferenceNode(decl.type) && isPrismaClientType(decl.type.typeName)
@@ -722,7 +824,7 @@ function expressHandler(call: TS.CallExpression, file: string): string {
     const known = declLocal.get(keyOf(last))
     if (known) return known
     const name = `${call.expression.getText(sf)}(${call.arguments[0]!.getText(sf)})`, qualified = `${noExt(file)}:${name}`
-    const r = range(sf, last.getStart(sf), last.getEnd()), local = `${file}#function#${qualified}#${r.start_byte}`
+    const r = range(sf, last.getStart(sf), last.getEnd()), local = unique(`${file}#function#${qualified}`)
     declLocal.set(keyOf(last), local)
     symbolsByFile.get(file)!.push({ local_id: local, path: file, kind: 'function', name, qualified_name: qualified, range: r, signature: signatureOf(name, last as TS.ArrowFunction) })
     return local
@@ -827,7 +929,7 @@ function indexResolvers(): void {
       let handler = declLocal.get(keyOf(fn))
       if (!handler && (ts.isMethodDeclaration(fn) || isFunctionLike(fn))) {
         const qualified = `${noExt(file)}:${[...keys, field].join('.')}`, r = range(sf, fn.getStart(sf), fn.getEnd())
-        handler = `${file}#function#${qualified}#${r.start_byte}`
+        handler = unique(`${file}#function#${qualified}`)
         declLocal.set(keyOf(fn), handler)
         symbolsByFile.get(file)!.push({ local_id: handler, path: file, kind: 'function', name: field, qualified_name: qualified, range: r, signature: signatureOf(field, fn as TS.ArrowFunction) })
       } else if (!handler && (ts.isIdentifier(fn) || ts.isPropertyAccessExpression(fn))) {
@@ -835,7 +937,7 @@ function indexResolvers(): void {
         if (named.resolution === 'resolved' && named.target && 'symbol' in named.target) handler = named.target.symbol
       }
       if (!handler) continue
-      const name = `graphql ${keyName(root.name, sf)}.${field}`, id = `${file}#resolver#${name}#${m.getStart(sf)}`, site = { path: file, range: range(sf, m.getStart(sf), m.getEnd()) }
+      const name = `graphql ${keyName(root.name, sf)}.${field}`, id = unique(`${file}#resolver#${name}`), site = { path: file, range: range(sf, m.getStart(sf), m.getEnd()) }
       symbolsByFile.get(file)!.push({ local_id: id, path: file, kind: 'endpoint', name: name.slice('graphql '.length), qualified_name: name, range: site.range, signature: null })
       const facts = routeFacts.get(file) ?? routeFacts.set(file, []).get(file)!
       facts.push({ type: 'exposes', origin: 'framework_adapter', source: { symbol: id }, site, resolution: 'resolved', target: { symbol: handler }, detail: { rule: 'graphql_resolver_map' } })
@@ -887,6 +989,8 @@ function resolveCall(callee: TS.Expression): { resolution: string; target?: Ref;
   }
   const decls = sym?.declarations ?? []
   if (!sym || !decls.length) return { resolution: 'unresolved', reason: classify(callee) }
+  const member = boundMember(sym.valueDeclaration)
+  if (member) return { resolution: 'resolved', target: { symbol: member } }
   const first = decls[0]!
   if (!inWorkspace(first.getSourceFile().fileName)) {
     return { resolution: 'resolved_external', target: externalRef(sym, first) }
@@ -1008,7 +1112,16 @@ function importTarget(spec: string, p: string, sf: TS.SourceFile, project: Proje
 function analyze(paths: string[]) {
   if (!projects.length) buildProjects()
   const symbols: unknown[] = [], relationships: unknown[] = [], file_results: unknown[] = [], diagnostics: unknown[] = []
+  // Each file's facts become JSON text once the file is read, so a batch holds its reply and not every fact object of its files as well (#32).
+  const json = { symbols: [] as string[], relationships: [] as string[], file_results: [] as string[], diagnostics: [] as string[] }
+  const flush = () => {
+    for (const [out, facts] of [[json.symbols, symbols], [json.relationships, relationships], [json.file_results, file_results], [json.diagnostics, diagnostics]] as const) {
+      for (const f of facts) out.push(JSON.stringify(f))
+      facts.length = 0
+    }
+  }
   for (const p of paths) {
+    flush()
     const project = projectOf.get(p)
     const sf = project?.program.getSourceFile(path.join(workspace, p))
     if (!project || !sf) {
@@ -1019,8 +1132,8 @@ function analyze(paths: string[]) {
     symbols.push(...(symbolsByFile.get(p) ?? []))
     let unresolvedCalls = 0, unresolvedImports = 0, graphqlUnread = 0
     const endpoints = new Set<string>(), clientEndpoints: Array<Record<string, unknown>> = []
-    /** One reference per user and target, cited at its first site, with every way the user uses the target. */
-    const references = new Map<string, { from: string; target: string; site: TS.Node; uses: Set<string> }>()
+    /** One reference per user and target (and access, for a property), cited at its first site, with every way the user uses the target and every further site (protocol 1.3). */
+    const references = new Map<string, { from: string; target: string; site: TS.Node; more: TS.Node[]; uses: Set<string>; access?: string }>()
     const visit = (node: TS.Node) => {
       // Every import carries its kind (FR092): import, import type, export ... from, and import() with a literal specifier.
       const kind = ts.isImportDeclaration(node) ? (node.importClause?.isTypeOnly ? 'type_only' : 'static')
@@ -1075,8 +1188,9 @@ function analyze(paths: string[]) {
       const reference = ts.isIdentifier(node) ? referenceOf(node) : undefined
       const user = reference && (owner(node) ?? declLocal.get(keyOf(sf)))
       if (reference && user && user !== reference.target) {
-        const key = `${user}|${reference.target}`
-        if (!references.has(key)) references.set(key, { from: user, target: reference.target, site: node, uses: new Set() })
+        // A property's reads and writes are apart, each citing every site of its access.
+        const key = reference.access ? `${user}|${reference.target}|${reference.access}` : `${user}|${reference.target}`
+        if (!references.has(key)) references.set(key, { from: user, target: reference.target, site: node, more: [], uses: new Set(), access: reference.access }); else references.get(key)!.more.push(node)
         references.get(key)!.uses.add(reference.use)
       }
       const resource = ts.isNewExpression(node) ? resourceLocal.get(keyOf(node)) : undefined
@@ -1089,7 +1203,7 @@ function analyze(paths: string[]) {
       ts.forEachChild(node, visit)
     }
     visit(sf)
-    for (const r of references.values()) relationships.push({ type: 'references', origin: 'semantic_resolver', source: { symbol: r.from }, site: { path: p, range: range(sf, r.site.getStart(sf), r.site.getEnd()) }, resolution: 'resolved', target: { symbol: r.target }, detail: { use: [...r.uses].sort().join(',') } })
+    for (const r of references.values()) relationships.push({ type: 'references', origin: 'semantic_resolver', source: { symbol: r.from }, site: { path: p, range: range(sf, r.site.getStart(sf), r.site.getEnd()) }, ...(r.more.length ? { sites: r.more.map((n) => range(sf, n.getStart(sf), n.getEnd())) } : {}), resolution: 'resolved', target: { symbol: r.target }, detail: { use: [...r.uses].sort().join(','), ...(r.access ? { access: r.access } : {}) } })
     relationships.push(...(routeFacts.get(p) ?? []))
     symbols.push(...clientEndpoints)
     file_results.push({
@@ -1097,7 +1211,15 @@ function analyze(paths: string[]) {
       capabilities: { text: 'complete', syntax: 'complete', symbols: 'complete', imports: unresolvedImports ? 'partial' : 'complete', references: 'partial', resolved_calls: unresolvedCalls ? 'partial' : 'complete', framework: clientEndpoints.length || graphqlUnread ? 'partial' : 'unsupported' },
     })
   }
-  return { symbols, relationships, file_results, diagnostics }
+  flush()
+  // The result as pieces of JSON text, in order, so it is written a part at a time and never held as one string and its bytes.
+  const pieces: string[] = []
+  for (const [name, items] of Object.entries(json)) {
+    pieces.push(`${pieces.length ? '],' : '{'}"${name}":[`)
+    items.forEach((x, i) => pieces.push(i ? `,${x}` : x))
+  }
+  pieces.push(']}')
+  return pieces
 }
 
 const send = (msg: unknown) => process.stdout.write(JSON.stringify(msg) + '\n')
@@ -1112,15 +1234,21 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
       // Built now, not at the first analyze, so the manifest lists exactly the packages the analysis reads.
       buildProjects()
       send({ jsonrpc: '2.0', id: req.id, result: {
-        adapter: { id: 'typescript', version: VERSION, protocol_version: '1.0', languages: ['typescript', 'javascript'], toolchain: { typescript: ts.version } },
+        adapter: { id: 'typescript', version: VERSION, protocol_version: '1.3', languages: ['typescript', 'javascript'], toolchain: { typescript: ts.version } },
         capabilities: { syntax: true, symbols: true, imports: true, resolved_calls: true, references: true, framework: false },
         external_inputs: externalInputs,
+        // One unit per file, keyed by every file's outline: an edit inside a body reanalyses that file alone (#31).
+        units: [...projectOf.keys()].sort().map((p) => ({ id: `${p} outline:${outlineDigest}`, files: [p] })),
       } })
     } else if (req.method === 'workspace') {
       // Every fact this adapter produces belongs to one analysed file.
       send({ jsonrpc: '2.0', id: req.id, result: { symbols: [], relationships: [], file_results: [], diagnostics: [] } })
     } else if (req.method === 'analyze') {
-      send({ jsonrpc: '2.0', id: req.id, result: analyze(req.params.paths) })
+      // The reply is one line written a megabyte at a time, from the result's JSON text (analyze), after the whole result is made.
+      const pieces = analyze(req.params.paths)
+      let chunk = `{"jsonrpc":"2.0","id":${JSON.stringify(req.id)},"result":`
+      for (const p of pieces) { chunk += p; if (chunk.length >= 1 << 20) { process.stdout.write(chunk); chunk = '' } }
+      process.stdout.write(`${chunk}}\n`)
     } else if (req.method === 'shutdown') {
       send({ jsonrpc: '2.0', id: req.id, result: {} })
       process.exit(0)

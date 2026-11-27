@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "search_structure.data.schema.json",
+  "title": "search_structure data",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "matches",
+    "totals"
+  ],
+  "properties": {
+    "matches": {
+      "type": "array",
+      "description": "By path, then by position in the file; a match inside another is listed after it.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "line",
+          "end_line",
+          "text",
+          "symbol"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "line": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The first line of the match."
+          },
+          "end_line": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 120,
+            "description": "The first line of the matched code, cut at 120 characters."
+          },
+          "symbol": {
+            "description": "The innermost symbol that holds the match whole, its module when nothing smaller does; null only in a file with no symbol.",
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "key",
+                  "kind",
+                  "name",
+                  "qualified_name"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "key": {
+                    "type": "string",
+                    "description": "The stable_key of the symbol (FR280)."
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "qualified_name": {
+                    "type": "string"
+                  }
+                }
+              }
+            ]
+          },
+          "generated": {
+            "type": "boolean",
+            "description": "Present and true when the file is generated (FR292); absent otherwise."
+          }
+        }
+      }
+    },
+    "totals": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "matches",
+        "files_searched"
+      ],
+      "properties": {
+        "matches": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Every match in scope, before row limits; when the search stopped at timeout_ms, those found before it."
+        },
+        "files_searched": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Files in the pattern's language under the prefix and scope."
+        },
+        "scope_symbols": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Symbols in the reachable_from and reaching scope, when one is given."
+        },
+        "scope_files": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Files importing the importing files, when given."
+        }
+      }
+    }
+  }
+}

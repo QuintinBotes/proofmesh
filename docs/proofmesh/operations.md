@@ -54,6 +54,30 @@ With `--keep-current`, the repository's current snapshot stays the one it was be
 
 `proofmesh restore <dir> --into <data-dir>` verifies every hash first and copies nothing if one fails; the target must be empty. The restored directory is a full data directory: queries answer from it at once.
 
+## Starting from a snapshot built elsewhere (FR1080 to FR1085)
+
+A fresh clone, or a CI job, can start from the snapshot a teammate or another job built for the same commit instead of indexing:
+
+```
+# where the snapshot was built
+proofmesh snapshot export <repository> --out app.pms            # the current snapshot; --snapshot <id> for another
+# on the clone, checked out at the same commit, with its own data directory
+proofmesh init && proofmesh repo add <clone>
+proofmesh snapshot import <clone> app.pms
+```
+
+The file holds the sealed snapshot and a manifest: its commit, each adapter's id, version and code hash, the content hash of every file it read, its origin (repository name, `proofmesh by <user>`, time) and hashes over all of it. It holds no source text. Moving it is up to you; no server and no network are involved.
+
+Import refuses, with the reason, and changes nothing when:
+
+- a hash does not match (`the file is corrupt: ...`), or the file is not a snapshot export;
+- the snapshot's format, its tables, or this build's analysis versions differ (carry snapshots between data directories of the same release);
+- the clone is not at the snapshot's commit (both commits are named);
+- an adapter it was built by is not installed here, or its code differs from the one installed here;
+- the repository already has a snapshot: an import never replaces one. Use a fresh data directory, or index instead.
+
+A file edited in the clone before import is published stale: import prints it, and every answer says so. Evidence comes from the clone's own bytes, never from the file, so a stale file's source is not shown from the snapshot. Every answer from an imported snapshot carries `snapshot.imported` (origin, time, stale count), a first limitation beginning `imported:` and, in lean text, `imported` in the header line. The digests show that the file is the one that was exported and unchanged; they do not show who exported it, so its facts are only as honest as the data directory that built it. Import never grants build evaluation and runs no code. The next `proofmesh index` seals a snapshot built here, which replaces it as current; it re-analyses every file, since the fact cache is not carried with the snapshot. Retention (`gc`) counts imported snapshots like any other.
+
 ## Retention and garbage collection (FR051)
 
 `proofmesh gc [--keep N] [--dry-run]` keeps the newest N published snapshots per repository (default 3) and retires the rest, deleting their sealed files, then deletes evidence objects no remaining snapshot references. It never retires the current snapshot, a pinned one (`proofmesh snapshot pin <id>`), or a member of a recorded workspace link file, and it refuses to run while an index holds a lock; an index started while gc runs waits for it. `--dry-run` lists what would go. A retired snapshot keeps its catalog row, so its id still names what existed.
