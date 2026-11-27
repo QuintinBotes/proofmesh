@@ -10,3 +10,5 @@
 (trait_item bounds: (trait_bounds [(type_identifier) (scoped_type_identifier) (generic_type type: (_))] @inherits))
 (trait_item bounds: (trait_bounds (higher_ranked_trait_bound type: [(type_identifier) (scoped_type_identifier) (generic_type type: (_))] @inherits)))
 (trait_item bounds: (trait_bounds (higher_ranked_trait_bound type: (function_type trait: (_) @inherits))))
+; A call through a path, `ffi::f()`, `Foo::new()` or `crate::util::f()`: the callee is the last name, and the path is its qualifier (FR500).
+(call_expression function: (scoped_identifier name: (identifier) @name)) @reference.call

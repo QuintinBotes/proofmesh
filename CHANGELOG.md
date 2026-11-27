@@ -4,6 +4,12 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 ## Unreleased
 
+The syntax tier records a Rust call through a path (closes #116; FR500, FR501):
+
+- `ffi::cosine(0.0)`, `Foo::new()`, `crate::util::f()` and `<T as Tr>::f()` were neither a candidate nor an unresolved boundary: the tier wrote no `calls` row for them, so `get_relationships`, `analyze_impact` and the unresolved-call counts never saw them. Each is now one unresolved `calls` row, `outside_capability`, with the last name as `detail.callee` and the path before the last `::` in `detail.qualifier`, as Go and Java calls carry theirs.
+- Not done: a call with a turbofish (`f::<T>()`, `ffi::f::<T>()`, `x.f::<T>()`) still has no row.
+- Upgrade note: Rust snapshots gain `calls` rows, one per path call, so a re-indexed Rust repository reports more unresolved calls than before. No fixture or Rosetta expectation changed: none of their Rust sources calls through a path.
+
 The C# adapter is built by `pnpm build`, and an unbuilt one says so (closes #100; FR385 to FR387):
 
 - `pnpm build` ends with `node scripts/build-csharp.mjs`, which runs `dotnet build adapters/csharp -c Release -nologo -v:q -m:1` when `dotnet` is on PATH and fails the build if that fails. Without `dotnet` it prints `skipped: build the C# adapter (...)` and succeeds, unless an earlier adapter build exists, which would stay in use, and then fails, as `scripts/update.mjs` already did. `update:all` already built the adapter and still does.
