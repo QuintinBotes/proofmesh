@@ -61,19 +61,24 @@ describe('FR460 to FR466 the FFI rules on their edge cases', () => {
       'java/org/x/Codec.java': 'package org.x;\n\npublic class Codec {\n    static native int my_pack(int a, int b);\n    native void lonely();\n    static {\n        System.loadLibrary("codec");\n    }\n}\n',
       'c/codec.c': '#include <jni.h>\n\nJNIEXPORT jint JNICALL Java_org_x_Codec_my_1pack__II(JNIEnv* e, jclass c, jint a, jint b) {\n    return a;\n}\n',
       'kt/org/x/Kodec.kt': 'package org.x\n\nclass Kodec {\n    external fun twice(a: Int): Int\n}\n',
+      // JNI overloads, each named with its parameter types by the syntax tier, and a comment that mentions native code above a plain method.
+      'java/org/x/Wrap.java': 'package org.x;\n\npublic class Wrap {\n    static native int pack(int a, int b);\n    static native int pack(long h);\n\n    // Thread-safe; calls the native implementation.\n    public static int safePack(int a) {\n        return pack(a, a);\n    }\n}\n',
+      'c/wrap.c': '#include <jni.h>\n\nJNIEXPORT jint JNICALL Java_org_x_Wrap_pack__II(JNIEnv* e, jclass c, jint a, jint b) {\n    return a;\n}\n\nJNIEXPORT jint JNICALL Java_org_x_Wrap_pack__J(JNIEnv* e, jclass c, jlong h) {\n    return 0;\n}\n',
+      // Kotlin/JS declares JavaScript functions `external`: with no JNI function and no System.loadLibrary, that is no JNI seam.
+      'kt/web/Alert.kt': 'package web\n\nexternal fun alert(message: String)\n',
       'c/kodec.c': '#include <jni.h>\n\nJNIEXPORT jint JNICALL Java_org_x_Kodec_twice(JNIEnv* e, jobject o, jint a) {\n    return a * 2;\n}\n',
       // P/Invoke: EntryPoint names the C function; two definitions of one name are ambiguous; a system library is external.
       'cs/Native.cs': 'using System.Runtime.InteropServices;\n\npublic static partial class Native\n{\n    [DllImport("dup", EntryPoint = "twice")]\n    static extern int Twice(int a);\n\n    [LibraryImport("user32")]\n    private static partial int MessageBoxW(nint h);\n}\n',
       'c/one.c': 'int twice(int a) {\n    return a * 2;\n}\n',
       'c/two.c': 'int twice(int a) {\n    return a + a;\n}\n',
       // cgo both ways: a Go function `//export` marks is called from C; a C function the repository lacks is external, by its -l library.
-      'go/bridge.go': 'package bridge\n\n// #cgo LDFLAGS: -lz\n// #include <zlib.h>\nimport "C"\n\n//export GoCallback\nfunc GoCallback() int {\n\treturn 1\n}\n\nfunc Version() *C.char {\n\treturn C.zlibVersion()\n}\n\nfunc Str() {\n\t_ = C.CString("x")\n}\n',
+      'go/bridge.go': 'package bridge\n\n// #cgo LDFLAGS: -lz\n// #include <zlib.h>\nimport "C"\n\n//export GoCallback\nfunc GoCallback() int {\n\treturn 1\n}\n\nfunc Version() *C.char {\n\treturn C.zlibVersion()\n}\n\nfunc Str() {\n\t_ = C.CString("x")\n}\n\nfunc Width(v uint32) {\n\t_ = C.uint32_t(v)\n}\n',
       'c/callback.c': 'extern int GoCallback(void);\nextern int rust_double(int);\n\nint call_back(void) {\n    return GoCallback() + rust_double(2);\n}\n',
-      // Rust: a #[no_mangle] function C calls, and an extern block of a library outside the repository with a link_name.
       // Python: a function imported from an extension module by name.
       'py/fast.c': '#include <Python.h>\n\nstatic PyObject* fast_go(PyObject* self, PyObject* args) {\n    Py_RETURN_NONE;\n}\n\nstatic PyMethodDef Methods[] = {\n    {"go", (PyCFunction)fast_go, METH_NOARGS, NULL},\n    {NULL, NULL, 0, NULL}\n};\n\nPyMODINIT_FUNC PyInit_fast(void) {\n    return NULL;\n}\n',
       'py/run.py': 'from fast import go as start\n\n\ndef run():\n    return start()\n',
-      'rust/ffi.rs': '#[no_mangle]\npub extern "C" fn rust_double(x: i32) -> i32 {\n    x * 2\n}\n\n#[link(name = "m")]\nextern "C" {\n    #[link_name = "cos"]\n    fn cosine(x: f64) -> f64;\n}\n\nfn angle() -> f64 {\n    unsafe { cosine(1.0) }\n}\n',
+      // Rust: a #[no_mangle] function C calls, an extern block of a library outside the repository with a link_name, and one that names no library.
+      'rust/ffi.rs': '#[no_mangle]\npub extern "C" fn rust_double(x: i32) -> i32 {\n    x * 2\n}\n\n#[link(name = "m")]\nextern "C" {\n    #[link_name = "cos"]\n    fn cosine(x: f64) -> f64;\n}\n\nfn angle() -> f64 {\n    unsafe { cosine(1.0) }\n}\n\nextern "C" {\n    fn abs(x: i32) -> i32;\n}\n\nfn absolute() -> i32 {\n    unsafe { abs(-1) }\n}\n',
     })).dataDir
   }, 120000)
 
@@ -86,6 +91,16 @@ describe('FR460 to FR466 the FFI rules on their edge cases', () => {
     expect(ffiFrom(dataDir, 'org.x.Codec.lonely')).toEqual([{ resolution: 'resolved_external', to: 'codec:Java_org_x_Codec_lonely', candidates: [], rule: 'jni', library: 'codec', path: 'java/org/x/Codec.java', line: 5 }])
   })
 
+  it('FR460 each JNI overload is ambiguous between the C functions of its method, and a comment that mentions native code makes no plain method native', () => {
+    const wrap = withSnapshot(dataDir, (db) => rows(db, 'calls')).filter((r) => r.path === 'java/org/x/Wrap.java' && r.origin === 'contract_match').map((r) => ({ line: r.line, resolution: r.resolution, candidates: r.candidates, rule: r.detail?.rule }))
+    const both = ['c/wrap:Java_org_x_Wrap_pack__II@c/wrap.c', 'c/wrap:Java_org_x_Wrap_pack__J@c/wrap.c']
+    expect(wrap.sort((a, b) => a.line - b.line)).toEqual([{ line: 4, resolution: 'ambiguous', candidates: both, rule: 'jni' }, { line: 5, resolution: 'ambiguous', candidates: both, rule: 'jni' }])
+  })
+
+  it('FR460 a Kotlin external function with no JNI function and no System.loadLibrary is no JNI seam (Kotlin/JS declares JavaScript that way)', () => {
+    expect(withSnapshot(dataDir, (db) => rows(db, 'calls')).filter((r) => r.path === 'kt/web/Alert.kt' && r.origin === 'contract_match')).toEqual([])
+  })
+
   it('FR461 a P/Invoke EntryPoint names the C function, ambiguous where several define it, and the library is matched to no build target', () => {
     expect(ffiFrom(dataDir, 'Native.Twice')).toEqual([{ resolution: 'ambiguous', to: null, candidates: ['c/one:twice@c/one.c', 'c/two:twice@c/two.c'], rule: 'pinvoke', library: undefined, path: 'cs/Native.cs', line: 5 }])
   })
@@ -93,6 +108,7 @@ describe('FR460 to FR466 the FFI rules on their edge cases', () => {
   it('FR462 a C call of a Go function that //export marks is linked to it, rule cgo_export, and the cgo pseudo-functions are left as they were', () => {
     expect(ffiFrom(dataDir, 'c/callback:call_back').filter((r) => r.rule === 'cgo_export')).toEqual([{ resolution: 'candidate', to: null, candidates: ['go/bridge:GoCallback@go/bridge.go'], rule: 'cgo_export', library: undefined, path: 'c/callback.c', line: 5 }])
     expect(ffiFrom(dataDir, 'go/bridge:Str')).toEqual([])
+    expect(ffiFrom(dataDir, 'go/bridge:Width')).toEqual([])
   })
 
   it('FR463 a C call of a #[no_mangle] Rust function is linked to it, rule rust_no_mangle', () => {
@@ -110,5 +126,8 @@ describe('FR460 to FR466 the FFI rules on their edge cases', () => {
     expect(ffiFrom(dataDir, 'rust/ffi:angle')).toEqual([{ resolution: 'resolved_external', to: 'm:cos', candidates: [], rule: 'rust_extern_c', library: 'm', path: 'rust/ffi.rs', line: 13 }])
     const out = callsOf(dataDir, symbolId(dataDir, 'rust/ffi:angle'), 'out')
     expect(out.map((r) => ({ resolution: r.resolution, basis: r.basis }))).toEqual([{ resolution: 'resolved_external', basis: 'inferred' }])
+    // No #[link]: the external names the function and no library.
+    const bare = callsOf(dataDir, symbolId(dataDir, 'rust/ffi:absolute'), 'out')
+    expect(bare.map((r) => ({ resolution: r.resolution, other: r.other, library: r.detail?.library, rule: r.detail?.rule }))).toEqual([{ resolution: 'resolved_external', other: expect.objectContaining({ kind: 'external', module: '', name: 'abs' }), library: undefined, rule: 'rust_extern_c' }])
   })
 })

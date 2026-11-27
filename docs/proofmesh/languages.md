@@ -216,9 +216,9 @@ A call across a foreign-function interface is linked to the function on the othe
 
 The rules, each from the calling side to the called one:
 
-- `jni`: a Java `native` or Kotlin `external` method, at its declaration, to the C function `Java_<class>_<method>` (a `__<signature>` suffix and the `_1`, `_2`, `_3`, `_0xxxx` escapes are decoded).
+- `jni`: a Java `native` or Kotlin `external` method, at its declaration, to the C function `Java_<class>_<method>` (a `__<signature>` suffix and the `_1`, `_2`, `_3`, `_0xxxx` escapes are decoded). A Kotlin `external` with no such C function counts only where its file calls `System.loadLibrary`: Kotlin/JS declares JavaScript functions `external` too.
 - `pinvoke`: a C# method `[DllImport]` or `[LibraryImport]` marks, at its declaration, to the C functions of its `EntryPoint`, else of its own name, anywhere in the repository.
-- `cgo`: `C.f(...)` in a Go file that imports `"C"`, to the C function `f`.
+- `cgo`: `C.f(...)` in a Go file that imports `"C"`, to the C function `f`. cgo's own helpers (`C.CString` and the like) and conversions to C's scalar and `<stdint.h>` types are no calls; a conversion to a typedef of the preamble is read as a call.
 - `cgo_export`: a C call of `f`, to the Go function a `//export f` comment marks.
 - `rust_extern_c`: a Rust call of a function an `extern "C"` block of the same file declares, to the C function of its `link_name`, else its name.
 - `rust_no_mangle`: a C call of `f`, to the Rust function `#[no_mangle]` marks.

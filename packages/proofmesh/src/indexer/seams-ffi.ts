@@ -26,9 +26,13 @@ export const FFI_PRODUCER = 'seams-ffi'
 
 const C_FILE = /\.(c|h|cc|cpp|cxx|hpp|hh|hxx)$/
 /** What cgo provides itself, and C's scalar types, whose `C.int(x)` is a conversion and no call. */
-const CGO_BUILTIN = /^(CString|CBytes|GoString|GoStringN|GoBytes|(u|s)?char|(u)?short|(u)?int|(u)?long|(u)?longlong|float|double|size_t|complexfloat|complexdouble|(struct|union|enum)_\w+)$/
+const CGO_BUILTIN = /^(CString|CBytes|GoString|GoStringN|GoBytes|(u|s)?char|(u)?short|(u)?int|(u)?long|(u)?longlong|float|double|s?size_t|u?int(8|16|32|64)_t|u?intptr_t|complexfloat|complexdouble|(struct|union|enum)_\w+)$/
 const refOf = (producer: string, local: string) => `${producer}:${local}`
 const RECENT_FILES = 64
+/** How much text around a declaration is read for its modifiers and attributes: no FFI declaration's head is longer, and a hostile file cannot make the pass read more. */
+const HEAD_BYTES = 4096
+/** Comments, an unterminated one included, so no comment is searched to the end of the text again from each opener. */
+const COMMENTS = /\/\*[\s\S]*?(?:\*\/|$)|\/\/[^\n]*/g
 
 /** `Java_com_acme_Native_add__II` is `com.acme.Native.add`: `_1` is `_`, `_2` `;`, `_3` `[`, `_0xxxx` a UTF-16 unit, and `__` starts the signature. */
 export function jniName(c: string): string | undefined {
@@ -61,11 +65,19 @@ export function linkFfi<P extends { id: string }>(code: Sym[], items: Array<Item
   /** Whether a file mentions a word, asked once per file: most files mention no FFI at all and are not looked at again. */
   const said = new Map<string, boolean>()
   const mentions = (f: string, word: string) => { const k = `${f}\0${word}`; let v = said.get(k); if (v === undefined) said.set(k, (v = buf(f).includes(word))); return v }
-  /** A declaration's own text: from the end of what precedes it (so its attributes and modifiers) to its end, comments kept. */
-  const decl = (s: Sym) => { const b = buf(s.path); let i = s.start; while (i > 0 && b[i - 1] !== 0x3b && b[i - 1] !== 0x7b && b[i - 1] !== 0x7d) i--; return b.subarray(i, s.end).toString('utf8') }
-  /** Its text before any body, without comments. */
-  const head = (s: Sym) => decl(s).split('{')[0]!.replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, '')
-  const lineAt = (f: string, byte: number) => { const b = buf(f); let n = 1; for (let i = 0; i < byte && i < b.length; i++) if (b[i] === 0x0a) n++; return n }
+  /** A declaration's own span up to its body, without comments: where Java, Kotlin and C# keep their modifiers and attributes. */
+  const own = (s: Sym) => buf(s.path).subarray(s.start, Math.min(s.end, s.start + HEAD_BYTES)).toString('utf8').replace(COMMENTS, '').split('{')[0]!
+  /** The text just above a declaration: where a Go `//export` comment and Rust attributes sit, outside the symbol's span. */
+  const above = (s: Sym) => buf(s.path).subarray(Math.max(0, s.start - HEAD_BYTES), s.start).toString('utf8')
+  // Each file's newline offsets, found once, so a file of many declarations is not counted from its start for each.
+  const newlines = new Map<string, number[]>()
+  const lineAt = (f: string, byte: number) => {
+    let nl = newlines.get(f)
+    if (!nl) { nl = []; const b = buf(f); for (let i = b.indexOf(0x0a); i >= 0; i = b.indexOf(0x0a, i + 1)) nl.push(i); newlines.set(f, nl) }
+    let lo = 0, hi = nl.length
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (nl[mid]! < byte) lo = mid + 1; else hi = mid }
+    return lo + 1
+  }
   const spanOf = (s: Sym): Rel['site'] => ({ path: s.path, range: { start_byte: s.start, end_byte: s.end, start_line: lineAt(s.path, s.start), end_line: lineAt(s.path, s.end) } })
 
   const functions = code.filter((s) => s.kind === 'function' || s.kind === 'method')
@@ -93,14 +105,18 @@ export function linkFfi<P extends { id: string }>(code: Sym[], items: Array<Item
   for (const s of cByName.values()) for (const f of s) { const q = jniName(f.name); if (q) jni.set(q, [...(jni.get(q) ?? []), f]) }
   for (const s of functions) {
     const word = s.path.endsWith('.java') ? 'native' : s.path.endsWith('.kt') ? 'external' : undefined
-    if (!word || !mentions(s.path, word) || !new RegExp(`\\b${word}\\b`).test(head(s))) continue
-    const library = /System\s*\.\s*loadLibrary\s*\(\s*"([^"]+)"/.exec(text(s.path))?.[1] ?? ''
-    declare(s, jni.get(s.qualified_name) ?? [], 'jni', { module: library, name: jniMangle(s.qualified_name) })
+    if (!word || !mentions(s.path, word) || !new RegExp(`\\b${word}\\b`).test(own(s))) continue
+    const library = /System\s*\.\s*loadLibrary\s*\(\s*"([^"\n]+)"/.exec(text(s.path))?.[1] ?? ''
+    // The syntax tier names an overload with its parameter types; the JNI name of every overload is the method's.
+    const method = s.qualified_name.replace(/\(.*\)$/, ''), targets = jni.get(method) ?? []
+    // Kotlin/JS declares JavaScript functions `external` too: without a JNI function or a loaded library there is no sign of the JVM.
+    if (word === 'external' && !targets.length && !library) continue
+    declare(s, targets, 'jni', { module: library, name: jniMangle(method) })
   }
   // P/Invoke: each method a DllImport or LibraryImport attribute marks, to the C functions of its entry point.
   for (const s of functions) {
     if (!s.path.endsWith('.cs') || !(mentions(s.path, 'DllImport') || mentions(s.path, 'LibraryImport'))) continue
-    const h = head(s), attr = /\[[^\]]*?\b(?:DllImport|LibraryImport)(?:Attribute)?\s*\(([^)]*)\)/.exec(h)
+    const h = own(s), attr = /\[[^\]]*?\b(?:DllImport|LibraryImport)(?:Attribute)?\s*\(([^)]*)\)/.exec(h)
     if (!attr || !/\b(extern|partial)\b/.test(h)) continue
     const library = /^\s*"([^"]*)"/.exec(attr[1]!)?.[1] ?? '', entry = /\bEntryPoint\s*=\s*"([^"]+)"/.exec(attr[1]!)?.[1] ?? s.name
     declare(s, cTargets(entry), 'pinvoke', { module: library, name: entry })
@@ -109,8 +125,9 @@ export function linkFfi<P extends { id: string }>(code: Sym[], items: Array<Item
   // Exports to C: Go functions a `//export` comment marks and Rust functions `#[no_mangle]` marks, by the name C calls them.
   const exports = new Map<string, { rule: string; targets: Sym[] }>()
   for (const s of functions) {
-    const go = s.path.endsWith('.go') && mentions(s.path, '//export') ? /\/\/export\s+(\w+)[ \t]*\r?\n\s*func\b/.exec(decl(s))?.[1] : undefined
-    const rust = s.path.endsWith('.rs') && mentions(s.path, 'no_mangle') && /#\[\s*(unsafe\s*\(\s*)?no_mangle\s*\)?\s*\]/.test(head(s)) ? s.name : undefined
+    const go = s.path.endsWith('.go') && mentions(s.path, '//export') ? /\/\/export[ \t]+(\w+)[ \t]*\r?\n[ \t]*$/.exec(above(s))?.[1] : undefined
+    // Only the attributes directly above the function: a comment that names no_mangle is none.
+    const rust = s.path.endsWith('.rs') && mentions(s.path, 'no_mangle') && /#\[\s*(unsafe\s*\(\s*)?no_mangle\s*\)?\s*\]/.test(/(?:#\[[^[\]\n]*\][ \t]*\r?\n?[ \t]*)*$/.exec(above(s))![0]) ? s.name : undefined
     const name = go ?? rust, rule = go ? 'cgo_export' : 'rust_no_mangle'
     if (name) exports.set(name, { rule, targets: [...(exports.get(name)?.targets ?? []), s] })
   }
@@ -120,7 +137,7 @@ export function linkFfi<P extends { id: string }>(code: Sym[], items: Array<Item
     if (!mentions(f, 'extern')) continue
     const t = text(f)
     const mine = new Map<string, { c: string; library: string }>()
-    for (const b of t.matchAll(/(#\[\s*link\s*\(([^\]]*)\)\s*\]\s*)?(?:unsafe\s+)?extern\s+"C"\s*\{([^}]*)\}/g)) {
+    for (const b of t.matchAll(/(#\[\s*link\s*\(([^\]]{0,1024})\)\s*\]\s*)?(?:unsafe\s+)?extern\s+"C"\s*\{([^}]*)(?:\}|$)/g)) {
       const library = /\bname\s*=\s*"([^"]+)"/.exec(b[2] ?? '')?.[1] ?? ''
       for (const fn of b[3]!.matchAll(/(#\[\s*link_name\s*=\s*"(\w+)"\s*\]\s*)?(?:pub(?:\([^)]*\))?\s+)?(?:(?:safe|unsafe)\s+)?fn\s+(\w+)/g)) mine.set(fn[3]!, { c: fn[2] ?? fn[3]!, library })
     }
@@ -135,7 +152,7 @@ export function linkFfi<P extends { id: string }>(code: Sym[], items: Array<Item
     if (!module) continue
     const own = new Map((functions.filter((s) => s.path === f)).map((s) => [s.name, s]))
     const table = extensions.get(module) ?? new Map<string, Sym[]>()
-    for (const m of t.matchAll(/PyMethodDef\s+\w+\s*\[\s*\w*\s*\]\s*=\s*\{([\s\S]*?)\}\s*;/g)) {
+    for (const m of t.matchAll(/PyMethodDef\s+\w+\s*\[\s*\w*\s*\]\s*=\s*\{([\s\S]*?)(?:\}\s*;|$)/g)) {
       for (const e of m[1]!.matchAll(/\{\s*"(\w+)"\s*,\s*(?:\(\s*PyCFunction\s*\)\s*)?(\w+)/g)) {
         const fn = own.get(e[2]!) ? [own.get(e[2]!)!] : cTargets(e[2]!)
         if (fn.length) table.set(e[1]!, [...(table.get(e[1]!) ?? []), ...fn])
@@ -149,7 +166,7 @@ export function linkFfi<P extends { id: string }>(code: Sym[], items: Array<Item
     if (pyNames.has(f)) return pyNames.get(f)!
     const modules = new Map<string, string>(), fns = new Map<string, { module: string; name: string }>()
     for (const m of text(f).matchAll(/^[ \t]*import[ \t]+([\w.]+)(?:[ \t]+as[ \t]+(\w+))?[ \t]*$/gm)) { const last = m[1]!.split('.').at(-1)!; if (extensions.has(last)) modules.set(m[2] ?? m[1]!, last) }
-    for (const m of text(f).matchAll(/^[ \t]*from[ \t]+([\w.]+)[ \t]+import[ \t]+([\w \t,]+)$/gm)) {
+    for (const m of text(f).matchAll(/^[ \t]*from[ \t]+([\w.]+)[ \t]+import[ \t]+(\w[\w \t,]*)$/gm)) {
       const from = m[1]!.split('.').at(-1)!
       for (const part of m[2]!.split(',')) {
         const [name, alias] = part.trim().split(/\s+as\s+/)
