@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import zlib from 'node:zlib'
 import { ProofmeshError } from '../core/errors.js'
-import { Catalog } from '../meshstore/catalog.js'
+import { Catalog, noSnapshot } from '../meshstore/catalog.js'
 import { openSnapshot } from '../meshstore/snapshot.js'
 
 /**
@@ -33,7 +33,7 @@ export function galaxyFor(dataDir: string, opts: { snapshotId?: string; reposito
     const repo = catalog.resolveRepository(opts.repositoryId)
     const snapshot = opts.snapshotId ? catalog.snapshot(opts.snapshotId) : catalog.currentSnapshot(repo.id)
     if (opts.snapshotId && snapshot?.repository_id !== repo.id) throw new ProofmeshError('NOT_FOUND', `no snapshot ${opts.snapshotId} for this repository`)
-    if (!snapshot) throw new ProofmeshError('SNAPSHOT_UNAVAILABLE', 'no published snapshot for this repository; run "proofmesh index" first', { detail: 'none' })
+    if (!snapshot) throw noSnapshot(catalog, repo.id)
     const hit = memo.get(snapshot.id)
     if (hit) return hit
     // A sealed snapshot never changes, so its galaxy is built once and kept beside it in the data directory.

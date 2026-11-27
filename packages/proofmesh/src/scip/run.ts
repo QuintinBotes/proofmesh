@@ -10,7 +10,7 @@ import path from 'node:path'
 import { ProofmeshError } from '../core/errors.js'
 import { sha256File } from '../core/hash.js'
 import { REMEDY_TABLE } from '../indexer/census.js'
-import { Catalog } from '../meshstore/catalog.js'
+import { Catalog, noSnapshot } from '../meshstore/catalog.js'
 import { openSnapshot } from '../meshstore/snapshot.js'
 import { execute, exportSnapshot } from '../verification/launcher.js'
 import { indexCoverage } from './coverage.js'
@@ -93,7 +93,7 @@ export async function runScip(dataDir: string, repository: string, opts: ScipRun
         + (manual.length ? `Or run the indexer yourself in a repository you trust (${manual.map((x) => `\`${x.run}\` for ${x.l}`).join('; ')}) and name its output with: proofmesh scip add ${repo.id} <index.scip>.` : `Or run an indexer yourself and name its output with: proofmesh scip add ${repo.id} <index.scip>.`))
     }
     const snapshot = catalog.currentSnapshot(repo.id)
-    if (!snapshot) throw fail('SNAPSHOT_UNAVAILABLE', `${repo.name} has no snapshot to copy; index it first: proofmesh index ${repo.id}`)
+    if (!snapshot) throw noSnapshot(catalog, repo.id)
     const chosen: Indexer[] = opts.language
       ? [indexerFor(opts.language) ?? (() => { throw fail('INVALID_ARGUMENT', `no pinned indexer reads ${opts.language}; they are ${INDEXERS.map((i) => `${i.tool} (${i.languages.join(', ')})`).join(', ')}`) })()]
       : [...new Set(languagesOf(catalog, repo.id).map((l) => indexerFor(l)).filter((i): i is Indexer => !!i))]

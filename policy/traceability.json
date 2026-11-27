@@ -1823,6 +1823,12 @@
     "FR946": [
       "packages/proofmesh/test/parity-bench.test.ts",
       "bench/graph-bench/lib.mjs"
+    ],
+    "FR1000": [
+      "packages/proofmesh/test/jobs.test.ts"
+    ],
+    "FR1001": [
+      "e2e/no-snapshot.spec.ts"
     ]
   },
   "manual": {

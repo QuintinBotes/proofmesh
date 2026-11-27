@@ -5,7 +5,7 @@ import path from 'node:path'
 import { canonicalJson, sha256 } from '../core/hash.js'
 import { ProofmeshError } from '../core/errors.js'
 import { BUNDLE_FORMAT_VERSION, check } from '../core/schemas.js'
-import { Catalog } from '../meshstore/catalog.js'
+import { Catalog, noSnapshot } from '../meshstore/catalog.js'
 import { openSnapshot } from '../meshstore/snapshot.js'
 import { EvidenceStore } from '../evidence/store.js'
 import { runTool } from '../query/tools.js'
@@ -20,7 +20,7 @@ export function exportBundle(dataDir: string, repositoryIdOrPath: string, out: s
   try {
     const repo = catalog.repository(repositoryIdOrPath)
     const snapshot = catalog.currentSnapshot(repo.id)
-    if (!snapshot) throw new ProofmeshError('SNAPSHOT_UNAVAILABLE', 'no published snapshot for this repository; run "proofmesh index" first', { detail: 'none' })
+    if (!snapshot) throw noSnapshot(catalog, repo.id)
     const envelopes = (queries.length ? queries : [{ tool: 'workspace_status', input: {} }]).map((q) => ({ q, env: runTool(dataDir, q.tool, { ...q.input, repository_id: repo.id, snapshot_id: snapshot.id }) }))
     const ids = [...new Set(envelopes.flatMap((e) => e.env.evidence_ids))].sort()
     const db = openSnapshot(catalog, snapshot), store = new EvidenceStore(dataDir)

@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { ProofmeshError } from '../core/errors.js'
-import { Catalog } from '../meshstore/catalog.js'
+import { Catalog, noSnapshot } from '../meshstore/catalog.js'
 import { openSnapshot } from '../meshstore/snapshot.js'
 
 export type Term = { kind: 'package' | 'service' | 'channel' | 'endpoint_root'; term: string }
@@ -31,7 +31,7 @@ export function evidenceTerms(dataDir: string, repositoryId: string): { snapshot
   const catalog = Catalog.open(dataDir)
   try {
     const snapshot = catalog.currentSnapshot(repositoryId)
-    if (!snapshot) throw new ProofmeshError('SNAPSHOT_UNAVAILABLE', 'no published snapshot for this repository; run "proofmesh index" first', { detail: 'none' })
+    if (!snapshot) throw noSnapshot(catalog, repositoryId)
     const db = openSnapshot(catalog, snapshot)
     try {
       const seen = new Set<string>(), terms: Term[] = []
