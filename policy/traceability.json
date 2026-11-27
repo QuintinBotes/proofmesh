@@ -1774,6 +1774,9 @@
     "FR1111": [
       "packages/proofmesh/test/parity-bench.test.ts"
     ],
+    "FR1660": [
+      "packages/proofmesh/test/global-setup.test.ts"
+    ],
     "FR600": [
       "packages/proofmesh/test/syntax-rust-turbofish-calls.test.ts"
     ],
@@ -2104,6 +2107,9 @@
       "e2e/legend.spec.ts"
     ],
     "FR1225": [
+      "packages/proofmesh/test/layout.test.ts"
+    ],
+    "FR1620": [
       "packages/proofmesh/test/layout.test.ts"
     ],
     "FR580": [

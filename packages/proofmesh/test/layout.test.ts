@@ -77,12 +77,14 @@ describe('FR1220 positions are a pure function of the path tree and the names', 
     expect(new Set(Array.from({ length: items.length }, (_, i) => p[i * 2]! * LAYOUT_SCALE + p[i * 2 + 1]!)).size).toBe(items.length)
   })
 
-  it('FR1225 SC-002 lays out 250,000 symbols in under a second', () => {
+  it('FR1225 SC-002 lays out 250,000 symbols in under a second of CPU time (FR1620)', () => {
     const items: Placed[] = []
     for (let i = 0; i < 250000; i++) { const f = Math.floor(i / 10), path = `pkg${f % 7}/mod${f % 23}/sub${f % 41}/file${f}.ts`; items.push({ path, name: `${path.slice(0, -3)}:s${i % 10}`, line: i % 10, byte: (i % 10) * 40 }) }
-    const t0 = performance.now()
+    // The process's own CPU time, GC threads included: a busy machine stretches wall-clock time, not the work the layout does.
+    const t0 = process.cpuUsage()
     layoutPositions(items)
-    expect(performance.now() - t0).toBeLessThan(1000)
+    const t = process.cpuUsage(t0)
+    expect((t.user + t.system) / 1000).toBeLessThan(1000)
   })
 })
 
