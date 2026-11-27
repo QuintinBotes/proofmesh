@@ -51,10 +51,11 @@ missing pinned build stops the run with the install command above.
 - **Bytes:** raw, gzip (level 6, computed here) and transferred (headers and body as sent) for each script, style sheet and
   API response of the cold load. **Calls:** the duration of every API request, from resource timing.
 - **Frames:** every `requestAnimationFrame` interval for 3 s at rest, then for 5 s while the mouse pans and zooms.
-- **Interactions:** search, from typing to the status line naming the matches, five times; the Map switch, from the tab's
-  click to the Map drawn and two frames painted, first and again; the command palette (#43) over the Map, from a query set
+- **Interactions:** search, from typing to the status line naming the matches, five times; the Terrain switch (#46
+  replaced the Map), from the Terrain tab's click in Diff to the Terrain drawn and two frames painted, first and again; the
+  command palette (#43) over the Terrain, from a query set
   in its field to the frame after its count of matches changes, twenty times, and the longest main-thread task while
-  `initialize` (`--palette-query`) is typed a key at a time; symbol to evidence, from a click on the Galaxy table's Explore
+  `initialize` (`--palette-query`) is typed a key at a time; symbol to evidence, from a click on the Terrain table's Explore
   button to the Proof lens (#45) showing the symbol's source text, with the API requests between: first for the page's
   first open, then for a second symbol once the lens has drawn (the two best-connected methods or functions whose names no
   other contains). That button runs the same code as a click on the symbol's point; the canvas's own hit test is not in
@@ -74,13 +75,13 @@ reported only. The software column starts equal to the GPU column. One set of bu
 a spec's target may name a size.
 
 The budgets carried over from the first version of this benchmark are unchanged (first draw 10 s, frames 17 and 33 ms at
-p95, search 200 ms, Map switch 2 s). The one new budget, the longest main-thread task at 100 ms, is the RAIL response bar:
+p95, search 200 ms, Map switch 2 s), except that #46 tightened the first draw on a GPU to its 1 s target and the Map switch is now the Terrain switch. The one new budget, the longest main-thread task at 100 ms, is the RAIL response bar:
 a task that long delays the answer to a click visibly. It is what makes `--check` fail on a build slowed by a 200 ms task
 (`--inject-task-ms 200`); long-task durations are reported rounded, so a budget of 200 ms would let that task through.
 
 | Measure | Key | GPU | Software | Target |
 |---|---|---|---|---|
-| First drawn map, cold | `cold.first_draw_ms` | 10,000 ms | 10,000 ms | ≤ 1.0 s at 50,000 symbols (#46 SC-001) |
+| First drawn map, cold | `cold.first_draw_ms` | 1,000 ms (tightened by #46) | 10,000 ms | ≤ 1.0 s at 50,000 symbols (#46 SC-001) |
 | Final positions (layout settled), cold | `cold.settled_ms` | - | - | ≤ 0.6 s TypeORM, ≤ 1.0 s at 50,000, ≤ 2.5 s at 250,000 (#44 SC-001) |
 | Total blocking time, cold | `cold.tbt_ms` | - | - | ≤ 200 ms at 50,000 symbols (#47 SC-002) |
 | Longest main-thread task, cold | `cold.longest_task_ms` | 100 ms | 100 ms | ≤ 50 ms after first paint at 50,000 symbols (#47 SC-002) |
@@ -93,7 +94,7 @@ a task that long delays the answer to a click visibly. It is what makes `--check
 | Edge to evidence | `cold.edge_to_evidence_ms` | - | - | ≤ 150 ms p95 warm (#45 SC-001) |
 | Command palette, query to matches, p95 | `cold.palette_p95_ms` | 50 ms | 50 ms | - |
 | Command palette, longest task while typing | `cold.palette_typing_longest_task_ms` | 50 ms | 50 ms | - |
-| Map switch | `cold.map_switch_ms` | 2,000 ms | 2,000 ms | - |
+| Terrain switch | `cold.terrain_switch_ms` | 2,000 ms | 2,000 ms | - |
 | Initial JavaScript, gzip | `cold.script_gzip_kb` | - | - | ≤ 150 KB (#47 SC-001) |
 | Transferred on a cold load, before data | `cold.transferred_kb` | - | - | ≤ 250 KB before data (#47 SC-001) |
 | Browser memory, all processes | `cold.browser_rss_mb` | - | - | ≤ 300 MB at 50,000, ≤ 600 MB at 250,000 (#47 SC-005) |
@@ -127,6 +128,23 @@ What the tables say against the targets of the Observatory specs:
   sheets transferred on a cold load, before data (#47 asks 150 KB and 250 KB); browser memory 558 MB at 50,000 and 819 MB
   at 250,000 (#47 asks 300 and 600 MB); the A-to-B commit moves 62% of the TypeORM sample's shared symbols more than 2% of
   the map's width, and one snapshot in two fresh profiles is not identical (#44).
+
+### After the Terrain (#46)
+
+Measured on 2026-11-27 on the same machine and browser (ANGLE on Metal, Apple M5 Max, one-minute load average about 5),
+3 cold runs each, the Terrain branch uncommitted on d483c83. The Map switch is now the Terrain switch, from Diff back to
+the Terrain, drawn again from the payload it holds.
+
+| Fixture | First drawn map, cold | Final positions, cold | Pan and zoom p95 | Search | Terrain switch | Longest task, cold | Memory, all processes |
+|---|---|---|---|---|---|---|---|
+| TypeORM sample (7,033 symbols) | 148 ms | 212 ms | 16.7 ms | 28 ms | 50 ms | 59 ms | 382 MB |
+| Synthetic, 50,000 symbols | 172 ms | 262 ms | 16.7 ms | 22 ms | 83 ms | 84 ms | 440 MB |
+| Synthetic, 250,000 symbols | 211 ms | 389 ms | 16.8 ms | 53 ms | 204 ms | 168 ms, over the 100 ms budget (#208) | 629 MB |
+
+`--check` exits 0 on the TypeORM sample and at 50,000 symbols, where #46 SC-001 is met (first draw at most 1.0 s, pan
+and zoom p95 at most 16.7 ms). At 250,000 the pan and zoom p95 is 16.8 ms against #46's and #42's 33 ms, and `--check`
+exits 1 on the longest task alone, as it did before. Initial JavaScript is 208 KB gzip (409 KB with cosmos.gl). On the
+TypeORM sample the A-to-B commit moves no shared symbol more than 2% of the map's width (max 1.93%).
 
 ### After the path-tree layout (#44)
 

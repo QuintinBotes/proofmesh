@@ -26,12 +26,14 @@ test('Explore opens on starting points, re-centres on a neighbour, and Back retu
 })
 
 test('FR640 the conclusion stays busy until every query in flight has answered, so a click during the first load is not reported done early', async ({ page }) => {
-  // Hold the first load's get_overview and the clicked starting point's card, then let the first load finish alone.
+  // Hold the first load (the Terrain's payload, since #46) and the clicked starting point's card, then let the first load finish alone.
   let releaseOverview!: () => void, releaseFocus!: () => void, focusAsked!: () => void
   const overviewHeld = new Promise<void>((r) => { releaseOverview = r }), focusHeld = new Promise<void>((r) => { releaseFocus = r }), asked = new Promise<void>((r) => { focusAsked = r })
-  await page.route('**/api/v1/tools/get_overview', async (route) => { await overviewHeld; await route.continue() })
+  await page.route('**/api/v1/galaxy', async (route) => { await overviewHeld; await route.continue() })
   await page.route('**/api/v1/tools/get_symbol_card', async (route) => { focusAsked(); await focusHeld; await route.continue() })
+  const firstLoad = page.waitForRequest((r) => new URL(r.url()).pathname === '/api/v1/galaxy')
   await page.goto(view.launchUrl)
+  await firstLoad
   await page.getByRole('tab', { name: 'Explore' }).click()
   await page.getByRole('region', { name: 'Start exploring' }).getByRole('button').filter({ hasText: 'packages/billing/src/invoice:invoiceTotal' }).click()
   await asked

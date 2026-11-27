@@ -26,7 +26,7 @@ export const LEGEND: Array<{ label: string; color: string; dashed?: boolean }> =
 
 /** Layout is derived, never evidence (FR068): every view and every export says so. */
 export const NO_MEANING = 'Position carries no meaning; only drawn lines are relationships.'
-/** The Galaxy's positions come from the path tree (FR1224): they show containment, and nearness is still no relationship. */
+/** The Terrain's positions come from the path tree (FR1224): they show containment, and nearness is still no relationship. */
 export const CONTAINMENT = 'Position shows containment: directory, then file, then name. Nearness is not a relationship; only drawn lines are relationships.'
 
 const ESCAPES: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }
@@ -41,7 +41,8 @@ export function caveatLines(c: Caveats, source: Source): string[] {
     ...c.limits.map((l) => `limit: ${l}`),
     ...c.coverage.map((l) => `coverage: ${l}`),
     source ? `source included with consent: ${source.path} from line ${source.startLine}` : 'no source code included',
-    NO_MEANING,
+    // The Terrain's positions are its layout's containment (SC-003); every other view's carry no meaning.
+    c.view === 'Terrain' ? CONTAINMENT : NO_MEANING,
   ]
 }
 
