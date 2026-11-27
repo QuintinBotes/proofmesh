@@ -11,7 +11,7 @@ const STATUS = [
 ].join('\n')
 
 type Run = { exitCode: number; stdout: string; stderr: string }
-type World = { list?: Run | string; fresh?: (n: number) => Run | string; jobs?: () => unknown[]; snapshot?: () => { id: string; published: number }; slow?: number; surface?: 'terminal' | null; cwd?: string }
+type World = { list?: Run | string | ((n: number) => Run | string); fresh?: (n: number) => Run | string; jobs?: () => unknown[]; snapshot?: () => { id: string; published: number }; slow?: number; surface?: 'terminal' | null; cwd?: string }
 
 const ok = (stdout: string): Run => ({ exitCode: 0, stdout, stderr: '' })
 const fresh = (current: boolean, snapshot = 'snap_1', changed = 0) => ok(JSON.stringify({ repository_id: 'repo_app', name: 'app', snapshot_id: snapshot, current, changed_count: changed, changed: [] }))
@@ -20,7 +20,7 @@ const fresh = (current: boolean, snapshot = 'snap_1', changed = 0) => ok(JSON.st
 function world(on: Parameters<Parameters<typeof test>[1]>[1], w: World = {}) {
   const clock = mock.clock(on, { now: NOW })
   const lines: Array<string | undefined> = [], runs: string[][] = [], mcp: unknown[] = [], registered: unknown[] = [], log: string[] = []
-  let running = 0, most = 0, freshCalls = 0
+  let running = 0, most = 0, freshCalls = 0, listCalls = 0
   on('session.start', () => ({ cwd: w.cwd ?? '/work/app/src' }))
   on('command.register', ($, e) => { registered.push(e); return { value: undefined } })
   on('ui.status', ($, e) => { lines.push(e.text); return { value: undefined } })
@@ -31,7 +31,7 @@ function world(on: Parameters<Parameters<typeof test>[1]>[1], w: World = {}) {
     try {
       if (w.slow) await clock.sleep(w.slow)
       const [, cmd, , flag] = e.argv
-      const r = cmd === 'repo' ? w.list ?? ok(LIST) : flag === '--fresh' ? (w.fresh ?? (() => fresh(true)))(freshCalls++) : ok(STATUS)
+      const r = cmd === 'repo' ? (typeof w.list === 'function' ? w.list(listCalls++) : w.list ?? ok(LIST)) : flag === '--fresh' ? (w.fresh ?? (() => fresh(true)))(freshCalls++) : ok(STATUS)
       return typeof r === 'string' ? { deny: r } : { value: r }
     } finally { running-- }
   })
@@ -56,11 +56,23 @@ test('FR481 scenario 1: at session start in a registered repository with a curre
   await start($, w)
   expect(w.line()).toBe('current snap_1 (5m)')
   expect(w.runs).toEqual([['proofmesh', 'repo', 'list'], ['proofmesh', 'status', 'repo_app', '--fresh', '--json']])
-  expect(w.mcp).toEqual([{ server: 'plugin:proofmesh:proofmesh', tool: 'workspace_status', args: { repository_id: 'repo_app' } }])
-  // While current, the age keeps up and no process runs.
-  await w.clock.advance(60_000)
-  expect(w.line()).toBe('current snap_1 (6m)')
+  // A compact envelope, so the module's call does not use up the full envelope the agent's first answer from this snapshot gets over the same connection.
+  expect(w.mcp).toEqual([{ server: 'plugin:proofmesh:proofmesh', tool: 'workspace_status', args: { repository_id: 'repo_app', envelope: 'compact' } }])
+  // While current, the age keeps up, and the tree is checked once a minute only.
+  await w.clock.advance(55_000)
+  expect(w.line()).toBe('current snap_1 (5m)')
   expect(w.runs).toHaveLength(2)
+  await w.clock.advance(5000)
+  expect(w.line()).toBe('current snap_1 (6m)')
+  expect(w.runs.slice(2)).toEqual([['proofmesh', 'status', 'repo_app', '--fresh', '--json']])
+})
+
+test('FR482: a change made without an edit tool (a branch switch, an IDE) moves the line off current within a minute', async ($, on) => {
+  const w = world(on, { fresh: (n) => (n === 0 ? fresh(true) : fresh(false, 'snap_1', 3)) })
+  await start($, w)
+  expect(w.line()).toBe('current snap_1 (5m)')
+  await w.clock.advance(60_000)
+  expect(w.line()).toBe('behind (3 files changed)')
 })
 
 test('FR482 scenario 2: an Edit to a tracked file makes the line read behind (1 file edited), and current again within one poll once the debounced index publishes', async ($, on) => {
@@ -154,6 +166,20 @@ test('FR485: a proofmesh call that fails or times out reads unknown (<reason>), 
   expect(w.line()).toBe('unknown (still running after 30000ms)')
 })
 
+test('FR485: a failed call reads the error proofmesh printed last, not a warning before it', async ($, on) => {
+  const w = world(on, { fresh: () => ({ exitCode: 2, stdout: '', stderr: 'warning: repo_app root /work/app is under a temporary directory and may disappear\nproofmesh: NOT_FOUND: repository repo_app is not registered\n' }) })
+  await start($, w)
+  expect(w.line()).toBe('unknown (proofmesh: NOT_FOUND: repository repo_app is not registered)')
+})
+
+test('FR485: a repo list that fails at session start is asked again by the next poll', async ($, on) => {
+  const w = world(on, { list: (n) => (n === 0 ? 'proofmesh: $.process.run(proofmesh) aborted: still running after 30000ms' : ok(LIST)) })
+  await start($, w)
+  expect(w.line()).toBe('unknown (still running after 30000ms)')
+  await w.clock.advance(5000)
+  expect(w.line()).toBe('current snap_1 (5m)')
+})
+
 test('FR485 SC-003: the tool.call hook passes the call on before it starts any process', async ($, on) => {
   const w = world(on, { fresh: (n) => fresh(n === 0) })
   await start($, w)
@@ -189,4 +215,17 @@ test('FR487: a session with no surface draws nothing and runs nothing until /pm-
   expect(w.runs).toEqual([])
   expect((await $.command.run({ command: 'pm-status', args: '' })).text).toMatch(/^current snap_1 \(6m\)\nrepository app \(repo_app\)/)
   expect(w.lines).toEqual([])
+})
+
+test('FR484: in a session with no surface, each /pm-status reads the state again, so an index published since the last one shows', async ($, on) => {
+  let tree: 'current' | 'edited' | 'published' = 'current'
+  const w = world(on, { fresh: () => fresh(tree !== 'edited', tree === 'published' ? 'snap_2' : 'snap_1'), snapshot: () => (tree === 'published' ? { id: 'snap_2', published: NOW } : { id: 'snap_1', published: PUBLISHED }) })
+  const status = async () => (await $.command.run({ command: 'pm-status', args: '' })).text
+  await start($, w, null)
+  expect(await status()).toMatch(/^current snap_1 \(5m\)\n/)
+  tree = 'edited'
+  await $.tool.call({ tool: 'Edit', file_path: '/work/app/src/a.ts', old_string: 'a', new_string: 'b' })
+  expect(await status()).toMatch(/^behind \(1 file edited\)\n/)
+  tree = 'published'
+  expect(await status()).toMatch(/^current snap_2 \(0s\)\n.*\nfiles edited since: none\n/)
 })

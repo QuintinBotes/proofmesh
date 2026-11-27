@@ -6,17 +6,19 @@ import { deepestRoot } from './repos.mjs'
 const EDITS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit'])
 const POLL_MS = 5000
 const IDLE_POLLS = (10 * 60_000) / POLL_MS
+// While current, the tree is checked once a minute: a branch switch or an edit made outside Claude moves it too.
+const CURRENT_POLLS = 60_000 / POLL_MS
 
 let cwd = '', draws = false, ready, repo = null
 let kind = '', text = '', snapshot = null, published = 0, changed = 0
 const edited = new Set()
-let edits = 0, idle = 0, busy = false, queue = Promise.resolve(), shown
+let edits = 0, idle = 0, ticks = 0, busy = false, queue = Promise.resolve(), shown
 
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`
 const age = (ms) => (ms < 60_000 ? `${Math.max(0, Math.round(ms / 1000))}s` : ms < 3_600_000 ? `${Math.floor(ms / 60_000)}m` : ms < 86_400_000 ? `${Math.floor(ms / 3_600_000)}h` : `${Math.floor(ms / 86_400_000)}d`)
 // The engine prefixes a refused call's message with where it failed; the last part says why.
 const why = (err) => String(err?.message ?? err).split(': ').pop()
-const firstLine = (s) => s.trim().split('\n')[0] || 'no output'
+const lastLine = (s) => s.trim().split('\n').pop() || 'no output'
 
 /** Runs `proofmesh <args>`, one at a time for the whole module. */
 function proofmesh($, args) {
@@ -56,9 +58,9 @@ async function refresh($) {
   const seen = edits
   try {
     const f = await proofmesh($, ['status', repo.id, '--fresh', '--json'])
-    if (f.exitCode !== 0) return await (f.stderr.includes('SNAPSHOT_UNAVAILABLE') ? show($, 'missing') : show($, 'unknown', `unknown (${firstLine(f.stderr)})`))
+    if (f.exitCode !== 0) return await (f.stderr.includes('SNAPSHOT_UNAVAILABLE') ? show($, 'missing') : show($, 'unknown', `unknown (${lastLine(f.stderr)})`))
     const fresh = JSON.parse(f.stdout)
-    const status = await callTool($, 'workspace_status', { repository_id: repo.id })
+    const status = await callTool($, 'workspace_status', { repository_id: repo.id, envelope: 'compact' })
     snapshot = status.snapshot.id
     published = Date.parse(status.snapshot.published_at)
     changed = fresh.changed_count
@@ -74,27 +76,34 @@ async function refresh($) {
   }
 }
 
-/** Finds the repository and its state once; the timer then keeps the line current. */
+/** Finds the repository and its state; the timer then keeps the line current. */
 async function init($) {
   try {
     const listed = await proofmesh($, ['repo', 'list'])
-    if (listed.exitCode !== 0) return await show($, 'unknown', `unknown (${firstLine(listed.stderr)})`)
+    if (listed.exitCode !== 0) return await show($, 'unknown', `unknown (${lastLine(listed.stderr)})`)
     const real = (await $.fs.stat(cwd, { resolve: true }).catch(() => undefined))?.realPath ?? cwd
     repo = deepestRoot(listed.stdout, real, cwd.includes('\\') ? '\\' : '/')
   } catch (err) {
-    return await show($, 'unknown', /failed to start/.test(String(err?.message)) ? 'not installed' : `unknown (${why(err)})`)
+    return await (/failed to start/.test(String(err?.message)) ? show($, 'not installed') : show($, 'unknown', `unknown (${why(err)})`))
   }
   if (!repo) return await show($, 'not registered here')
   await refresh($)
-  if (draws) $.clock.every(POLL_MS, () => tick($))
 }
 
 async function tick($) {
-  if (kind !== 'current' && idle++ < IDLE_POLLS) await refresh($)
+  const awake = idle++ < IDLE_POLLS
+  if (awake && !repo && kind === 'unknown') await look($)
+  else if (awake && repo && (kind !== 'current' || ++ticks % CURRENT_POLLS === 0)) await refresh($)
   else if (kind === 'current') await show($, 'current')
 }
 
-const look = ($) => (ready ??= init($))
+// A lookup that ended unknown is tried again by the next poll or /pm-status; not registered here and not installed stay.
+const look = ($) => (ready ??= init($).then(() => { if (!repo && kind === 'unknown') ready = undefined }))
+
+async function start($) {
+  await look($)
+  if (repo || kind === 'unknown') $.clock.every(POLL_MS, () => tick($))
+}
 
 async function noteEdit($, e) {
   const target = e.file_path ?? e.notebook_path
@@ -112,7 +121,7 @@ export function register(on) {
     cwd = e.cwd
     draws = e.surface !== null
     // Not awaited, so the session starts at once; a session with nothing to draw on looks only when /pm-status asks.
-    if (draws) $.clock.after(0, () => look($))
+    if (draws) $.clock.after(0, () => start($))
     try {
       await $.command.register({ name: 'pm-status', description: "Show the Proofmesh snapshot's state for this repository, at once and without a model turn", immediate: true })
     } catch {}
@@ -136,12 +145,15 @@ export function register(on) {
 
   on('command.run', { command: 'pm-status' }, async ($) => {
     idle = 0
+    const first = ready === undefined
     await look($)
     if (!repo) return { text, isTextDisplayOnly: true }
+    // The state may be older than the last poll, or there is no poll at all without a surface.
+    if (!first) await refresh($)
     const lines = [await line($), `repository ${repo.name} (${repo.id}) at ${repo.root}${published ? `, snapshot published ${age((await $.clock.now()) - published)} ago` : ''}`, `files edited since: ${edited.size ? [...edited].join(', ') : 'none'}`]
     try {
       const r = await proofmesh($, ['status', repo.id])
-      lines.push(...(r.exitCode === 0 ? r.stdout.split('\n').filter((l) => /^(index job |adapters available|snapshot )/.test(l)) : [firstLine(r.stderr)]))
+      lines.push(...(r.exitCode === 0 ? r.stdout.split('\n').filter((l) => /^(index job |adapters available|snapshot )/.test(l)) : [lastLine(r.stderr)]))
     } catch (err) {
       lines.push(`proofmesh status failed: ${why(err)}`)
     }
