@@ -4,7 +4,7 @@
 export interface Envelope {
 schema_version: "0.1"
 query_id: string
-tool: ("workspace_status" | "list_repositories" | "list_snapshots" | "list_workspaces" | "find_symbols" | "get_symbol" | "get_relationships" | "trace_paths" | "read_evidence" | "get_overview" | "analyze_impact" | "find_tests" | "search_sources" | "get_memory" | "verify_claim" | "request_index" | "get_job" | "get_claims" | "save_memory" | "get_table_reach" | "get_property_reads" | "get_external_usage" | "find_query_source" | "compare_snapshots" | "list_queries" | "get_ecosystem" | "prepare_verification" | "get_verification" | "impact_completeness" | "get_symbols_at" | "get_session_trail" | "find_stale_mentions" | "find_unused" | "find_cycles" | "find_entry_points" | "find_hubs" | "get_context_map" | "plan_rename" | "search_structure" | "search_concepts" | "get_symbol_card")
+tool: ("workspace_status" | "list_repositories" | "list_snapshots" | "list_workspaces" | "find_symbols" | "get_symbol" | "get_relationships" | "trace_paths" | "read_evidence" | "get_overview" | "analyze_impact" | "find_tests" | "search_sources" | "get_memory" | "verify_claim" | "request_index" | "get_job" | "get_claims" | "save_memory" | "get_table_reach" | "get_property_reads" | "get_external_usage" | "find_query_source" | "compare_snapshots" | "list_queries" | "get_ecosystem" | "prepare_verification" | "get_verification" | "impact_completeness" | "get_symbols_at" | "get_session_trail" | "find_stale_mentions" | "find_unused" | "find_cycles" | "find_entry_points" | "find_hubs" | "get_context_map" | "plan_rename" | "plan_move" | "search_structure" | "search_concepts" | "get_symbol_card")
 /**
  * The sealed snapshot or link file that answered; null for a catalog tool, which answers from the list of registered repositories.
  */
@@ -3293,6 +3293,113 @@ name: string
  * The named workspaces and their member repositories: the names get_ecosystem takes. Needs no repository_id; answers from the catalog.
  */
 export interface ListWorkspacesInput {
+/**
+ * compact leaves out the snapshot-wide parts of the envelope (unresolved reasons, standing limitations) that an earlier answer from the same snapshot already gave; query-specific limits stay. Over MCP, answers after the first full one per snapshot are compact unless full is asked for.
+ */
+envelope?: ("full" | "compact")
+}
+
+/**
+ * Every site a move must change, by file and line (FR1280 to FR1284).
+ */
+export interface PlanMoveData {
+/**
+ * The file (kind file) or the symbol that moves.
+ */
+subject: {
+/**
+ * file, or the symbol's kind.
+ */
+kind: string
+id?: string
+key?: string
+name?: string
+path: string
+line?: number
+}
+to_path: string
+/**
+ * One row per site, in path then line order.
+ */
+sites: {
+path: string
+line: number
+/**
+ * import or export: a statement that imports or re-exports the moved code, or the moved file's own import. add_import: the first use of a moved symbol in its old file, which must import it from to_path. dependency: the first use, inside a moved symbol, of a declaration its new file must import. string: a string literal that names the moved file's path. mention: a doc's link or inline code that names it.
+ */
+kind: ("import" | "export" | "add_import" | "dependency" | "string" | "mention")
+/**
+ * observed: the snapshot resolved the import or the use. inferred: a path seam, to review before changing.
+ */
+basis: ("observed" | "inferred")
+/**
+ * The module specifier, path or mention as written at the line.
+ */
+specifier?: string
+/**
+ * What it must be after the move, in the same style (extension, ./, a directory index); absent when it is written through a path alias, a package name or a relative Python import.
+ */
+new_specifier?: string
+/**
+ * For add_import and dependency: the name to import.
+ */
+name?: string
+/**
+ * true when the statement names other things of the old file too, which stay: split it.
+ */
+split?: boolean
+seam?: ("path" | "doc_mention")
+/**
+ * The rule that found the seam.
+ */
+rule?: string
+}[]
+counts: {
+observed: number
+inferred: number
+}
+}
+
+/**
+ * A read-only plan of every site a move of a file, or of a top-level symbol to another file, must change, with file and line: each statement that imports or re-exports it, with its specifier as written and as it must be; for a file, its own relative imports that its new place changes; for a symbol, the use in its old file that will need an import and what it uses that its new file must import, each observed; and strings and doc mentions that name the file's path, each inferred and to be reviewed. Changes no file.
+ */
+export interface PlanMoveInput {
+repository_id?: string
+/**
+ * Default is the repository's current snapshot.
+ */
+snapshot_id?: string
+/**
+ * The top-level symbol to move to to_path: its id, or { name, path }. Give path, subject_id or key.
+ */
+subject_id?: (string | {
+/**
+ * The name a lean row shows (Driver.escape), or the plain name (escape); it must name one symbol in the file.
+ */
+name: string
+/**
+ * The repository-relative path of the file that declares the symbol.
+ */
+path: string
+})
+/**
+ * The symbol to move by its stable_key, in place of subject_id.
+ */
+key?: string
+/**
+ * The repository-relative path of a file to move, in place of a symbol.
+ */
+path?: string
+/**
+ * Where it goes: for a file, the repository-relative path it is to have, which no file has yet; for a symbol, the file it is to be declared in, new or existing.
+ */
+to_path: string
+limits?: {
+timeout_ms?: number
+max_rows?: number
+max_bytes?: number
+max_depth?: number
+}
 /**
  * compact leaves out the snapshot-wide parts of the envelope (unresolved reasons, standing limitations) that an earlier answer from the same snapshot already gave; query-specific limits stay. Over MCP, answers after the first full one per snapshot are compact unless full is asked for.
  */

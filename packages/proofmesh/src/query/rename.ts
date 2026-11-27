@@ -61,11 +61,12 @@ export function planRename(db: Database.Database, store: EvidenceStore, subjectI
    * The line of the first code occurrence of one of `list` in a byte span; the span's first line when its text is unavailable;
    * undefined when the span does not write the name (`super(...)`, a call through an import alias), which a rename leaves as it is.
    */
-  const lineIn = (hash: string | null, start: number, end: number, line: number, list: string[]): number | undefined => {
+  const lineIn = (hash: string | null, start: number, end: number, line: number, list: string[], member = false): number | undefined => {
     const t = text(hash)
     if (!t) return line
     const span = blank(t.subarray(start, end).toString('utf8'))
-    const at = names(list).exec(span)
+    // A member's name after a dot first: a receiver written with the same name may come before it, on a line of its own.
+    const at = (member ? new RegExp(`(?<=\\.\\s*)${names(list).source}`).exec(span) : null) ?? names(list).exec(span)
     return at ? line + lines(span.slice(0, at.index)) : undefined
   }
   /** The line of the first occurrence of the name anywhere in a byte span, strings included, else the span's first line. */
@@ -93,8 +94,12 @@ export function planRename(db: Database.Database, store: EvidenceStore, subjectI
   const importers = db.prepare("select a.id, a.source_id from assertion a where a.type = 'imports' and a.resolution = 'resolved' and a.target_kind = 'file' and a.target_id = ?")
   const queue = [subject.file_id], seen = new Set(queue), scanned = new Set<string>()
   const carry = (fileId: string, p: string) => { if (!seen.has(fileId)) { seen.add(fileId); queue.push(fileId); carriers.push(p) } }
-  /** A file's own export lists (`export { x }`, `export { x as y }`) and default export of the symbol. */
-  const ownExports = (fileId: string) => {
+  /**
+   * A file's own export lists (`export { x }`, `export { x as y }`) and default export of the symbol; `locals` are the names the file
+   * imported it under (`import { x as y }`), whose export makes the file carry it but renames nothing.
+   * shortcut: such an alias is followed into the file that exports it, not on through files that re-export the alias; follow it when a barrel chain needs it.
+   */
+  const ownExports = (fileId: string, locals: string[] = []) => {
     if (scanned.has(fileId)) return
     scanned.add(fileId)
     const f = fileOf.get(fileId) as { id: string; path: string; hash: string | null }
@@ -105,7 +110,8 @@ export function planRename(db: Database.Database, store: EvidenceStore, subjectI
         if (topLevel) add({ path: f.path, line: lines(code.slice(0, x.index + x[0].indexOf(x[1] ?? x[2]!) + h.at)) + 1, kind: 'export', basis: 'observed', key: subject.key })
         if (h.alias && !known.includes(h.alias)) known.push(h.alias)
       }
-      if (hits.length && fileId !== subject.file_id) carry(fileId, f.path)
+      const viaLocal = (x[1] ?? x[2]!).split(',').some((n) => locals.includes(n.trim().split(/\s+as\s+/)[0]!))
+      if ((hits.length || viaLocal) && fileId !== subject.file_id) carry(fileId, f.path)
       if (hits.length && fileId === subject.file_id) exported = true
     }
   }
@@ -118,14 +124,15 @@ export function planRename(db: Database.Database, store: EvidenceStore, subjectI
       for (const e of evidenceOf.all(imp.id) as Ev[]) {
         const stmt = text(e.hash)?.subarray(e.start_byte, e.end_byte).toString('utf8')
         if (!stmt) continue
-        const braces = /\{([^}]*)\}/.exec(stmt), reExport = /^\s*export\b/.test(stmt)
+        // `import { x } from`, `export { x } from`, or Python's `from m import x`.
+        const braces = /\{([^}]*)\}/.exec(stmt) ?? /^\s*from\s+\S+\s+import\s+\(?([^)#]*)/.exec(stmt), reExport = /^\s*export\b/.test(stmt)
         const hits = braces ? specifiers(blank(braces[1]!)) : []
         for (const h of hits) {
-          if (topLevel) add({ path: e.path, line: e.start_line + lines(stmt.slice(0, braces!.index + 1 + h.at)), kind: reExport ? 'export' : 'import', basis: 'observed', key: subject.key })
+          if (topLevel) add({ path: e.path, line: e.start_line + lines(stmt.slice(0, braces!.index + braces![0].lastIndexOf(braces![1]!) + h.at)), kind: reExport ? 'export' : 'import', basis: 'observed', key: subject.key })
           if (reExport && h.alias && !known.includes(h.alias)) known.push(h.alias)
         }
         if (reExport && (hits.length || /^\s*export\s*\*\s*from/.test(stmt))) carry(imp.source_id, e.path)
-        else if (hits.length) ownExports(imp.source_id)
+        else if (hits.length) ownExports(imp.source_id, hits.flatMap((h) => (h.alias ? [h.alias] : [])))
       }
     }
   }
@@ -175,7 +182,7 @@ export function planRename(db: Database.Database, store: EvidenceStore, subjectI
         // An implements or overrides site is the other member's declaration, listed with the group.
         if (a.type === 'implements' || a.type === 'overrides') continue
         for (const e of evs) {
-          const line = lineIn(e.hash, e.start_byte, e.end_byte, e.start_line, own)
+          const line = lineIn(e.hash, e.start_byte, e.end_byte, e.start_line, own, a.type === 'calls' && container !== '')
           if (line !== undefined) add({ path: e.path, line, kind: a.type === 'calls' ? 'call' : 'reference', basis: 'observed', key: m.key })
         }
       } else if (OBSERVED.has(a.origin) && a.type === 'calls') {

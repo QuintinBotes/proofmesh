@@ -1929,6 +1929,36 @@
     "FR988": [
       "packages/proofmesh/test/rename-plan.test.ts"
     ],
+    "FR1280": [
+      "packages/proofmesh/test/move-plan.test.ts"
+    ],
+    "FR1281": [
+      "packages/proofmesh/test/move-plan.test.ts"
+    ],
+    "FR1282": [
+      "packages/proofmesh/test/move-plan.test.ts"
+    ],
+    "FR1283": [
+      "packages/proofmesh/test/move-plan.test.ts"
+    ],
+    "FR1284": [
+      "packages/proofmesh/test/move-plan.test.ts"
+    ],
+    "FR1285": [
+      "packages/proofmesh/test/move-plan.test.ts"
+    ],
+    "FR1286": [
+      "packages/proofmesh/test/rename-plan.test.ts"
+    ],
+    "FR1287": [
+      "packages/proofmesh/test/rename-plan.test.ts"
+    ],
+    "FR1288": [
+      "packages/proofmesh/test/rename-plan.test.ts"
+    ],
+    "FR1289": [
+      "packages/proofmesh/test/rename-plan.test.ts"
+    ],
     "FR1040": [
       "packages/proofmesh/test/constrained.test.ts"
     ],

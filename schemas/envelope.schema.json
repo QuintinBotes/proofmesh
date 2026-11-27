@@ -66,6 +66,7 @@
         "find_hubs",
         "get_context_map",
         "plan_rename",
+        "plan_move",
         "search_structure",
         "search_concepts",
         "get_symbol_card"

@@ -17,3 +17,9 @@ export async function connect(dialect: string): Promise<DataSource> {
 export function quoteLoosely(driver: any, name: string): string {
     return driver.escape(name)
 }
+
+/** A receiver named like the method it calls, on the line above the call. */
+export function quoteBy(escape: Driver, name: string): string {
+    return escape
+        .escape(name)
+}

@@ -121,6 +121,17 @@ describe('FR980 to FR987 the rename plan on fixtures/rename-parity', () => {
     for (const s of [PINNED[0]!, PINNED[9]!, { path: 'src/index.ts', name: 'packageName' }]) expect(plan(dataDir, s).limitations, s.name).not.toContain(LIMIT)
   })
 
+  it('FR1288 an import alias that the entry exports makes the symbol public, and its sites are still the language service\'s', () => {
+    const p = plan(dataDir, { path: 'src/util/StringUtils.ts', name: 'bracketed' })
+    expect(p.limitations).toContain('public export: consumers outside this repository are not listed')
+    expect(observed(p)).toEqual(truth(p.subject.path, p.subject.line, 'bracketed'))
+  })
+
+  it('FR1289 a call whose receiver has the method\'s name on the line above is placed at the method\'s name, as the language service places it', () => {
+    expect(observed(plan(dataDir, PINNED[4]!))).toEqual(expect.arrayContaining(['src/connect.ts:24']))
+    expect(observed(plan(dataDir, PINNED[4]!))).not.toContain('src/connect.ts:23')
+  })
+
   it('FR985 a new name that a symbol of the same scope already has is said, in the scope of every member renamed together too', () => {
     expect(plan(dataDir, PINNED[2]!, 'hasMetadata').limitations).toContain('hasMetadata already names a method at src/data-source/DataSource.ts:27 in the same scope.')
     expect(plan(dataDir, PINNED[4]!, 'quoteName').limitations).toContain('quoteName already names a method at src/driver/mysql/MysqlDriver.ts:22 in the same scope.')
@@ -156,6 +167,15 @@ describe('FR984 scenario 3: the seams of fixtures/rename-seams are inferred rows
       for (const n of e.not_seams ?? []) expect(inferred.some((s) => s.path === n.path && s.line === n.line), `${n.path}:${n.line}`).toBe(false)
     })
   }
+
+  it('FR1286 the C# adapter gives every site of a repeated reference: a property read on two lines of one method is two sites', () => {
+    expect(observed(plan(dataDir, { name: 'CustomerName', path: 'src/Wire/OrderDto.cs' }))).toEqual(expect.arrayContaining(['src/Wire/OrderDto.cs:27', 'src/Wire/OrderDto.cs:28']))
+  })
+
+  it('FR1287 a Python class or function named as a type or a value, not only called, is a site at every use, and so is its name in a from-import', () => {
+    expect(observed(plan(dataDir, { name: 'Totals', path: 'tools/totals.py' }))).toEqual(['tools/report.py:1', 'tools/report.py:4', 'tools/report.py:5', 'tools/totals.py:1', 'tools/totals.py:6'])
+    expect(observed(plan(dataDir, { name: 'add', path: 'tools/totals.py' }))).toEqual(['tools/report.py:1', 'tools/report.py:7', 'tools/report.py:8', 'tools/totals.py:6'])
+  })
 
   it('no code site of a TypeScript subject is inferred: the observed sites are the language service\'s', () => {
     const truth = languageService(repo)

@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "tools/plan_move.input.schema.json",
+  "title": "plan_move input",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "to_path"
+  ],
+  "properties": {
+    "repository_id": {
+      "type": "string",
+      "pattern": "^repo_[0-9a-z]+$"
+    },
+    "snapshot_id": {
+      "type": "string",
+      "pattern": "^snap_[0-9a-z]+$",
+      "description": "Default is the repository's current snapshot."
+    },
+    "subject_id": {
+      "oneOf": [
+        {
+          "type": "string",
+          "pattern": "^sym_[0-9a-z]+$"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "path"
+          ],
+          "description": "A symbol by name and file, in place of its id.",
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The name a lean row shows (Driver.escape), or the plain name (escape); it must name one symbol in the file."
+            },
+            "path": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The repository-relative path of the file that declares the symbol."
+            }
+          }
+        }
+      ],
+      "description": "The top-level symbol to move to to_path: its id, or { name, path }. Give path, subject_id or key."
+    },
+    "key": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The symbol to move by its stable_key, in place of subject_id."
+    },
+    "path": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The repository-relative path of a file to move, in place of a symbol."
+    },
+    "to_path": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Where it goes: for a file, the repository-relative path it is to have, which no file has yet; for a symbol, the file it is to be declared in, new or existing."
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "timeout_ms": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_rows": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_depth": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "envelope": {
+      "enum": [
+        "full",
+        "compact"
+      ],
+      "description": "compact leaves out the snapshot-wide parts of the envelope (unresolved reasons, standing limitations) that an earlier answer from the same snapshot already gave; query-specific limits stay. Over MCP, answers after the first full one per snapshot are compact unless full is asked for."
+    }
+  },
+  "description": "A read-only plan of every site a move of a file, or of a top-level symbol to another file, must change, with file and line: each statement that imports or re-exports it, with its specifier as written and as it must be; for a file, its own relative imports that its new place changes; for a symbol, the use in its old file that will need an import and what it uses that its new file must import, each observed; and strings and doc mentions that name the file's path, each inferred and to be reviewed. Changes no file."
+}

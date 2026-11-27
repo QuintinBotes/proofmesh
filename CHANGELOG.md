@@ -42,6 +42,13 @@ A cold build in less memory and time, with the same facts (part of #32; FR1240 t
 - Not done: the store size bar (the snapshot holds rows and indexes, not source text, so it needs a format change), and bounding TypeScript memory per program below what the checker needs.
 - Upgrade note: the TypeScript adapter is 0.2.6, so the next index of a TypeScript repository reanalyses every file once.
 
+A read-only move plan, and every site of a reference in C# and Python (part of #38; FR1280 to FR1289):
+
+- `plan_move` (the `extra` MCP profile) lists every site a move of a file, or of a top-level symbol to another file, must change, one row per file and line, and changes no file. For a file: each statement that imports or re-exports it, with its specifier as written and as it must be in the same style, its own relative imports that its new place changes, and, inferred, strings and doc mentions that name its path. For a symbol: the statements that import it or re-export its file, the old file's use that will need an import, and what it uses that its new file must import. A test moves the fixture's file as planned, indexes again and finds no TypeScript error, no unresolved import and no stale mention.
+- The C# adapter (0.1.1) gives a `references` row every site of a repeated use (protocol 1.3), so `plan_rename` lists each line where a C# member is read twice in one method.
+- The Python adapter (0.1.1) records a use of a repository class or function as a type or a value as a `references` row, at every site, and `plan_rename` lists the names of a `from m import a, b`. Before, a Python rename plan listed only calls and the declaration.
+- `plan_rename` says a symbol is public when the entry imports it under an alias and exports the alias, and places a call whose receiver has the method's name on the line above at the method's name.
+
 Evidence in one request: the Proof lens (part of #45; FR1180 to FR1187):
 
 - Opening a symbol made four requests in series (`galaxy/symbol`, `get_symbol`, `get_relationships`, `read_evidence`), and an edge's evidence a second `get_relationships`. `get_symbol_card` (the `extra` MCP profile) now answers a symbol's card in one read-only request: the symbol, its verified declaration, and the first rows of each side, each with its call site's lines, the cited span, its basis, resolution and reason, and each side's total. It is bounded like every tool: `max_rows` per side, `max_bytes` for the whole answer, and `direction` with `offset` for the next rows. A Galaxy point's `galaxy/symbol` request carries its card, so a point also opens with one request.
