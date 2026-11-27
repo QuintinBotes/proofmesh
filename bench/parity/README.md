@@ -84,6 +84,11 @@ A newer version of a comparator is added as a second column, never by replacing 
 - **ProofMesh** is asked over MCP in its default core profile, as `bench/graph-bench` asks it; Q10 to Q12 have no MCP
   tool yet (#34) and are computed from the sealed snapshot, marked `(data)`. Graphify's Q10 to Q12 are computed from
   `graph.json`, also `(data)`.
+- **ProofMesh through `query_graph`** (#36): each of the twelve questions is asked again as one read-only query, over a second
+  server started with `--tools extra`, `PARITY_RUNS` times. A target is named by its qualified name; the queries are
+  `queryGraphQuery` in `../graph-bench/lib.mjs`, and each answer is in `out/raw/pm-query-<Q>.txt`. Its own table puts each answer's score
+  beside the typed tools' answer and says whether their items are the same, with the median time per question and the p95 over all
+  runs. That p95 includes the MCP round trip, as every time here does.
 - `tools/list` bytes are the bytes of the JSON of the tool array an MCP server lists.
 - The one-edit rebuild adds `const parityEdit = "<unique>"` after `super(message)` in the constructor of
   `src/error/TypeORMError.ts` (72 files import it), rebuilds, restores the file with `git checkout` and rebuilds again.
@@ -139,6 +144,31 @@ Versions: ProofMesh 0.1.0 @ f85a3cb; Graphify 0.9.108; scip-typescript 0.3.15 (s
 | `tools/list` bytes (MCP) | 18338 (13 tools) | CLI | index file | 25188 (21 tools) | Python API |
 
 Fixture after the edit step: clean (tool caches graphify-out/, .serena/, .aider.tags.cache.v4/ are in .git/info/exclude).
+
+### ProofMesh through `query_graph` (#36)
+
+Run on 2026-11-27 at ProofMesh e223de6 (`PARITY_RUNS=3`), on the same machine with a load average between 78 and 102, so times are high:
+
+| Q | class | ProofMesh (typed tools) | ProofMesh query_graph | same items as typed | ms (median) |
+|---|---|---|---|---|---|
+| Q1 | callers | 100 / 100 | 100 / 100 | yes | 31 |
+| Q2 | callers | 100 / 100 | 100 / 100 | yes | 86 |
+| Q3 | callers | 100 / 100 | 100 / 100 | yes | 23 |
+| Q4 | implementations | 100 / 100 | 100 / 100 | yes | 12 |
+| Q5 | importers | 100 / 100 | 100 / 100 | yes | 109 |
+| Q6 | dependents | 100 / 100 | 100 / 100 | no (+0 −1) | 168 |
+| Q7 | transitive_callers | 100 / 50 | 100 / 100 | no (+0 −11) | 31 |
+| Q8 | path | valid 3 hops (shortest 3) | valid 3 hops (shortest 3) | yes | 70 |
+| Q9 | type_users | 100 / 100 | 100 / 100 | yes | 62 |
+| Q10 | dead_code | 100 / 95 (data) | 100 / 95 | yes | 24 |
+| Q11 | cycles | 100 / 100 (data) | 98 / 100 | no (+0 −5) | 355 |
+| Q12 | roots | 100 / 100 (data) | 100 / 100 | yes | 327 |
+
+query_graph p95 over Q1–Q12, 3 runs each: 390 ms (target 500 ms).
+
+- Q6 and Q11 differ because a variable-length pattern follows at most 6 hops (FR962). On Q6, one dependent of `StringUtils.ts` is more than 6 imports away: 315 of 316, which rounds to 100% recall. On Q11, five files are only in import cycles longer than 6.
+- Q7 differs on purpose. `analyze_impact` follows calls through the interface method that `DefaultNamingStrategy.columnName` implements; `query_graph` follows only the calls the snapshot resolved. So it equals the truth, which counts direct calls only.
+- Q10 says "top-level" as `f.qualified_name ENDS WITH ':' + f.name`. A module path can hold a dot (`bson.typings`), so a test for a dot in the qualified name would drop real functions.
 
 ### Against the study of 2026-11-20 (scenario 3 of #25)
 

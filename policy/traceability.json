@@ -1785,6 +1785,27 @@
     "FR873": [
       "packages/proofmesh/test/plugin.test.ts",
       "packages/proofmesh-plugin/tests/status.test.ts"
+    ],
+    "FR960": [
+      "packages/proofmesh/test/graph-query.test.ts"
+    ],
+    "FR961": [
+      "packages/proofmesh/test/graph-query.test.ts"
+    ],
+    "FR962": [
+      "packages/proofmesh/test/graph-query.test.ts"
+    ],
+    "FR963": [
+      "packages/proofmesh/test/graph-query.test.ts"
+    ],
+    "FR964": [
+      "packages/proofmesh/test/graph-query.test.ts"
+    ],
+    "FR965": [
+      "packages/proofmesh/test/graph-query.test.ts"
+    ],
+    "FR966": [
+      "packages/proofmesh/test/parity-bench.test.ts"
     ]
   },
   "manual": {

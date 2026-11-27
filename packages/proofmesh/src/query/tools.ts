@@ -33,6 +33,7 @@ import { verify, type Proposition } from './claims.js'
 import { openCursor, queryHash, sealCursor } from './cursor.js'
 import { addKeys } from './keys.js'
 import { leanName, leanRow, leanText, quote } from './lean.js'
+import { leanQueryRows, parseGraphQuery, runGraphQuery, type Param, type QueryRow } from './graph-query.js'
 import { generatedLeftOut, generatedPaths, markGenerated, withGeneratedPaths } from './generated-policy.js'
 import { innermost } from './symbol-at.js'
 import { compare, hasBodyHash, unreadableFiles } from './compare.js'
@@ -45,10 +46,10 @@ import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 
-export const TOOLS = ['workspace_status', 'list_repositories', 'list_snapshots', 'list_workspaces', 'find_symbols', 'get_symbol', 'get_relationships', 'trace_paths', 'read_evidence', 'get_overview', 'analyze_impact', 'find_tests', 'search_sources', 'get_memory', 'verify_claim', 'request_index', 'get_job', 'get_claims', 'save_memory', 'get_table_reach', 'get_property_reads', 'get_external_usage', 'find_query_source', 'compare_snapshots', 'list_queries', 'get_ecosystem', 'prepare_verification', 'get_verification', 'impact_completeness', 'get_symbols_at', 'get_session_trail', 'find_stale_mentions'] as const
+export const TOOLS = ['workspace_status', 'list_repositories', 'list_snapshots', 'list_workspaces', 'find_symbols', 'get_symbol', 'get_relationships', 'trace_paths', 'read_evidence', 'get_overview', 'analyze_impact', 'find_tests', 'search_sources', 'get_memory', 'verify_claim', 'request_index', 'get_job', 'get_claims', 'save_memory', 'get_table_reach', 'get_property_reads', 'get_external_usage', 'find_query_source', 'compare_snapshots', 'list_queries', 'get_ecosystem', 'prepare_verification', 'get_verification', 'impact_completeness', 'get_symbols_at', 'get_session_trail', 'find_stale_mentions', 'query_graph'] as const
 export type ToolName = (typeof TOOLS)[number]
 /** The query tools whose results are code locations: they answer in the lean envelope on request, and by default over MCP (FR099). */
-export const LEAN = new Set<string>(['find_symbols', 'get_symbol', 'get_symbols_at', 'get_relationships', 'trace_paths', 'analyze_impact', 'find_tests', 'get_session_trail'])
+export const LEAN = new Set<string>(['find_symbols', 'get_symbol', 'get_symbols_at', 'get_relationships', 'trace_paths', 'analyze_impact', 'find_tests', 'get_session_trail', 'query_graph'])
 /** A lean answer is its text; the envelope beside it is what the text was rendered from, for in-process callers. */
 export type Answer = Envelope & { text?: string }
 
@@ -62,7 +63,7 @@ export const CAPABILITY: Record<ToolName, ListQueriesData['tools'][number]['capa
   read_evidence: 'read', get_overview: 'read', analyze_impact: 'read', find_tests: 'read', search_sources: 'read', get_memory: 'read',
   verify_claim: 'read', request_index: 'management', get_job: 'read', get_claims: 'read', save_memory: 'management', get_table_reach: 'read',
   get_property_reads: 'read', get_external_usage: 'read', find_query_source: 'read', compare_snapshots: 'read', list_queries: 'read',
-  get_ecosystem: 'read', prepare_verification: 'management', get_verification: 'read', impact_completeness: 'management', get_symbols_at: 'read', get_session_trail: 'read', find_stale_mentions: 'read',
+  get_ecosystem: 'read', prepare_verification: 'management', get_verification: 'read', impact_completeness: 'management', get_symbols_at: 'read', get_session_trail: 'read', find_stale_mentions: 'read', query_graph: 'read',
 }
 
 /**
@@ -76,7 +77,7 @@ export const PROFILE: Record<ToolName, ListQueriesData['tools'][number]['profile
   verify_claim: 'claims', get_claims: 'claims', prepare_verification: 'claims', get_verification: 'claims',
   list_snapshots: 'extra', list_workspaces: 'extra', get_ecosystem: 'extra', compare_snapshots: 'extra', impact_completeness: 'extra', request_index: 'extra',
   // A maintainer's question after a refactor, like compare_snapshots; workspace_status (core) counts the stale mentions and says how to list them.
-  get_job: 'extra', get_memory: 'extra', save_memory: 'extra', find_stale_mentions: 'extra',
+  get_job: 'extra', get_memory: 'extra', save_memory: 'extra', find_stale_mentions: 'extra', query_graph: 'extra',
 }
 /** How a client loads the tools of another profile, said by list_queries, which lists them all (FR422). */
 const PROFILES_NOTE = 'Over MCP, proofmesh mcp lists the core profile; start it with --tools <profile[,profile]> (core, data, claims, extra) or --tools all to list the others. A tool outside the profiles it was started with answers INVALID_ARGUMENT naming its profile.'
@@ -124,6 +125,8 @@ type Partial = {
   total?: number
   /** The lean rows of `data` as it stands after any cut, one per item of the first shrink list (FR096). */
   lean?: (data: Record<string, unknown>) => string[]
+  /** What a lean header adds after the tool's name, such as the snapshot's commit. */
+  header?: string
 }
 
 /** Tools whose shrink list has a total order and honours ctx.page.offset, so a cursor continues it with no omission or duplicate. */
@@ -406,7 +409,7 @@ function envelope(ctx: Ctx, tool: ToolName, requested: Limits | undefined, r: Pa
     // A lean answer's last line carries the cursor, in place of the note pointing at completion.next_cursor.
     const notes = stop.size && !(ctx.lean && next_cursor) ? [...limitations, next_cursor ? CONTINUED : PAGED.has(tool) ? NARROW : TRUNCATED] : limitations
     const done: Envelope = { ...env, limitations: notes, completion: { truncated: stop.size > 0, stop_reasons: order.filter((o) => stop.has(o)), timed_out: stop.has('timeout'), next_cursor, ...(r.total === undefined ? {} : { total: r.total }) } }
-    return ctx.lean ? { ...done, envelope: 'lean', text: leanText(tool, ctx.snapshot.id, current === ctx.snapshot.id, r.lean!(r.data), notes, next_cursor) } : done
+    return ctx.lean ? { ...done, envelope: 'lean', text: leanText(r.header ? `${tool} · ${r.header}` : tool, ctx.snapshot.id, current === ctx.snapshot.id, r.lean!(r.data), notes, next_cursor) } : done
   }
   const size = (a: Answer) => Buffer.byteLength(ctx.lean ? a.text! : JSON.stringify(a))
   // A key `a[].b` is the list b of every item of a, shortened from the last item's: a nested list the answer holds per table or per row.
@@ -930,6 +933,24 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     const all = ctx.catalog.queryRecords({ repository_id: ctx.repo.id, tool: input.tool as string | undefined, limit: limit + 1 })
     const records = all.slice(0, limit)
     return { data: { tools, contract: CONTRACT, records }, stop_reasons: all.length > limit ? ['max_rows'] : [], limitations: ['Records hold the hash of each query input, never its text or its result.', PROFILES_NOTE] }
+  },
+
+  query_graph(ctx, input) {
+    // Parsed and checked before anything runs: a write, a procedure or an unbounded path is refused here (FR961, FR962).
+    const q = parseGraphQuery(String(input.query), (input.params ?? {}) as Record<string, Param>, ctx.limits.max_depth)
+    const r = runGraphQuery(ctx.db, q, { maxRows: ctx.limits.max_rows, deadline: ctx.started + ctx.limits.timeout_ms })
+    const git = JSON.parse((ctx.db.prepare("select value from meta where key = 'git'").get() as { value: string } | undefined)?.value ?? '{}') as { commit?: string }
+    return {
+      data: { columns: r.columns, rows: r.rows }, evidence_ids: r.evidence.sort(byKey((i) => evidenceKey(ctx.db, i))),
+      stop_reasons: r.stop ? [r.stop] : [], shrink: 'rows', header: `commit ${git.commit?.slice(0, 12) ?? 'none'}`,
+      limitations: [
+        'Relationships here are those the snapshot resolved, with no dispatch through an interface or base member; a variable-length pattern reaches each node once, at its shortest distance. The typed tools add dispatch, candidates and boundaries.',
+        // Lean shows no completion block, so the limit that stopped the query is named here (FR963).
+        ...(r.stop ? [`Stopped at ${r.stop === 'timeout' ? `timeout_ms ${ctx.limits.timeout_ms}` : `max_rows ${ctx.limits.max_rows}`}; the rows are those found before it.`] : []),
+        ...(r.aggregateCut ? [`count and collect covered only the first ${ctx.limits.max_rows} rows.`] : []),
+      ],
+      lean: (data) => (data.rows as QueryRow[]).flatMap((row) => leanQueryRows(data.columns as string[], row)),
+    }
   },
 
   get_session_trail(ctx, input) {

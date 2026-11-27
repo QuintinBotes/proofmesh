@@ -4,6 +4,13 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 ## Unreleased
 
+A bounded, read-only graph query for composed questions (#36; FR960 to FR966):
+
+- New tool `query_graph` (profile `extra`, lean over MCP) takes one query in a read-only subset of openCypher. The subset has `MATCH`, `OPTIONAL MATCH`, `WHERE` with pattern predicates and `EXISTS { ... }`, `WITH`, `RETURN`, `DISTINCT`, `ORDER BY`, `SKIP`, `LIMIT`, `count` and `collect`. Variable-length paths need an upper bound of at most 6. It is meant for a question no typed tool answers in one call, such as "callers of X reached from main that are not tests". Each row is a lean `name path:line` row with ` inferred` when any hop is. The header names the snapshot's commit. The grammar is in `docs/proofmesh/mcp.md`.
+- It is strictly read-only. `CREATE`, `MERGE`, `SET`, `DELETE`, `DETACH`, `REMOVE`, `CALL`, `LOAD`, `FOREACH` and `DROP` are refused by name before anything runs, as `INVALID_ARGUMENT`. So are unbounded or too-deep paths (naming the bound), regular expressions and unknown functions, labels and types. The query runs in an interpreter over fixed prepared statements on the read-only snapshot. No SQL is built from its text, and `$params` are never spliced in. Time, rows and bytes are the server limits: a query cut short returns its rows so far and names the limit.
+- What it does not do: dispatch from an interface member to its implementations (write it as a pattern), candidate and unresolved sites, and paging. A variable-length pattern returns each node once, at its shortest distance, not every path. The typed tools stay first in every tool description.
+- `bench/parity` asks its twelve questions through `query_graph` too, in a table beside the typed tools' answers, with the p95 time.
+
 Docs link to the code they name, and say when it changes (closes #29; FR820 to FR826):
 
 - A Markdown doc's inline code and links are matched by name, with no model, to the files and symbols they name: `Ledger.consume`, `total()`, `Ledger`, `src/ledger.ts`, `[the ledger](../src/ledger.ts)`. Each is a new `mentions` relationship from the doc at its line, origin `documentation`, so always `inferred`; a name of several symbols is `ambiguous` with its candidates, never guessed. Fenced code, bare member names such as `id`, words such as `true` and links with a scheme are not recorded. `get_relationships` with `types: ["mentions"]`, inbound, lists the docs that name a symbol or file.

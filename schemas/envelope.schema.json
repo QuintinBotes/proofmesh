@@ -59,7 +59,8 @@
         "impact_completeness",
         "get_symbols_at",
         "get_session_trail",
-        "find_stale_mentions"
+        "find_stale_mentions",
+        "query_graph"
       ]
     },
     "snapshot": {

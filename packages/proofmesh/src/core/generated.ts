@@ -4,7 +4,7 @@
 export interface Envelope {
 schema_version: "0.1"
 query_id: string
-tool: ("workspace_status" | "list_repositories" | "list_snapshots" | "list_workspaces" | "find_symbols" | "get_symbol" | "get_relationships" | "trace_paths" | "read_evidence" | "get_overview" | "analyze_impact" | "find_tests" | "search_sources" | "get_memory" | "verify_claim" | "request_index" | "get_job" | "get_claims" | "save_memory" | "get_table_reach" | "get_property_reads" | "get_external_usage" | "find_query_source" | "compare_snapshots" | "list_queries" | "get_ecosystem" | "prepare_verification" | "get_verification" | "impact_completeness" | "get_symbols_at" | "get_session_trail" | "find_stale_mentions")
+tool: ("workspace_status" | "list_repositories" | "list_snapshots" | "list_workspaces" | "find_symbols" | "get_symbol" | "get_relationships" | "trace_paths" | "read_evidence" | "get_overview" | "analyze_impact" | "find_tests" | "search_sources" | "get_memory" | "verify_claim" | "request_index" | "get_job" | "get_claims" | "save_memory" | "get_table_reach" | "get_property_reads" | "get_external_usage" | "find_query_source" | "compare_snapshots" | "list_queries" | "get_ecosystem" | "prepare_verification" | "get_verification" | "impact_completeness" | "get_symbols_at" | "get_session_trail" | "find_stale_mentions" | "query_graph")
 /**
  * The sealed snapshot or link file that answered; null for a catalog tool, which answers from the list of registered repositories.
  */
@@ -2542,6 +2542,61 @@ expires_in_s?: number
  * compact leaves out the snapshot-wide parts of the envelope (unresolved reasons, standing limitations) that an earlier answer from the same snapshot already gave; query-specific limits stay. Over MCP, answers after the first full one per snapshot are compact unless full is asked for.
  */
 envelope?: ("full" | "compact")
+}
+
+export interface QueryGraphData {
+/**
+ * The RETURN items, by alias or by their text.
+ */
+columns: string[]
+rows: {
+/**
+ * One value a column. A node is { id, kind, name, path, line, key } (an external symbol { id, kind: external, name, module }); a relationship { id, type, from, to, from_name, to_name, path, line, basis }, at its site; a path { nodes, relationships }; otherwise a scalar or a list.
+ */
+values: unknown[]
+/**
+ * True when any relationship the row was matched through is inferred.
+ */
+inferred?: boolean
+}[]
+}
+
+/**
+ * An escape hatch for a question the typed tools do not answer in one call: one bounded, read-only openCypher query over the snapshot (extra profile). Try find_symbols, get_relationships, trace_paths and analyze_impact first; they add dispatch, candidates and boundaries this does not. MATCH and OPTIONAL MATCH node and relationship patterns, variable-length paths with an upper bound of at most 6 (*1..3), WHERE, WITH, RETURN, ORDER BY, SKIP, LIMIT, count and collect. Labels are symbol kinds, file and external; relationship types are the snapshot's (calls, imports, implements, references, ...). Writes, procedures and file access are refused. Rows are `name path:line`, tagged inferred when a hop is.
+ */
+export interface QueryGraphInput {
+/**
+ * Optional when exactly one repository is registered.
+ */
+repository_id?: string
+/**
+ * Null pins the current published snapshot.
+ */
+snapshot_id?: (string | null)
+/**
+ * The query, such as MATCH (c)-[r:calls]->(t:function {name: $name}) WHERE NOT c.test RETURN r. Grammar: docs/proofmesh/mcp.md.
+ */
+query: string
+/**
+ * Values for $name parameters, passed apart from the text and never spliced into it.
+ */
+params?: {
+[k: string]: string | number | boolean | null | (string | number | boolean | null)[]
+}
+limits?: {
+timeout_ms?: number
+max_rows?: number
+max_bytes?: number
+max_depth?: number
+}
+/**
+ * snapshot (default) answers from the published snapshot. strict first checks that the working tree is exactly what the snapshot was built from; if not, it starts an index and refuses with STALE_INPUT naming the changed files.
+ */
+freshness?: ("snapshot" | "strict")
+/**
+ * lean, the default over MCP: plain text with no JSON and no structuredContent. A header `# <tool> · <n> rows · <snapshot> current` (stale when the snapshot is older than the repository's current one), one `<name> <path>:<line>` row per result, then `# ` lines for the limitations of this answer and `# more: cursor <c>` when a next page exists. The line is the call, import or reference site for relationship, impact and path rows and the declaration for symbol rows; tags follow: in or out when both directions are asked, depth=<n>, dispatch, external, candidate, ambiguous, unresolved:<reason>, and the relationship type when the query mixes types. A name or path with a space, quote or # is quoted as JSON. For query_graph, the header also names the snapshot's commit (`# query_graph · commit <sha> · <n> rows · ...`); each row is its first node, relationship or path (a path a row per node, depth=<n>), the other columns as column=value tags, then inferred when any hop is inferred. compact: the JSON envelope without the snapshot-wide parts an earlier answer gave (coverage, unresolved reasons, standing limitations). full: the whole JSON envelope. Ask for compact or full for ids, evidence and totals.
+ */
+envelope?: ("full" | "compact" | "lean")
 }
 
 export interface ReadEvidenceData {

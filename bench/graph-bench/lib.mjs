@@ -126,16 +126,20 @@ export function graphifyAdapter(repo, { sym, tFind, srcFiles, callNames }) {
 // ---------- ProofMesh ----------
 // Asked over MCP (an McpClient already initialised) in its default envelope, lean: a header, one `name path:line [tags]`
 // row per result, `# ` lines (#41). Q10-Q12 have no MCP tool and are computed from the sealed snapshot in pmData.
+const TOKEN = /"(?:[^"\\]|\\.)*"(?::\d+)?|\S+/g
+const unquote = (t) => (t.startsWith('"') ? JSON.parse(t) : t)
+const site = (t) => { const m = /^("(?:[^"\\]|\\.)*"|[^"\s]+):(\d+)$/.exec(t ?? ''); return m ? { path: unquote(m[1]), line: Number(m[2]) } : null }
+/** A lean row: `name path:line tags`, or `path:line tags` for a file. */
+function parseRow(row) {
+  const t = row.match(TOKEN) ?? []
+  const named = !site(t[0]) && t[0] !== 'external', at = t[named ? 1 : 0]
+  return { name: named ? unquote(t[0]) : null, path: site(at)?.path ?? null, line: site(at)?.line ?? null, tags: t.slice(named ? 2 : 1), row }
+}
+// A module (top-level code) is a file row: its path and line alone.
+const pmKey = (r) => `${r.path}::${r.name === null ? '<module>' : last(String(r.name))}`
+
 export function proofmeshAdapter(pm, pmData, { srcFiles, callKeys }, raw) {
   let snapshotId
-  const TOKEN = /"(?:[^"\\]|\\.)*"(?::\d+)?|\S+/g
-  const unquote = (t) => (t.startsWith('"') ? JSON.parse(t) : t)
-  const site = (t) => { const m = /^("(?:[^"\\]|\\.)*"|[^"\s]+):(\d+)$/.exec(t ?? ''); return m ? { path: unquote(m[1]), line: Number(m[2]) } : null }
-  function parseRow(row) {
-    const t = row.match(TOKEN) ?? []
-    const named = !site(t[0]) && t[0] !== 'external', at = t[named ? 1 : 0]
-    return { name: named ? unquote(t[0]) : null, path: site(at)?.path ?? null, line: site(at)?.line ?? null, tags: t.slice(named ? 2 : 1), row }
-  }
   async function pmLean(tool, args) {
     let rows = [], ms = 0, bytes = 0, calls = 0, cursor, text = ''
     do {
@@ -149,8 +153,6 @@ export function proofmeshAdapter(pm, pmData, { srcFiles, callKeys }, raw) {
     } while (cursor && calls < 50)
     return { rows, ms, bytes, calls, text }
   }
-  // A module (top-level code) is a file row: its path and line alone.
-  const pmKey = (r) => `${r.path}::${r.name === null ? '<module>' : last(String(r.name))}`
   const resolvedOnly = (r) => !r.tags.some((t) => t === 'candidate' || t === 'ambiguous' || t === 'external' || t.startsWith('unresolved:'))
   const cited = (rows) => rows.length > 0 && rows.every((r) => r.path && r.line)
   async function pmFind(file, qname, kinds) {
@@ -220,4 +222,43 @@ export function proofmeshAdapter(pm, pmData, { srcFiles, callKeys }, raw) {
   }
   proofmesh.snapshotId = () => snapshotId
   return proofmesh
+}
+
+// ---------- ProofMesh, one query_graph query per question (#36) ----------
+// The questions proofmeshAdapter asks with the typed tools, each as one query over MCP (the extra profile), scored the same way.
+// A target is named by its qualified name: the file's path without its extension, a colon, then the name questions.json gives.
+const qnameOf = (t) => `${t.file.replace(/\.[^./]+$/, '')}:${t.qname}`
+export function queryGraphQuery(q) {
+  const t = q.target, scope = { scope: q.scope }
+  switch (q.kind) {
+    case 'callers': return ['MATCH ()-[r:calls]->(t {qualified_name: $t}) RETURN r', { t: qnameOf(t) }]
+    case 'implementations': return ['MATCH ()-[r:implements]->(t {qualified_name: $t}) RETURN r', { t: qnameOf(t) }]
+    case 'importers': return ['MATCH (:file)-[r:imports]->(:file {path: $path}) RETURN r', { path: t.file }]
+    case 'dependents': return ['MATCH (d:file)-[:imports*1..6]->(:file {path: $path}) WHERE d.path <> $path RETURN DISTINCT d', { path: t.file }]
+    case 'transitive_callers': return [`MATCH (c)-[:calls*1..${q.depth}]->(t {qualified_name: $t}) RETURN DISTINCT c`, { t: qnameOf(t) }]
+    case 'path': return ['MATCH p = (s {qualified_name: $s})-[:calls*1..6]->(t {qualified_name: $t}) RETURN p LIMIT 1', { s: qnameOf(q.source), t: qnameOf(t) }]
+    case 'type_users': return ['MATCH ()-[r:references]->(t {qualified_name: $t}) RETURN r', { t: qnameOf(t) }]
+    case 'dead_code': return ["MATCH (f:function) WHERE f.path STARTS WITH $scope AND f.qualified_name ENDS WITH ':' + f.name AND NOT EXISTS { (x)-->(f) WHERE x <> f } RETURN f", scope]
+    case 'cycles': return ['MATCH (a:file)-[:imports*1..6]->(a) WHERE a.path STARTS WITH $scope RETURN a', scope]
+    case 'roots': return ["MATCH (f:file) WHERE f.path STARTS WITH $scope AND f.disposition = 'indexed' AND NOT EXISTS { (g:file)-[:imports]->(f) WHERE g.path STARTS WITH $scope } RETURN f", scope]
+  }
+}
+export function queryGraphAdapter(pm, { callKeys }, raw, runs = 1) {
+  return async function queryGraph(q) {
+    const [query, params] = queryGraphQuery(q)
+    const ms = []
+    let r
+    for (let i = 0; i < runs; i++) { r = await pm.call('query_graph', { query, params, limits: { max_rows: 1000, max_bytes: 1048576, timeout_ms: 30000 } }); ms.push(r.ms) }
+    raw(`pm-query-${q.id}.txt`, `${query}\n${JSON.stringify(params)}\n${r.text}`)
+    if (r.isError || !r.text.startsWith('# ')) return { error: r.text.slice(0, 400), ms: ms[0], all_ms: ms, query }
+    const rows = r.text.split('\n').slice(1).filter((l) => !l.startsWith('# ')).map(parseRow)
+    const base = { ms: [...ms].sort((a, b) => a - b)[(ms.length - 1) >> 1], all_ms: ms, bytes: r.bytes, calls: 1, query, rows: rows.length, cut: /^# Stopped at /m.test(r.text) }
+    const files = new Set(rows.map((x) => x.path).filter(Boolean))
+    if (q.kind === 'path') {
+      const keys = rows.map(pmKey)
+      return { ...base, path_found: keys.length > 0, path_hops: keys.length ? keys.length - 1 : null, path_valid: keys.length > 1 && keys.every((k, i) => i === 0 || callKeys.has(`${keys[i - 1]}->${k}`)) }
+    }
+    if (['importers', 'dependents', 'type_users', 'cycles', 'roots'].includes(q.kind)) return { ...base, answer: files }
+    return { ...base, answer: new Set(rows.map(pmKey)), ...(q.kind === 'callers' ? { files, sites: new Set(rows.map((x) => `${x.path}:${x.line}`)) } : {}) }
+  }
 }
