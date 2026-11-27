@@ -1,6 +1,8 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { beforeAll, describe, expect, it } from 'vitest'
+import { pathToFileURL } from 'node:url'
+import { readSarif } from '../src/sarif/read.js'
 import { ROOT, cli, fixtureRepo, symbolId, tmpDir, tool } from './helpers.js'
 
 // #30: findings a data-flow analyser wrote as SARIF, attached to the innermost symbol at their line and shown beside impact and test reach.
@@ -69,6 +71,22 @@ describe('FR1900 to FR1905 SARIF findings attached to symbols (fixtures/sarif)',
     fs.rmSync(path.join(repo, 'test', 'api.test.ts'))
     run('sarif', 'add', repo, SARIF, '--name', 'after-delete')
     expect((findings({ paths: ['test/api.test.ts'] }).data.findings as Finding[]).map((f) => [f.import, f.stale])).toEqual([['after-delete', 'sarif_stale:after-delete'], ['findings', null]])
+  })
+
+  it('FR1900 FR1903 the reader: a file:// URI through a symlink to the root, an unattached result once, rank -1 unset, and a malformed result refused', () => {
+    const dir = tmpDir('pm-sarif-read-'), link = path.join(dir, 'link')
+    fs.symlinkSync(repo, link)
+    const write = (results: unknown[]) => { const f = path.join(dir, 'r.sarif'); fs.writeFileSync(f, JSON.stringify({ version: '2.1.0', runs: [{ tool: { driver: { name: 'T' } }, results }] })); return f }
+    const at = (uri: string, line: number) => ({ ruleId: 'r', rank: -1, locations: [{ physicalLocation: { artifactLocation: { uri }, region: { startLine: line } } }] })
+    const r = readSarif(write([at(pathToFileURL(path.join(link, 'src', 'api.ts')).href, 5), at('src/missing.ts', 1), at('src/missing.ts', 1)]), repo, (rel) => rel === 'src/api.ts')
+    expect(r.findings.map((f) => [f.path, f.line, f.rank])).toEqual([['src/api.ts', 5, null]])
+    expect(r.unattached.map((u) => u.reason)).toEqual(['not_in_snapshot'])
+    expect(() => readSarif(write([null]), repo, () => true)).toThrow(/is not a SARIF 2\.1\.0 file/)
+  })
+
+  it('FR1900 --name may come before the file', () => {
+    expect(run('sarif', 'add', repo, '--name', 'first', SARIF).stdout).toContain('SARIF file first imported for')
+    run('sarif', 'remove', repo, 'first')
   })
 
   it('FR1900 a file that is not SARIF 2.1.0 is refused and nothing is imported', () => {

@@ -297,12 +297,12 @@ export async function main(argv: string[]): Promise<number> {
         }
       }
       case 'sarif': {
-        const opts = [...rest]
+        const opts = [...rest], named = take(opts, '--name')
         const catalog = Catalog.open(dataDir)
         try {
           if (opts[0] === 'add' && opts[1] && opts[2]) {
             const repo = catalog.repository(opts[1]), file = path.resolve(opts[2])
-            const name = take(opts, '--name') ?? path.basename(file).replace(/\.sarif(\.json)?$/, '')
+            const name = named ?? path.basename(file).replace(/\.sarif(\.json)?$/, '')
             if (!/^[A-Za-z0-9._-]+$/.test(name)) throw new ProofmeshError('INVALID_ARGUMENT', `--name takes letters, digits, dots, dashes and underscores; got ${name}`)
             if (!fs.existsSync(file) || !fs.statSync(file).isFile()) throw new ProofmeshError('INVALID_ARGUMENT', `${file} is not a file`)
             const snapshot = catalog.currentSnapshot(repo.id)
