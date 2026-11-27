@@ -8,7 +8,7 @@ import type * as TS from 'typescript'
 import { graphqlDocument } from '../../syntax/src/contracts.js'
 
 const ts = createRequire(import.meta.url)('typescript') as typeof TS
-const VERSION = '0.2.4'
+const VERSION = '0.2.5'
 type Range = { start_byte: number; end_byte: number; start_line: number; end_line: number }
 type Ref = { symbol: string } | { file: string } | { external: { module: string; name: string } }
 
