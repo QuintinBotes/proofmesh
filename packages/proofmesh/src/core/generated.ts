@@ -4,7 +4,7 @@
 export interface Envelope {
 schema_version: "0.1"
 query_id: string
-tool: ("workspace_status" | "list_repositories" | "list_snapshots" | "list_workspaces" | "find_symbols" | "get_symbol" | "get_relationships" | "trace_paths" | "read_evidence" | "get_overview" | "analyze_impact" | "find_tests" | "search_sources" | "get_memory" | "verify_claim" | "request_index" | "get_job" | "get_claims" | "save_memory" | "get_table_reach" | "get_property_reads" | "get_external_usage" | "find_query_source" | "compare_snapshots" | "list_queries" | "get_ecosystem" | "prepare_verification" | "get_verification" | "impact_completeness" | "get_symbols_at" | "get_session_trail" | "find_stale_mentions" | "find_unused" | "find_cycles" | "find_entry_points" | "find_hubs" | "get_context_map")
+tool: ("workspace_status" | "list_repositories" | "list_snapshots" | "list_workspaces" | "find_symbols" | "get_symbol" | "get_relationships" | "trace_paths" | "read_evidence" | "get_overview" | "analyze_impact" | "find_tests" | "search_sources" | "get_memory" | "verify_claim" | "request_index" | "get_job" | "get_claims" | "save_memory" | "get_table_reach" | "get_property_reads" | "get_external_usage" | "find_query_source" | "compare_snapshots" | "list_queries" | "get_ecosystem" | "prepare_verification" | "get_verification" | "impact_completeness" | "get_symbols_at" | "get_session_trail" | "find_stale_mentions" | "find_unused" | "find_cycles" | "find_entry_points" | "find_hubs" | "get_context_map" | "plan_rename")
 /**
  * The sealed snapshot or link file that answered; null for a catalog tool, which answers from the list of registered repositories.
  */
@@ -2934,6 +2934,125 @@ export interface ListWorkspacesInput {
 envelope?: ("full" | "compact")
 }
 
+/**
+ * Every site a rename must change, by file and line (FR980 to FR987).
+ */
+export interface PlanRenameData {
+subject: Member
+new_name: string
+/**
+ * One row per file and line, in path then line order.
+ */
+sites: {
+path: string
+line: number
+/**
+ * declaration, implementation, override, call, reference, import or export for a code site; mention, string or the relationship type for a seam.
+ */
+kind: string
+/**
+ * observed: the compiler or the syntax bound the name here. inferred: a seam that binds the symbol by its name, to review before changing.
+ */
+basis: ("observed" | "inferred")
+/**
+ * The stable_key of the symbol named at the site: the subject, or a member renamed with it.
+ */
+key: string
+seam?: ("route" | "rpc" | "graphql" | "ffi" | "di_key" | "serialised_key" | "doc_mention")
+/**
+ * The rule that found the seam.
+ */
+rule?: string
+/**
+ * For a seam, what names the symbol there: the mention, the source line of a string, or the name on the other side.
+ */
+text?: string
+/**
+ * Present when the seam's link is not resolved to this symbol alone (candidate or ambiguous).
+ */
+resolution?: string
+}[]
+/**
+ * Members that implement or override the subject, or that it implements or overrides, at any distance: renaming one alone breaks dispatch.
+ */
+must_rename_together: Member[]
+/**
+ * Calls that did not resolve and call the same name, or resolved to several candidates among them this symbol: not sites, but places that might reach it.
+ */
+possibly_affected: {
+path: string
+line: number
+callee: string
+resolution: string
+}[]
+/**
+ * Totals before max_rows.
+ */
+counts: {
+observed: number
+inferred: number
+must_rename_together: number
+possibly_affected: number
+}
+}
+export interface Member {
+id: string
+key: string
+name: string
+kind: string
+path: string
+/**
+ * The line of the name in its declaration.
+ */
+line: number
+/**
+ * How the member is linked to the subject, or to another member linked to it.
+ */
+relationship?: ("implements" | "overrides")
+}
+
+/**
+ * A read-only plan of every site a rename of one symbol must change, with file and line: its declaration, calls, references, import and export specifiers, and the implementations and overrides that must be renamed with it, each observed; seams that bind it by name (an OpenAPI operationId, a gRPC or GraphQL handler, an FFI name, a dependency-injection or serialised string key, a doc mention), each inferred and to be reviewed; and calls that did not resolve but might reach it, apart. Changes no file.
+ */
+export interface PlanRenameInput {
+repository_id?: string
+/**
+ * Default is the repository's current snapshot.
+ */
+snapshot_id?: string
+/**
+ * The symbol to rename: its id, or { name, path }. Give subject_id or key.
+ */
+subject_id?: (string | {
+/**
+ * The name a lean row shows (Driver.escape), or the plain name (escape); it must name one symbol in the file.
+ */
+name: string
+/**
+ * The repository-relative path of the file that declares the symbol.
+ */
+path: string
+})
+/**
+ * The symbol to rename by its stable_key, in place of subject_id.
+ */
+key?: string
+/**
+ * The name it is to have; the plan says when a symbol of the same scope already has it.
+ */
+new_name: string
+limits?: {
+timeout_ms?: number
+max_rows?: number
+max_bytes?: number
+max_depth?: number
+}
+/**
+ * compact leaves out the snapshot-wide parts of the envelope (unresolved reasons, standing limitations) that an earlier answer from the same snapshot already gave; query-specific limits stay. Over MCP, answers after the first full one per snapshot are compact unless full is asked for.
+ */
+envelope?: ("full" | "compact")
+}
+
 export interface PrepareVerificationData {
 verification: {
 id: string
@@ -4027,6 +4146,15 @@ start_line: number
 end_line: number
 }
 }
+/**
+ * Optional (protocol 1.3). Further sites of the same relationship in the same file, such as every later use of a type a function names more than once: each is evidence of the one relationship, which site still names and orders. Absent: site alone.
+ */
+sites?: {
+start_byte: number
+end_byte: number
+start_line: number
+end_line: number
+}[]
 resolution: ("resolved" | "resolved_external" | "candidate" | "ambiguous" | "unresolved")
 target?: {
 symbol?: string

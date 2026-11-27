@@ -820,6 +820,8 @@ class FactWriter {
         this.seenAssertion.add(id)
       }
       this.stmt.assertionEvidence!.run(id, ev)
+      // Further sites of the same relationship (protocol 1.3) are more evidence of it: every use, not only the first, has a line.
+      for (const range of r.sites ?? []) this.stmt.assertionEvidence!.run(id, this.evidence(r.site.path, range, kind, p))
     }
     this.qualified = false
     for (const imp of imports.values()) {

@@ -1877,6 +1877,33 @@
     ],
     "FR924": [
       "packages/proofmesh/test/parity-bench.test.ts"
+    ],
+    "FR980": [
+      "packages/proofmesh/test/rename-plan.test.ts"
+    ],
+    "FR981": [
+      "packages/proofmesh/test/rename-plan.test.ts"
+    ],
+    "FR982": [
+      "packages/proofmesh/test/rename-plan.test.ts"
+    ],
+    "FR983": [
+      "packages/proofmesh/test/rename-plan.test.ts"
+    ],
+    "FR984": [
+      "packages/proofmesh/test/rename-plan.test.ts"
+    ],
+    "FR985": [
+      "packages/proofmesh/test/rename-plan.test.ts"
+    ],
+    "FR986": [
+      "packages/proofmesh/test/rename-plan.test.ts"
+    ],
+    "FR987": [
+      "packages/proofmesh/test/rename-plan.test.ts"
+    ],
+    "FR988": [
+      "packages/proofmesh/test/rename-plan.test.ts"
     ]
   },
   "manual": {

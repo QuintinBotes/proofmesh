@@ -20,7 +20,7 @@ The adapter reads files from the workspace directory, which holds exactly the ca
 
 ## Versions (A22)
 
-The core speaks protocol 1.2 and accepts any adapter that answers `1.x`. Protocol 1.1 added the optional `roles` of a symbol (see Test roles below), and 1.2 its optional `detail` (see Symbol detail below); an adapter that never sends them is as valid as before. A minor version only adds optional fields, and each side ignores the fields it does not know. The core sends fields your adapter has never seen; accept them. An adapter that answers another major version is refused with both versions named. A breaking change to the protocol needs 2.0.
+The core speaks protocol 1.3 and accepts any adapter that answers `1.x`. Protocol 1.1 added the optional `roles` of a symbol (see Test roles below), 1.2 its optional `detail` (see Symbol detail below), and 1.3 the optional `sites` of a relationship (see Further sites below); an adapter that never sends them is as valid as before. A minor version only adds optional fields, and each side ignores the fields it does not know. The core sends fields your adapter has never seen; accept them. An adapter that answers another major version is refused with both versions named. A breaking change to the protocol needs 2.0.
 
 ## Test roles (protocol 1.1)
 
@@ -29,6 +29,10 @@ A symbol may carry `roles`, a list of `test` (a test entry point, by its framewo
 ## Symbol detail (protocol 1.2)
 
 A symbol may carry `detail`, an object of facts kept beside its name. Its one field is `scip`: the SCIP importer puts the index's own symbol there, since the qualified name is the language's form and not the index's (FR441). The core stores it and answers it in `get_symbol`. Other adapters need not send it.
+
+## Further sites (protocol 1.3)
+
+A relationship may carry `sites`, further ranges in the same file as its `site` that are evidence of the same relationship: every later use of a type that one function names on several lines, say. The core writes each as one more evidence row of the one assertion, which `site` still names and orders, so `get_relationships` answers one row with every site among its evidence and `plan_rename` can list every line. Send it where your adapter folds several uses into one relationship; otherwise leave it out.
 
 ## Facts
 

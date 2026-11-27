@@ -1,0 +1,38 @@
+{
+  "note": "Written by hand. Every seam a rename of each subject breaks, as plan_rename must list it: inferred, with its kind. The code sites are the ones the language service or the compiler binds; none of them is a seam.",
+  "subjects": [
+    {
+      "path": "src/orders.ts",
+      "name": "listOrders",
+      "seams": [
+        { "path": "docs/orders.md", "line": 3, "seam": "doc_mention" },
+        { "path": "openapi.yaml", "line": 8, "seam": "route" }
+      ],
+      "code": ["src/orders.ts:8"]
+    },
+    {
+      "path": "src/mailer.ts",
+      "name": "Mailer",
+      "seams": [
+        { "path": "docs/orders.md", "line": 3, "seam": "doc_mention" },
+        { "path": "src/container.ts", "line": 17, "seam": "di_key" },
+        { "path": "src/orders.ts", "line": 14, "seam": "di_key" }
+      ],
+      "code": ["src/container.ts:1", "src/container.ts:17", "src/mailer.ts:2", "src/orders.ts:3", "src/orders.ts:14"],
+      "not_seams": [
+        { "path": "src/orders.ts", "line": 16, "why": "console.log(\"Mailer\"): a log message, no key" },
+        { "path": "src/mailer.ts", "line": 4, "why": "a template that holds the name among other text" }
+      ]
+    },
+    {
+      "path": "src/Wire/OrderDto.cs",
+      "name": "CustomerName",
+      "seams": [
+        { "path": "docs/orders.md", "line": 5, "seam": "doc_mention" },
+        { "path": "src/Wire/OrderDto.cs", "line": 17, "seam": "serialised_key" },
+        { "path": "src/Wire/OrderDto.cs", "line": 22, "seam": "serialised_key" }
+      ],
+      "code": ["src/Wire/OrderDto.cs:8", "src/Wire/OrderDto.cs:17", "src/Wire/OrderDto.cs:22"]
+    }
+  ]
+}
