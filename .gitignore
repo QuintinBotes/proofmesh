@@ -22,6 +22,8 @@ node_modules/
 # Graph benchmark: ProofMesh's data directory and every generated result (truth.json alone is ~40 MB).
 /.bench-data/
 /bench/graph-bench/out/
+# Parity benchmark (bench/parity): every result, ProofMesh's data directory and the SCIP index of the fixture.
+/bench/parity/out/
 
 # Release artifacts are built locally and never committed.
 /release/out/

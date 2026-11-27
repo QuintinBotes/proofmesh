@@ -4,6 +4,13 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 ## Unreleased
 
+A parity benchmark scores ProofMesh and every local alternative on one truth (part of #25; FR510 to FR516):
+
+- `sh bench/parity/run.sh` copies `src/` and `LICENSE` of TypeORM at `3d55188c` (504 files, MIT) into `$TMPDIR`, never into this repository, and asks ProofMesh, Graphify 0.9.108, scip-typescript 0.3.15 (with the scip CLI 0.10.0), Serena v2.1.0 and aider-chat 0.86.2 the twelve question classes of `bench/graph-bench`, scored by `bench/graph-bench/truth.mjs`. `out/parity.md` has the quality table, callers at three levels, and the costs: full build, peak memory, disk, no-change re-index, one-edit rebuild (medians of three runs), ms and bytes per question, and `tools/list` bytes.
+- `bench/parity/install.sh` installs the pinned comparators in user space; no package depends on one. A comparator that is missing, at another version or failing reads `not run: <reason>`, and the run still exits 0. The edit step restores the fixture.
+- The scoring and the Graphify and ProofMesh adapters of `bench/graph-bench/run.mjs` moved to `bench/graph-bench/lib.mjs`, shared by both benchmarks; `run.mjs` behaves as before.
+- On the latest run (bench/parity/README.md), ProofMesh's `tools/list` is 18,338 bytes against Serena's 25,188 (#26 scenario 5). ProofMesh scores 100% / 100% on Q1 to Q6 and Q9 now that getters are symbols (#127). Not done: the study's Q1 to Q9 figures for the comparators (scenario 3) are not all reproduced within one point, as the study's targets were not kept.
+
 The syntax tier records a Rust call through a path (closes #116; FR500, FR501):
 
 - `ffi::cosine(0.0)`, `Foo::new()`, `crate::util::f()` and `<T as Tr>::f()` were neither a candidate nor an unresolved boundary: the tier wrote no `calls` row for them, so `get_relationships`, `analyze_impact` and the unresolved-call counts never saw them. Each is now one unresolved `calls` row, `outside_capability`, with the last name as `detail.callee` and the path before the last `::` in `detail.qualifier`, as Go and Java calls carry theirs.

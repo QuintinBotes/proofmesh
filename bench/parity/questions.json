@@ -1,0 +1,17 @@
+{
+  "repo_note": "Targets are in TypeORM at commit 3d55188c0dd1256f520143379ecf97f45e71acba, src/ only (the fixture run.sh builds). Paths are relative to the fixture root. The classes are those of bench/graph-bench/questions.json.",
+  "questions": [
+    { "id": "Q1", "kind": "callers", "ask": "Who calls getMetadataArgsStorage, and at which lines?", "target": { "file": "src/globals.ts", "qname": "getMetadataArgsStorage" } },
+    { "id": "Q2", "kind": "callers", "ask": "Who calls the method DataSource.getMetadata (called through instances)?", "target": { "file": "src/data-source/DataSource.ts", "qname": "DataSource.getMetadata" } },
+    { "id": "Q3", "kind": "callers", "ask": "Who calls Driver.escape (an interface method: dispatch through the interface)?", "target": { "file": "src/driver/Driver.ts", "qname": "Driver.escape" } },
+    { "id": "Q4", "kind": "implementations", "ask": "Which classes implement the Driver interface?", "target": { "file": "src/driver/Driver.ts", "qname": "Driver" } },
+    { "id": "Q5", "kind": "importers", "ask": "Which files import src/error/TypeORMError.ts directly?", "target": { "file": "src/error/TypeORMError.ts" } },
+    { "id": "Q6", "kind": "dependents", "ask": "Which files depend on src/util/StringUtils.ts, directly or transitively?", "target": { "file": "src/util/StringUtils.ts" } },
+    { "id": "Q7", "kind": "transitive_callers", "ask": "What reaches camelCase through calls, up to 3 hops?", "target": { "file": "src/util/StringUtils.ts", "qname": "camelCase" }, "depth": 3 },
+    { "id": "Q8", "kind": "path", "ask": "How does DataSource.initialize reach getMetadataArgsStorage (a call path)?", "source": { "file": "src/data-source/DataSource.ts", "qname": "DataSource.initialize" }, "target": { "file": "src/globals.ts", "qname": "getMetadataArgsStorage" } },
+    { "id": "Q9", "kind": "type_users", "ask": "Which files use the ObjectLiteral type?", "target": { "file": "src/common/ObjectLiteral.ts", "qname": "ObjectLiteral" } },
+    { "id": "Q10", "kind": "dead_code", "ask": "Which top-level functions under src/ does nothing use?", "scope": "src/" },
+    { "id": "Q11", "kind": "cycles", "ask": "Which files under src/ are in an import cycle?", "scope": "src/" },
+    { "id": "Q12", "kind": "roots", "ask": "Which modules under src/ does no other src/ module import?", "scope": "src/" }
+  ]
+}

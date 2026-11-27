@@ -1534,6 +1534,27 @@
     ],
     "FR552": [
       "packages/proofmesh/test/ts-accessors.test.ts"
+    ],
+    "FR510": [
+      "packages/proofmesh/test/parity-bench.test.ts"
+    ],
+    "FR511": [
+      "packages/proofmesh/test/parity-bench.test.ts"
+    ],
+    "FR512": [
+      "packages/proofmesh/test/parity-bench.test.ts"
+    ],
+    "FR513": [
+      "packages/proofmesh/test/parity-bench.test.ts"
+    ],
+    "FR514": [
+      "packages/proofmesh/test/parity-bench.test.ts"
+    ],
+    "FR515": [
+      "packages/proofmesh/test/parity-bench.test.ts"
+    ],
+    "FR516": [
+      "packages/proofmesh/test/parity-bench.test.ts"
     ]
   },
   "manual": {
