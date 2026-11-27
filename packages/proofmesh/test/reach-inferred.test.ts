@@ -154,23 +154,32 @@ describe('FR206 issue 21 scenario 5: trace_paths follows a candidate call', () =
   })
 })
 
+/** A git repository of the files (a fixture's copy or a map) with one commit, then a second where `file` has `from` replaced by `to`, both indexed by `proofmesh completeness`. */
+function diffRepo(files: string | Record<string, string>, file: string, from: string, to: string) {
+  const repo = tmpDir('pm-inf-')
+  if (typeof files === 'string') fs.cpSync(files, repo, { recursive: true })
+  else for (const [p, text] of Object.entries(files)) { fs.mkdirSync(path.dirname(path.join(repo, p)), { recursive: true }); fs.writeFileSync(path.join(repo, p), text) }
+  git(repo, 'init', '-q')
+  git(repo, 'add', '-A')
+  git(repo, 'commit', '-q', '-m', 'base')
+  const base = git(repo, 'rev-parse', 'HEAD')
+  const before = fs.readFileSync(path.join(repo, file), 'utf8')
+  expect(before).toContain(from)
+  fs.writeFileSync(path.join(repo, file), before.replace(from, to))
+  git(repo, 'commit', '-q', '-am', 'head')
+  const head = git(repo, 'rev-parse', 'HEAD')
+  const d = tmpDir()
+  expect(cli(['--data-dir', d, 'init']).status).toBe(0)
+  expect(cli(['--data-dir', d, 'repo', 'add', repo]).status).toBe(0)
+  return { d, base, head, status: cli(['--data-dir', d, 'completeness', repo, `${base}..${head}`]).status }
+}
+const formatEdit = ['lib/lib.go', 'func Format(x string) string {\n\treturn x\n}', 'func Format(x string) string {\n\treturn x + "!"\n}'] as const
+
 describe('FR207 issue 21 scenario 6: impact_completeness through a candidate call', () => {
   it('FR207 scenario 6: the dependent of a changed Go function carries basis inferred and the summary counts it under its own figure', () => {
-    const repo = tmpDir('pm-inf-')
-    fs.cpSync(fixtureRepo('constrained'), repo, { recursive: true })
-    git(repo, 'init', '-q')
-    git(repo, 'add', '-A')
-    git(repo, 'commit', '-q', '-m', 'base')
-    const base = git(repo, 'rev-parse', 'HEAD')
-    fs.writeFileSync(path.join(repo, 'lib/lib.go'), fs.readFileSync(path.join(repo, 'lib/lib.go'), 'utf8').replace('func Format(x string) string {\n\treturn x\n}', 'func Format(x string) string {\n\treturn x + "!"\n}'))
-    git(repo, 'commit', '-q', '-am', 'head')
-    const head = git(repo, 'rev-parse', 'HEAD')
-    const d = tmpDir()
-    expect(cli(['--data-dir', d, 'init']).status).toBe(0)
-    expect(cli(['--data-dir', d, 'repo', 'add', repo]).status).toBe(0)
-    const run = cli(['--data-dir', d, 'completeness', repo, `${base}..${head}`])
+    const { d, base, head, status } = diffRepo(fixtureRepo('constrained'), ...formatEdit)
     // Exit 1 says a dependent is covered by no test, which is the case here; 2 is a failure.
-    expect(run.status).toBe(1)
+    expect(status).toBe(1)
     const env = tool(d, 'impact_completeness', { base, head })
     const data = env.data as unknown as { changed: Array<{ name: string; dependents: Array<{ name: string; basis: string; relation: string }> }>; totals: { dependents: number; by_basis: { inferred: number; observed: number } } }
     const format = data.changed.find((c) => c.name === 'Format')!
@@ -184,9 +193,10 @@ describe('FR207 issue 21 scenario 6: impact_completeness through a candidate cal
   }, 240000)
 })
 
+const overloads = (n: number) => Array.from({ length: n }, (_, i) => `  static void foo(${Array.from({ length: i }, (_, j) => `int a${j}`).join(', ')}) {}\n`).join('')
+const java = (n: number) => ({ 'src/a/Many.java': `package a;\n\npublic class Many {\n${overloads(n)}  static void caller() {\n    foo(1);\n  }\n}\n` })
+
 describe('FR208 FR202 issue 21 scenario 7: an ambiguous site is followed with all its candidates, up to five, and never past the cap', () => {
-  const overloads = (n: number) => Array.from({ length: n }, (_, i) => `  static void foo(${Array.from({ length: i }, (_, j) => `int a${j}`).join(', ')}) {}\n`).join('')
-  const java = (n: number) => ({ 'src/a/Many.java': `package a;\n\npublic class Many {\n${overloads(n)}  static void caller() {\n    foo(1);\n  }\n}\n` })
   const foos = (d: string) => (tool(d, 'find_symbols', { text: 'foo', kinds: ['method'] }).data.symbols as Array<{ id: string }>).map((s) => s.id)
 
   it('FR208 scenario 7: a site of five candidates reaches the caller from each of them, inferred, and the caller reaches each of them', async () => {
@@ -210,6 +220,62 @@ describe('FR208 FR202 issue 21 scenario 7: an ambiguous site is followed with al
     expect(env.limitations).toContain('1 ambiguous site naming code on these paths lists more than 5 candidates and was not followed.')
     for (const id of ids) expect((tool(d, 'trace_paths', { source_id: caller, target_id: id }).data as unknown as { conclusion: string }).conclusion).not.toBe('path_found')
     expect(tool(d, 'find_tests', { subject_ids: ids }).limitations.some((l) => /lists more than 5 candidates/.test(l))).toBe(true)
+  }, 240000)
+})
+
+describe('FR560 FR561 FR209 issue 21 FR-003: find_tests and impact_completeness say whether candidate edges were followed and why, and count the sites they did not follow', () => {
+  const FOLLOWED = (why: string) => `Candidate edges were followed in every file the walk reached because ${why}: every row reached through one is inferred.`
+  const CAPPED = '1 ambiguous site naming code on these paths lists more than 5 candidates and was not followed.'
+  const followed = (l: string[]) => l.filter((x) => /^Candidate edges were followed/.test(x) || /candidate site.* not followed/.test(x) || /call sites? with no single resolved target/.test(x))
+
+  it('FR560 find_tests with include_inferred false counts the candidate call sites it did not follow in its own note: four calls of Go Add, one of Format', () => {
+    const at = (d: string, qn: string, input: Record<string, unknown> = {}) => tool(d, 'find_tests', { subject_ids: [symbolId(d, qn)], ...input }).limitations
+    // calc/calc_test.go calls Add from TestAdd, BenchmarkAdd, ExampleAdd and setup.
+    expect(followed(at(polyglot, 'calc/calc:Add', { include_inferred: false }))).toEqual(['4 call sites with no single resolved target name code on these paths as a candidate; a test that reaches the subject only through one is not listed.'])
+    expect(followed(at(constrained, 'lib/lib:Format', { include_inferred: false }))).toEqual(['1 call site with no single resolved target names code on these paths as a candidate; a test that reaches the subject only through one is not listed.'])
+    // Followed, the note gives way to the sentence of FR209, by default and when asked.
+    expect(followed(at(polyglot, 'calc/calc:Add'))).toEqual([FOLLOWED("the subject's file has no precise tier")])
+    expect(followed(at(polyglot, 'calc/calc:Add', { include_inferred: true }))).toEqual([FOLLOWED('include_inferred was true')])
+  })
+
+  it('FR560 FR204 find_tests for a precise-tier subject gives the same note by default as with include_inferred false: Y names S as a candidate', async () => {
+    const d = await guessIndex({ 's.guess': 'def S\n', 'y.guess': 'def Y\n  cand S\n', 'test/t.guess': 'def testY\n  call Y\n' })
+    const note = ['1 call site with no single resolved target names code on these paths as a candidate; a test that reaches the subject only through one is not listed.']
+    expect(followed(tool(d, 'find_tests', { subject_ids: [symbolId(d, 's:S')] }).limitations)).toEqual(note)
+    expect(followed(tool(d, 'find_tests', { subject_ids: [symbolId(d, 's:S')], include_inferred: false }).limitations)).toEqual(note)
+  }, 240000)
+
+  it('FR561 impact_completeness says candidate edges were followed and why, and with include_inferred false counts the candidate sites naming a changed symbol or its dependents', () => {
+    const { d, base, head } = diffRepo(fixtureRepo('constrained'), ...formatEdit)
+    const notes = (input: Record<string, unknown> = {}) => followed(tool(d, 'impact_completeness', { base, head, ...input }).limitations)
+    expect(notes()).toEqual([FOLLOWED("the subject's file has no precise tier")])
+    expect(notes({ include_inferred: true })).toEqual([FOLLOWED('include_inferred was true')])
+    expect(notes({ include_inferred: false })).toEqual(['1 candidate site naming code on these paths was not followed; pass include_inferred true to follow it.'])
+  }, 240000)
+
+  it('FR561 impact_completeness speaks of the changed symbols that followed candidate edges together: two changed Go functions are the subjects\' files', () => {
+    const { d, base, head } = diffRepo(fixtureRepo('constrained'), 'lib/lib.go', 'func Format(x string) string {\n\treturn x\n}\n\nfunc format(x string) string {\n\treturn x\n}', 'func Format(x string) string {\n\treturn x + "!"\n}\n\nfunc format(x string) string {\n\treturn x + "?"\n}')
+    const env = tool(d, 'impact_completeness', { base, head })
+    expect((env.data as unknown as { changed: Array<{ name: string }> }).changed.map((c) => c.name).sort()).toEqual(['Format', 'format'])
+    expect(followed(env.limitations)).toEqual([FOLLOWED("the subjects' files have no precise tier")])
+  }, 240000)
+
+  it('FR561 FR208 impact_completeness says how many ambiguous sites past the cap it stopped at, and counts them among the sites not followed when asked not to follow', () => {
+    const { d, base, head } = diffRepo(java(6), 'src/a/Many.java', 'static void foo(int a0) {}', 'static void foo(int a0) { int z = a0; }')
+    const env = tool(d, 'impact_completeness', { base, head })
+    const foo = (env.data as unknown as { changed: Array<{ name: string; dependents: unknown[] }> }).changed.find((c) => c.name === 'a.Many.foo(int)')!
+    expect(foo.dependents).toEqual([])
+    expect(env.limitations).toContain(FOLLOWED("the subject's file has no precise tier"))
+    expect(env.limitations).toContain(CAPPED)
+    expect(followed(tool(d, 'impact_completeness', { base, head, include_inferred: false }).limitations)).toEqual(['1 candidate site naming code on these paths was not followed; pass include_inferred true to follow it.'])
+  }, 240000)
+
+  it('FR208 FR209 trace_paths says how many ambiguous sites past the cap it stopped at', async () => {
+    const { dataDir: d } = await indexedRepo(java(6))
+    const foo = (tool(d, 'find_symbols', { text: 'foo', kinds: ['method'] }).data.symbols as Array<{ id: string }>)[0]!.id
+    const env = tool(d, 'trace_paths', { source_id: symbolId(d, 'a.Many.caller'), target_id: foo })
+    expect((env.data as { conclusion: string }).conclusion).not.toBe('path_found')
+    expect(env.limitations).toContain(CAPPED)
   }, 240000)
 })
 
