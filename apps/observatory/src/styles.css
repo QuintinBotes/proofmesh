@@ -235,4 +235,6 @@ kbd { font: 11px ui-monospace, Menlo, monospace; padding: 0 5px; border: 1px sol
 .lens-row.unresolved { border-left-style: dotted; border-left-color: var(--amber); }
 .lens-row[aria-selected="true"] { border-color: var(--accent); background: rgba(127, 212, 255, 0.10); }
 .lens-path h3 { font-size: 12px; margin: 0 0 6px; }
+/* The path sits above the rows, so a long horizon scrolls in its own box (focusable, so the keyboard can scroll it too). */
+.lens-path .horizon { max-height: 24vh; overflow-y: auto; margin: 0 0 6px; }
 .source mark { background: rgba(242, 184, 75, 0.35); color: inherit; outline: 1px solid var(--amber); border-radius: 2px; }

@@ -9,7 +9,8 @@ test('FR068 FR057 every graph view says position carries no meaning, and shows t
   await page.goto(view.launchUrl)
   await expect(page.getByTestId('conclusion')).toContainText('symbols in', { timeout: 60000 })
   const legend = page.getByRole('region', { name: 'Legend' })
-  for (const tab of ['Galaxy', 'Map', 'Explore', 'Trace a path', 'Ecosystem']) {
+  // A path is traced inside Explore's lens (FR1300); trace.spec.ts checks the legend beside it.
+  for (const tab of ['Galaxy', 'Map', 'Explore', 'Ecosystem']) {
     await page.getByRole('tab', { name: tab }).click()
     await expect(legend, tab).toContainText('Position carries no meaning; only drawn lines are relationships.')
     await expect(page.locator('.crumbs'), tab).toContainText('no execution')
