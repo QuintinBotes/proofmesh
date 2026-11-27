@@ -111,3 +111,24 @@ describe('FR670 FR671 PROOFMESH_PYRIGHT_UNANNOTATED reaches the Python adapter',
     expect(on.published).not.toBe(off.published)
   }, 240000)
 })
+
+describe('FR780 a source file that is not UTF-8 fails alone', () => {
+  it('FR780 not UTF-8: a Latin-1 a.py and a c.py with an invalid UTF-8 sequence are failed as not_utf8, the snapshot is published, and the UTF-8 b.py keeps its symbols at the right bytes', () => {
+    const repo = tmpDir('pm-py-enc-'), d = tmpDir()
+    fs.writeFileSync(path.join(repo, 'a.py'), Buffer.from('# coding: latin_1\nx = "caf\xe9"\ndef f():\n    return x\n', 'latin1'))
+    fs.writeFileSync(path.join(repo, 'c.py'), Buffer.concat([Buffer.from('x = "'), Buffer.from([0xff, 0xc0, 0x80]), Buffer.from('"\ndef h():\n    return x\n')]))
+    fs.writeFileSync(path.join(repo, 'b.py'), 'y = "café"\ndef g():\n    return y\n')
+    spawnSync('git', ['init', '-q'], { cwd: repo })
+    for (const args of [['init'], ['repo', 'add', repo]]) expect(cli(['--data-dir', d, ...args]).status).toBe(0)
+    const r = cli(['--data-dir', d, 'index', repo])
+    expect(r.stderr).not.toMatch(/does not fit/)
+    expect(r.status).toBe(0)
+    expect(withSnapshot(d, (db) => db.prepare('select path, disposition, disposition_detail as detail from file order by path').all())).toEqual([
+      { path: 'a.py', disposition: 'failed', detail: 'not_utf8' },
+      { path: 'b.py', disposition: 'indexed', detail: null },
+      { path: 'c.py', disposition: 'failed', detail: 'not_utf8' },
+    ])
+    const g = withSnapshot(d, (db) => db.prepare("select s.start_byte, s.end_byte from symbol s join file f on f.id = s.file_id where f.path = 'b.py' and s.name = 'g'").get()) as { start_byte: number; end_byte: number }
+    expect(fs.readFileSync(path.join(repo, 'b.py')).subarray(g.start_byte, g.end_byte).toString()).toBe('def g():\n    return y')
+  }, 240000)
+})

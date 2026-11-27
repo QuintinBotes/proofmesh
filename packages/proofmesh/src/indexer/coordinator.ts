@@ -1,3 +1,4 @@
+import { isUtf8 } from 'node:buffer'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -174,11 +175,17 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
 
     progress({ phase: 'capture', done: 0, total: discovered.length })
     const captured: Captured[] = []
+    // Adapters count bytes on decoded text, so a file that is not UTF-8 would get ranges off its bytes: it is captured but failed alone, unread (FR780).
+    const notUtf8 = new Set<string>()
     for (const [i, d] of discovered.entries()) {
       if (i && i % 1000 === 0) progress({ phase: 'capture', done: i, total: discovered.length })
       if (d.status !== 'capture') continue
-      captured.push({ ...d, hash: store.put(fs.readFileSync(path.join(root, d.path))) })
+      const bytes = fs.readFileSync(path.join(root, d.path))
+      if (d.role !== 'registry' && !isUtf8(bytes)) notUtf8.add(d.path)
+      captured.push({ ...d, hash: store.put(bytes) })
     }
+    for (const run of runs) { run.sources = run.sources.filter((d) => !notUtf8.has(d.path)); run.configs = run.configs.filter((d) => !notUtf8.has(d.path)) }
+    runs = runs.filter((r) => r.sources.length)
     progress({ phase: 'capture', done: discovered.length, total: discovered.length })
     // What follows capture has its own stage line: a crash must show where it stopped, not only that capture had ended.
     progress({ phase: 'prepare', done: 0, total: 0 })
@@ -189,6 +196,7 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
 
     const workspace = path.join(jobDir, 'workspace')
     for (const c of captured) {
+      if (notUtf8.has(c.path)) continue
       const target = path.join(workspace, c.path)
       fs.mkdirSync(path.dirname(target), { recursive: true })
       fs.writeFileSync(target, store.read(c.hash)!)
@@ -483,7 +491,7 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
       // GraphQL contract to the code that implements and calls it (FR403, FR404).
       const linked = [...ffi, ...linkHttp(declared, endpoints.filter((e) => !isContract(e.qualified_name)), bound, { id: 'seams-http', version: SEAMS_VERSION, mode: analysisMode }), ...linkSchemas(declared, endpoints, bound, { id: 'seams-schema', version: SCHEMA_SEAMS_VERSION, mode: analysisMode })]
       db.transaction(() => writer.relationships(linked, (done) => progress({ phase: 'write', done, total: linked.length })))()
-      const ownershipFiles = captured.filter((c) => c.role === 'ownership')
+      const ownershipFiles = captured.filter((c) => c.role === 'ownership' && !notUtf8.has(c.path))
       const ownersFile = effectiveCodeowners(ownershipFiles.map((c) => c.path))
       if (ownersFile) {
         const rules = parseCodeowners(store.read(hashOf.get(ownersFile)!)!.toString('utf8'))
@@ -491,6 +499,7 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
       }
       for (const c of ownershipFiles) fileResults.set(c.path, { status: 'ok', capabilities: { text: 'complete', syntax: 'complete', symbols: 'complete', imports: 'unsupported', references: 'unsupported', resolved_calls: 'unsupported', framework: 'unsupported' } })
       for (const c of captured) if (c.role === 'registry') fileResults.set(c.path, { status: 'ok', capabilities: { text: 'complete' } })
+      for (const p of notUtf8) fileResults.set(p, { status: 'failed', detail: 'not_utf8', capabilities: {} })
 
       const updateFile = db.prepare('update file set disposition = ?, disposition_detail = ?, content_hash = ?, capabilities = ? where path = ?')
       // The tier that produced a source file's facts rides beside its capabilities (FR137); capture-only files have none.
