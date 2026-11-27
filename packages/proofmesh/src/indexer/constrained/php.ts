@@ -47,7 +47,7 @@ export function resolvePhp(m: Model, rels: Rel[]): Map<Rel, Rel> {
   const classes = new Map<string, Sym[]>(), functions = new Map<string, Sym[]>(), membersOf = new Map<Sym, Sym[]>()
   for (const s of syms) {
     if (TYPES.has(s.kind)) group(classes, key(fqnOf(s)), s)
-    else if (s.kind === 'function' || s.kind === 'method') { const owner = container.get(s); if (owner) membersOf.set(owner, [...(membersOf.get(owner) ?? []), s]); else group(functions, key(fqnOf(s)), s) }
+    else if (s.kind === 'function' || s.kind === 'method') { const owner = container.get(s); if (owner) { const list = membersOf.get(owner); if (list) list.push(s); else membersOf.set(owner, [s]) } else group(functions, key(fqnOf(s)), s) }
   }
 
   // Each file's namespaces, by where they start, and its `use` clauses.
@@ -118,12 +118,21 @@ export function resolvePhp(m: Model, rels: Rel[]): Map<Rel, Rel> {
     const v = visibilityOf(s), owner = container.get(s)!
     return v === 'public' || (!!from && (v === 'private' ? from === owner : lineOf(from).includes(owner) || lineOf(owner).includes(from)))
   }
+  const traits = new Map<Sym, boolean>()
+  /** Whether a class body has a `use T;` of a trait (a closure's `use ($x)` is no such statement). */
+  const usesTrait = (t: Sym) => {
+    let v = traits.get(t)
+    if (v === undefined) { const body = text(t.path, t.start, t.end); traits.set(t, (v = /(^|[;{}])\s*use\s+\\?[A-Za-z_]/.test(body.slice(body.indexOf('{') + 1)))) }
+    return v
+  }
   /** The methods of a name a class declares or inherits, the ones the site reaches, and whether every parent was known. */
   const methodsOf = (t: Sym, name: string, from: Sym | undefined, seen = new Set<Sym>()): { found: Sym[]; unreached: Sym[]; complete: boolean } => {
     if (seen.has(t)) return { found: [], unreached: [], complete: true }
     seen.add(t)
     const own = (membersOf.get(t) ?? []).filter((s) => s.name.toLowerCase() === name.toLowerCase())
     if (own.length) return { found: own.filter((s) => reaches(s, from)), unreached: own.filter((s) => !reaches(s, from)), complete: true }
+    // A trait's method overrides an inherited one, and the tier records no trait a class uses: past one, nothing is bound.
+    if (usesTrait(t)) return { found: [], unreached: [], complete: false }
     const up = supers.get(t), r = { found: [] as Sym[], unreached: [] as Sym[], complete: up?.complete ?? true }
     for (const s of up?.types ?? []) { const x = methodsOf(s, name, from, seen); r.found.push(...x.found); r.unreached.push(...x.unreached); r.complete &&= x.complete }
     return r

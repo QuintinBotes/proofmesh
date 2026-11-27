@@ -474,8 +474,8 @@ describe('FR880 FR881 FR882 Kotlin binds a name through its class, its imports, 
     expect(actual(`${KT}/Main.kt:12`, 'Order')).toMatchObject({ resolution: 'candidate', rule: 'kotlin_import', candidates: [`acme.lib.Order@${KLIB}`] })
     expect(actual(`${KT}/Main.kt:11`, 'helper')).toMatchObject({ resolution: 'candidate', rule: 'kotlin_same_package', candidates: [`acme.app.helper@${KT}/Util.kt`] })
     expect(actual(`${KT}/Main.kt:9`, 'format')).toMatchObject({ resolution: 'candidate', rule: 'kotlin_star_import', candidates: [`acme.lib.format@${KLIB}`] })
-    // A call inside a trailing lambda is read as any other.
-    expect(actual(`${KT}/Main.kt:18`, 'helper')).toMatchObject({ resolution: 'candidate', rule: 'kotlin_same_package' })
+    // A lambda may have a receiver whose members the tier cannot see, so a bare call inside one keeps its row.
+    expect(actual(`${KT}/Main.kt:18`, 'helper')).toMatchObject({ resolution: 'unresolved', reason: 'outside_capability' })
   }, 240000)
 
   it('FR881 a private top-level function is seen from its own file only, a private member from its class, an internal one from its own module only: elsewhere unknown_name with detail.visibility and no candidate', () => {
@@ -618,6 +618,56 @@ describe('FR887 FR888 FR889 Ruby binds a name through its requires and its modul
       [21, 'hello', 'unresolved', undefined, []],
       [27, 'size', 'unresolved', undefined, []],
     ])
+  }, 240000)
+})
+
+describe('FR880 FR882 FR885 FR887 FR888 FR889 review of the Kotlin, PHP and Ruby rules: where a name the tier cannot see would win, the row is kept', () => {
+  const callsOf = (dataDir: string) => withSnapshot(dataDir, (db) => rows(db, 'calls')).map((r) => [`${r.path}:${r.line}`, r.detail?.callee, r.resolution, r.detail?.rule, r.candidates]).sort((a, b) => String(a[0]).localeCompare(String(b[0]), 'en', { numeric: true }) || String(a[1]).localeCompare(String(b[1])))
+
+  it('FR880 FR882 Kotlin: an import of a name the repository lacks hides the package\'s; a lambda\'s receiver, a parameter and a local function are not bound past; a named companion\'s members are the class\'s; a nested class sees only the companions around it', async () => {
+    const { dataDir } = await indexedRepo({
+      'src/acme/Log.kt': 'package acme\n\nclass Log {\n    companion object {\n        fun d(x: String) {}\n    }\n}\n\nfun render(x: Int) {}\n\nfun outer() {\n    fun local() {}\n}\n\nfun x2() {}\n\nfun z() {}\n',
+      'src/acme/Use.kt': 'package acme\n\nimport android.util.Log\n\nclass Shape {\n    fun draw() {}\n}\n\nclass Main {\n    fun draw() {}\n\n    fun run(s: Shape) {\n        Log.d("x")\n        with(s) { draw() }\n        if (true) { draw() }\n        local()\n    }\n\n    fun click(render: (Int) -> Unit) {\n        render(1)\n    }\n}\n\nclass Host {\n    fun a() {\n        z()\n        Host.z()\n    }\n\n    fun x2() {}\n\n    companion object Factory {\n        fun z() {}\n    }\n\n    class Nested {\n        fun b() {\n            x2()\n            z()\n        }\n    }\n}\n',
+    })
+    const F = 'acme.Host.Factory.z@src/acme/Use.kt'
+    expect(callsOf(dataDir).filter((c) => c[1] !== 'with')).toEqual([
+      ['src/acme/Use.kt:13', 'd', 'unresolved', undefined, []],
+      ['src/acme/Use.kt:14', 'draw', 'unresolved', undefined, []],
+      ['src/acme/Use.kt:15', 'draw', 'candidate', 'kotlin_same_class', ['acme.Main.draw@src/acme/Use.kt']],
+      ['src/acme/Use.kt:16', 'local', 'unresolved', undefined, []],
+      ['src/acme/Use.kt:20', 'render', 'unresolved', undefined, []],
+      ['src/acme/Use.kt:26', 'z', 'candidate', 'kotlin_same_class', [F]],
+      ['src/acme/Use.kt:27', 'z', 'candidate', 'kotlin_same_package', [F]],
+      ['src/acme/Use.kt:38', 'x2', 'candidate', 'kotlin_same_package', ['acme.x2@src/acme/Log.kt']],
+      ['src/acme/Use.kt:39', 'z', 'candidate', 'kotlin_same_class', [F]],
+    ])
+  }, 240000)
+
+  it('FR885 PHP: a class that uses a trait binds no inherited method past it, since the trait\'s would override it; a closure\'s use ($x) is no trait', async () => {
+    const { dataDir } = await indexedRepo({
+      'app/Models/User.php': '<?php\nnamespace App\\Models;\n\nclass Base\n{\n    public function notify($x) {}\n}\n\ntrait Notifiable\n{\n    public function notify($x) {}\n}\n\nclass User extends Base\n{\n    use Notifiable;\n\n    public function go()\n    {\n        $this->notify(1);\n    }\n}\n\nclass Plain extends Base\n{\n    public function go()\n    {\n        $f = function () use ($x) { return $x; };\n        $this->notify(2);\n    }\n}\n',
+    })
+    expect(callsOf(dataDir)).toEqual([
+      ['app/Models/User.php:20', 'notify', 'unresolved', undefined, []],
+      ['app/Models/User.php:29', 'notify', 'candidate', 'php_same_class', ['App.Models.Base.notify@app/Models/User.php']],
+    ])
+  }, 240000)
+
+  it('FR887 FR888 FR889 Ruby: class << self holds singleton methods; a def inside a block is no top-level def; a constant of an ancestor comes before the top level; a gem declared for development keeps the row', async () => {
+    const { dataDir } = await indexedRepo({
+      'lib/a.rb': "require_relative 'b'\n\nclass Order < Base\n  class << self\n    def build(a); end\n  end\n\n  def run\n    build(1)\n    helper(2)\n    LIMIT.to_s\n  end\n\n  def self.make\n    build(3)\n  end\nend\n",
+      'lib/b.rb': 'class Base\n  class LIMIT; def self.to_s; end; end\nend\n\nclass LIMIT\n  def self.to_s; end\nend\n\nStruct.new(:a) do\n  def helper(x); end\nend\n',
+      'g/app/app.gemspec': 'Gem::Specification.new do |s|\n  s.name = "app"\n  s.add_development_dependency "tool"\nend\n', 'g/app/spec/app_spec.rb': 'require "tool/x"\n',
+      'g/tool/tool.gemspec': 'Gem::Specification.new do |s|\n  s.name = "tool"\nend\n', 'g/tool/lib/tool/x.rb': 'def x(a); end\n',
+    })
+    expect(callsOf(dataDir).filter((c) => !/^(require|require_relative|new)$/.test(String(c[1])))).toEqual([
+      ['lib/a.rb:9', 'build', 'unresolved', undefined, []],
+      ['lib/a.rb:10', 'helper', 'unresolved', undefined, []],
+      ['lib/a.rb:11', 'to_s', 'candidate', 'ruby_constant', ['lib/b:Base.LIMIT.to_s@lib/b.rb']],
+      ['lib/a.rb:15', 'build', 'candidate', 'ruby_same_class', ['lib/a:Order.build@lib/a.rb']],
+    ])
+    const tool = withSnapshot(dataDir, (db) => db.prepare("select resolution, reason from assertion where type = 'imports' and detail like '%tool/x%'").get())
+    expect(tool).toEqual({ resolution: 'unresolved', reason: 'outside_capability' })
   }, 240000)
 })
 

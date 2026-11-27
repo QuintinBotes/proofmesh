@@ -40,23 +40,42 @@ export function resolveRuby(m: Model, rels: Rel[]): Map<Rel, Rel> {
   }
   const named = new Map<string, Sym[]>()
   for (const s of syms) if (s.kind !== 'module') group(named, pathOf(s), s)
-  // shortcut: a method inside `class << self` reads as an instance method; reading that block would tell it apart.
+  // A singleton method: `def self.f`, `def C.f`, or a `def` inside a `class << self` still open where it starts (its `end` at the same indent).
   const singleton = new Map<Sym, boolean>()
-  const isSingleton = (s: Sym) => { let v = singleton.get(s); if (v === undefined) singleton.set(s, (v = /^def\s+(self|[A-Z]\w*)\s*\./.test(text(s.path, s.start, s.start + 128)))); return v }
+  const isSingleton = (s: Sym) => {
+    let v = singleton.get(s)
+    if (v === undefined) {
+      const owner = around(s.path, s.start)[0], before = text(s.path, owner?.start ?? 0, s.start)
+      const open = [...before.matchAll(/^([ \t]*)class\s*<<\s*self\b/gm)].at(-1)
+      v = /^def\s+(self|[A-Z]\w*)\s*\./.test(text(s.path, s.start, s.start + 128)) || (!!open && !new RegExp(`^${open[1]}end\\b`, 'm').test(before.slice(open.index! + open[0].length)))
+      singleton.set(s, v)
+    }
+    return v
+  }
+  // shortcut: a top-level `def` is one at the start of a line; a `def` inside a block (`Class.new do`, `describe do`) is indented and is none.
+  const atTopLevel = (s: Sym) => s.start === 0 || text(s.path, s.start - 1, s.start) === '\n'
 
   // Requires: a file each `require_relative` or `require` names, and every file a file reaches through them.
   const gemOf = (f: string) => m.projectOf(f, ['gem'])
+  /** A file of a gem the requiring file's gem does not see: `declared` when it names the gem in some scope (development), `undeclared` when not at all. */
+  const gemBlocked = (from: string, to: string): 'declared' | 'undeclared' | undefined => {
+    const a = gemOf(from), b = gemOf(to)
+    return !a || !b || m.sees(a, b, from) ? undefined : m.declares(a, b.name) ? 'declared' : 'undeclared'
+  }
   const required = new Map<Rel, { files: string[]; rule: string }>(), requires = new Map<string, string[]>()
+  // Files by their base name, so a require costs the files of its name and not the repository's.
+  const byBase = new Map<string, string[]>()
+  for (const f of [...files].sort()) { const list = byBase.get(path.posix.basename(f)); if (list) list.push(f); else byBase.set(path.posix.basename(f), [f]) }
   for (const r of mine) {
     const written = r.type === 'imports' ? r.detail?.module : undefined
     if (!written) continue
     const relative = /^require_relative\b/.test(text(r.site.path, r.site.range.start_byte, r.site.range.end_byte).trimStart())
     const target = written.endsWith('.rb') ? written : `${written}.rb`
-    const found = relative ? [path.posix.normalize(path.posix.join(path.posix.dirname(r.site.path), target))].filter((f) => files.has(f)) : [...files].filter((f) => f === target || f.endsWith(`/lib/${target}`) || f === `lib/${target}`).sort()
+    const found = relative ? [path.posix.normalize(path.posix.join(path.posix.dirname(r.site.path), target))].filter((f) => files.has(f)) : (byBase.get(path.posix.basename(target)) ?? []).filter((f) => f === target || f === `lib/${target}` || f.endsWith(`/lib/${target}`))
     if (!found.length) continue
     required.set(r, { files: found, rule: relative ? 'ruby_require_relative' : 'ruby_require' })
-    // A file of a gem the requiring gem does not depend on is required but brings nothing into reach.
-    const from = gemOf(r.site.path), seen = found.filter((f) => { const to = gemOf(f); return !from || !to || m.sees(from, to, r.site.path) })
+    // A file of a gem the requiring gem does not depend on, or only for development, is required but brings nothing into reach.
+    const seen = found.filter((f) => !gemBlocked(r.site.path, f))
     requires.set(r.site.path, [...(requires.get(r.site.path) ?? []), ...seen])
   }
   const reached = new Map<string, Set<string>>()
@@ -72,11 +91,15 @@ export function resolveRuby(m: Model, rels: Rel[]): Map<Rel, Rel> {
 
   /** The modules and classes of a constant path (`Shop.Cart`) that a file reaches. */
   const defined = (from: string, constant: string) => (named.get(constant) ?? []).filter((s) => NAMESPACES.has(s.kind) && reach(from).has(s.path))
-  /** A constant as written (`Cart`, `Shop::Cart`, `::Cart`) from a byte of a file: through the lexical nesting there, innermost first, then the top level. */
-  const resolveConst = (from: string, at: number, written: string): string | undefined => {
+  /** A constant as written (`Cart`, `Shop::Cart`, `::Cart`) from a byte of a file: through the lexical nesting there, innermost first, then the
+   * ancestors of the innermost class the repository holds, then the top level. */
+  const resolveConst = (from: string, at: number, written: string, ancestors = true): string | undefined => {
     const [first, ...rest] = written.replace(/^::/, '').split('::')
     let base: string | undefined
     if (!written.startsWith('::')) for (const n of around(from, at)) if (defined(from, `${pathOf(n)}.${first}`).length) { base = `${pathOf(n)}.${first}`; break }
+    // shortcut: an ancestor the repository does not hold is passed over, not taken to hide the top-level constant.
+    const inner = around(from, at)[0]
+    if (!base && ancestors && inner && !written.startsWith('::')) base = viaAncestors(from, pathOf(inner), first!)
     base ??= defined(from, first!).length ? first : undefined
     const full = base && [base, ...rest].join('.')
     return full && defined(from, full).length ? full : undefined
@@ -87,13 +110,25 @@ export function resolveRuby(m: Model, rels: Rel[]): Map<Rel, Rel> {
   for (const r of mine.filter((x) => x.type === 'inherits')) {
     const sub = r.source.symbol ? byLocal.get(r.source.symbol) : undefined, name = r.detail?.name
     if (!sub || !name) continue
-    supers.set(pathOf(sub), [...(supers.get(pathOf(sub)) ?? []), { path: resolveConst(r.site.path, r.site.range.start_byte, name), include: r.detail?.relation === 'include' }])
+    supers.set(pathOf(sub), [...(supers.get(pathOf(sub)) ?? []), { path: resolveConst(r.site.path, r.site.range.start_byte, name, false), include: r.detail?.relation === 'include' }])
+  }
+  /** A constant an ancestor of a class or module declares, as its path. */
+  const viaAncestors = (from: string, owner: string, name: string, seen = new Set<string>()): string | undefined => {
+    if (seen.has(owner)) return undefined
+    seen.add(owner)
+    for (const up of supers.get(owner) ?? []) {
+      if (!up.path) continue
+      if (defined(from, `${up.path}.${name}`).length) return `${up.path}.${name}`
+      const deeper = viaAncestors(from, up.path, name, seen)
+      if (deeper) return deeper
+    }
+    return undefined
   }
   /** The methods of a name a class or module (`''` for the top level) declares, singleton or instance, that a file reaches, else its ancestors'. */
   const methodsOf = (from: string, owner: string, name: string, single: boolean, seen = new Set<string>()): { found: Sym[]; inherited: boolean; complete: boolean } => {
     if (seen.has(owner)) return { found: [], inherited: false, complete: true }
     seen.add(owner)
-    const own = (named.get(owner ? `${owner}.${name}` : name) ?? []).filter((s) => s.kind === 'method' && reach(from).has(s.path) && isSingleton(s) === single)
+    const own = (named.get(owner ? `${owner}.${name}` : name) ?? []).filter((s) => s.kind === 'method' && reach(from).has(s.path) && isSingleton(s) === single && (!!owner || atTopLevel(s)))
     if (own.length || !owner) return { found: own, inherited: false, complete: true }
     const r = { found: [] as Sym[], inherited: true, complete: true }
     // A singleton method is inherited from the superclass; an instance method from it and from the included modules too.
@@ -112,9 +147,9 @@ export function resolveRuby(m: Model, rels: Rel[]): Map<Rel, Rel> {
     if (rel.type === 'imports') {
       const req = required.get(rel)
       if (!req) continue
-      const from = gemOf(file), hidden = req.files.flatMap((f) => { const to = gemOf(f); return from && to && !m.sees(from, to, file) ? [to] : [] })
-      const modules = req.files.flatMap((f) => moduleSyms.get(f) ?? [])
-      if (hidden.length === req.files.length) out.set(rel, undeclared(rel, hidden))
+      // A gem declared only for development keeps the row; one not declared at all is dependency_missing.
+      const blocked = req.files.map((f) => gemBlocked(file, f)), modules = req.files.filter((_, i) => !blocked[i]).flatMap((f) => moduleSyms.get(f) ?? [])
+      if (blocked.every((b) => b === 'undeclared')) out.set(rel, undeclared(rel, req.files.flatMap((f) => gemOf(f) ?? [])))
       else if (modules.length) out.set(rel, bind(rel, modules, req.rule))
       continue
     }

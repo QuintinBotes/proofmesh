@@ -661,11 +661,8 @@
       "at": "kotlin/app/src/main/kotlin/acme/app/Main.kt:18",
       "type": "calls",
       "name": "helper",
-      "resolution": "candidate",
-      "rule": "kotlin_same_package",
-      "candidates": [
-        "acme.app.helper@kotlin/app/src/main/kotlin/acme/app/Util.kt"
-      ]
+      "resolution": "unresolved",
+      "reason": "outside_capability"
     },
     {
       "at": "kotlin/app/src/main/kotlin/acme/app/Main.kt:18",

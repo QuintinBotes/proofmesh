@@ -30,6 +30,43 @@ function modifiers(head: string): Set<string> {
   }
 }
 
+const CONTROL = /\b(if|for|while|catch|when|get|set|constructor|init)\s*$/
+/** Whether a call at the end of a declaration's text runs inside a lambda or an anonymous object, whose receiver may supply the name, or
+ * names a parameter or a local of the function (`render(1)` on `render: (Int) -> Unit`): either way the bare name is not the tier's to bind.
+ * shortcut: a brace inside a string template's `${...}` is skipped with the string; a nested string in one can confuse the count. */
+function lambdaOrLocal(text: string, name: string, isFunction: boolean): boolean {
+  const code = text.replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\/|"""[\s\S]*?"""|"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'/g, (x) => ' '.repeat(x.length))
+  if (!isFunction) { const body = code.indexOf('{'); return body >= 0 && openBlocks(code, body + 1).some((lambda) => lambda) }
+  // The parameter list, then the body: a block, or an expression after `=`.
+  const open = code.indexOf('(', Math.max(0, code.search(/\bfun\b/)))
+  if (open < 0) return false
+  let i = open
+  for (let depth = 0; i < code.length; i++) { if (code[i] === '(') depth++; else if (code[i] === ')' && --depth === 0) break }
+  const word = name.replace(/[^\p{L}\p{N}_]/gu, '')
+  if (new RegExp(`(^|[(,\\s])${word}\\s*:`, 'u').test(code.slice(open + 1, i))) return true
+  const body = /^[^{=]*?([{=])/.exec(code.slice(i + 1))
+  if (!body) return false
+  const start = i + 1 + body[0].length
+  return new RegExp(`\\b(val|var)\\s+${word}\\b`, 'u').test(code.slice(start)) || openBlocks(code, start).some((lambda) => lambda)
+}
+/** The blocks still open at the end of the text, from a position: true for a lambda or an object body, false for a control block. */
+function openBlocks(code: string, from: number): boolean[] {
+  const open: boolean[] = []
+  for (let i = from; i < code.length; i++) {
+    if (code[i] === '}') open.pop()
+    if (code[i] !== '{') continue
+    const before = code.slice(Math.max(0, i - 200), i).trimEnd()
+    let control = /(\belse|\btry|\bfinally|\bdo|->|\bwhen|\binit)$/.test(before)
+    if (!control && before.endsWith(')')) {
+      let j = before.length - 1
+      for (let depth = 0; j >= 0; j--) { if (before[j] === ')') depth++; else if (before[j] === '(' && --depth === 0) break }
+      control = CONTROL.test(before.slice(0, Math.max(j, 0)))
+    }
+    open.push(!control)
+  }
+  return open
+}
+
 /** How a call names its callee, a trailing lambda (`f { }`, `f(x) { }`) and a call without parentheses taken as a call. */
 function kotlinForm(text: string, callee: string) {
   let t = text.trimEnd()
@@ -63,21 +100,28 @@ export function resolveKotlin(m: Model, rels: Rel[]): Map<Rel, Rel> {
   const container = new Map<Sym, Sym | undefined>()
   for (const list of inFile.values()) for (const s of list) container.set(s, list.filter((o) => o !== s && TYPES.has(o.kind) && o.start <= s.start && s.end <= o.end).sort((a, b) => b.start - a.start)[0])
   const topOf = (s: Sym): Sym => { let t = s; for (let c = container.get(t); c; c = container.get(t)) t = c; return t }
+  // A declaration inside a function is local to it: never a member, never a top-level name.
+  const local = new Set<Sym>()
+  for (const list of inFile.values()) for (const s of list) if (list.some((o) => o !== s && o.kind === 'function' && o.start <= s.start && s.end <= o.end)) local.add(s)
   // Top-level declarations by package and name, and every declaration by its qualified name; members by their class.
-  const topLevel = new Map<string, Sym[]>(), byFqn = new Map<string, Sym[]>(), membersOf = new Map<Sym, Sym[]>(), packages = new Set<string>()
+  const topLevel = new Map<string, Sym[]>(), byFqn = new Map<string, Sym[]>(), membersOf = new Map<Sym, Sym[]>(), inPackage = new Map<string, Sym[]>()
   for (const s of syms) {
-    if (s.kind !== 'function' && !TYPES.has(s.kind)) continue
+    if ((s.kind !== 'function' && !TYPES.has(s.kind)) || local.has(s)) continue
     const owner = container.get(s)
-    if (owner) { if (s.kind === 'function') membersOf.set(owner, [...(membersOf.get(owner) ?? []), s]) } else { group(topLevel, `${files.get(s.path)!.pkg}\u0000${s.name}`, s); packages.add(files.get(s.path)!.pkg) }
+    if (owner) { if (s.kind === 'function') { const list = membersOf.get(owner); if (list) list.push(s); else membersOf.set(owner, [s]) } } else { group(topLevel, `${files.get(s.path)!.pkg}\u0000${s.name}`, s); group(inPackage, files.get(s.path)!.pkg, s) }
     group(byFqn, s.qualified_name, s)
   }
 
   const mods = new Map<Sym, Set<string>>()
-  const visibility = (s: Sym): Vis => {
+  const modifiersOf = (s: Sym) => {
     let r = mods.get(s)
     if (!r) { const buf = m.read(s.path); r = buf ? modifiers(buf.subarray(s.start, Math.min(buf.length, s.start + 1024)).toString('utf8')) : new Set(); mods.set(s, r) }
-    return ([...r].find((x) => VISIBILITY.test(x)) as Vis | undefined) ?? 'public'
+    return r
   }
+  const visibility = (s: Sym): Vis => ([...modifiersOf(s)].find((x) => VISIBILITY.test(x)) as Vis | undefined) ?? 'public'
+  // A named companion object is a class symbol of its own; its members are the class's too. (An unnamed one's already are.)
+  const companions = new Map<Sym, Sym[]>()
+  for (const s of syms) { const owner = container.get(s); if (owner && s.kind === 'class' && !local.has(s) && modifiersOf(s).has('companion')) companions.set(owner, [...(companions.get(owner) ?? []), s]) }
   const projectOf = (s: Sym) => files.get(s.path)!.project
   /** Whether a declaration, and each class around it, may be named from a site: private within its file or top-level class, internal within its module. */
   const visible = (s: Sym, from: File, site: Sym | undefined, inherited = false): boolean => {
@@ -112,6 +156,7 @@ export function resolveKotlin(m: Model, rels: Rel[]): Map<Rel, Rel> {
       if (r.found.length) return r
       missed.invisible.push(...r.invisible)
       missed.hidden.push(...r.hidden)
+      if (rule === 'kotlin_import' && from.imports.some((i) => !i.star && i.name === name)) break
     }
     return missed
   }
@@ -134,7 +179,7 @@ export function resolveKotlin(m: Model, rels: Rel[]): Map<Rel, Rel> {
   const methodsOf = (t: Sym, name: string, from: File, site: Sym | undefined, inherited: boolean, seen = new Set<Sym>()): { found: Sym[]; invisible: Sym[]; complete: boolean } => {
     if (seen.has(t)) return { found: [], invisible: [], complete: true }
     seen.add(t)
-    const own = (membersOf.get(t) ?? []).filter((s) => s.name === name)
+    const own = [t, ...(companions.get(t) ?? [])].flatMap((c) => membersOf.get(c) ?? []).filter((s) => s.name === name)
     const found = own.filter((s) => visible(s, from, site, inherited)), invisible = own.filter((s) => !found.includes(s))
     const up = supers.get(t)
     let complete = up?.complete ?? true
@@ -142,7 +187,7 @@ export function resolveKotlin(m: Model, rels: Rel[]): Map<Rel, Rel> {
     if (!found.length) for (const s of up?.types ?? []) { const r = methodsOf(s, name, from, site, true, seen); found.push(...r.found); invisible.push(...r.invisible); complete &&= r.complete }
     return { found, invisible, complete }
   }
-  const memberRule = (t: Sym, found: Sym[], own: string) => (found.every((s) => container.get(s) === t) ? own : 'kotlin_inherited')
+  const memberRule = (t: Sym, found: Sym[], own: string) => (found.every((s) => container.get(s) === t || companions.get(t)?.includes(container.get(s)!)) ? own : 'kotlin_inherited')
   const ranked = (list: Sym[]) => [...list].sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : a.start - b.start))
   /** The row for what a lookup found: bound, or unresolved for visibility or an undeclared module, or left as it came. */
   const settle = (rel: Rel, r: Found, ambiguous = false) => {
@@ -159,7 +204,7 @@ export function resolveKotlin(m: Model, rels: Rel[]): Map<Rel, Rel> {
       if (!fqn) continue
       if (fqn.endsWith('.*')) {
         // A star import of a package only modules the file does not depend on hold.
-        const all = [...(topLevel.entries())].filter(([k]) => k.startsWith(`${fqn.slice(0, -2)}\u0000`)).flatMap(([, v]) => v)
+        const all = inPackage.get(fqn.slice(0, -2)) ?? []
         const r = sort(all, from, site, '')
         if (all.length && r.hidden.length === all.length) out.set(rel, undeclared(rel, r.hidden))
         continue
@@ -179,13 +224,17 @@ export function resolveKotlin(m: Model, rels: Rel[]): Map<Rel, Rel> {
     // The classes around the site, innermost first.
     const inside: Sym[] = []
     for (let t = site && (TYPES.has(site.kind) ? site : container.get(site)); t; t = container.get(t)) inside.push(t)
+    const unknownScope = () => !!site && lambdaOrLocal(b.subarray(site.start, rel.site.range.start_byte).toString('utf8'), callee, site.kind === 'function')
     if (form.form === 'bare') {
-      // A member of an enclosing class, own or inherited, wins over a top-level name; past a supertype the repository does not hold, nothing is bound.
-      let stop = false
+      if (unknownScope()) continue
+      // A member of an enclosing class, own or inherited, wins over a top-level name; past a supertype the repository does not hold, nothing is
+      // bound. A class that is not `inner` sees only the companion members of the classes around it.
+      let stop = false, instance = true
       for (const t of inside) {
-        const r = methodsOf(t, callee, from, site, false)
+        const r = instance ? methodsOf(t, callee, from, site, false) : { found: (companions.get(t) ?? []).flatMap((c) => methodsOf(c, callee, from, site, false).found), complete: true }
         if (r.found.length) { out.set(rel, bind(rel, ranked(r.found), memberRule(t, r.found, 'kotlin_same_class'), { ambiguous: !r.complete })); break }
         if (!r.complete) { stop = true; break }
+        if (!modifiersOf(t).has('inner')) instance = false
       }
       if (out.has(rel) || stop) continue
       // A call of a class's name is its constructor.
@@ -196,7 +245,7 @@ export function resolveKotlin(m: Model, rels: Rel[]): Map<Rel, Rel> {
     const receiver = form.before
     if (receiver === 'this' || receiver === 'super') {
       const t = inside[0]
-      if (!t) continue
+      if (!t || unknownScope()) continue
       const r = receiver === 'this' ? [methodsOf(t, callee, from, site, false)] : (supers.get(t)?.types ?? []).map((s) => methodsOf(s, callee, from, site, true))
       const found = r.flatMap((x) => x.found)
       if (found.length) out.set(rel, bind(rel, ranked(found), receiver === 'this' ? memberRule(t, found, 'kotlin_same_class') : 'kotlin_inherited', { ambiguous: r.some((x) => !x.complete) || (receiver === 'super' && !(supers.get(t)?.complete ?? true)) }))
@@ -206,7 +255,7 @@ export function resolveKotlin(m: Model, rels: Rel[]): Map<Rel, Rel> {
     // value whose type the tier cannot know, so it binds to nothing.
     // shortcut: a local value named like a type (`val Order = ...`) is read as the type; a scope check would tell them apart.
     if (!/^[\p{L}_][\p{L}\p{N}_]*(\.[\p{L}_][\p{L}\p{N}_]*)*$/u.test(receiver)) continue
-    if (packages.has(receiver) && !receiver.split('.').some((p) => /^\p{Lu}/u.test(p))) {
+    if (inPackage.has(receiver) && !receiver.split('.').some((p) => /^\p{Lu}/u.test(p))) {
       settle(rel, sort(topLevel.get(`${receiver}\u0000${callee}`) ?? [], from, site, 'kotlin_qualified_name'))
       continue
     }
