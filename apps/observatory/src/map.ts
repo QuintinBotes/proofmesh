@@ -1,6 +1,7 @@
 // Pure mapping from a get_overview result to a scene: one node per area, file or symbol, sized by its symbols (or matches
 // while searching), with aggregated resolved relationships between them. No DOM, so it is testable without a browser.
 import { forceLayout } from './layout'
+import { plural } from './plural'
 import { glyph, type Scene } from './scene'
 
 export type OverviewChild = { key: string; name: string; kind: 'directory' | 'file' | 'symbol'; symbols: number; matches: number | null; symbol_kind: string | null }
@@ -30,10 +31,10 @@ export function toMap(o: Overview, text: string | null): Scene {
     color: 'rgba(127,212,255,0.5)', size: 1 + 5 * (Math.log(1 + l.count) / Math.log(1 + maxLink)),
   }))
   const where = o.path === '' ? 'the repository' : o.path
-  const items = o.scope === 'file' ? 'symbols' : 'areas'
+  const item = o.scope === 'file' ? 'symbol' : 'area'
   const total = o.children.reduce((n, c) => n + weight(c), 0)
   const conclusion = text
-    ? `“${text}”: ${total.toLocaleString('en')} matching symbols in ${o.children.length} ${items} of ${where}${o.omitted ? ` (+${o.omitted} more)` : ''}. Click one to narrow down.`
-    : `${where}: ${o.children.length} ${items}${o.omitted ? ` (+${o.omitted} more)` : ''}, ${o.links.length} links between them. Click one to open it.`
+    ? `“${text}”: ${plural(total, 'matching symbol')} in ${plural(o.children.length, item)} of ${where}${o.omitted ? ` (+${o.omitted} more)` : ''}. Click one to narrow down.`
+    : `${where}: ${plural(o.children.length, item)}${o.omitted ? ` (+${o.omitted} more)` : ''}, ${plural(o.links.length, 'link')} between them. Click one to open it.`
   return { nodes, edges, badges: [], stubs: [], conclusion }
 }

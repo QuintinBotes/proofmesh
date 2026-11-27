@@ -31,6 +31,7 @@ test('FR1200 the Galaxy and the palette find the symbol the text is in, after na
   await expect(conclusion).toContainText('symbols in', { timeout: 60000 })
 
   await page.getByLabel('Search').fill('findMe')
+  await expect(conclusion).toHaveText('“findMe”: showing the 1 matching symbol; click one to explore it.')
   await page.getByRole('button', { name: 'Table', exact: true }).click()
   const rows = page.getByRole('table', { name: 'Symbols matching “findMe”' }).locator('tbody tr')
   await expect(rows.locator('td:nth-child(3)')).toHaveText(['src/target:findMe'])

@@ -69,6 +69,15 @@ test('A11 B5 B8 B20 a one-character search says why nothing shows, every area is
   await toggle.click()
 })
 
+test('FR1210 a search with one match and an area of one symbol are said in the singular', async () => {
+  await page.getByLabel('Search').fill('dispatch')
+  await expect(page.getByTestId('conclusion')).toHaveText('“dispatch”: showing the 1 matching symbol; click one to explore it.')
+  await page.getByLabel('Search').fill('')
+  await page.getByRole('region', { name: 'Areas' }).getByRole('button', { name: /legacy\/src/ }).click()
+  await expect(page.getByTestId('conclusion')).toHaveText('packages/legacy/src: 1 symbol. Click a point to explore it.')
+  await page.getByRole('region', { name: 'Areas' }).getByRole('button', { name: /legacy\/src/ }).click()
+})
+
 test('A11 B10 no view raised a page error while these tests ran', async () => {
   expect(errors).toEqual([])
 })
