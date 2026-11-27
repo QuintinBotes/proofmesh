@@ -22,7 +22,7 @@ import { assemble, FactCache, fileKeys, splitByFile, type FileFacts } from './fa
 import { analysisConfig, checkoutCommit, discoverAsync, gitInfo, type Discovered } from './discovery.js'
 import { CONTRACT_NAME, registryFor, type AdapterSpec, type Registry } from './languages.js'
 import { buildCensus } from './census.js'
-import { GENERATED_POLICY, isGeneratedFile } from './generated-vendored.js'
+import { GENERATED_POLICY } from './generated-vendored.js'
 import { vendoredGoImports } from './vendored-imports.js'
 import { constrain, RESOLUTION_VERSION, type Sym } from './constrained/index.js'
 import { type EndpointSym, linkHttp, SEAMS_VERSION } from './seams-http.js'
@@ -181,10 +181,10 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
     // Adapters count bytes on decoded text, so a file that is not UTF-8 would get ranges off its bytes: it is captured but failed alone, unread (FR780).
     const notUtf8 = new Set<string>()
     // Markdown docs no adapter reads stay unsupported, but their text is kept: their mentions are evidence, and an edit to one indexes again (FR826).
-    const docs: Array<{ path: string; hash: string }> = []
+    const docs: Array<{ path: string; hash: string; generated?: true }> = []
     for (const [i, d] of discovered.entries()) {
       if (i && i % 1000 === 0) progress({ phase: 'capture', done: i, total: discovered.length })
-      if (isDoc(d)) docs.push({ path: d.path, hash: store.put(fs.readFileSync(path.join(root, d.path))) })
+      if (isDoc(d)) docs.push({ path: d.path, hash: store.put(fs.readFileSync(path.join(root, d.path))), ...(d.generated ? { generated: d.generated } : {}) })
       if (d.status !== 'capture') continue
       const bytes = fs.readFileSync(path.join(root, d.path))
       if (d.role !== 'registry' && !isUtf8(bytes)) notUtf8.add(d.path)
@@ -527,8 +527,8 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
           else updateFile.run('failed', fr.detail ?? 'adapter_failure', null, capabilities({ ...fr.capabilities, ...flagOf(c) }, 'failed'), c.path)
         }
       })()
-      // Each doc's inline code and links, matched by name to what the adapters declared (FR820); a generated doc names nothing (FR292).
-      const docText = docs.flatMap((d) => { const b = store.read(d.hash); return b && isUtf8(b) && !isGeneratedFile(path.posix.basename(d.path), b.toString('utf8')) ? [{ path: d.path, text: b.toString('utf8') }] : [] })
+      // Each doc's inline code and links, matched by name to what the adapters declared (FR820); a generated doc names nothing (FR822).
+      const docText = docs.flatMap((d) => { const b = store.read(d.hash); return b && isUtf8(b) && !d.generated ? [{ path: d.path, text: b.toString('utf8') }] : [] })
       const mentions = resolveMentions(db, docText.flatMap((d) => scanDoc(d.path, d.text)))
       db.transaction(() => writer.mentions(mentions.recorded, { id: 'doc-links', version: DOC_LINKS_VERSION, mode: 'no_execution' }))()
       // Hashing needs each file's captured text and the declared spans, so it follows the last write and costs adapters nothing (FR130).

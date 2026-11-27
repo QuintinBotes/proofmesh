@@ -19,7 +19,7 @@ const isLocationRule = (detail: string | null) => LOCATION_RULES.has(detail) || 
 export const manifestHash = (discovered: Discovered[], hashOf: (p: string) => string | undefined, censusVersion: string = CENSUS_VERSION): string =>
   sha256(`census ${censusVersion}\n` + discovered.filter((d) => !(d.status === 'excluded' && isLocationRule(d.detail)))
     // A file flagged generated is a different snapshot from the same file unflagged: a .gitattributes edit changes no captured content (FR299).
-    .map((d) => `${d.path}\t${hashOf(d.path) ?? '-'}\t${d.status === 'capture' ? (d.detail?.startsWith('scip_revoked:') ? `capture:${d.detail}` : 'capture') + (d.generated ? ':generated' : '') : `${d.status}:${d.detail}`}`).join('\n'))
+    .map((d) => `${d.path}\t${hashOf(d.path) ?? '-'}\t${d.status === 'capture' ? (d.detail?.startsWith('scip_revoked:') ? `capture:${d.detail}` : 'capture') + (d.generated ? ':generated' : '') : `${d.status}:${d.detail}${d.generated ? ':generated' : ''}`}`).join('\n'))
 
 export type Change = { path: string; change: 'added' | 'modified' | 'deleted' }
 

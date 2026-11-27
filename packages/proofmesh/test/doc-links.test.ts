@@ -134,4 +134,13 @@ describe('FR823 a moved doc, a failed file and an accepted note, each on their o
     expect(withSnapshot(d2, (db) => db.prepare("select disposition_detail from file where path = 'src/wallet.ts'").get())).toEqual({ disposition_detail: 'not_utf8' })
     expect(stale2()).toEqual(['README.md:5 docs/design.md moved→docs/arch/design.md'])
   }, 120000)
+
+  it('FR822 a doc .gitattributes marks linguist-generated names no code, and the mark alone indexes again', () => {
+    const from = (doc: string) => withSnapshot(d2, (db) => (db.prepare("select count(*) as n from assertion a join file f on f.id = a.source_id where a.type = 'mentions' and f.path = ?").get(doc) as { n: number }).n)
+    expect(from('docs/guide.md')).toBeGreaterThan(0)
+    fs.writeFileSync(path.join(repo2, '.gitattributes'), 'docs/guide.md linguist-generated\n')
+    index2()
+    expect(from('docs/guide.md')).toBe(0)
+    expect(from('README.md')).toBeGreaterThan(0)
+  }, 120000)
 })
