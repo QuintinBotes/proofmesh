@@ -2110,6 +2110,9 @@
     "FR1225": [
       "packages/proofmesh/test/layout.test.ts"
     ],
+    "FR1620": [
+      "packages/proofmesh/test/layout.test.ts"
+    ],
     "FR580": [
       "packages/proofmesh/test/concepts.test.ts"
     ],
