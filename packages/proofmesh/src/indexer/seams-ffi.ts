@@ -11,11 +11,13 @@
 //   pinvoke             a C# `[DllImport]` or `[LibraryImport]` method -> the C function its EntryPoint or own name names
 //   cgo                 `C.f(...)` in a Go file that imports "C" -> the C function f
 //   cgo_export          a C call of f -> the Go function a `//export f` comment marks
-//   rust_extern_c       a Rust call of a function an `extern "C"` block of the same file declares -> the C function (its `link_name` if it has one)
+//   rust_extern_c       a Rust call of a function an `extern "C"` block declares (a bare or `self::` call in the same file, a path call in
+//                       the module file its path names) -> the C function (its `link_name` if it has one)
 //   rust_no_mangle      a C call of f -> the Rust function `#[no_mangle]` f
 //   python_c_extension  `m.f(...)` in Python, where m is imported -> the C function a `PyMethodDef` entry of module m registers as f
 //
 // A C function target is a definition (a body follows it) where the repository has one, else the prototypes that declare it.
+import path from 'node:path'
 import { canonicalJson } from '../core/hash.js'
 import { CAP, type Item, type Rel, type Sym } from './constrained/common.js'
 import type { Qualified } from './seams-http.js'
@@ -133,7 +135,8 @@ export function linkFfi<P extends { id: string }>(code: Sym[], items: Array<Item
   }
   // Rust: the functions each file's `extern "C"` blocks declare, by the name Rust calls them, with the C name and the library.
   const externs = new Map<string, Map<string, { c: string; library: string }>>()
-  for (const f of new Set(items.filter((i) => i.rel.site.path.endsWith('.rs')).map((i) => i.rel.site.path))) {
+  const rustFiles = new Set(code.filter((s) => s.path.endsWith('.rs')).map((s) => s.path))
+  for (const f of rustFiles) {
     if (!mentions(f, 'extern')) continue
     const t = text(f)
     const mine = new Map<string, { c: string; library: string }>()
@@ -178,6 +181,23 @@ export function linkFfi<P extends { id: string }>(code: Sym[], items: Array<Item
     return pyNames.set(f, { modules, functions: fns }).get(f)!
   }
 
+  // Rust modules by file: `lib.rs`, `main.rs` and `mod.rs` hold their children beside them, `a.rs` in `a/`.
+  const join = (dir: string, name: string) => (dir === '.' ? name : `${dir}/${name}`)
+  const childrenOf = (f: string) => (/(^|\/)(lib|main|mod)\.rs$/.test(f) ? path.posix.dirname(f) : f.slice(0, -'.rs'.length))
+  const firstFile = (...candidates: string[]) => candidates.find((c) => rustFiles.has(c))
+  const crateRoot = (f: string) => { for (let d = path.posix.dirname(f); ; d = path.posix.dirname(d)) { const root = firstFile(join(d, 'lib.rs'), join(d, 'main.rs')); if (root || d === '.') return root } }
+  /** The file of the module a call's path names from the calling file: `ffi`, `self::ffi`, `super::ffi`, `crate::sys::ffi`; none for a path through a type or a crate outside the repository. */
+  const moduleFile = (from: string, qualifier: string): string | undefined => {
+    let cur: string | undefined = from
+    for (const [i, seg] of qualifier.split('::').entries()) {
+      if (!cur) return undefined
+      if (seg === 'crate' && i === 0) cur = crateRoot(from)
+      else if (seg === 'self' && i === 0) continue
+      else if (seg === 'super') { const dir = path.posix.dirname(childrenOf(cur)); cur = firstFile(`${dir}.rs`, join(dir, 'mod.rs'), join(dir, 'lib.rs'), join(dir, 'main.rs')) }
+      else { const dir = join(childrenOf(cur), seg); cur = firstFile(`${dir}.rs`, join(dir, 'mod.rs')) }
+    }
+    return cur
+  }
   /** A Go file's cgo: whether it imports "C", and the first library its `#cgo LDFLAGS` links. */
   const cgo = new Map<string, { library: string } | null>()
   const cgoOf = (f: string) => {
@@ -192,8 +212,9 @@ export function linkFfi<P extends { id: string }>(code: Sym[], items: Array<Item
       const c = cgoOf(f)
       if (c) bind(i, cTargets(callee), 'cgo', { module: c.library, name: callee })
     } else if (f.endsWith('.rs')) {
-      // shortcut: the extern block must be in the calling file, because the syntax tier records no row for a `path::f(...)` call; read other files' blocks once it does.
-      const ext = externs.get(f)?.get(callee)
+      // A bare call, or `self::f()`, may name an extern of its own file; any other path names the module whose file declares it, and a path through a type (`Foo::new()`) names none.
+      const q = r.detail?.qualifier, file = !q || q === 'self' ? f : moduleFile(f, q)
+      const ext = file ? externs.get(file)?.get(callee) : undefined
       if (ext) bind(i, cTargets(ext.c), 'rust_extern_c', { module: ext.library, name: ext.c })
     } else if (C_FILE.test(f)) {
       const e = !r.detail?.qualifier ? exports.get(callee) : undefined

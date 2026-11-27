@@ -220,14 +220,14 @@ The rules, each from the calling side to the called one:
 - `pinvoke`: a C# method `[DllImport]` or `[LibraryImport]` marks, at its declaration, to the C functions of its `EntryPoint`, else of its own name, anywhere in the repository.
 - `cgo`: `C.f(...)` in a Go file that imports `"C"`, to the C function `f`. cgo's own helpers (`C.CString` and the like) and conversions to C's scalar and `<stdint.h>` types are no calls; a conversion to a typedef of the preamble is read as a call.
 - `cgo_export`: a C call of `f`, to the Go function a `//export f` comment marks.
-- `rust_extern_c`: a Rust call of a function an `extern "C"` block of the same file declares, to the C function of its `link_name`, else its name.
+- `rust_extern_c`: a Rust call of a function an `extern "C"` block declares, to the C function of its `link_name`, else its name. A bare call or `self::f()` reads the blocks of its own file; a path call (`ffi::f()`, `crate::sys::f()`, `super::f()`) reads those of the module file its path names (`ffi.rs` or `ffi/mod.rs`, from the crate root for `crate::` and the parent module for `super::`). A call through a type (`Foo::new()`) names no module file and is never bound to an extern of the same name.
 - `rust_no_mangle`: a C call of `f`, to the Rust function `#[no_mangle]` marks.
 - `python_c_extension`: `m.f(...)` with `m` imported, or `f(...)` imported from `m`, to the C function a `PyMethodDef` entry `{"f", fn, ...}` of extension module `m` (`PyInit_m`) registers.
 
 - A C target is a definition where the repository has one, else the prototypes that declare it, so a header and its source file do not make a call ambiguous. A call row the rule binds replaces the unresolved row the adapter wrote at that site.
 - A declaration or call whose other side is not in the repository (a system library) is `resolved_external`, named by the C function and by the library where the code writes it (the `DllImport` argument, `System.loadLibrary`, `#cgo LDFLAGS: -l`, `#[link(name)]`) in `detail.library`. Where the code names no library, the external's module is empty: the library is never guessed.
 - `workspace_status` `data.ffi_seams` counts the rows by rule, linked or external.
-- Not done: a P/Invoke library is not matched to a build target; JNI overloads are not told apart by their signature (two overloads of one method are each ambiguous between both C functions); a Rust call through a path (`ffi::f()`) is not linked, because the syntax tier records no row for it (#116); a C function defined in a cgo preamble is taken for an external one; `RegisterNatives` and `ctypes`/`cffi` are not read. The fixture is `fixtures/seams-ffi`.
+- Not done: a P/Invoke library is not matched to a build target; JNI overloads are not told apart by their signature (two overloads of one method are each ambiguous between both C functions); an extern block inside an inline `mod x { ... }` is reached only by a bare call (`x::f()` looks for the file `x.rs`), and a path through a `use` alias is not followed; a C function defined in a cgo preamble is taken for an external one; `RegisterNatives` and `ctypes`/`cffi` are not read. The fixture is `fixtures/seams-ffi`.
 
 ## SCIP indexes a person produces
 

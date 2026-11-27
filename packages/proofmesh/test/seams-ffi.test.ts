@@ -74,6 +74,11 @@ describe('FR460 to FR466 the FFI rules on their edge cases', () => {
       // cgo both ways: a Go function `//export` marks is called from C; a C function the repository lacks is external, by its -l library.
       'go/bridge.go': 'package bridge\n\n// #cgo LDFLAGS: -lz\n// #include <zlib.h>\nimport "C"\n\n//export GoCallback\nfunc GoCallback() int {\n\treturn 1\n}\n\nfunc Version() *C.char {\n\treturn C.zlibVersion()\n}\n\nfunc Str() {\n\t_ = C.CString("x")\n}\n\nfunc Width(v uint32) {\n\t_ = C.uint32_t(v)\n}\n',
       'c/callback.c': 'extern int GoCallback(void);\nextern int rust_double(int);\n\nint call_back(void) {\n    return GoCallback() + rust_double(2);\n}\n',
+      // A Rust crate: path calls to extern functions of other module files, and a same-file extern that a type's associated function shares a name with.
+      'rcrate/src/lib.rs': 'mod ffi;\nmod net;\n\nextern "C" {\n    fn new() -> i32;\n}\n\nstruct Foo;\n\nimpl Foo {\n    fn new() -> Foo {\n        Foo\n    }\n}\n\nfn make() -> Foo {\n    Foo::new()\n}\n\nfn raw_new() -> i32 {\n    unsafe { self::new() }\n}\n\nfn half() -> f64 {\n    unsafe { ffi::sqrt(0.25) }\n}\n',
+      'rcrate/src/ffi.rs': '#[link(name = "m")]\nextern "C" {\n    fn sqrt(x: f64) -> f64;\n}\n',
+      'rcrate/src/net/mod.rs': 'mod conn;\n\n#[link(name = "net")]\nextern "C" {\n    fn htons(x: u16) -> u16;\n}\n',
+      'rcrate/src/net/conn.rs': 'fn port() -> u16 {\n    unsafe { super::htons(80) }\n}\n\nfn root() -> f64 {\n    unsafe { crate::ffi::sqrt(2.0) }\n}\n',
       // Python: a function imported from an extension module by name.
       'py/fast.c': '#include <Python.h>\n\nstatic PyObject* fast_go(PyObject* self, PyObject* args) {\n    Py_RETURN_NONE;\n}\n\nstatic PyMethodDef Methods[] = {\n    {"go", (PyCFunction)fast_go, METH_NOARGS, NULL},\n    {NULL, NULL, 0, NULL}\n};\n\nPyMODINIT_FUNC PyInit_fast(void) {\n    return NULL;\n}\n',
       'py/run.py': 'from fast import go as start\n\n\ndef run():\n    return start()\n',
@@ -113,6 +118,17 @@ describe('FR460 to FR466 the FFI rules on their edge cases', () => {
 
   it('FR463 a C call of a #[no_mangle] Rust function is linked to it, rule rust_no_mangle', () => {
     expect(ffiFrom(dataDir, 'c/callback:call_back').filter((r) => r.rule === 'rust_no_mangle')).toEqual([{ resolution: 'candidate', to: null, candidates: ['rust/ffi:rust_double@rust/ffi.rs'], rule: 'rust_no_mangle', library: undefined, path: 'c/callback.c', line: 5 }])
+  })
+
+  it('FR463 a bare or self:: call binds the extern block of its own file; a call through a type (Foo::new) does not, though the file declares an extern of that name', () => {
+    expect(ffiFrom(dataDir, 'rcrate/src/lib:raw_new')).toEqual([{ resolution: 'resolved_external', to: null, candidates: [], rule: 'rust_extern_c', library: undefined, path: 'rcrate/src/lib.rs', line: 21 }])
+    expect(ffiFrom(dataDir, 'rcrate/src/lib:make')).toEqual([])
+  })
+
+  it('FR463 a path call follows its qualifier to the module file it names (x.rs or x/mod.rs, from crate::, self:: or super::) and binds that file\'s extern block', () => {
+    expect(ffiFrom(dataDir, 'rcrate/src/lib:half')).toEqual([{ resolution: 'resolved_external', to: 'm:sqrt', candidates: [], rule: 'rust_extern_c', library: 'm', path: 'rcrate/src/lib.rs', line: 25 }])
+    expect(ffiFrom(dataDir, 'rcrate/src/net/conn:port')).toEqual([{ resolution: 'resolved_external', to: 'net:htons', candidates: [], rule: 'rust_extern_c', library: 'net', path: 'rcrate/src/net/conn.rs', line: 2 }])
+    expect(ffiFrom(dataDir, 'rcrate/src/net/conn:root')).toEqual([{ resolution: 'resolved_external', to: 'm:sqrt', candidates: [], rule: 'rust_extern_c', library: 'm', path: 'rcrate/src/net/conn.rs', line: 6 }])
   })
 
   it('FR464 a function imported by name from an extension module, under an alias, is linked to the C function its PyMethodDef entry registers', () => {
