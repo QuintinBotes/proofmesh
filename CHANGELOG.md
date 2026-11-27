@@ -11,6 +11,8 @@ A bounded, read-only graph query for composed questions (#36; FR960 to FR966):
 - What it does not do: dispatch from an interface member to its implementations (write it as a pattern), candidate and unresolved sites, and paging. A variable-length pattern returns each node once, at its shortest distance, not every path. The typed tools stay first in every tool description.
 - `bench/parity` asks its twelve questions through `query_graph` too, in a table beside the typed tools' answers, with the p95 time.
 
+The references note every answer carries names Python (#217; FR1540): `References other than calls and imports are recorded only where an adapter supports them (C# uses of repository declarations, TypeScript uses of repository types, Python uses of repository classes and functions); ...`, as Python has recorded those uses since #38 (FR1287). The FR204 digests leave that standing note out: it is about the snapshot's adapters, not the subject's answer. They were re-pinned once on the code before this change, so the answers they pin are unchanged.
+
 The Galaxy's layout is computed with the snapshot, and every symbol keeps its place (part of #44; FR1220 to FR1225):
 
 - Positions are a pure function of the snapshot's path tree and symbol names: ordered strips of directories, then files, then symbols, each in name order, every symbol the same area, overloads ordered by declaration line. Edges never move a node. The server computes them when it builds the Galaxy payload, in 0.1 s at 250,000 symbols, and the same snapshot gives byte-identical positions in every browser, on every machine and on every run.

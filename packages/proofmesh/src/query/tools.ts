@@ -108,7 +108,7 @@ export const CONTRACT: ListQueriesData['contract'] = {
 /** What a snapshot's references capability means for an answer, said once per snapshot. */
 const referencesNote = (capability: string): string | null =>
   capability === 'complete' ? null
-  : capability === 'partial' ? 'References other than calls and imports are recorded only where an adapter supports them (C# uses of repository declarations, TypeScript uses of repository types); elsewhere a missing reference is not evidence of no use.'
+  : capability === 'partial' ? 'References other than calls and imports are recorded only where an adapter supports them (C# uses of repository declarations, TypeScript uses of repository types, Python uses of repository classes and functions); elsewhere a missing reference is not evidence of no use.'
   : 'References other than calls and imports are not analysed for this snapshot.'
 const TRUNCATED = 'Results were truncated and this tool does not page; narrow the query or raise the limits.'
 /** A paged tool cut short by something other than its rows (a depth or a timeout) has no next page to offer. */
