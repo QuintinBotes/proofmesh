@@ -1,5 +1,6 @@
 // Pure mapping from a get_relationships envelope to a neighbourhood scene: callers on the left, the focus in the middle,
 // callees, framework relations and unresolved sites on the right. No DOM, so it is testable without a browser.
+import { plural } from './plural'
 import { glyph, relationshipWords, TOKENS, type Scene, type SceneEdge, type SceneNode } from './scene'
 
 type Other = { kind: string; symbol_kind?: string; id?: string; name?: string; qualified_name?: string; path?: string; module?: string; start_line?: number }
@@ -63,7 +64,7 @@ export function toNeighbourhood(env: RelationshipsEnvelope, focus: Focus): Scene
   }
   const { totals } = env.data
   const notDrawn = totals.in + totals.out - rels.length + hidden
-  const badges = notDrawn > 0 ? [{ nodeId: focus.id, text: `+${notDrawn} relationships not drawn` }] : []
+  const badges = notDrawn > 0 ? [{ nodeId: focus.id, text: `+${plural(notDrawn, 'relationship')} not drawn` }] : []
   const unresolved = sides.out.filter((r) => r.resolution === 'unresolved').length
   const conclusion = `${focus.name}: ${totals.in} incoming, ${totals.out - unresolved} outgoing${unresolved ? `, ${unresolved} unresolved` : ''}${notDrawn > 0 ? `; ${notDrawn} not drawn, the table lists what was returned` : ''}. Click a node to explore from it.`
   return { nodes, edges, badges, stubs, conclusion }

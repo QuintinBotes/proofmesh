@@ -4,6 +4,7 @@ import { areaFog, areaLabel, ghostAreas, layoutKey, placeLabels, seeds, matchInd
 import { OVERLAY_RGB } from './diff'
 import { areaColor } from './map'
 import { visible } from './visible'
+import { plural } from './plural'
 
 type Props = { data: GalaxyData; query: string; focusArea: number | null; onOpen: (index: number) => void; onHover?: (index: number | null) => void; onClear: () => void; onSettled?: () => void; overlay?: Uint8Array | null }
 
@@ -80,7 +81,7 @@ function fogOf(d: GalaxyData, sum: Float64Array, sq: Float64Array, g: Graph): Fo
   const { shown, rest } = ghostAreas(d.areas, GHOSTS)
   const ghosts = [
     ...shown.map((a) => ({ name: a.name, files: Object.values(a.files).reduce((x, y) => x + y, 0), haze: areaFog(a).haze, label: fogText(a, false), text: fogText(a) })),
-    ...(rest.areas ? [{ name: `+${rest.areas} smaller areas`, files: rest.files, haze: 1, label: `+${rest.areas} smaller areas: ${rest.files.toLocaleString('en')} files`, text: `${rest.areas} more areas with no symbols hold ${rest.files.toLocaleString('en')} files the graph cannot see; the table lists them` }] : []),
+    ...(rest.areas ? [{ name: `+${plural(rest.areas, 'smaller area')}`, files: rest.files, haze: 1, label: `+${plural(rest.areas, 'smaller area')}: ${plural(rest.files, 'file')}`, text: `${plural(rest.areas, 'more area')} with no symbols ${rest.areas === 1 ? 'holds' : 'hold'} ${plural(rest.files, 'file')} the graph cannot see; the table lists them` }] : []),
   ]
   const placed: Array<{ x: number; y: number; w: number }> = []
   ghosts.forEach((gh, i) => {
@@ -312,7 +313,7 @@ export function Galaxy({ data, query, focusArea, onOpen, onHover, onClear, onSet
       {labels.map((l) => <div key={l.key} className="galaxy-label" style={{ left: l.x, top: l.y, color: l.color }} aria-hidden="true">{visible(l.name)}</div>)}
       {shown && (
         <div className="filter-chip" role="status">
-          <span>{visible(filterLabel)}: <b>{shown.matched.toLocaleString('en')}</b> of {data.n.toLocaleString('en')} symbols{connected && shown.total > shown.matched ? `, plus ${(shown.total - shown.matched).toLocaleString('en')} connected` : ''}</span>
+          <span>{visible(filterLabel)}: <b>{shown.matched.toLocaleString('en')}</b> of {plural(data.n, 'symbol')}{connected && shown.total > shown.matched ? `, plus ${(shown.total - shown.matched).toLocaleString('en')} connected` : ''}</span>
           <button type="button" aria-pressed={connected} onClick={() => setConnected((c) => !c)} title="Also show the symbols directly connected to the matches">+ connected</button>
           <button type="button" onClick={onClear} aria-label="Clear filter" title="Clear filter">✕</button>
         </div>

@@ -75,7 +75,7 @@ test('NFR012 everything can be done with the keyboard alone: search, explore, tr
     // `/` opens the command palette (FR1140), so the search box is reached with Tab like any other control.
     await tabTo('Search')
     await page.keyboard.type('invoiceTotal')
-    await expect(page.getByTestId('conclusion')).toContainText('“invoiceTotal”: showing the 1 matching symbols')
+    await expect(page.getByTestId('conclusion')).toContainText('“invoiceTotal”: showing the 1 matching symbol;')
     await tabTo('Table')
     await page.keyboard.press('Enter')
     await tabTo('Explore')

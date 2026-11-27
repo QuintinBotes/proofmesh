@@ -1,6 +1,7 @@
 // Pure mapping from a get_ecosystem answer (A11) to a scene: one node per member repository, one edge per linked pair, and a stub
 // per boundary where a member's client facts matched nothing in the workspace. No DOM, so it is testable without a browser.
 import { forceLayout } from './layout'
+import { plural } from './plural'
 import { TOKENS, type Scene, type SceneEdge, type SceneNode } from './scene'
 
 export type LinkType = 'calls_endpoint' | 'messages' | 'depends_on_package' | 'calls_service' | 'deploys' | 'uses_resource' | 'calls' | 'inherits' | 'implements' | 'references'
@@ -89,6 +90,6 @@ export function toEcosystem(e: Ecosystem, selected: string | null = defaultSelec
   }
   const stale = members.filter((m) => !m.current).length
   const unresolved = e.boundaries.reduce((n, b) => n + b.count, 0)
-  const conclusion = `${e.workspace.name}: ${members.length} repositories, ${ps.length} linked pairs, ${unresolved.toLocaleString('en')} unresolved boundaries${stale ? `; ${stale} linked from a snapshot that is no longer current` : ''}. Click a repository to see its links and open only it.`
+  const conclusion = `${e.workspace.name}: ${plural(members.length, 'repository', 'repositories')}, ${plural(ps.length, 'linked pair')}, ${plural(unresolved, 'unresolved boundary', 'unresolved boundaries')}${stale ? `; ${stale} linked from a snapshot that is no longer current` : ''}. Click a repository to see its links and open only it.`
   return { nodes, edges, badges: [], stubs, conclusion }
 }

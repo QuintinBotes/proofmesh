@@ -11,6 +11,11 @@ Evidence in one request: the Proof lens (part of #45; FR1180 to FR1187):
 - Keyboard: an opened symbol takes the focus; ↑ ↓ move between rows, ← → between columns, Enter opens the evidence, `f` explores from the row. Resting the pointer on a row or a Galaxy point for 80 ms prefetches its card, one at a time. The lens asks for a path from the focus and shows it as a chain of hops, each with its call site (`trace_paths` now gives each hop of a path its `site`), labelled by its weakest hop.
 - `bench/observatory/evidence.mjs` times the click to the evidence text, warm and on a page's first open, counts the requests, and records the machine's load; `--check` holds it to 150 ms warm and 400 ms first open at p95, and one request per open.
 - The Trace a path tab and its form are unchanged; replacing them with the lens is left to a later change.
+
+A count of one is said in the singular (closes #202; FR1210):
+
+- The Observatory said `1 matching symbols`, `1 symbols`, `1 areas`, `+1 relationships not drawn`, `1 unresolved boundaries` and the like, also in text a screen reader announces (the `aria-live` conclusion bar, an export's `aria-label`). Every count before a noun now goes through one helper, `plural`, in the conclusion bars of the Galaxy, the Map and the ecosystem, the Galaxy filter chip and fog labels, Explore's badge, the Diff caption, the export caveats and the Galaxy export.
+
 Galaxy search finds the symbol the text is in after a name that lengthens when lowered (closes #200; FR1200):
 
 - Galaxy search scanned the lowered, joined names but took each name's offset from the names as written. A name holding `İ`, whose lowercase is two code units, shifted every later offset, so a match was attributed to a later symbol: the Galaxy highlighted, counted and listed it, and Explore opened it. The offsets now come from the lowered names, in one helper that the Galaxy and the command palette share.

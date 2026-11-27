@@ -919,6 +919,7 @@ From #39: a fresh clone starts from the snapshot a teammate or CI built for the 
 - FR1145: MUST, when a symbol is chosen in the palette, open it in Explore with its evidence and move focus to the evidence panel.
 - FR1146: MUST render repository text in the palette as text with the visible escaping of FR065, announce the highlighted option as the combobox's active descendant, and pass axe with no serious or critical violation in the light and the dark scheme.
 - FR1200: MUST attribute each Galaxy search and palette match to the name that holds the text, also after names whose lowercase is longer or shorter than the name (such as `İ`), so the Galaxy highlights, counts and lists, and Explore opens, exactly the symbols whose names contain the text case-insensitively (#200).
+- FR1210: MUST say a count of exactly one with the singular noun, and every other count with the plural, wherever the Observatory puts a count before a noun: the conclusion bar, captions, badges, fog labels, the filter chip and the text and `aria-label` of exports (for example `1 matching symbol`, `1 area`, `1 unresolved boundary`) (#202).
 
 ### Open source and extensibility
 

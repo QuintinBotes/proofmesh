@@ -15,6 +15,7 @@ import { defaultSelection, evidenceFor, LINK_WORDS, pairs, RELATION_COLOURS, REL
 import { FRAMEWORK_TYPES, glyph, toScene, type TraceEnvelope } from './scene'
 import { visible } from './visible'
 import { share } from './share'
+import { plural } from './plural'
 import { areasSvg, caveatLines, NO_MEANING, offlineHtml, pngWithText, sceneSvg, sceneTable, type Caveats, type Source } from './exporting'
 
 type Sym = { id: string; kind: string; name: string; qualified_name: string; path: string; start_line: number; signature: string | null }
@@ -94,7 +95,7 @@ function Picker({ label, value, onPick }: { label: string; value: Sym | null; on
 /** The Galaxy's one-line summary; areas holding only files the graph cannot see are counted apart, never as empty (FR059). */
 function galaxySummary(g: GalaxyData): string {
   const seen = g.areas.filter((a) => a.count > 0).length, hidden = g.areas.length - seen
-  return `${g.n.toLocaleString('en')} symbols in ${seen} areas, ${(g.links.length / 2).toLocaleString('en')} links${hidden ? `; ${hidden} more area${hidden === 1 ? ' holds' : 's hold'} files the graph cannot see` : ''}. Search, pick an area, or click a point.`
+  return `${plural(g.n, 'symbol')} in ${plural(seen, 'area')}, ${plural(g.links.length / 2, 'link')}${hidden ? `; ${hidden} more area${hidden === 1 ? ' holds' : 's hold'} files the graph cannot see` : ''}. Search, pick an area, or click a point.`
 }
 
 export function App() {
@@ -427,7 +428,7 @@ export function App() {
         ...(scene!.stubs.length ? [`${scene!.stubs.length} unresolved boundar${scene!.stubs.length === 1 ? 'y' : 'ies'} drawn`] : []),
         ...(mode === 'trace' && scene!.conclusion ? [scene!.conclusion] : []),
       ],
-      coverage: calls ? [`${share(calls.unresolved, calls.sites)} of ${calls.sites.toLocaleString('en')} call sites unresolved`] : [],
+      coverage: calls ? [`${share(calls.unresolved, calls.sites)} of ${plural(calls.sites, 'call site')} unresolved`] : [],
     }
     if (mode === 'galaxy') {
       const counts = new Map<number, number>()
@@ -825,7 +826,7 @@ export function App() {
       </section>
       {palette && <Palette commands={commands} galaxy={galaxy} noRepository={!status} onClose={() => setPalette(false)}
         onSymbol={(i) => { focusEvidence.current = true; void openPoint(i) }} onFile={(path) => void loadMap(path, '')} />}
-      <footer className="bottom" aria-live="polite" aria-busy={loading} data-answered={answered} data-testid="conclusion">{loading ? 'Loading…' : mode === 'galaxy' ? (galaxy ? (query.trim().length === 1 ? 'Type at least two characters to search.' : query.trim().length >= 2 ? `“${query.trim()}”: showing the ${galaxyMatches.length.toLocaleString('en')} matching symbols; click one to explore it.` : galaxyArea !== null ? `${galaxy.areas[galaxyArea]!.name}: ${galaxy.areas[galaxyArea]!.count.toLocaleString('en')} symbols. Click a point to explore it.` : galaxySummary(galaxy)) : '') : scene ? scene.conclusion : ''}</footer>
+      <footer className="bottom" aria-live="polite" aria-busy={loading} data-answered={answered} data-testid="conclusion">{loading ? 'Loading…' : mode === 'galaxy' ? (galaxy ? (query.trim().length === 1 ? 'Type at least two characters to search.' : query.trim().length >= 2 ? `“${query.trim()}”: showing the ${plural(galaxyMatches.length, 'matching symbol')}; click one to explore it.` : galaxyArea !== null ? `${galaxy.areas[galaxyArea]!.name}: ${plural(galaxy.areas[galaxyArea]!.count, 'symbol')}. Click a point to explore it.` : galaxySummary(galaxy)) : '') : scene ? scene.conclusion : ''}</footer>
     </div>
   )
 }

@@ -2014,6 +2014,10 @@
       "apps/observatory/test/galaxy.test.ts",
       "e2e/casefold.spec.ts"
     ],
+    "FR1210": [
+      "apps/observatory/test/plural.test.ts",
+      "e2e/galaxy.spec.ts"
+    ],
     "FR580": [
       "packages/proofmesh/test/concepts.test.ts"
     ],
