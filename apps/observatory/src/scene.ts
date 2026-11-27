@@ -2,11 +2,11 @@
 export type TraceEnvelope = {
   data: {
     conclusion: 'path_found' | 'no_path_within_bounds' | 'no_resolved_path' | 'no_path_exhaustive'
-    paths: Array<{ nodes: string[]; assertions: string[] }>
+    paths: Array<{ nodes: string[]; assertions: string[]; basis?: 'observed' | 'inferred' }>
     search: { levels: Array<{ depth: number }>; stopped_by: string | null; horizon: Array<{ id: string; unexplored_edges: number }>; explored?: Array<{ from: string; to: string; assertion_id: string; depth: number }> }
     boundaries: Array<{ assertion_id: string; type?: string; reason: string; path: string; line: number; from_id: string }>
     nodes: Record<string, { kind: string; name: string; qualified_name: string; path: string; start_line: number }>
-    relationships?: Record<string, { type: string; origin: string; rule: string | null }>
+    relationships?: Record<string, { type: string; origin: string; rule: string | null; basis?: 'observed' | 'inferred'; site?: { path: string; start_line: number } }>
   }
   limits: { applied: { max_depth: number } }
 }

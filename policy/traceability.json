@@ -2131,6 +2131,19 @@
     ],
     "FR1265": [
       "packages/proofmesh/test/xrepo-symbols.test.ts"
+    ],
+    "FR1300": [
+      "e2e/lens.spec.ts",
+      "e2e/accessibility.spec.ts",
+      "e2e/palette.spec.ts",
+      "e2e/hostile.spec.ts"
+    ],
+    "FR1301": [
+      "e2e/diff.spec.ts",
+      "apps/observatory/test/diff.test.ts"
+    ],
+    "FR1302": [
+      "e2e/diff.spec.ts"
     ]
   },
   "manual": {

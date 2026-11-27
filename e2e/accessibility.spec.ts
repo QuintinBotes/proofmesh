@@ -17,7 +17,7 @@ const serious = async (page: Page, where: string) =>
 
 for (const colorScheme of ['dark', 'light'] as const) {
   test(`NFR012 SC013 every view and its table pass axe with no serious violation, ${colorScheme}`, async ({ browser }) => {
-    // Seven views, each checked as graph and as table: well over the default budget on a laptop.
+    // Six views and a traced path, each checked as graph and as table: well over the default budget on a laptop.
     test.setTimeout(180000)
     const { page, close } = await open(browser, { colorScheme })
     try {
@@ -81,17 +81,14 @@ test('NFR012 everything can be done with the keyboard alone: search, explore, tr
     await tabTo('Explore')
     await answered(page, () => page.keyboard.press('Enter'))
     await expect(page.getByRole('region', { name: 'Focus' })).toContainText('packages/billing/src/invoice:invoiceTotal')
-    await tabTo('Trace a path from here')
-    await page.keyboard.press('Enter')
-    await expect(page.getByTestId('picker-source-value')).toHaveText('packages/billing/src/invoice:invoiceTotal')
-    await tabTo('Target')
+    // The lens traces from its focus (FR1300): picking the target with Enter traces the path.
+    await tabTo('Path to')
     await page.keyboard.type('formatAmount')
-    await expect(page.getByRole('listbox', { name: 'Target candidates' })).toBeVisible()
+    await expect(page.getByRole('listbox', { name: 'Path to candidates' })).toBeVisible()
     await tabTo(/^formatAmount function · packages\/format\/src\/currency:formatAmount/)
-    await page.keyboard.press('Enter')
-    await tabTo('Trace')
     await answered(page, () => page.keyboard.press('Enter'))
     await expect(page.getByTestId('conclusion')).toContainText('Path found')
+    await expect(page.getByRole('region', { name: 'Path' }).getByRole('listitem').first()).toContainText('invoiceTotal')
     await tabTo('Table')
     await page.keyboard.press('Enter')
     await tabTo('Show evidence')

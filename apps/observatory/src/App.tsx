@@ -32,8 +32,8 @@ function hold<K, V>(map: Map<K, Promise<V>>, key: K, asked: Promise<V>): Promise
   return asked
 }
 const param = (name: string) => new URLSearchParams(window.location.search).get(name)
-// In tab order; a view's single key is its place here (FR1144).
-const VIEW_NAMES = { galaxy: 'Galaxy', map: 'Map', explore: 'Explore', trace: 'Trace a path', claims: 'Claims', diff: 'Diff', ecosystem: 'Ecosystem' } as const
+// In tab order; a view's single key is its place here (FR1144). Paths are traced in Explore's lens, which replaced the Trace a path tab (FR1300).
+const VIEW_NAMES = { galaxy: 'Galaxy', map: 'Map', explore: 'Explore', claims: 'Claims', diff: 'Diff', ecosystem: 'Ecosystem' } as const
 type Mode = keyof typeof VIEW_NAMES
 const VIEWS = Object.entries(VIEW_NAMES) as Array<[Mode, string]>
 
@@ -101,7 +101,7 @@ function galaxySummary(g: GalaxyData): string {
 export function App() {
   const [error, setError] = useState<string | null>(null)
   const [status, setStatus] = useState<any>(null)
-  const [source, setSource] = useState<Sym | null>(null)
+  // The symbol the lens traces a path to from its focus, picked in Path to (FR1300).
   const [target, setTarget] = useState<Sym | null>(null)
   const [depth, setDepth] = useState(6)
   const [followFramework, setFollowFramework] = useState(false)
@@ -146,7 +146,6 @@ export function App() {
   const [hood, setHood] = useState<RelationshipsEnvelope | null>(null)
   // The focus's card (FR1180): everything the Proof lens shows, so opening a row inside it asks the server nothing.
   const [card, setCard] = useState<Card | null>(null)
-  const [chain, setChain] = useState<Chain | null>(null)
   // Cards asked for, by symbol id: a click on a row the pointer rested on reuses its prefetch, even one still in flight (FR1186).
   const cards = useRef(new Map<string, Promise<Card>>())
   const points = useRef(new Map<number, Promise<string>>())
@@ -168,6 +167,9 @@ export function App() {
   const evidencePanel = useRef<HTMLElement>(null)
   const focusEvidence = useRef(false)
   useEffect(() => { if (evidence && focusEvidence.current) { focusEvidence.current = false; evidencePanel.current?.focus() } }, [evidence])
+  // The palette's Trace a path command puts the keyboard in the lens's Path to field, after the closing palette returns focus (FR1300).
+  const focusPathTo = useRef(false)
+  useEffect(() => { if (focusPathTo.current && !palette) { focusPathTo.current = false; document.getElementById('picker-path-to')?.focus() } })
   // Consent covers the source shown when it was given, so it lapses whenever the evidence panel changes (FR052).
   const [includeSource, setIncludeSource] = useState(false)
   useEffect(() => setIncludeSource(false), [evidence])
@@ -179,14 +181,15 @@ export function App() {
     setError(e instanceof ToolError && e.status === 401 ? 'No valid session: the link expired (links last 10 minutes), was already used, or the server restarted. Run "proofmesh view" and open the new link it prints.' : String((e as Error)?.message ?? e))
   }, [])
 
-  const runTrace = async () => {
-    if (!source || !target) return
-    setEvidence(null)
+  /** A path from the lens's focus to a picked symbol, at the chosen depth, following framework relationships on request (FR1185, FR1300). */
+  const traceFrom = async (to: Sym) => {
+    if (!focus) return
+    setTarget(to)
     setLoading(true)
     try {
       const types = followFramework ? ['calls', ...FRAMEWORK_TYPES] : ['calls']
-      const env = await callTool('trace_paths', { source_id: source.id, target_id: target.id, types, limits: { max_depth: depth } })
-      setTraced({ source: source.id, target: target.id })
+      const env = await callTool('trace_paths', { source_id: focus.id, target_id: to.id, types, limits: { max_depth: depth } })
+      setTraced({ source: focus.id, target: to.id })
       setTrace(env)
       setTableView(false)
       setError(null)
@@ -198,10 +201,25 @@ export function App() {
       setAnswered((n) => n + 1)
     }
   }
-  const scene = useMemo(() => mode === 'galaxy' || mode === 'claims' ? null : mode === 'ecosystem' ? (ecosystem ? toEcosystem(ecosystem, selected) : null) : mode === 'trace'
-    ? (trace && traced ? toScene(trace, traced.source, traced.target) : null)
+  // Explore shows a path while one traced from its focus is held; otherwise the focus's neighbourhood.
+  const tracing = mode === 'explore' && trace !== null && traced !== null && traced.source === focus?.id
+  // Claims and Diff are tables of their own: they draw no scene, so Explore's neighbourhood never covers them (FR1302).
+  const scene = useMemo(() => mode === 'galaxy' || mode === 'claims' || mode === 'diff' ? null : mode === 'ecosystem' ? (ecosystem ? toEcosystem(ecosystem, selected) : null)
     : mode === 'map' ? (map ? toMap(map.overview, map.text || null) : null)
-    : (hood && focus ? toNeighbourhood(hood, focus) : null), [mode, trace, traced, hood, focus, map, ecosystem, selected])
+    : tracing ? toScene(trace!, traced!.source, traced!.target)
+    : (hood && focus ? toNeighbourhood(hood, focus) : null), [mode, tracing, trace, traced, hood, focus, map, ecosystem, selected])
+  /** The path as the lens draws it: the first path's hops, each with its call site, labelled by its weakest hop; or, with none, where the search stopped. */
+  const chain = useMemo<Chain | null>(() => {
+    if (!tracing || !scene) return null
+    const p = trace!.data.paths[0]
+    const rel = (i: number) => (p && i < p.assertions.length ? trace!.data.relationships?.[p.assertions[i]!] : undefined)
+    const node = (id: string) => trace!.data.nodes[id] as { name: string; qualified_name: string }
+    const horizon = scene.badges.map((b) => `${scene.nodes.find((n) => n.id === b.nodeId)!.qualifiedName}: ${b.text}`)
+    return p
+      // The contract always sends a path's basis; were it missing, the weaker label is the honest one.
+      ? { basis: p.basis ?? 'inferred', conclusion: `${plural(p.assertions.length, 'hop')} to ${node(traced!.target).name}`, horizon, hops: p.nodes.map((id, i) => ({ id, name: node(id).name, qualifiedName: node(id).qualified_name, site: rel(i)?.site ?? null, basis: rel(i)?.basis ?? null, type: rel(i)?.type })) }
+      : { basis: 'no path', conclusion: scene.conclusion, horizon, hops: [] }
+  }, [tracing, trace, traced, scene])
 
   // The workspace list is read each time the tab opens, so one created meanwhile appears without a reload.
   useEffect(() => { if (mode === 'ecosystem') fetchWorkspaces().then(setWorkspaces).catch(() => setWorkspaces([])) }, [mode])
@@ -220,7 +238,7 @@ export function App() {
     setRepository(repositoryId)
     setDrilled(repositoryId)
     setGalaxy(null); galaxyAsked.current = false
-    setMap(null); setFocus(null); setHood(null); setCard(null); setChain(null); cards.current.clear(); points.current.clear(); setTrace(null); setTraced(null); setSource(null); setTarget(null); setEvidence(null)
+    setMap(null); setFocus(null); setHood(null); setCard(null); cards.current.clear(); points.current.clear(); setTrace(null); setTraced(null); setTarget(null); setEvidence(null)
     setLoading(true)
     try { setStatus(await callTool('workspace_status', { limits: { max_rows: 1 } })); setError(null); setMode('galaxy') } catch (e) { report(e) } finally { setLoading(false); setAnswered((n) => n + 1) }
   }, [report])
@@ -272,7 +290,8 @@ export function App() {
       const c = await fetchCard(id)
       setFocus(c.symbol)
       setCard(c)
-      setChain(null)
+      // A new focus starts with no path; the lens traces from the focus it shows.
+      setTrace(null); setTraced(null); setTarget(null)
       setHood(cardHood(c))
       setTableView(false)
       setMode('explore')
@@ -297,20 +316,7 @@ export function App() {
       setHood((now) => (now && focus?.id === c.symbol.id ? cardHood(grown) : now))
     } catch (e) { report(e) } finally { paging.current.delete(`${c.symbol.id}${side}`) }
   }, [card, focus, report])
-  /** A path from the focus as a chain of hops, each with its call site, labelled by its weakest hop (FR1185). */
-  const traceFrom = async (to: Sym) => {
-    if (!focus) return
-    setLoading(true)
-    try {
-      const env = await callTool('trace_paths', { source_id: focus.id, target_id: to.id, types: ['calls'], limits: { max_depth: depth } })
-      const p = env.data.paths[0] as { nodes: string[]; assertions: string[]; basis: string } | undefined
-      const node = (id: string) => env.data.nodes[id] as { name: string; qualified_name: string }
-      setChain(p
-        ? { basis: p.basis, conclusion: `${p.assertions.length} hop${p.assertions.length === 1 ? '' : 's'} to ${to.name}`, hops: p.nodes.map((id, i) => ({ id, name: node(id).name, qualifiedName: node(id).qualified_name, site: i < p.assertions.length ? env.data.relationships[p.assertions[i]!]?.site ?? null : null, basis: i < p.assertions.length ? env.data.relationships[p.assertions[i]!]?.basis ?? null : null })) }
-        : { basis: 'no path', conclusion: toScene(env, focus.id, to.id).conclusion, hops: [] })
-      setError(null)
-    } catch (e) { report(e) } finally { setLoading(false); setAnswered((n) => n + 1) }
-  }
+  const clearPath = () => { setTrace(null); setTraced(null); setTarget(null) }
 
   /** Shows the areas under a path, or with text only those holding a match, plus the matching symbols for the table. */
   const loadMap = useCallback(async (path: string, text: string, push = true, show = true) => {
@@ -384,7 +390,7 @@ export function App() {
     const next = id && snapshots.find((s) => s.id === id && !s.current) ? id : null
     setReplay(next); setReplayState(next)
     setGalaxy(null); galaxyAsked.current = false
-    setMap(null); setHood(null); setFocus(null); setCard(null); setChain(null); cards.current.clear(); points.current.clear(); setTrace(null); setTraced(null); setEvidence(null)
+    setMap(null); setHood(null); setFocus(null); setCard(null); cards.current.clear(); points.current.clear(); setTrace(null); setTraced(null); setTarget(null); setEvidence(null)
     try {
       setStatus(await callTool('workspace_status', { limits: { max_rows: 1 } }))
       if (mode === 'map' || mode === 'explore') await loadMap('', query.trim(), false, false)
@@ -402,12 +408,6 @@ export function App() {
       setError(null)
     } catch (e) { setDiff(null); report(e) } finally { setLoading(false); setAnswered((n) => n + 1) }
   }
-  const openByName = async (qualifiedName: string) => {
-    try {
-      const hit = (await callTool('find_symbols', { text: qualifiedName.split(':').pop()!.split('.').pop()!, limits: { max_rows: 50 } })).data.symbols.find((s: Sym) => s.qualified_name === qualifiedName)
-      if (hit) { setMode('explore'); await loadFocus(hit.id) } else setError(`${qualifiedName} is not in this snapshot`)
-    } catch (e) { report(e) }
-  }
 
   /** What an export of the current view draws and carries inside it (FR064); source only with consent (FR052). */
   const exportable = useMemo(() => {
@@ -421,12 +421,12 @@ export function App() {
       view: VIEW_NAMES[mode]!, repository: status.data.repository.name, snapshotId: status.snapshot.id, analysisMode: status.snapshot.analysis_mode,
       scope: mode === 'galaxy' ? (searching ? `names matching “${query.trim()}”` : 'the whole snapshot')
         : mode === 'map' ? `${map?.overview.path || 'the repository root'}${map?.text ? `, matching “${map.text}”` : ''}`
-        : mode === 'explore' ? `relationships of ${focus?.qualified_name ?? ''}`
+        : mode === 'explore' && !tracing ? `relationships of ${focus?.qualified_name ?? ''}`
         : `paths from ${scene!.nodes.find((n) => n.role === 'source')?.qualifiedName ?? ''} to ${scene!.nodes.find((n) => n.role === 'target' || n.role === 'unreached-target')?.qualifiedName ?? ''}`,
       limits: mode === 'galaxy' ? ['symbols are summarised by area; individual symbols and links are not drawn'] : [
         ...(scene!.badges.length ? [`${scene!.badges.length} node${scene!.badges.length === 1 ? '' : 's'} at the horizon where expansion stopped`] : []),
         ...(scene!.stubs.length ? [`${scene!.stubs.length} unresolved boundar${scene!.stubs.length === 1 ? 'y' : 'ies'} drawn`] : []),
-        ...(mode === 'trace' && scene!.conclusion ? [scene!.conclusion] : []),
+        ...(tracing && scene!.conclusion ? [scene!.conclusion] : []),
       ],
       coverage: calls ? [`${share(calls.unresolved, calls.sites)} of ${plural(calls.sites, 'call site')} unresolved`] : [],
     }
@@ -440,7 +440,7 @@ export function App() {
       return { caveats, source, svg: areasSvg(areas, caveats, source), table: { head: ['area', 'symbols', 'matches', 'coverage'], rows: areas.map((a) => [a.name, String(a.count), a.matches === undefined ? '' : String(a.matches), a.fog ?? 'complete']) } }
     }
     return { caveats, source, svg: sceneSvg(scene!, caveats, source), table: sceneTable(scene!) }
-  }, [status, mode, galaxy, scene, evidence, includeSource, query, map, focus, galaxyMatches])
+  }, [status, mode, galaxy, scene, tracing, evidence, includeSource, query, map, focus, galaxyMatches])
   const fileStem = exportable ? `proofmesh-${exportable.caveats.view.toLowerCase().replace(/\W+/g, '-')}-${exportable.caveats.snapshotId}` : ''
   const exportPage = () => { if (exportable) download(`${fileStem}.html`, new Blob([offlineHtml(exportable.svg, exportable.caveats, exportable.table, exportable.source)], { type: 'text/html' })) }
   const exportImage = async () => {
@@ -465,7 +465,7 @@ export function App() {
     { label: 'Diff overlay on the Galaxy, shown or hidden', key: 'd', run: () => setOverlayShown((o) => !o) },
     ...snapshots.filter((s) => !s.current && s.id !== replay).map((s) => ({ label: `Pin snapshot ${s.id.slice(0, 13)}${s.published_at ? `, published ${new Date(s.published_at).toLocaleString()}` : ''}`, run: () => void pin(s.id) })),
     ...(replay ? [{ label: 'Back to the current snapshot', run: () => void pin(null) }] : []),
-    ...(focus ? [{ label: `Trace a path from ${focus.qualified_name}`, run: () => { setSource(focus); setMode('trace') } }] : []),
+    ...(focus ? [{ label: `Trace a path from ${focus.qualified_name}`, run: () => { setMode('explore'); setTableView(false); focusPathTo.current = true } }] : []),
     ...(exportable ? [{ label: 'Export page', run: exportPage }, { label: 'Export image', run: () => void exportImage() }] : []),
   ]
   useEffect(() => { keyed.current = commands.filter((c) => c.key) })
@@ -478,13 +478,13 @@ export function App() {
       else if (child) loadMap(id, map!.text)
       return
     }
-    if (mode === 'trace' || id === focus?.id) openSymbol(id)
+    if (id === focus?.id) openSymbol(id)
     else if (!id.startsWith('stub:') && !id.startsWith('ext_')) loadFocus(id)
   }, [mode, focus, map, openSymbol, loadFocus, loadMap])
 
   const openEdge = async (sourceId: string, assertionId: string) => {
-    // The card already holds each row's evidence, so an edge of the focus opens with no request (FR1180).
-    const held = mode === 'explore' ? [...(card?.incoming.rows ?? []), ...(card?.outgoing.rows ?? [])].find((r) => r.assertion_id === assertionId) : undefined
+    // The card already holds each row's evidence, so an edge of the focus opens with no request (FR1180); a path's edges open from the trace, as they always have.
+    const held = mode === 'explore' && !tracing ? [...(card?.incoming.rows ?? []), ...(card?.outgoing.rows ?? [])].find((r) => r.assertion_id === assertionId) : undefined
     if (held) return setEvidence(rowEvidence(held))
     const rels = (await callTool('get_relationships', { subject_id: sourceId, direction: 'out', types: EXPLORE_TYPES, include_external: true })).data.relationships
     const rel = rels.find((r: any) => r.assertion_id === assertionId)
@@ -570,19 +570,18 @@ export function App() {
                 <div className="dim">{focus.kind}</div>
                 <b>{visible(focus.qualified_name)}</b>
                 <div className="dim">{visible(focus.path)}:{focus.start_line}</div>
-                <button type="button" onClick={() => { setSource(focus); setMode('trace') }}>Trace a path from here</button>
               </section>
             )}
-            {focus && <Picker label="Path to" value={null} onPick={(s) => void traceFrom(s)} />}
-          </>
-        ) : mode === 'trace' ? (
-          <>
-            <Picker label="Source" value={source} onPick={setSource} />
-            <Picker label="Target" value={target} onPick={setTarget} />
-            <label htmlFor="depth">Depth <output htmlFor="depth">{depth}</output></label>
-            <input id="depth" type="range" min={1} max={12} value={depth} onChange={(e) => setDepth(Number(e.target.value))} />
-            <label className="check"><input type="checkbox" checked={followFramework} onChange={(e) => setFollowFramework(e.target.checked)} /> Follow framework relationships</label>
-            <button type="button" className="primary" disabled={!source || !target} onClick={runTrace}>Trace</button>
+            {/* The lens traces a path from its focus (FR1300): picking the target traces it, at this depth and with these relationships. */}
+            {focus && (
+              <div className="path-to">
+                <Picker label="Path to" value={target} onPick={(s) => void traceFrom(s)} />
+                <label htmlFor="depth">Depth <output htmlFor="depth">{depth}</output></label>
+                <input id="depth" type="range" min={1} max={12} value={depth} onChange={(e) => setDepth(Number(e.target.value))} />
+                <label className="check"><input type="checkbox" checked={followFramework} onChange={(e) => setFollowFramework(e.target.checked)} /> Follow framework relationships</label>
+                {target && <button type="button" onClick={() => void traceFrom(target)}>Trace again</button>}
+              </div>
+            )}
           </>
         ) : null}
         {cov && (
@@ -608,7 +607,7 @@ export function App() {
         {/* Diff is a table of its own, so the graph-or-table switch has nothing to switch there. */}
         {mode !== 'diff' && (
           <div className="switch" role="group" aria-label="View">
-            {/* Explore's lens is DOM rows, so it needs no WebGL. */}
+            {/* Explore's lens, a path included, is DOM rows, so it needs no WebGL. */}
             <button type="button" aria-pressed={!tableView && (!noWebGl || mode === 'explore')} disabled={noWebGl && mode !== 'explore'} onClick={() => setTableView(false)}>Graph</button>
             <button type="button" aria-pressed={tableView || (noWebGl && mode !== 'explore')} onClick={() => setTableView(true)}>Table</button>
           </div>
@@ -625,7 +624,8 @@ export function App() {
               <span className="dim">Head: {(replay ?? current?.id ?? '').slice(0, 13)}{replay ? ' (replayed)' : ' (current)'}</span>
               <button type="button" disabled={!diffBase} onClick={() => void compare()}>Compare</button>
             </div>
-            {diff && <DiffView data={diff.data} truncated={diff.truncated} onOpen={(q) => void openByName(q)} />}
+            {/* A row holds its head symbol's id, so it opens with the one request a lens row's focus takes (FR1301). */}
+            {diff && <DiffView data={diff.data} truncated={diff.truncated} onOpen={(id) => void loadFocus(id)} />}
             {!diff && snapshots.length < 2 && <p className="dim" role="note">Only one snapshot is published; index again after a change to compare.</p>}
           </>
         )}
@@ -661,7 +661,7 @@ export function App() {
           </section>
         )}
         {mode !== 'galaxy' && mode !== 'explore' && scene && !noWebGl && !tableView && <GraphView scene={scene} reducedMotion={reducedMotion} onNode={onNode} onWebGlFailure={() => setNoWebGl(true)} />}
-        {mode === 'explore' && card && focus?.id === card.symbol.id && !tableView && <ProofLens card={card} chain={chain} onOpen={setEvidence} onFocus={(id) => void loadFocus(id)} onMore={(side) => void loadMore(side)} hover={hover} />}
+        {mode === 'explore' && card && focus?.id === card.symbol.id && !tableView && <ProofLens card={card} chain={chain} onClear={clearPath} onOpen={setEvidence} onFocus={(id) => void loadFocus(id)} onMore={(side) => void loadMore(side)} hover={hover} />}
         {scene && mode === 'map' && map && (tableView || noWebGl) && (
           <section className="table-view" aria-label="Map table">
             <table>
@@ -728,7 +728,7 @@ export function App() {
         {scene && mode !== 'map' && mode !== 'ecosystem' && (tableView || (noWebGl && mode !== 'explore')) && (
           <section className="table-view" aria-label="Trace table">
             <table>
-              <caption>{mode === 'trace' ? 'Traced nodes in order' : 'Symbol and its neighbours'}</caption>
+              <caption>{tracing ? 'Traced nodes in order' : 'Symbol and its neighbours'}</caption>
               <thead><tr><th>#</th><th>Role</th><th>Symbol</th><th>Location</th><th>Evidence</th></tr></thead>
               <tbody>
                 {scene.nodes.filter((n) => n.role !== 'stub').map((n, i) => (
@@ -753,7 +753,6 @@ export function App() {
             {scene.badges.length > 0 && <ul className="horizon" aria-label="Horizon">{scene.badges.map((b) => <li key={b.nodeId}>{visible(scene.nodes.find((n) => n.id === b.nodeId)!.qualifiedName)}: {b.text}</li>)}</ul>}
           </section>
         )}
-        {!scene && !error && mode === 'trace' && <p className="hint">Pick a source and a target symbol, then Trace.</p>}
         {!scene && !error && mode === 'explore' && (
           <section className="start" aria-label="Start exploring">
             <h2>Start exploring</h2>
@@ -810,11 +809,7 @@ export function App() {
         {mode === 'ecosystem' && <div className="dim">Each node is a repository, sized by its symbols; a label ending “newer snapshot exists” was linked from a snapshot that is no longer its current one. Lines are links between repositories, thicker for more; an amber line has candidates only. Short amber stubs are client facts that matched nothing in the workspace. Click a repository to see its links and colour the others by their relation to it; open it from there.
           <div>{(Object.keys(RELATION_COLOURS) as Relation[]).map((r) => <span key={r}><span className="sw" style={{ background: RELATION_COLOURS[r] }} /> {RELATION_WORDS[r]} </span>)}</div></div>}
         {mode === 'map' && <div className="dim">Each node is an area, file or symbol, sized by its symbols, or by its matches while searching. Lines are resolved relationships between them, thicker for more. Click a node to open it.</div>}
-        {mode === 'explore' && <div className="dim">Callers on the left, callees on the right, each at its call site and marked observed, inferred or unresolved in words. Click a row to read its call site; double-click it, or press f, to explore from it. Back returns to the previous symbol.</div>}
-        {mode === 'trace' && <>
-        <span className="sw resolved" /> resolved call on the path <span className="sw framework" /> framework rule <span className="sw explored" /> explored by the search <span className="sw external" /> resolved outside the repository <span className="sw unresolved" /> unresolved boundary <span className="ring" /> horizon
-        <div className="dim">A line names its type unless it is a call, its rule or any origin other than the semantic resolver, and any resolution short of resolved; an unresolved site ends in a stub naming why.</div></>}
-        {mode === 'trace' && <div className="dim">Edges run left to right in search order.</div>}
+        {mode === 'explore' && <div className="dim">Callers on the left, callees on the right, each at its call site and marked observed, inferred or unresolved in words. Click a row to read its call site; double-click it, or press f, to explore from it. Back returns to the previous symbol. Path to traces a path from the focus: each hop at its call site, the path labelled by its weakest hop, or where the search stopped.</div>}
         {mode !== 'claims' && mode !== 'diff' && <div className="dim">{NO_MEANING}</div>}
         {exportable && (
           <div className="export" role="group" aria-label="Export this view">

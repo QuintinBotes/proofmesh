@@ -4,14 +4,15 @@ import { useEffect, useRef, useState } from 'react'
 import { declarationEvidence, MARK_GLYPH, rowEvidence, rowMark, rowName, rowWords, type Card, type CardRow, type Evidence } from './card'
 import { visible } from './visible'
 
-export type Hop = { id: string; name: string; qualifiedName: string; site: { path: string; start_line: number } | null; basis: string | null }
-export type Chain = { hops: Hop[]; basis: string; conclusion: string }
+export type Hop = { id: string; name: string; qualifiedName: string; site: { path: string; start_line: number } | null; basis: string | null; type?: string }
+/** A traced path: its hops, its weakest hop's basis (or `no path`), and the horizon where the search stopped, in words (FR1300). */
+export type Chain = { hops: Hop[]; basis: string; conclusion: string; horizon: string[] }
 type Hover = (id: string | undefined) => { onMouseEnter: () => void; onMouseLeave: () => void }
-type Props = { card: Card; chain: Chain | null; onOpen: (e: Evidence) => void; onFocus: (id: string) => void; onMore: (side: 'in' | 'out') => void; hover: Hover }
+type Props = { card: Card; chain: Chain | null; onClear: () => void; onOpen: (e: Evidence) => void; onFocus: (id: string) => void; onMore: (side: 'in' | 'out') => void; hover: Hover }
 
 const SIDES = [{ key: 'incoming', label: 'Callers', side: 'in' }, null, { key: 'outgoing', label: 'Callees', side: 'out' }] as const
 
-export function ProofLens({ card, chain, onOpen, onFocus, onMore, hover }: Props) {
+export function ProofLens({ card, chain, onClear, onOpen, onFocus, onMore, hover }: Props) {
   const [at, setAt] = useState({ col: 1, row: [0, 0, 0] })
   const lists = useRef<Array<HTMLUListElement | null>>([])
   // A newly opened symbol takes the keyboard, so a reader walks its rows at once (FR1184).
@@ -44,7 +45,8 @@ export function ProofLens({ card, chain, onOpen, onFocus, onMore, hover }: Props
     const active = at.col === c
     const listProps = {
       ref: (el: HTMLUListElement | null) => { lists.current[c] = el },
-      role: 'listbox', tabIndex: active ? 0 : -1, 'aria-activedescendant': len(c) ? id(c, at.row[c]!) : undefined, onKeyDown,
+      // A side with no rows is a plain list saying none: a listbox must hold options (axe aria-required-children).
+      role: len(c) ? 'listbox' : undefined, tabIndex: active ? 0 : -1, 'aria-activedescendant': len(c) ? id(c, at.row[c]!) : undefined, onKeyDown,
       onFocus: () => { if (!active && len(c)) setAt({ ...at, col: c }) },
     }
     if (!s) {
@@ -80,7 +82,7 @@ export function ProofLens({ card, chain, onOpen, onFocus, onMore, hover }: Props
               </li>
             )
           })}
-          {side.rows.length === 0 && <li className="dim" role="presentation">none</li>}
+          {side.rows.length === 0 && <li className="dim">none</li>}
         </ul>
       </section>
     )
@@ -88,23 +90,27 @@ export function ProofLens({ card, chain, onOpen, onFocus, onMore, hover }: Props
 
   return (
     <section className="lens" aria-label="Proof lens">
-      <div className="lens-cols">{[0, 1, 2].map(column)}</div>
-      <p className="dim lens-help">↑ ↓ move between rows, ← → between columns, Enter opens the evidence, f makes the row the focus. ● observed · ◌ inferred · ┄ unresolved.</p>
+      {/* A traced path comes first, so it shows without scrolling past the rows (FR1300). */}
       {chain && (
         <section className="lens-path" aria-label="Path">
           <h3>Path · <span data-testid="path-basis">{chain.basis}</span> <span className="dim">{chain.conclusion}</span></h3>
-          <ol>
+          {chain.hops.length > 0 && <ol>
             {chain.hops.map((h, i) => (
               <li key={`${h.id}${i}`} className={`lens-row ${h.basis ?? 'observed'}`}>
                 <span className="mark" aria-hidden="true">{h.basis ? MARK_GLYPH[h.basis as keyof typeof MARK_GLYPH] ?? "●" : '◎'}</span>
                 <span className="name">{visible(h.name)}</span>
-                <span className="site">{h.site ? `calls the next at ${visible(h.site.path)}:${h.site.start_line}` : 'target'}</span>
+                <span className="site">{h.site ? `${h.type ?? 'calls'} the next at ${visible(h.site.path)}:${h.site.start_line}` : 'target'}</span>
                 <span className="words">{h.basis ?? ''}</span>
               </li>
             ))}
-          </ol>
+          </ol>}
+          {/* With no path, where the search stopped says why, in words; the table lists the horizon in every case. */}
+          {chain.hops.length === 0 && chain.horizon.length > 0 && <ul className="horizon" aria-label="Horizon" tabIndex={0}>{chain.horizon.map((h) => <li key={h}>{visible(h)}</li>)}</ul>}
+          <button type="button" onClick={onClear}>Clear path</button>
         </section>
       )}
+      <div className="lens-cols">{[0, 1, 2].map(column)}</div>
+      <p className="dim lens-help">↑ ↓ move between rows, ← → between columns, Enter opens the evidence, f makes the row the focus. ● observed · ◌ inferred · ┄ unresolved.</p>
     </section>
   )
 }

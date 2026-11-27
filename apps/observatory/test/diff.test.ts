@@ -35,6 +35,11 @@ describe('FR019 the Diff view reads a compare_snapshots answer', () => {
     expect(kinds(data)).toEqual(['class', 'function'])
   })
 
+  it('FR1301 each row holds its symbol id, the head snapshot id for an added or changed symbol, so it opens with no name lookup', () => {
+    expect(rows(data).map((r) => [r.change, r.id])).toEqual(rows(data).map((r) => [r.change, data.symbols[r.change].find((s) => s.qualified_name === r.qualified_name)!.id]))
+    expect(rows(data).find((r) => r.qualified_name === 'packages/billing/src/invoice:invoiceTax')!.id).toBe('sym_h001')
+  })
+
   it('the overlay tints added and changed symbols of the head galaxy and leaves removed ones to the table', () => {
     const g = { n: 4, names: ['packages/billing/src/invoice:invoiceTotal', 'packages/api/src/handler:Rates', 'packages/format/src/currency:legacyFormat', 'other:thing'] } as unknown as GalaxyData
     expect(Array.from(overlay(g, data))).toEqual([2, 1, 0, 0])

@@ -24,13 +24,19 @@ Tests and paths across repositories, chains through a third, and a public pair (
 - The core `tools/list` is 19,758 bytes (14 tools), at most 20,000.
 - Not done yet: ecosystems other than npm, and dispatch across repositories.
 
+The Proof lens replaces the Trace a path tab, and a Diff row opens with one request (part of #45; FR1300 to FR1302):
+
+- The Trace a path tab and its Source and Target form are gone; a path is traced inside Explore's lens. Open the source (search, the palette, the Map, a lens row), pick the target in Path to, and the lens shows the path as a chain of hops, each at its call site and labelled by its weakest hop. Depth and Follow framework relationships sit beside Path to, and Trace again reruns the search with them. With no path, the lens says where the search stopped (`+1 unexplored · stopped by max_depth`) and the conclusion bar why this is not evidence that no path exists. Clear path returns to the neighbourhood.
+- The path's table equivalent is unchanged: Table lists the traced nodes in order, its edges and unresolved boundaries, each with Show evidence. The palette's Trace a path command opens Explore with the keyboard in Path to. The views' number keys are now `1` to `6`.
+- A Diff row opened by name: a `find_symbols` request, then the card. `compare_snapshots` already names each head symbol's id, so a row now opens with the card's one request.
+- After a symbol was explored, Diff drew Explore's neighbourhood graph over its own controls, which took the clicks meant for Compare and the rows, and the conclusion bar spoke of that symbol. Diff now draws no scene of another view.
+
 Evidence in one request: the Proof lens (part of #45; FR1180 to FR1187):
 
 - Opening a symbol made four requests in series (`galaxy/symbol`, `get_symbol`, `get_relationships`, `read_evidence`), and an edge's evidence a second `get_relationships`. `get_symbol_card` (the `extra` MCP profile) now answers a symbol's card in one read-only request: the symbol, its verified declaration, and the first rows of each side, each with its call site's lines, the cited span, its basis, resolution and reason, and each side's total. It is bounded like every tool: `max_rows` per side, `max_bytes` for the whole answer, and `direction` with `offset` for the next rows. A Galaxy point's `galaxy/symbol` request carries its card, so a point also opens with one request.
 - Explore's drawn neighbourhood is replaced by the Proof lens: callers, the focus and callees as rows, each at its call site and marked `observed`, `inferred` or `unresolved · <reason>` in words, glyph and marker style. Opening a row's evidence asks the server nothing; the code panel highlights the cited span. Evidence that fails its integrity check keeps its row, and the panel says the source is unavailable. A hub shows its first 24 rows per side with the count, and pages the rest in as the list scrolls.
 - Keyboard: an opened symbol takes the focus; ↑ ↓ move between rows, ← → between columns, Enter opens the evidence, `f` explores from the row. Resting the pointer on a row or a Galaxy point for 80 ms prefetches its card, one at a time. The lens asks for a path from the focus and shows it as a chain of hops, each with its call site (`trace_paths` now gives each hop of a path its `site`), labelled by its weakest hop.
 - `bench/observatory/evidence.mjs` times the click to the evidence text, warm and on a page's first open, counts the requests, and records the machine's load; `--check` holds it to 150 ms warm and 400 ms first open at p95, and one request per open.
-- The Trace a path tab and its form are unchanged; replacing them with the lens is left to a later change.
 
 A count of one is said in the singular (closes #202; FR1210):
 
