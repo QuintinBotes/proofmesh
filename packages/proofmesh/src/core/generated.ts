@@ -4,7 +4,7 @@
 export interface Envelope {
 schema_version: "0.1"
 query_id: string
-tool: ("workspace_status" | "list_repositories" | "list_snapshots" | "list_workspaces" | "find_symbols" | "get_symbol" | "get_relationships" | "trace_paths" | "read_evidence" | "get_overview" | "analyze_impact" | "find_tests" | "search_sources" | "get_memory" | "verify_claim" | "request_index" | "get_job" | "get_claims" | "save_memory" | "get_table_reach" | "get_property_reads" | "get_external_usage" | "find_query_source" | "compare_snapshots" | "list_queries" | "get_ecosystem" | "prepare_verification" | "get_verification" | "impact_completeness" | "get_symbols_at" | "get_session_trail" | "find_stale_mentions" | "find_unused" | "find_cycles" | "find_entry_points" | "find_hubs" | "get_context_map" | "plan_rename")
+tool: ("workspace_status" | "list_repositories" | "list_snapshots" | "list_workspaces" | "find_symbols" | "get_symbol" | "get_relationships" | "trace_paths" | "read_evidence" | "get_overview" | "analyze_impact" | "find_tests" | "search_sources" | "get_memory" | "verify_claim" | "request_index" | "get_job" | "get_claims" | "save_memory" | "get_table_reach" | "get_property_reads" | "get_external_usage" | "find_query_source" | "compare_snapshots" | "list_queries" | "get_ecosystem" | "prepare_verification" | "get_verification" | "impact_completeness" | "get_symbols_at" | "get_session_trail" | "find_stale_mentions" | "find_unused" | "find_cycles" | "find_entry_points" | "find_hubs" | "get_context_map" | "plan_rename" | "search_structure")
 /**
  * The sealed snapshot or link file that answered; null for a catalog tool, which answers from the list of registered repositories.
  */
@@ -3428,6 +3428,145 @@ cursor?: string
  * compact leaves out the snapshot-wide parts of the envelope (unresolved reasons, standing limitations) that an earlier answer from the same snapshot already gave; query-specific limits stay. Over MCP, answers after the first full one per snapshot are compact unless full is asked for.
  */
 envelope?: ("full" | "compact")
+}
+
+export interface SearchStructureData {
+/**
+ * By path, then by position in the file; a match inside another is listed after it.
+ */
+matches: {
+path: string
+/**
+ * The first line of the match.
+ */
+line: number
+end_line: number
+/**
+ * The first line of the matched code, cut at 120 characters.
+ */
+text: string
+/**
+ * The innermost symbol that holds the match whole, its module when nothing smaller does; null only in a file with no symbol.
+ */
+symbol: (null | {
+id: string
+/**
+ * The stable_key of the symbol (FR280).
+ */
+key: string
+kind: string
+name: string
+qualified_name: string
+})
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
+}[]
+totals: {
+/**
+ * Every match in scope, before row limits; when the search stopped at timeout_ms, those found before it.
+ */
+matches: number
+/**
+ * Files in the pattern's language under the prefix and scope.
+ */
+files_searched: number
+/**
+ * Symbols in the reachable_from and reaching scope, when one is given.
+ */
+scope_symbols?: number
+/**
+ * Files importing the importing files, when given.
+ */
+scope_files?: number
+}
+}
+
+/**
+ * Code found by its shape, with ast-grep's pattern syntax over the syntax tier's Tree-sitter grammars (FR1060): every await in a loop, every call of escape with a string, every catch that swallows its error. Optionally only inside the symbols reachable from or reaching a symbol, or the files importing a file (scope). Read-only, over the snapshot's captured content, not the working tree. Lean over MCP: one `<enclosing name> <path>:<line> "<first line of the match>"` row per match, the text cut at 120 characters; pages with a cursor, and completion.total counts every match. Time, matches and bytes are the usual limits; files over 1 MiB are not parsed.
+ */
+export interface SearchStructureInput {
+/**
+ * Optional when exactly one repository is registered.
+ */
+repository_id?: string
+/**
+ * Null pins the current published snapshot.
+ */
+snapshot_id?: (string | null)
+limits?: {
+timeout_ms?: number
+max_rows?: number
+max_bytes?: number
+max_depth?: number
+}
+/**
+ * snapshot (default) answers from the published snapshot. strict first checks that the working tree is exactly what the snapshot was built from; if not, it starts an index and refuses with STALE_INPUT naming the changed files.
+ */
+freshness?: ("snapshot" | "strict")
+/**
+ * lean, the default over MCP: plain text with no JSON and no structuredContent. A header `# <tool> · <n> rows · <snapshot> current` (stale when the snapshot is older than the repository's current one), one `<name> <path>:<line>` row per result, then `# ` lines for the limitations of this answer and `# more: cursor <c>` when a next page exists. The line is the call, import or reference site for relationship, impact and path rows and the declaration for symbol rows; tags follow: in or out when both directions are asked, depth=<n>, dispatch, external, candidate, ambiguous, unresolved:<reason>, and the relationship type when the query mixes types. A name or path with a space, quote or # is quoted as JSON. compact: the JSON envelope without the snapshot-wide parts an earlier answer gave (coverage, unresolved reasons, standing limitations). full: the whole JSON envelope. Ask for compact or full for ids, evidence and totals.
+ */
+envelope?: ("full" | "compact" | "lean")
+/**
+ * The next_cursor of the previous page. It continues the same query on the same snapshot; it expires after an hour.
+ */
+cursor?: string
+/**
+ * Code in the language, with ast-grep's metavariables: $X matches one node, $$$X (or $$$) any number of nodes, $_ one node without capturing, $$X an unnamed node too. A repeated metavariable must match equal code. Matching is ast-grep's default (smart): comments and punctuation the pattern leaves out are skipped. A pattern that does not parse is refused with the parse error and its syntax tree.
+ */
+pattern: string
+/**
+ * The pattern's language: only files with its extensions are searched, as ast-grep chooses them (typescript: .ts .cts .mts; tsx; javascript, read with the TSX grammar; python; go; ...). Omitted: every file whose extension has a grammar here, with the pattern parsed in each file's language; a language it does not parse in is skipped and named, and files with no grammar are counted.
+ */
+language?: ("typescript" | "tsx" | "javascript" | "python" | "go" | "rust" | "java" | "c" | "cpp" | "csharp" | "ruby" | "kotlin" | "scala" | "swift" | "bash" | "hcl")
+/**
+ * Only files whose repository-relative path starts with this. Default: the whole repository.
+ */
+path_prefix?: string
+/**
+ * Only matches inside what the graph names; several keys intersect. A match counts when a symbol of the scope holds it whole.
+ */
+scope?: {
+/**
+ * Symbols, each with every symbol trace_paths reaches from it (resolved calls, and dispatch both ways through implements and overrides), within max_depth.
+ * 
+ * @minItems 1
+ * @maxItems 20
+ * 
+ * Items: A symbol id (sym_...), a name the snapshot holds once (`DataSource.initialize`, as a lean row shows it, or a plain name), or { name, path }.
+ */
+reachable_from?: [(string | {
+name: string
+path: string
+}), ...((string | {
+name: string
+path: string
+}))[]]
+/**
+ * Symbols, each with every symbol that reaches it the same way, within max_depth.
+ * 
+ * @minItems 1
+ * @maxItems 20
+ * 
+ * Items: A symbol id (sym_...), a name the snapshot holds once (`DataSource.initialize`, as a lean row shows it, or a plain name), or { name, path }.
+ */
+reaching?: [(string | {
+name: string
+path: string
+}), ...((string | {
+name: string
+path: string
+}))[]]
+/**
+ * Repository-relative file paths: only matches in the files whose resolved imports name one of them.
+ * 
+ * @minItems 1
+ * @maxItems 20
+ */
+importing?: [string, ...(string)[]]
+}
 }
 
 export interface TracePathsData {

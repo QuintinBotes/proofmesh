@@ -4,6 +4,14 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 ## Unreleased
 
+Code found by its shape, limited by the graph (part of #37; FR1060 to FR1067):
+
+- New tool `search_structure` (profile `extra`, lean over MCP) takes a code pattern in ast-grep's syntax (`$X`, `$$$X`, `$_`, a repeated metavariable matching equal code) and matches it over the Tree-sitter grammars the syntax tier already ships, with no new dependency: TypeScript, TSX, JavaScript, Python, Go, Rust, Java, C, C++, C#, Ruby, Kotlin, Scala, Swift, Bash and HCL. Each match is a lean row `<enclosing name> <path>:<line> <first line of the match>`, paged with a cursor, with an exact total.
+- `scope` keeps only the matches whose enclosing symbol `trace_paths` reaches from a symbol (`reachable_from`), that reaches a symbol (`reaching`), or that sit in files importing a file (`importing`). ast-grep cannot express this.
+- A pattern that does not parse is refused as `INVALID_ARGUMENT` with each syntax error and the pattern's syntax tree, in the format of ast-grep's `--debug-query=pattern`.
+- A pattern is a resource surface: the match runs in the syntax adapter's own process, stops at `timeout_ms` with what it found, and is killed a second later if it does not. Patterns are at most 4,096 characters, files over 1 MiB are not parsed, at most 64 MiB of source is read per search, and nothing in a pattern or a file is ever run. Matches are against the snapshot's captured content, never the working tree.
+- `bench/structure` runs 29 patterns through `search_structure` and the pinned ast-grep 0.51.1 CLI on the parity fixture and on `fixtures/`, and checks the scoped search against `trace_paths`. Every match set is identical, and so is the scoped one (SC-001, SC-002). Not done: SC-003. The WebAssembly matcher in a Node process takes several times longer per pattern than ast-grep's native, multi-threaded CLI on the parity fixture, so the latency target is not met.
+
 A Composer `require-dev` package is for tests only (closes #180; FR1040):
 
 - A `require-dev` entry was recorded like a `require` one, with no scope, so a main source (`src/`) bound names of a package it may only use in development. Its `depends_on` or `depends_on_package` row now carries `detail.scope` `test`, as Cargo's `dev-dependencies` do. A main source's call or `use` into such a package keeps its row (`outside_capability`); a file under the project's `autoload-dev` directories (or `src/test` and the like) still binds it.

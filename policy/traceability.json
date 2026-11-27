@@ -1934,6 +1934,31 @@
     ],
     "FR1085": [
       "packages/proofmesh/test/snapshot-transfer.test.ts"
+    ],
+    "FR1060": [
+      "packages/proofmesh/test/search-structure.test.ts"
+    ],
+    "FR1061": [
+      "packages/proofmesh/test/search-structure.test.ts"
+    ],
+    "FR1062": [
+      "packages/proofmesh/test/search-structure.test.ts"
+    ],
+    "FR1063": [
+      "packages/proofmesh/test/search-structure.test.ts"
+    ],
+    "FR1064": [
+      "packages/proofmesh/test/search-structure.test.ts",
+      "bench/structure/run.mjs"
+    ],
+    "FR1065": [
+      "packages/proofmesh/test/search-structure.test.ts"
+    ],
+    "FR1066": [
+      "packages/proofmesh/test/search-structure.test.ts"
+    ],
+    "FR1067": [
+      "packages/proofmesh/test/search-structure.test.ts"
     ]
   },
   "manual": {

@@ -24,6 +24,8 @@ node_modules/
 /bench/graph-bench/out/
 # Parity benchmark (bench/parity): every result, ProofMesh's data directory and the SCIP index of the fixture.
 /bench/parity/out/
+# Structural search benchmark (bench/structure): its results.
+/bench/structure/out/
 
 # Release artifacts are built locally and never committed.
 /release/out/
