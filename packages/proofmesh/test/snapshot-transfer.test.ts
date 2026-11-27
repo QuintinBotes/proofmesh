@@ -176,9 +176,9 @@ describe('FR1080 to FR1085 start from a snapshot built elsewhere for the same co
     const { file, clone, b } = exported()
     const before = state(b)
     const trigger = forge(file, (db) => db.exec("create trigger t after insert on meta begin select 1; end"))
-    expect(refusal(cli(['--data-dir', b, 'snapshot', 'import', clone, trigger]))).toMatch(/the snapshot's tables are not those of format 0\.12; nothing changed/)
+    expect(refusal(cli(['--data-dir', b, 'snapshot', 'import', clone, trigger]))).toMatch(/the snapshot's tables are not those of format 0\.13; nothing changed/)
     const view = forge(file, (db) => db.exec('drop table external_symbol; create view external_symbol as select 1 as id, 2 as module, 3 as name'))
-    expect(refusal(cli(['--data-dir', b, 'snapshot', 'import', clone, view]))).toMatch(/not those of format 0\.12/)
+    expect(refusal(cli(['--data-dir', b, 'snapshot', 'import', clone, view]))).toMatch(/not those of format 0\.13/)
     // An identity edited to claim another adapter no longer hashes to the snapshot's id.
     const identity = forge(file, (db) => {
       const v = JSON.parse((db.prepare("select value from meta where key = 'identity'").get() as { value: string }).value)
