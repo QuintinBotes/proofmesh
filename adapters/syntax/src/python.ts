@@ -926,13 +926,10 @@ async function analyseWithPyright(file: string) {
     }
   }
   const resources = await resourcesIn(file)
-  let resourceReferences = 0
   for (const call of calls) {
     const resource = resources.get(call.startIndex)
     if (!resource) continue
-    const facts = await resourceFacts(file, f, call, resource.local_id)
-    resourceReferences += facts.length
-    relationships.push(...facts)
+    relationships.push(...await resourceFacts(file, f, call, resource.local_id))
   }
   const syntax = f.tree.rootNode.hasError ? 'partial' : 'complete'
   const unresolved = resolved.some((r) => r.resolution === 'unresolved' || r.resolution === 'candidate')
@@ -940,8 +937,8 @@ async function analyseWithPyright(file: string) {
   if (stuck) send({ jsonrpc: '2.0', method: 'log', params: { level: 'warning', message: `${file}: Pyright answered nothing within ${REQUEST_MS / 1000} s for ${stuck} calls; they are unresolved` } })
   // Only imports of repository files are reported, so imports are partial wherever a file imports anything else.
   const external = refs.some((r) => !targets(r).length)
-  // Only references between Pulumi resources and uses of classes and functions are reported, so a file that has them says references are partial.
-  return { symbols: [...f.symbols, ...endpoints.values(), ...resources.values()], relationships, result: { path: file, status: 'ok', capabilities: { text: 'complete', syntax, symbols: 'complete', imports: external ? 'partial' : 'complete', references: resourceReferences || used.size ? 'partial' : 'unsupported', resolved_calls: unresolved ? 'partial' : 'complete', framework: endpoints.size || resources.size ? 'partial' : 'unsupported' } } }
+  // Only references between Pulumi resources and uses of classes and functions are reported, and every file is read for them, so references are partial even where it has none.
+  return { symbols: [...f.symbols, ...endpoints.values(), ...resources.values()], relationships, result: { path: file, status: 'ok', capabilities: { text: 'complete', syntax, symbols: 'complete', imports: external ? 'partial' : 'complete', references: 'partial', resolved_calls: unresolved ? 'partial' : 'complete', framework: endpoints.size || resources.size ? 'partial' : 'unsupported' } } }
 }
 
 /** The repository's installed packages, read from a virtual environment's site-packages, never by running its interpreter (A2). */
