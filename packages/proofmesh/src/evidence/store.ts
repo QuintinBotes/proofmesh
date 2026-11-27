@@ -2,6 +2,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { sha256 } from '../core/hash.js'
 
+const OBJECT_HASH = /^[0-9a-f]{64}$/
+
 export type Integrity = { status: 'verified' } | { status: 'failed'; actual_hash: string } | { status: 'unavailable' }
 
 /** Content-addressed evidence objects. An object is stored and verified before anything may reference it. */
@@ -9,10 +11,12 @@ export class EvidenceStore {
   constructor(private readonly dataDir: string) {}
 
   objectPath(hash: string): string {
+    if (!OBJECT_HASH.test(hash)) throw new Error(`${JSON.stringify(hash)} is not a sha256 object hash`)
     return path.join(this.dataDir, 'objects', 'sha256', hash.slice(0, 2), hash.slice(2, 4), hash)
   }
 
-  put(content: Uint8Array): string {
+  /** durable false skips the fsync: for copies of files still in the working tree, whose every read is checked against the hash anyway. */
+  put(content: Uint8Array, durable = true): string {
     const hash = sha256(content)
     const target = this.objectPath(hash)
     if (fs.existsSync(target) && sha256(fs.readFileSync(target)) === hash) return hash
@@ -23,7 +27,7 @@ export class EvidenceStore {
     const fd = fs.openSync(tmp, 'w', 0o600)
     try {
       fs.writeSync(fd, content)
-      fs.fsyncSync(fd)
+      if (durable) fs.fsyncSync(fd)
     } finally {
       fs.closeSync(fd)
     }
@@ -34,11 +38,13 @@ export class EvidenceStore {
   }
 
   read(hash: string): Buffer | undefined {
+    if (!OBJECT_HASH.test(hash)) return undefined
     const p = this.objectPath(hash)
     return fs.existsSync(p) ? fs.readFileSync(p) : undefined
   }
 
   size(hash: string): number | undefined {
+    if (!OBJECT_HASH.test(hash)) return undefined
     const p = this.objectPath(hash)
     return fs.existsSync(p) ? fs.statSync(p).size : undefined
   }

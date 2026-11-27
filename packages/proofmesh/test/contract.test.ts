@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { beforeAll, describe, expect, it, vi } from 'vitest'
 import { ProofmeshError } from '../src/core/errors.js'
-import { BUNDLE_FORMAT_VERSION, check, ENVELOPE_VERSION, loadSchema } from '../src/core/schemas.js'
+import { BUNDLE_FORMAT_VERSION, check, ENVELOPE_VERSION, loadSchema, SNAPSHOT_EXPORT_VERSION } from '../src/core/schemas.js'
 import { PROTOCOL_VERSION } from '../src/indexer/adapter-host.js'
 import { LINK_FORMAT_VERSION } from '../src/links/index.js'
 import { CATALOG_VERSION, initDataDir } from '../src/meshstore/catalog.js'
@@ -54,10 +54,11 @@ describe('FR036 read, management and execution capabilities are separate', () =>
 describe('FR037 schemas are enforced on the way out, and a versioned contract manifest is published', () => {
   it('FR037 list_queries publishes the version of every public contract, each naming a schema that exists and fixes it', () => {
     const contract = (tool(d, 'list_queries', {}).data as { contract: Record<string, string | number> }).contract
-    expect(contract).toEqual({ envelope: ENVELOPE_VERSION, snapshot_format: FORMAT_VERSION, link_format: LINK_FORMAT_VERSION, adapter_protocol: PROTOCOL_VERSION, bundle_format: BUNDLE_FORMAT_VERSION, catalog_migration: CATALOG_VERSION })
+    expect(contract).toEqual({ envelope: ENVELOPE_VERSION, snapshot_format: FORMAT_VERSION, link_format: LINK_FORMAT_VERSION, adapter_protocol: PROTOCOL_VERSION, bundle_format: BUNDLE_FORMAT_VERSION, snapshot_export: SNAPSHOT_EXPORT_VERSION, catalog_migration: CATALOG_VERSION })
     const schemas = path.join(ROOT, 'schemas')
     expect((loadSchema('envelope.schema.json') as any).properties.schema_version.const).toBe(contract.envelope)
     expect((loadSchema(`bundle-format/${contract.bundle_format}.schema.json`) as any).properties.schema_version.const).toBe(contract.bundle_format)
+    expect((loadSchema(`snapshot-export/${contract.snapshot_export}.schema.json`) as any).properties.schema_version.const).toBe(contract.snapshot_export)
     for (const file of [`snapshot-format/${contract.snapshot_format}.sql`, `link-format/${contract.link_format}.sql`, `catalog/${String(contract.catalog_migration).padStart(4, '0')}.sql`]) expect(fs.existsSync(path.join(schemas, file)), file).toBe(true)
   })
 
@@ -89,7 +90,7 @@ describe('FR076 public contracts are versioned with a documented compatibility a
     }))
     const code: Record<string, string> = {
       'MCP envelope and tool schemas': ENVELOPE_VERSION, 'Adapter protocol': PROTOCOL_VERSION, 'Snapshot file format': FORMAT_VERSION,
-      'Link file format': LINK_FORMAT_VERSION, 'Bundle format': BUNDLE_FORMAT_VERSION, Catalog: String(CATALOG_VERSION).padStart(4, '0'),
+      'Link file format': LINK_FORMAT_VERSION, 'Bundle format': BUNDLE_FORMAT_VERSION, 'Snapshot export format': SNAPSHOT_EXPORT_VERSION, Catalog: String(CATALOG_VERSION).padStart(4, '0'),
     }
     for (const [name, version] of Object.entries(code)) {
       expect(rows.get(name)?.version, name).toBe(version)

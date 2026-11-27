@@ -62,5 +62,5 @@ function currentMatchesTree(catalog: Catalog, dataDir: string, repositoryId: str
   const current = catalog.currentSnapshot(repositoryId)
   if (!current) return false
   const db = openSnapshot(catalog, current)
-  try { return treeFreshness(db, dataDir, root).current } finally { db.close() }
+  try { return treeFreshness(db, dataDir, root, repositoryId).current } finally { db.close() }
 }

@@ -40,6 +40,19 @@ behind_ref?: (string | null)
  * When that remote branch was last fetched; behind_remote is only as current as this.
  */
 fetched_at?: (string | null)
+/**
+ * Present only when the snapshot was built in another data directory and imported (FR1084): its origin as the export recorded it, when it was imported, and how many of its files differed from the working tree then. The limitations name those files.
+ */
+imported?: {
+origin: {
+repository_id: string
+repository_name: string
+writer: string
+exported_at: string
+}
+imported_at: string
+stale_count: number
+}
 } | null)
 freshness: {
 mode: ("snapshot" | "strict")
@@ -2810,6 +2823,10 @@ adapter_protocol: string
  * schemas/bundle-format/<version>.schema.json.
  */
 bundle_format: string
+/**
+ * schemas/snapshot-export/<version>.schema.json, the manifest of a file proofmesh snapshot export writes.
+ */
+snapshot_export: string
 /**
  * The newest schemas/catalog/NNNN.sql migration.
  */
