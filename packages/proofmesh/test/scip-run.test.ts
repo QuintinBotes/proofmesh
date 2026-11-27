@@ -1,4 +1,5 @@
 import crypto from 'node:crypto'
+import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -259,6 +260,9 @@ const fs = require('fs')
 fs.appendFileSync(${JSON.stringify(log)}, JSON.stringify(process.argv.slice(2)) + '\\n')
 if (process.argv[2] === 'run') { process.on('SIGTERM', () => {}); setInterval(() => {}, 1000) }
 `, { mode: 0o755 })
+    // macOS scans a new executable on its first exec, which can take seconds under load; pay that here, outside the run's timeout (#117).
+    execFileSync(path.join(dir, 'docker'), ['warm-up'])
+    fs.rmSync(log)
     return { dir, calls: () => (fs.existsSync(log) ? fs.readFileSync(log, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as string[]) : []) }
   }
 
