@@ -10,7 +10,6 @@ const BENCH = path.join(ROOT, 'bench/observatory/frames.mjs')
 const lib = () => import(path.join(ROOT, 'bench/observatory/lib.mjs'))
 const gen = () => import(path.join(ROOT, 'bench/observatory/gen-galaxy.mjs'))
 const stability = () => import(path.join(ROOT, 'bench/observatory/stability.mjs'))
-const { TITLE_CASE } = await import(path.join(ROOT, 'bench/observatory/snapshot-b.mjs'))
 
 function fixture(): string {
   const dir = fs.realpathSync(tmpDir('pm-obs-fixture-'))
@@ -25,7 +24,7 @@ function fixture(): string {
   write('src/index.ts', 'import { OrderService } from "./order/OrderService"\nexport function main(): number { return new OrderService().close() }\n')
   // What snapshot B's commit edits (bench/observatory/snapshot-b.mjs), in small, so the stability step can write it here too.
   write('src/query-builder/QueryBuilder.ts', 'export class QueryBuilder {\n    expressionMap = { parameters: {} as Record<string, unknown> }\n    protected createParameter(value: any): string {\n        return String(value)\n    }\n}\n')
-  write('src/util/StringUtils.ts', `export function camelCase(str: string): string {\n    return str\n}\n\n${TITLE_CASE}export function abbreviate(str: string): string {\n    return str.slice(0, 1)\n}\n`)
+  write('src/util/StringUtils.ts', `export function camelCase(str: string): string {\n    return str\n}\n\n/**\n * Converts string into Title Case.\n */\nexport function titleCase(str: string): string {\n    return str.replace(\n        /\\w\\S*/g,\n        (txt) => txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase(),\n    )\n}\n\nexport function abbreviate(str: string): string {\n    return str.slice(0, 1)\n}\n`)
   write('src/data-source/DataSource.ts', 'import { ObjectLiteral } from "../common/ObjectLiteral"\nexport class DataSource {\n    driver = { connect: async () => {} }\n    async initialize(): Promise<this> {\n        await this.driver.connect()\n        return this\n    }\n}\n')
   execFileSync('git', ['-C', dir, 'init', '-q'])
   execFileSync('git', ['-C', dir, 'add', '-A'])
