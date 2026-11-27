@@ -1,6 +1,7 @@
 // Exports of a view (FR064): an SVG drawing, an offline HTML page, and PNG metadata. Pure functions, so they are testable without a DOM.
-import { areaLabel, placeLabels } from './galaxyData'
+import { ghostAreas, type GalaxyData } from './galaxyData'
 import { plural } from './plural'
+import { CELL, cellRect, coverageOf, FRAME, GHOST_SIDE, GHOST_Y, GHOSTS, ghostRect, labels, MATCH, POINT, STROKE, SYMBOL, symbolSide, type Rect, type Stroke, type Terrain, type View } from './terrainModel'
 import { type Scene, TOKENS } from './scene'
 import { visible } from './visible'
 
@@ -27,7 +28,7 @@ export const LEGEND: Array<{ label: string; color: string; dashed?: boolean }> =
 
 /** Layout is derived, never evidence (FR068): every view and every export says so. */
 export const NO_MEANING = 'Position carries no meaning; only drawn lines are relationships.'
-/** The Galaxy's positions come from the path tree (FR1224): they show containment, and nearness is still no relationship. */
+/** The Terrain's positions come from the path tree (FR1224): they show containment, and nearness is still no relationship. */
 export const CONTAINMENT = 'Position shows containment: directory, then file, then name. Nearness is not a relationship; only drawn lines are relationships.'
 
 const ESCAPES: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }
@@ -42,7 +43,8 @@ export function caveatLines(c: Caveats, source: Source): string[] {
     ...c.limits.map((l) => `limit: ${l}`),
     ...c.coverage.map((l) => `coverage: ${l}`),
     source ? `source included with consent: ${source.path} from line ${source.startLine}` : 'no source code included',
-    c.view === 'Galaxy' ? CONTAINMENT : NO_MEANING,
+    // The Terrain's positions are its layout's containment (SC-003); every other view's carry no meaning.
+    c.view === 'Terrain' ? CONTAINMENT : NO_MEANING,
   ]
 }
 
@@ -92,33 +94,55 @@ export function sceneSvg(scene: Scene, caveats: Caveats, source: Source, width =
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${total}" viewBox="0 0 ${width} ${total}" role="img" aria-label="${esc(`${caveats.view}: ${withoutInstructions(scene.conclusion)}`)}"><rect width="100%" height="100%" fill="#0b0f1a"/><text x="24" y="36" font-size="18" fill="#e6e9f2">${esc(withoutInstructions(scene.conclusion))}</text>${edges}${stubs}${nodes}${badges}${block.svg}</svg>`
 }
 
-export type GalaxyExportArea = { name: string; color: string; count: number; matches?: number; fog?: string }
-const GHOST_BAND = 120, GHOSTS = 10
 /**
- * The Galaxy as it is drawn: each symbol (while searching, each match) a point at its place in the snapshot, in its area's colour
- * with y up as on screen, each area named at its centre, incomplete coverage as a dashed ring with words (FR059), and the areas
- * with no symbols as ghosts below the map. The places come with the snapshot, so one snapshot exports the same bytes (FR1580).
+ * The Terrain as it is drawn (FR1580): each area's cells nested by depth at their places in the snapshot's layout, hatched where many
+ * calls are unresolved and marked where files were not analysed (FR059); the bundles drawn, solid observed and dashed inferred; each
+ * symbol (while searching, each match) a point at its place; the overview's labels; and the areas with no symbols as ghost cells in
+ * the row below. Nothing depends on the camera or the pointer, so one snapshot exports the same bytes.
  */
-export function galaxySvg(d: { positions: ArrayLike<number>; area: ArrayLike<number> }, shown: number[], areas: GalaxyExportArea[], caveats: Caveats, source: Source, width = 1600, height = 1000): string {
+export function terrainSvg(d: GalaxyData, t: Terrain, strokes: Stroke[], matches: number[] | null, caveats: Caveats, source: Source, width = 1600, height = 1000): string {
   const block = caveatBlock(caveats, source, 24, height)
-  const top = 60, side = Math.min(width - 48, height - top - GHOST_BAND), left = (width - side) / 2
-  const sum = areas.map((): [number, number, number] => [0, 0, 0])
-  const dots = shown.map((i) => {
-    const x = left + (d.positions[i * 2]! / 65535) * side, y = top + (1 - d.positions[i * 2 + 1]! / 65535) * side, s = sum[d.area[i]!]!
-    s[0] += x; s[1] += y; s[2]++
-    return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3" fill="${areas[d.area[i]!]!.color}"/>`
+  const top = 60, side = Math.min(width - 48, (height - top - 30) * FRAME / (GHOST_Y + GHOST_SIDE)), k = side / FRAME
+  const v: View = { kx: k, bx: (width - side) / 2, ky: k, by: top, width, height }
+  const at = (q: Rect) => `x="${q.left.toFixed(1)}" y="${q.top.toFixed(1)}" width="${q.width.toFixed(1)}" height="${q.height.toFixed(1)}"`
+  const r = d.cells.rects, centre = (c: number) => [(r[c * 4]! + r[c * 4 + 2]! / 2) * k + v.bx, (r[c * 4 + 1]! + r[c * 4 + 3]! / 2) * k + v.by] as const
+  let cells = ''
+  for (let c = 0; c < t.cellArea.length; c++) {
+    const depth = t.cellDepth[c]!
+    if (depth >= 0 && (depth === 0 || d.cells.names[c])) cells += `<rect ${at(cellRect(d, v, c))} fill="${CELL[Math.min(depth, 2)]}"/>`
+  }
+  const fog = d.areas.map((a, n) => {
+    const c = t.areaCell[n]!, cov = coverageOf(a)
+    if (c < 0 || (!cov.hatched && !cov.ghost)) return ''
+    const q = cellRect(d, v, c), g = Math.min(36, Math.max(8, q.width * 0.22))
+    return `<g><title>${esc(cov.text)}</title>${cov.hatched ? `<rect ${at(q)} fill="url(#hatch)"/>` : ''}${cov.ghost ? `<rect ${at({ left: q.left + q.width * 0.94 - g, top: q.top + q.height * 0.94 - g, width: g, height: g })} fill="url(#ghost)" stroke="#cbd5e1" stroke-opacity="0.75" stroke-dasharray="3 2"/>` : ''}</g>`
   }).join('')
-  const centres = areas.slice(0, 40).flatMap((a, k) => (sum[k]![2] ? [{ a, name: areaLabel(a.name), x: sum[k]![0]! / sum[k]![2]!, y: sum[k]![1]! / sum[k]![2]! }] : []))
-  // Names go under the points, so no point is hidden; a name that would overlap one already placed is left off, as on screen (B14).
-  const names = placeLabels(centres).map(({ a, name, x, y }) => `<text x="${x.toFixed(1)}" y="${(y + 4).toFixed(1)}" font-size="12" font-weight="600" text-anchor="middle" fill="${a.color}">${esc(name)}${a.matches !== undefined ? ` · ${plural(a.matches, 'match', 'matches')}` : ''}</text>`).join('')
-  const ring = (x: number, y: number, r: number, fog: string, words: string) => `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${r}" fill="none" stroke="#cbd5e1" stroke-opacity="0.7" stroke-dasharray="4 3"/><text x="${x.toFixed(1)}" y="${(y + r + 13).toFixed(1)}" font-size="10" text-anchor="middle" fill="#cbd5e1"><title>${esc(fog)}</title>${esc(words)}</text>`
-  const rings = centres.filter((c) => c.a.fog).map((c) => ring(c.x, c.y, 18, c.a.fog!, c.a.fog!.slice(c.a.name.length + 2))).join('')
-  const empty = areas.filter((a) => !a.count && a.fog), cols = Math.min(5, Math.max(1, empty.length))
-  const ghosts = empty.slice(0, GHOSTS).map((a, i) => ring(24 + ((i % cols) + 0.5) * ((width - 48) / cols), top + side + 26 + Math.floor(i / cols) * 48, 10, a.fog!, a.fog!)).join('')
-  const more = empty.length > GHOSTS ? `<text x="24" y="${height - 6}" font-size="11" fill="#cbd5e1">${esc(`+${plural(empty.length - GHOSTS, 'more area')} with no symbols; the table lists them`)}</text>` : ''
-  const title = `${shown.length === d.area.length ? plural(shown.length, 'symbol') : `${plural(shown.length, 'matching symbol')} of ${plural(d.area.length, 'symbol')}`}, placed by the snapshot's path tree`
+  const max = Math.max(1, ...t.pairs.map((p) => p.observed + p.inferred))
+  const bundles = strokes.map(({ pair, basis, count }) => {
+    const ca = t.areaCell[pair.from]!, cb = t.areaCell[pair.to]!
+    if (ca < 0 || cb < 0) return ''
+    const [x0, y0] = centre(ca), [x1, y1] = centre(cb), bend = basis === 'inferred' ? 0.22 : 0.12
+    const qx = (x0 + x1) / 2 - (y1 - y0) * bend, qy = (y0 + y1) / 2 + (x1 - x0) * bend
+    return `<path d="M${x0.toFixed(1)} ${y0.toFixed(1)} Q${qx.toFixed(1)} ${qy.toFixed(1)} ${x1.toFixed(1)} ${y1.toFixed(1)}" fill="none" stroke="${STROKE[basis]}" stroke-width="${(1.5 + (4 * Math.log(1 + count)) / Math.log(1 + max)).toFixed(1)}"${basis === 'inferred' ? ' stroke-dasharray="7 5"' : ''} marker-end="url(#${basis})"/>`
+  }).join('')
+  // Labels go under the points, so no point is hidden.
+  const names = labels(d, t, v).map((l) => l.kind === 'symbol'
+    ? `<text x="${(l.left + l.width / 2).toFixed(1)}" y="${(l.top + 11).toFixed(1)}" font-size="11" text-anchor="middle" fill="${SYMBOL}">${esc(l.text)}</text>`
+    : (l.height > 16 ? l.text.split(' ') : [l.text]).map((line, i) => `<text x="${l.left.toFixed(1)}" y="${(l.top + 12 + i * 16).toFixed(1)}" font-size="${l.kind === 'area' ? 12 : 11}"${l.kind === 'area' ? ' font-weight="600"' : ''} fill="${l.kind === 'area' ? '#e6eeff' : '#c9d3ea'}">${esc(line)}</text>`).join('')).join('')
+  const radius = Math.min(4, Math.max(1.5, symbolSide(d, v) * POINT)).toFixed(1), picked = matches && new Set(matches)
+  let dots = ''
+  for (let i = 0; i < d.n; i++) if (!picked || picked.has(i)) dots += `<circle cx="${(d.positions[i * 2]! * k + v.bx).toFixed(1)}" cy="${(d.positions[i * 2 + 1]! * k + v.by).toFixed(1)}" r="${radius}" fill="${picked ? MATCH : SYMBOL}"/>`
+  const { shown, rest } = ghostAreas(d.areas, GHOSTS)
+  const ghosts = [...shown.map((a) => ({ name: a.name, text: coverageOf(a).text })), ...(rest.areas ? [{ name: `+${plural(rest.areas, 'smaller area')}`, text: `${plural(rest.areas, 'more area')} with no symbols ${rest.areas === 1 ? 'holds' : 'hold'} ${plural(rest.files, 'file')} the graph cannot see; the table lists them` }] : [])]
+  const pitch = GHOST_SIDE * 1.25 * k
+  const empty = ghosts.map((g, i) => {
+    const q = ghostRect(v, i), fits = Math.max(1, Math.floor((pitch - 6) / 6.2)), name = g.name.length > fits ? `${g.name.slice(0, fits - 1)}…` : g.name
+    return `<g><title>${esc(g.text)}</title><rect ${at(q)} fill="url(#ghost)" stroke="#cbd5e1" stroke-opacity="0.6" stroke-dasharray="3 2"/><text x="${q.left.toFixed(1)}" y="${(q.top + q.height + 15).toFixed(1)}" font-size="11" fill="#cbd5e1">${esc(name)}</text></g>`
+  }).join('')
+  const defs = `<defs><pattern id="hatch" width="10" height="10" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="10" stroke="#f2b84b" stroke-opacity="0.35"/></pattern><pattern id="ghost" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(-45)"><line x1="0" y1="0" x2="0" y2="7" stroke="#cbd5e1" stroke-opacity="0.3" stroke-width="2"/></pattern>${(['observed', 'inferred'] as const).map((b) => `<marker id="${b}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="4" markerHeight="4" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="${STROKE[b]}"/></marker>`).join('')}</defs>`
+  const title = `${picked ? `${plural(picked.size, 'matching symbol')} of ${plural(d.n, 'symbol')}` : plural(d.n, 'symbol')} in ${plural(d.areas.length, 'area')}, placed by the snapshot's path tree`
   const total = height + block.height
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${total}" viewBox="0 0 ${width} ${total}" role="img" aria-label="${esc(`${caveats.view}: ${plural(areas.length, 'area')}`)}"><rect width="100%" height="100%" fill="#0b0f1a"/><text x="24" y="36" font-size="18" fill="#e6e9f2">${esc(title)}</text>${names}${rings}${dots}${ghosts}${more}${block.svg}</svg>`
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${total}" viewBox="0 0 ${width} ${total}" role="img" aria-label="${esc(`${caveats.view}: ${plural(d.areas.length, 'area')}`)}">${defs}<rect width="100%" height="100%" fill="#0b0f1a"/><text x="24" y="36" font-size="18" fill="#e6e9f2">${esc(title)}</text>${cells}${fog}${bundles}${names}${dots}${empty}${block.svg}</svg>`
 }
 
 /** A self-contained page: the drawing, the caveats, the legend, a table of what is drawn, and source only with consent. It loads nothing. */

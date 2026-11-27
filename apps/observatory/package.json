@@ -9,7 +9,6 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@cosmos.gl/graph": "3.6.0",
     "graphology": "^0.26.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",

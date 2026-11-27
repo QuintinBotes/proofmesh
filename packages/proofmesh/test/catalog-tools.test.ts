@@ -100,4 +100,13 @@ describe('the standing references limitation follows the snapshot\'s capability'
     expect(tool(dataDir, 'get_relationships', { subject_id: symbolId(dataDir, 'shop/cart:Cart'), types: ['references'] }).data.relationships).toHaveLength(1)
     expect(tool(dataDir, 'find_symbols', { text: 'Cart' }).limitations).toContain('References other than calls and imports are recorded only where an adapter supports them (C# uses of repository declarations, TypeScript uses of repository types, Python uses of repository classes and functions); elsewhere a missing reference is not evidence of no use.')
   })
+
+  it('FR1640 says references are partial for a snapshot of Python alone that records none, as the adapter looked for them', async () => {
+    const { dataDir } = await indexedRepo({ 'shop/cart.py': 'class Cart:\n    pass\n', 'shop/app.py': 'from shop.cart import Cart\n\n\ndef make() -> None:\n    Cart()\n' })
+    expect(tool(dataDir, 'get_relationships', { subject_id: symbolId(dataDir, 'shop/cart:Cart'), types: ['references'] }).data.relationships).toHaveLength(0)
+    const limitations = tool(dataDir, 'find_symbols', { text: 'Cart' }).limitations
+    expect(limitations).toContain('References other than calls and imports are recorded only where an adapter supports them (C# uses of repository declarations, TypeScript uses of repository types, Python uses of repository classes and functions); elsewhere a missing reference is not evidence of no use.')
+    expect(limitations).not.toContain('References other than calls and imports are not analysed for this snapshot.')
+    expect((tool(dataDir, 'workspace_status', {}).data.languages as Array<{ language: string; capabilities: Record<string, unknown> }>).find((l) => l.language === 'Python')!.capabilities.references).toMatchObject({ partial: 2, unsupported: 0 })
+  })
 })

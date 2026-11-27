@@ -29,10 +29,7 @@ for (const colorScheme of ['dark', 'light'] as const) {
         found.push(...await serious(page, `${where} table`))
         await page.getByRole('button', { name: 'Graph', exact: true }).click()
       }
-      await both('Galaxy')
-      await page.getByRole('tab', { name: 'Map' }).click()
-      await expect(page.getByRole('navigation', { name: 'Location' })).toBeVisible()
-      await both('Map')
+      await both('Terrain')
       await page.getByRole('tab', { name: 'Explore' }).click()
       await answered(page, () => page.getByRole('region', { name: 'Start exploring' }).getByRole('button').filter({ hasText: 'packages/billing/src/invoice:invoiceTotal' }).click())
       await both('Explore')
@@ -52,7 +49,7 @@ test('FR067 a request for more contrast is honoured: secondary text and lines ta
     const colour = (selector: string, property: string) => page.locator(selector).first().evaluate((e, p) => getComputedStyle(e).getPropertyValue(p), property)
     expect(await colour('[data-testid=conclusion] ~ * .dim, .dim', 'color')).toBe(await colour('body', 'color'))
     expect(await colour('.top', 'border-bottom-color')).toBe(await colour('body', 'color'))
-    expect(await serious(page, 'Galaxy, more contrast')).toEqual([])
+    expect(await serious(page, 'Terrain, more contrast')).toEqual([])
   } finally { await close() }
 })
 

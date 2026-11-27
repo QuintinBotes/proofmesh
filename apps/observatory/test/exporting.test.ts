@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { caveatLines, galaxySvg, offlineHtml, pngText, pngWithText, sceneSvg, sceneTable, type Caveats } from '../src/exporting'
+import { caveatLines, terrainSvg, CONTAINMENT, NO_MEANING, offlineHtml, pngText, pngWithText, sceneSvg, sceneTable, type Caveats } from '../src/exporting'
+import type { GalaxyData } from '../src/galaxyData'
 import type { Scene } from '../src/scene'
+import { drawnStrokes, terrainOf } from '../src/terrainModel'
 
 const caveats: Caveats = { view: 'Trace', repository: 'invoicing', snapshotId: 'snap_0123456789abcdef01234567', analysisMode: 'no_execution', scope: 'handleInvoice → formatAmount, depth 6', limits: ['max_depth 6 reached'], coverage: ['3 of 10 call sites unresolved'] }
 const scene: Scene = {
@@ -23,6 +25,12 @@ describe('FR064 FR052 FR065 exports carry their caveats, load nothing, and inclu
     expect(html).toContain('unresolved: the target is unknown')
     expect(html).toContain('no source code included')
     expect(html).toContain('<td>unresolved</td><td>api:handleInvoice → ?</td><td>dynamic_element_access · line 7</td>')
+  })
+
+  it('FR1224 a Terrain export says position shows containment, as its legend does; every other view says position carries no meaning', () => {
+    expect(caveatLines({ ...caveats, view: 'Terrain' }, null)).toContain(CONTAINMENT)
+    expect(caveatLines({ ...caveats, view: 'Terrain' }, null)).not.toContain(NO_MEANING)
+    expect(caveatLines(caveats, null)).toContain(NO_MEANING)
   })
 
   it('repository text is escaped and its invisible characters shown', () => {
@@ -48,29 +56,39 @@ describe('FR064 FR052 FR065 exports carry their caveats, load nothing, and inclu
   })
 })
 
-describe('FR059 SC011 a Galaxy export shows incomplete coverage, never an empty or small area', () => {
-  it('an area with gaps gets a dashed ring and its coverage in words; an area with no symbols is a ghost with no point', () => {
-    const d = { positions: Uint16Array.from([0, 0, 65535, 65535, 32768, 32768]), area: Uint16Array.from([0, 0, 1]) }
-    const svg = galaxySvg(d, [0, 1, 2], [
-      { name: 'src/core', color: '#111111', count: 2 },
-      { name: 'src/legacy', color: '#222222', count: 1, fog: 'src/legacy: 12 files not analysed (no_adapter:.vb 12)' },
-      { name: 'docs', color: '#333333', count: 0, fog: 'docs: 9 files not analysed (no_adapter:.md 9)' },
-    ], { ...caveats, view: 'Galaxy' }, null)
-    expect(svg.match(/stroke-dasharray="4 3"/g)).toHaveLength(2)
-    expect(svg).toContain('<title>src/legacy: 12 files not analysed (no_adapter:.vb 12)</title>12 files not analysed (no_adapter:.vb 12)</text>')
-    expect(svg).toContain('<title>docs: 9 files not analysed (no_adapter:.md 9)</title>docs: 9 files not analysed (no_adapter:.md 9)</text>')
-    expect(svg.match(/ r="3" /g)).toHaveLength(3)
-    expect(svg).not.toContain('fill="#333333"')
+const none = { indexed: 0, unsupported: 0, excluded: 0, failed: 0, pending: 0 }
+/** Two areas side by side, src (two symbols, half its calls unresolved) and lib (one symbol, two files not analysed), and docs with no symbols. */
+const tiny: GalaxyData = {
+  snapshotId: 's', n: 3, links: new Uint32Array(), degree: new Uint32Array(3), area: Uint16Array.from([0, 0, 1]), kind: new Uint8Array(3),
+  positions: Uint16Array.from([0, 0, 65535, 65535, 49152, 16384]), kinds: ['function'], names: ['src/a:x', 'src/a:y', 'lib/b:z'], files: [],
+  areas: [
+    { name: 'src', count: 2, files: { ...none, indexed: 1 }, calls: { sites: 100, unresolved: 50 }, gaps: [] },
+    { name: 'lib', count: 1, files: { ...none, indexed: 1, unsupported: 2 }, calls: { sites: 0, unresolved: 0 }, gaps: [['no_adapter:.vb', 2]] },
+    { name: 'docs', count: 0, files: { ...none, unsupported: 9 }, calls: { sites: 0, unresolved: 0 }, gaps: [['no_adapter:.md', 9]] },
+  ],
+  cells: { rects: Uint16Array.from([0, 0, 65535, 65535, 0, 0, 32768, 65535, 32768, 0, 32767, 65535]), parent: Int32Array.from([-1, 0, 0]), count: Uint32Array.from([3, 2, 1]), names: ['', 'src', 'lib'] },
+  bundles: [[0, 1, 0, 0, 5]], relTypes: ['calls'],
+}
+const terrainCaveats = { ...caveats, view: 'Terrain' }
+
+describe('FR059 SC011 a Terrain export shows incomplete coverage, never an empty or small area', () => {
+  it('a hatched area and an area with files not analysed say so, and an area with no symbols is a ghost cell with no point', () => {
+    const t = terrainOf(tiny), svg = terrainSvg(tiny, t, drawnStrokes(t.pairs, null), null, terrainCaveats, null)
+    expect(svg).toMatch(/<title>src: 50% of 100 calls unresolved<\/title><rect [^>]+ fill="url\(#hatch\)"\/>/)
+    expect(svg).toMatch(/<title>lib: 2 files not analysed \(no_adapter:\.vb 2\)<\/title><rect [^>]+ fill="url\(#ghost\)"/)
+    expect(svg).toMatch(/<title>docs: 9 files not analysed \(no_adapter:\.md 9\)<\/title><rect [^>]+ fill="url\(#ghost\)"[^>]*\/><text [^>]+>docs<\/text>/)
+    expect(svg.match(/<circle /g)).toHaveLength(3)
   })
 })
 
-describe('FR1580 a Galaxy export draws every symbol at its place in the snapshot', () => {
-  it('maps the payload frame onto one square, y up as on screen, and the same input gives the same bytes', () => {
-    const d = { positions: Uint16Array.from([0, 0, 65535, 65535, 65535, 0]), area: Uint16Array.from([0, 0, 0]) }
-    const svg = galaxySvg(d, [0, 1, 2], [{ name: 'src', color: '#7fd4ff', count: 3 }], { ...caveats, view: 'Galaxy' }, null)
-    // 1600 by 1000: an 820-pixel square from x 390 and y 60, above the band of ghosts.
-    expect([...svg.matchAll(/<circle cx="([\d.]+)" cy="([\d.]+)" r="3"/g)].map((m) => `${m[1]},${m[2]}`)).toEqual(['390.0,880.0', '1210.0,60.0', '1210.0,880.0'])
-    expect(galaxySvg(d, [0, 1, 2], [{ name: 'src', color: '#7fd4ff', count: 3 }], { ...caveats, view: 'Galaxy' }, null)).toBe(svg)
-    expect(caveatLines({ ...caveats, view: 'Galaxy' }, null).at(-1)).toBe('Position shows containment: directory, then file, then name. Nearness is not a relationship; only drawn lines are relationships.')
+describe('FR1580 a Terrain export draws the map at its snapshot positions', () => {
+  it('maps the layout frame onto one square above the row of ghosts, draws the bundles, and the same input gives the same bytes', () => {
+    const t = terrainOf(tiny), draw = () => terrainSvg(tiny, t, drawnStrokes(t.pairs, null), null, terrainCaveats, null)
+    const svg = draw()
+    // 1600 by 1000: an 827-pixel square from x 386.4 and y 60, the frame's y downward as on screen.
+    expect([...svg.matchAll(/<circle cx="([\d.]+)" cy="([\d.]+)"/g)].map((m) => `${m[1]},${m[2]}`)).toEqual(['386.4,60.0', '1213.6,887.3', '1006.8,266.8'])
+    expect(svg.match(/<path d="M[^"]+" fill="none" stroke="#7fd4ff"/g)).toHaveLength(1)
+    expect(draw()).toBe(svg)
+    expect(terrainSvg(tiny, t, [], [2], terrainCaveats, null).match(/<circle [^>]+fill="#ffd36e"\/>/g)).toHaveLength(1)
   })
 })

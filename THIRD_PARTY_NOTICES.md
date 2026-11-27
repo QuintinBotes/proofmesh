@@ -4,20 +4,8 @@ Production dependencies of the Proofmesh packages, with their licenses as declar
 
 | Package | Versions | License |
 |---|---|---|
-| @cosmos.gl/graph | 3.6.0 | MIT |
 | @hono/node-server | 2.1.6 | MIT |
-| @luma.gl/core | 9.3.6 | MIT |
-| @luma.gl/engine | 9.3.6 | MIT |
-| @luma.gl/shadertools | 9.3.6 | MIT |
-| @luma.gl/webgl | 9.3.6 | MIT |
-| @math.gl/core | 4.1.0 | MIT |
-| @math.gl/types | 4.1.0 | MIT |
 | @modelcontextprotocol/sdk | 1.32.2 | MIT |
-| @probe.gl/env | 4.1.2 | MIT |
-| @probe.gl/log | 4.1.2 | MIT |
-| @probe.gl/stats | 4.1.2 | MIT |
-| @types/offscreencanvas | 2019.7.3 | MIT |
-| @types/trusted-types | 2.0.7 | MIT |
 | accepts | 2.0.0 | MIT |
 | ajv | 8.20.0 | MIT |
 | ajv-formats | 3.0.1 | MIT |
@@ -32,23 +20,8 @@ Production dependencies of the Proofmesh packages, with their licenses as declar
 | cookie-signature | 1.2.2 | MIT |
 | cors | 2.8.6 | MIT |
 | cross-spawn | 7.0.6 | MIT |
-| d3-array | 3.2.5 | ISC |
-| d3-color | 3.1.1 | ISC |
-| d3-dispatch | 3.0.2 | ISC |
-| d3-drag | 3.0.1 | ISC |
-| d3-ease | 3.0.2 | BSD-3-Clause |
-| d3-format | 3.1.3 | ISC |
-| d3-interpolate | 3.0.2 | ISC |
-| d3-scale | 4.0.3 | ISC |
-| d3-selection | 3.0.1 | ISC |
-| d3-time | 3.1.1 | ISC |
-| d3-time-format | 4.1.1 | ISC |
-| d3-timer | 3.0.2 | ISC |
-| d3-transition | 3.0.2 | ISC |
-| d3-zoom | 3.0.1 | ISC |
 | debug | 4.4.3 | MIT |
 | depd | 2.0.0 | MIT |
-| dompurify | 3.4.17 | (MPL-2.0 OR Apache-2.0) |
 | dunder-proto | 1.0.1 | MIT |
 | ee-first | 1.1.1 | MIT |
 | encodeurl | 2.0.1 | MIT |
@@ -71,8 +44,6 @@ Production dependencies of the Proofmesh packages, with their licenses as declar
 | function-bind | 1.1.2 | MIT |
 | get-intrinsic | 1.3.0 | MIT |
 | get-proto | 1.0.1 | MIT |
-| gl-bench | 1.0.42 | MIT |
-| gl-matrix | 3.4.4 | MIT |
 | gopd | 1.2.0 | MIT |
 | graphology | 0.26.0 | MIT |
 | graphology-types | 0.24.8 | MIT |
@@ -83,7 +54,6 @@ Production dependencies of the Proofmesh packages, with their licenses as declar
 | http-errors | 2.0.1 | MIT |
 | iconv-lite | 0.7.3 | MIT |
 | inherits | 2.0.4 | ISC |
-| internmap | 2.0.3 | ISC |
 | ip-address | 10.7.6 | MIT |
 | ipaddr.js | 1.9.1 | MIT |
 | is-promise | 4.0.0 | MIT |
@@ -110,7 +80,6 @@ Production dependencies of the Proofmesh packages, with their licenses as declar
 | proxy-addr | 2.0.8 | MIT |
 | pyright | 1.1.414 | MIT |
 | qs | 6.17.1 | BSD-3-Clause |
-| random | 4.1.0 | MIT |
 | range-parser | 1.3.0 | MIT |
 | raw-body | 3.0.2 | MIT |
 | react | 19.3.1 | MIT |
@@ -119,7 +88,6 @@ Production dependencies of the Proofmesh packages, with their licenses as declar
 | router | 2.2.0 | MIT |
 | safer-buffer | 2.1.2 | MIT |
 | scheduler | 0.28.0 | MIT |
-| seedrandom | 3.0.5 | MIT |
 | send | 1.2.1 | MIT |
 | serve-static | 2.2.1 | MIT |
 | setprototypeof | 1.2.0 | ISC |

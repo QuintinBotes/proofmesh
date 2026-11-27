@@ -50,6 +50,20 @@ export async function galaxySymbol(index: number, card?: Record<string, unknown>
   return body
 }
 
+export type BundleEnd = { id: string; qualified_name: string; path: string; start_line: number }
+export type Bundle = {
+  from: string; to: string; total: number; by_basis: { observed: number; inferred: number }; next_offset: number | null
+  rows: Array<{ assertion_id: string; type: string; basis: 'observed' | 'inferred'; source: BundleEnd; target: BundleEnd; site: { path: string; start_line: number } | null }>
+}
+
+/** A page of the relationships a Terrain bundle stands for, from one area to another (FR1403). */
+export async function fetchBundle(from: string, to: string, offset: number): Promise<Bundle> {
+  const r = await fetch('/api/v1/galaxy/bundle', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(scoped({ from, to, offset, ...(replay ? { snapshot_id: replay } : {}) })) })
+  const body = await r.json().catch(() => ({}))
+  if (!r.ok) throw new ToolError(body?.error?.code ?? 'INTERNAL_ERROR', body?.error?.message ?? `HTTP ${r.status}`, r.status)
+  return body as Bundle
+}
+
 export type SnapshotInfo = { id: string; published_at: string | null; analysis_mode: string; current: boolean; git: { available: boolean; reason?: string } | null }
 
 /** The repository's published snapshots, newest first, for Replay and Diff. */

@@ -133,15 +133,15 @@
     ],
     "FR056": [
       "packages/proofmesh/test/overview.test.ts",
-      "apps/observatory/test/map.test.ts",
-      "e2e/map.spec.ts"
+      "apps/observatory/test/terrain.test.ts",
+      "e2e/terrain-typeorm.spec.ts"
     ],
     "A11": [
       "apps/observatory/test/explore.test.ts",
       "apps/observatory/test/galaxy.test.ts",
       "apps/observatory/test/scene.test.ts",
       "e2e/build.spec.ts",
-      "e2e/galaxy.spec.ts",
+      "e2e/terrain.spec.ts",
       "e2e/views.spec.ts",
       "packages/proofmesh/test/ecosystem.test.ts",
       "apps/observatory/test/ecosystem.test.ts",
@@ -268,11 +268,11 @@
     "FR059": [
       "apps/observatory/test/galaxy.test.ts",
       "apps/observatory/test/exporting.test.ts",
-      "e2e/galaxy.spec.ts"
+      "e2e/terrain.spec.ts"
     ],
     "SC011": [
       "apps/observatory/test/exporting.test.ts",
-      "e2e/galaxy.spec.ts"
+      "e2e/terrain.spec.ts"
     ],
     "FR058": [
       "apps/observatory/test/scene.test.ts",
@@ -1778,6 +1778,9 @@
     "FR1111": [
       "packages/proofmesh/test/parity-bench.test.ts"
     ],
+    "FR1660": [
+      "packages/proofmesh/test/global-setup.test.ts"
+    ],
     "FR600": [
       "packages/proofmesh/test/syntax-rust-turbofish-calls.test.ts"
     ],
@@ -1967,6 +1970,10 @@
       "packages/proofmesh/test/catalog-tools.test.ts",
       "packages/proofmesh/test/limits.test.ts"
     ],
+    "FR1640": [
+      "packages/proofmesh/test/catalog-tools.test.ts",
+      "packages/proofmesh/test/python.frameworks.test.ts"
+    ],
     "FR1040": [
       "packages/proofmesh/test/constrained.test.ts"
     ],
@@ -2084,12 +2091,12 @@
     ],
     "FR1210": [
       "apps/observatory/test/plural.test.ts",
-      "e2e/galaxy.spec.ts"
+      "e2e/terrain.spec.ts"
     ],
     "FR1220": [
       "packages/proofmesh/test/layout.test.ts",
       "apps/observatory/test/galaxy.test.ts",
-      "e2e/galaxy.spec.ts"
+      "e2e/terrain.spec.ts"
     ],
     "FR1221": [
       "apps/observatory/test/galaxy.test.ts"
@@ -2098,12 +2105,16 @@
       "packages/proofmesh/test/layout.test.ts"
     ],
     "FR1223": [
-      "e2e/galaxy.spec.ts"
+      "e2e/terrain.spec.ts"
     ],
     "FR1224": [
-      "e2e/legend.spec.ts"
+      "e2e/legend.spec.ts",
+      "apps/observatory/test/exporting.test.ts"
     ],
     "FR1225": [
+      "packages/proofmesh/test/layout.test.ts"
+    ],
+    "FR1620": [
       "packages/proofmesh/test/layout.test.ts"
     ],
     "FR580": [
@@ -2222,6 +2233,47 @@
     "FR1244": [
       "packages/proofmesh/test/cold-build.test.ts"
     ],
+    "FR1400": [
+      "apps/observatory/test/terrain.test.ts",
+      "e2e/terrain.spec.ts",
+      "e2e/palette.spec.ts"
+    ],
+    "FR1401": [
+      "packages/proofmesh/test/layout.test.ts",
+      "apps/observatory/test/terrain.test.ts"
+    ],
+    "FR1402": [
+      "packages/proofmesh/test/observatory-parity.test.ts",
+      "apps/observatory/test/terrain.test.ts",
+      "e2e/terrain-typeorm.spec.ts",
+      "e2e/terrain-basis.spec.ts"
+    ],
+    "FR1403": [
+      "packages/proofmesh/test/observatory-parity.test.ts",
+      "e2e/terrain-typeorm.spec.ts",
+      "e2e/terrain-basis.spec.ts"
+    ],
+    "FR1404": [
+      "apps/observatory/test/terrain.test.ts",
+      "e2e/terrain-typeorm.spec.ts",
+      "e2e/palette.spec.ts"
+    ],
+    "FR1405": [
+      "apps/observatory/test/terrain.test.ts",
+      "e2e/terrain.spec.ts",
+      "e2e/terrain-typeorm.spec.ts"
+    ],
+    "FR1406": [
+      "e2e/legend.spec.ts",
+      "e2e/terrain-basis.spec.ts"
+    ],
+    "FR1407": [
+      "e2e/terrain.spec.ts",
+      "e2e/terrain-typeorm.spec.ts"
+    ],
+    "FR1408": [
+      "apps/observatory/test/bundle.test.ts"
+    ],
     "FR960": [
       "packages/proofmesh/test/graph-query.test.ts"
     ],
@@ -2251,6 +2303,7 @@
     "SC006": "A maintainer registers Proofmesh in Claude Code and in Codex with proofmesh mcp-config, asks both the same snapshot-pinned questions (bench/eval/samples/invoicing-questions.json), records the sessions, scores them with bench/eval/run.mjs, and confirms both cite the same snapshot id. Last run on 2026-11-12 on the final build, over fixtures/ts-invoicing (snapshot snap_7278727f7dee33d0928b30e7): headless Claude Code 2.1.322 (claude -p, only the Proofmesh MCP server and its tools) and Codex 0.163.0 (codex exec, read-only sandbox, the server passed with -c and its tools approved for that server only) answered the same three snapshot-pinned questions identically, citing the same snapshot id, and both answers equal the fixture oracle.",
     "FR049.publication": "A maintainer publishes the signed npm packages and the OCI image, with checksums, SBOM, signatures, provenance and release notes, to the registries; publication is never automated.",
     "SC016.tag": "A maintainer tags the release commit of the public fresh-history repository; CI builds, signs (keyless) and attests the artifacts from that tag, including the C# adapter.",
-    "FR1187": "A maintainer indexes the TypeORM parity fixture (bench/parity/run.sh builds it at commit 3d55188c) into a fresh data directory and runs node bench/observatory/evidence.mjs --data-dir <dir> --symbol src/data-source/DataSource:DataSource.initialize --runs 10 --check, which exits 0 when the warm and first-open p95 and the requests per open are within SC-001 and SC-002 of #45, and records the machine and its load beside the times."
+    "FR1187": "A maintainer indexes the TypeORM parity fixture (bench/parity/run.sh builds it at commit 3d55188c) into a fresh data directory and runs node bench/observatory/evidence.mjs --data-dir <dir> --symbol src/data-source/DataSource:DataSource.initialize --runs 10 --check, which exits 0 when the warm and first-open p95 and the requests per open are within SC-001 and SC-002 of #45, and records the machine and its load beside the times.",
+    "FR1409": "pnpm bench:observatory --fixture synthetic --nodes 250000 --check on a machine with a GPU: the pan and zoom p95 is within its 33 ms budget (bench/observatory/README.md records the run)"
   }
 }

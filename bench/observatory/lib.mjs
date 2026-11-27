@@ -58,7 +58,7 @@ const LABELS = {
   frame_idle_p50_ms: 'Frame at rest, p50', frame_idle_p95_ms: 'Frame at rest, p95', frame_idle_max_ms: 'Frame at rest, max',
   frame_pan_zoom_p50_ms: 'Pan and zoom frame, p50', frame_pan_zoom_p95_ms: 'Pan and zoom frame, p95', frame_pan_zoom_max_ms: 'Pan and zoom frame, max',
   search_ms: 'Search', symbol_to_evidence_ms: 'Symbol to evidence', symbol_to_evidence_requests: 'Symbol to evidence, requests',
-  edge_to_evidence_ms: 'Edge to evidence', edge_to_evidence_requests: 'Edge to evidence, requests', map_switch_ms: 'Map switch', map_switch_cold_ms: 'Map switch, first',
+  edge_to_evidence_ms: 'Edge to evidence', edge_to_evidence_requests: 'Edge to evidence, requests', terrain_switch_ms: 'Terrain switch', terrain_switch_cold_ms: 'Terrain switch, first',
   palette_p50_ms: 'Command palette, query to matches, p50', palette_p95_ms: 'Command palette, query to matches, p95', palette_max_ms: 'Command palette, query to matches, max',
   palette_typing_longest_task_ms: 'Command palette, longest task while typing',
 }

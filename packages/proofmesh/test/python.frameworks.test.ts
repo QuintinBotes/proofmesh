@@ -116,6 +116,7 @@ describe('A8 A25 Pulumi rules: a resource graph from Python, named as the TypeSc
     const text = fs.readFileSync(path.join(fixtureRepo('py-pulumi'), '__main__.py'), 'utf8')
     expect(facts.map((r) => [r.line, r.type, r.src, r.dst, Buffer.from(text).subarray(r.start, r.end).toString()])).toEqual(EXPECTED.relationships)
     expect(new Set(facts.map((r) => r.path))).toEqual(new Set(['__main__.py']))
+    // FR1640: web.py records no reference but was read for them, so it is partial too.
     expect(withSnapshot(d, (db) => db.prepare(`select path, json_extract(capabilities, '$.references') as refs from file where language = 'python' order by path`).all())).toEqual(EXPECTED.references_capability)
   }, 240000)
 })

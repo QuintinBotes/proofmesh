@@ -62,7 +62,7 @@ test('A11 the ecosystem overview draws a workspace, shows a selected repository\
   await expect(open).toBeFocused()
   const before = posted.length
   await answered(page, () => page.keyboard.press('Enter'))
-  await expect(page.getByRole('tab', { name: 'Galaxy' })).toHaveAttribute('aria-selected', 'true')
+  await expect(page.getByRole('tab', { name: 'Terrain' })).toHaveAttribute('aria-selected', 'true')
   await expect(page.getByRole('status')).toContainText('Showing one repository of workspace shop')
   await expect(page.getByTestId('conclusion')).toContainText('symbols in', { timeout: 60000 })
   const after = posted.slice(before)
