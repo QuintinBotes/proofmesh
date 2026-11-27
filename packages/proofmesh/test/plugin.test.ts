@@ -132,7 +132,15 @@ describe('FR873 the SessionStart hook names the last index job that failed (#167
     c.updateJob(job, { state: 'failed', finished_at: at, error: 'the index host was killed by SIGKILL' })
     c.close()
     expect(hook('session', { cwd: repo }, env)?.additionalContext).toBe(`Proofmesh has ${name} registered but no published snapshot of it; last index job ${job} failed at ${at}: the index host was killed by SIGKILL; run /proofmesh:index before asking it anything.`)
-  })
+    // With a snapshot from an earlier index, the hook names the failure after the snapshot's state.
+    expect(cli(['--data-dir', dataDir, 'index', repoId]).status).toBe(0)
+    const again = Catalog.open(dataDir)
+    const later = again.createJob(repoId, 'test'), when = new Date(Date.now() + 1000).toISOString()
+    again.updateJob(later, { state: 'failed', finished_at: when, error: 'the index host exited with code 3' })
+    const snapshot = again.currentSnapshot(repoId)!.id
+    again.close()
+    expect(hook('session', { cwd: repo }, env)?.additionalContext).toBe(`Proofmesh's snapshot ${snapshot} of ${name} matches the working tree. Its last index job ${later} failed at ${when}: the index host exited with code 3.`)
+  }, 60000)
 })
 
 describe('#141 the root README installs the CLI onto PATH, where Claude Code and the plugin can run it', () => {

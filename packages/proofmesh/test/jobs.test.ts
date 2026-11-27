@@ -175,6 +175,17 @@ describe('FR870 status names the last index job that failed, and why (#167)', ()
     expect(fresh.stderr).toContain(KILLED)
     expect(JSON.parse(fresh.stdout).error.details).toMatchObject({ job_id: job, job_state: 'failed', job_error: KILLED })
     expect(() => tool(d, 'find_symbols', { repository_id: repoId, text: 'a' })).toThrow(KILLED)
+    // A command with its own refusal, tests --json, prints the error JSON too.
+    expect(JSON.parse(cli(['--data-dir', d, 'tests', repoId, 'a.ts', '--json']).stdout).error.details).toMatchObject({ job_id: job, job_error: KILLED })
+    const { Catalog } = await import('../src/meshstore/catalog.js')
+    const c = Catalog.open(d)
+    // An open job is named before a failed one, by status --fresh as by the tools.
+    const open = c.createJob(repoId, 'test')
+    expect(cli(['--data-dir', d, 'status', repoId, '--fresh']).stderr).toContain(`index job ${open} is queued; poll it with get_job`)
+    // A job whose process stopped before it recorded anything reads interrupted, with that as its reason.
+    c.updateJob(open, { state: 'running', started_at: new Date().toISOString(), progress_at: new Date().toISOString(), owner: 'pid:1@nowhere' })
+    expect(cli(['--data-dir', d, 'status', repoId]).stderr).toContain(`last index job ${open} interrupted: its process stopped before it recorded an outcome; run "proofmesh index" again`)
+    c.close()
   }, 30000)
 
   it('FR871: a snapshot older than a failed last job still answers, with the failure named in status, its --fresh check and the workspace_status limitations', async () => {
@@ -194,5 +205,12 @@ describe('FR870 status names the last index job that failed, and why (#167)', ()
     expect(cli(['--data-dir', d, 'index', repoId]).status).toBe(0)
     expect(tool(d, 'workspace_status').limitations.join('\n')).not.toContain('last index job')
     expect(cli(['--data-dir', d, 'status', repoId]).stdout).not.toContain('last index job')
+    // An index --no-wait refused while that index ran was requested after it but ended before it: it is not the last job.
+    const { Catalog } = await import('../src/meshstore/catalog.js')
+    const c = Catalog.open(d)
+    const refused = c.createJob(repoId, 'test')
+    c.updateJob(refused, { state: 'failed', finished_at: '2000-01-01T00:00:00.000Z', error: 'already being indexed' })
+    c.close()
+    expect(tool(d, 'workspace_status').limitations.join('\n')).not.toContain('last index job')
   }, 60000)
 })
