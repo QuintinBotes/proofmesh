@@ -2199,6 +2199,10 @@
     "FR1302": [
       "e2e/diff.spec.ts"
     ],
+    "FR1500": [
+      "packages/proofmesh/test/traversal.property.test.ts",
+      "packages/proofmesh/test/trace.test.ts"
+    ],
     "FR1240": [
       "packages/proofmesh/test/cold-build.test.ts"
     ],
