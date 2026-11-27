@@ -6,7 +6,7 @@ import readline from 'node:readline'
 import { expect, type Page } from '@playwright/test'
 
 export const ROOT = path.resolve(import.meta.dirname, '..')
-const CLI = path.join(ROOT, 'packages', 'proofmesh', 'bin', 'proofmesh.mjs')
+export const CLI = path.join(ROOT, 'packages', 'proofmesh', 'bin', 'proofmesh.mjs')
 const FIXTURE = path.join(ROOT, 'fixtures', 'ts-invoicing', 'repo')
 
 /** Index a fixture into a fresh data directory and start `proofmesh view`; resolves with the printed launch URL. */
@@ -16,6 +16,11 @@ export async function startView(fixture = FIXTURE): Promise<{ launchUrl: string;
     const r = spawnSync(process.execPath, [CLI, '--data-dir', dataDir, ...args], { encoding: 'utf8' })
     if (r.status !== 0) throw new Error(`proofmesh ${args.join(' ')} failed: ${r.stderr}`)
   }
+  return serveView(dataDir)
+}
+
+/** Start `proofmesh view` on a data directory as it is; resolves with the printed launch URL. */
+export async function serveView(dataDir: string): Promise<{ launchUrl: string; origin: string; dataDir: string; stop: () => void }> {
   const child: ChildProcess = spawn(process.execPath, [CLI, '--data-dir', dataDir, 'view', '--port', '0', '--no-open'], { stdio: ['ignore', 'pipe', 'pipe'] })
   const launchUrl = await new Promise<string>((resolve, reject) => {
     const t = setTimeout(() => reject(new Error('proofmesh view did not print a URL')), 20000)

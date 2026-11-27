@@ -213,4 +213,36 @@ describe('FR870 status names the last index job that failed, and why (#167)', ()
     c.close()
     expect(tool(d, 'workspace_status').limitations.join('\n')).not.toContain('last index job')
   }, 60000)
+
+  it('FR1000: bundle export, discover, the galaxy, workspace link, scip run and notes accept refuse a repository with no snapshot as status does, naming a failed last job; with no job at all, run "proofmesh index" first (#173)', async () => {
+    const make = (name: string) => { const r = tmpDir(`pm-${name}-`); fs.writeFileSync(`${r}/a.ts`, 'export const a = 1\n'); return r }
+    const d = tmpDir(), repo = make('failed'), other = make('indexed')
+    cli(['--data-dir', d, 'init'])
+    const repoId = cli(['--data-dir', d, 'repo', 'add', repo]).stdout.trim()
+    const otherId = cli(['--data-dir', d, 'repo', 'add', other]).stdout.trim()
+    expect(cli(['--data-dir', d, 'index', otherId]).status).toBe(0)
+    expect(cli(['--data-dir', d, 'workspace', 'add', 'pair', repoId, otherId]).status).toBe(0)
+    expect(cli(['--data-dir', d, 'repo', 'trust', repoId, '--build-evaluation']).status).toBe(0)
+    const { galaxyFor } = await import('../src/query/galaxy.js')
+    const refusals = () => {
+      let galaxy = ''
+      try { galaxyFor(d, { repositoryId: repoId }) } catch (e) { galaxy = `${(e as { code: string }).code}: ${(e as Error).message}` }
+      return {
+        bundle: cli(['--data-dir', d, 'bundle', 'export', repoId, '--out', `${tmpDir()}/b.pmb`]).stderr,
+        discover: cli(['--data-dir', d, 'discover', '--anchor', repoId]).stderr,
+        galaxy,
+        link: cli(['--data-dir', d, 'workspace', 'link', 'pair']).stderr,
+        scip: cli(['--data-dir', d, 'scip', 'run', repoId]).stderr,
+        notes: cli(['--data-dir', d, 'notes', 'accept', 'note_x', '--repository', repoId]).stderr,
+      }
+    }
+    // Linking a workspace names the member that has no snapshot.
+    const subject = (surface: string) => (surface === 'link' ? repo.split('/').pop() : 'this repository')
+    for (const [surface, said] of Object.entries(refusals())) expect(said, surface).toContain(`SNAPSHOT_UNAVAILABLE: no published snapshot for ${subject(surface)}; run "proofmesh index" first`)
+    const job = await failJob(d, repoId)
+    for (const [surface, said] of Object.entries(refusals())) {
+      expect(said, surface).toContain(`SNAPSHOT_UNAVAILABLE: no published snapshot for ${subject(surface)}; last index job ${job} failed at `)
+      expect(said, surface).toContain(`${KILLED}; run "proofmesh index" again`)
+    }
+  }, 120000)
 })

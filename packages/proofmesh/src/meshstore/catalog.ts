@@ -644,3 +644,21 @@ export class Catalog {
     return { ...rest, state: interrupted ? 'interrupted' : row.state, result: row.result ? JSON.parse(row.result as string) : null, plan: row.plan ? JSON.parse(row.plan as string) : null, adapters: adapterProgress ? JSON.parse(adapterProgress as string) : null, elapsed_ms: elapsed } as never
   }
 }
+
+/** The repository's last index job when it failed or was interrupted, with the one line every status surface shows for it (FR870). */
+export function lastIndexFailure(catalog: Catalog, repositoryId: string): { job: IndexJob; note: string } | null {
+  const last = catalog.lastJob(repositoryId)
+  if (last?.state !== 'failed' && last?.state !== 'interrupted') return null
+  // An interrupted job recorded no error: its process stopped before it could.
+  const job = { ...last, error: last.error ?? (last.state === 'interrupted' ? 'its process stopped before it recorded an outcome' : null) }
+  return { job, note: `last index job ${job.id} ${job.state}${job.finished_at ? ` at ${job.finished_at}` : ''}${job.error ? `: ${job.error}` : ''}` }
+}
+
+/** The one refusal for a repository with no published snapshot (FR1000): it names the open index job, else the last one when that failed, else says to index. */
+export function noSnapshot(catalog: Catalog, repositoryId: string, subject = 'this repository'): ProofmeshError {
+  const job = catalog.openJobs(repositoryId).at(-1)
+  if (job) return new ProofmeshError('SNAPSHOT_UNAVAILABLE', `no published snapshot for ${subject}; index job ${job.id} is ${job.state}${job.phase ? ` (${job.phase}${job.total ? ` ${job.done}/${job.total}` : job.done ? ` ${job.done} files found` : ''})` : ''}; poll it with get_job`, { detail: 'none', job_id: job.id })
+  const failed = lastIndexFailure(catalog, repositoryId)
+  if (!failed) return new ProofmeshError('SNAPSHOT_UNAVAILABLE', `no published snapshot for ${subject}; run "proofmesh index" first`, { detail: 'none' })
+  return new ProofmeshError('SNAPSHOT_UNAVAILABLE', `no published snapshot for ${subject}; ${failed.note}; run "proofmesh index" again`, { detail: 'none', job_id: failed.job.id, job_state: failed.job.state, job_finished_at: failed.job.finished_at, job_error: failed.job.error })
+}

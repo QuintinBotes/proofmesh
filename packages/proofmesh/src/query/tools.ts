@@ -4,7 +4,7 @@ import { queryId } from '../core/hash.js'
 import { applyLimits, type AppliedLimits } from '../core/limits.js'
 import { BUNDLE_FORMAT_VERSION, check, ENVELOPE_VERSION } from '../core/schemas.js'
 import type { Envelope, Limits, ListQueriesData } from '../core/generated.js'
-import { CATALOG_VERSION, Catalog, LEASE_OWNER, type IndexJob, type PropertyRead, type SnapshotRow } from '../meshstore/catalog.js'
+import { CATALOG_VERSION, Catalog, LEASE_OWNER, lastIndexFailure, noSnapshot, type PropertyRead, type SnapshotRow } from '../meshstore/catalog.js'
 import { FORMAT_VERSION, openSnapshot } from '../meshstore/snapshot.js'
 import { PROTOCOL_VERSION } from '../indexer/adapter-host.js'
 import { LINK_FORMAT_VERSION } from '../links/index.js'
@@ -276,24 +276,6 @@ function runRepositoryTool(dataDir: string, tool: string, input: Record<string, 
   } finally {
     catalog.close()
   }
-}
-
-/** The repository's last index job when it failed or was interrupted, with the one line every status surface shows for it (FR870). */
-export function lastIndexFailure(catalog: Catalog, repositoryId: string): { job: IndexJob; note: string } | null {
-  const last = catalog.lastJob(repositoryId)
-  if (last?.state !== 'failed' && last?.state !== 'interrupted') return null
-  // An interrupted job recorded no error: its process stopped before it could.
-  const job = { ...last, error: last.error ?? (last.state === 'interrupted' ? 'its process stopped before it recorded an outcome' : null) }
-  return { job, note: `last index job ${job.id} ${job.state}${job.finished_at ? ` at ${job.finished_at}` : ''}${job.error ? `: ${job.error}` : ''}` }
-}
-
-/** The refusal for a repository with no published snapshot: it names the open index job, else the last one when that failed, else says to index. */
-export function noSnapshot(catalog: Catalog, repositoryId: string): ProofmeshError {
-  const job = catalog.openJobs(repositoryId).at(-1)
-  if (job) return new ProofmeshError('SNAPSHOT_UNAVAILABLE', `no published snapshot for this repository; index job ${job.id} is ${job.state}${job.phase ? ` (${job.phase}${job.total ? ` ${job.done}/${job.total}` : job.done ? ` ${job.done} files found` : ''})` : ''}; poll it with get_job`, { detail: 'none', job_id: job.id })
-  const failed = lastIndexFailure(catalog, repositoryId)
-  if (!failed) return new ProofmeshError('SNAPSHOT_UNAVAILABLE', 'no published snapshot for this repository; run "proofmesh index" first', { detail: 'none' })
-  return new ProofmeshError('SNAPSHOT_UNAVAILABLE', `no published snapshot for this repository; ${failed.note}; run "proofmesh index" again`, { detail: 'none', job_id: failed.job.id, job_state: failed.job.state, job_finished_at: failed.job.finished_at, job_error: failed.job.error })
 }
 
 const SNAPSHOT_FRESHNESS: Envelope['freshness'] = { mode: 'snapshot', status: 'as_of_snapshot' }

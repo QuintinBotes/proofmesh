@@ -5,7 +5,7 @@ import { pathToFileURL } from 'node:url'
 import path from 'node:path'
 import { asProofmeshError, ProofmeshError, storedMessage } from '../core/errors.js'
 import { resolveDataDir } from '../core/paths.js'
-import { Catalog, initDataDir, LEASE_OWNER, type IndexJob } from '../meshstore/catalog.js'
+import { Catalog, initDataDir, lastIndexFailure, LEASE_OWNER, noSnapshot, type IndexJob } from '../meshstore/catalog.js'
 import { runVerificationCommand } from './verification.js'
 import { indexCoverage } from '../scip/coverage.js'
 import { runScip } from '../scip/run.js'
@@ -17,7 +17,7 @@ import { indexRepository, testMs } from '../indexer/coordinator.js'
 import { watch } from '../indexer/watch.js'
 import { BUILT_IN, Registry, registryFor } from '../indexer/languages.js'
 import { runKit } from '../conformance/kit.js'
-import { lastIndexFailure, noSnapshot, runTool, treeFreshness } from '../query/tools.js'
+import { runTool, treeFreshness } from '../query/tools.js'
 import { serveHttp, serveStdio, toolProfiles } from '../mcp/server.js'
 import { startViewServer } from '../http/server.js'
 import { galaxyFor } from '../query/galaxy.js'
@@ -127,7 +127,7 @@ export async function main(argv: string[]): Promise<number> {
           if (rest[0] === 'accept' && rest[1]) {
             const repo = catalog.resolveRepository(take([...rest.slice(2)], '--repository'))
             const snapshot = catalog.currentSnapshot(repo.id)
-            if (!snapshot) throw new ProofmeshError('SNAPSHOT_UNAVAILABLE', 'index the repository before accepting a note')
+            if (!snapshot) throw noSnapshot(catalog, repo.id)
             const note = catalog.notes().find((n) => n.id === rest[1])
             if (!note) throw new ProofmeshError('NOT_FOUND', `no note ${rest[1]}; run proofmesh notes sync first`)
             const db = openSnapshot(catalog, snapshot)

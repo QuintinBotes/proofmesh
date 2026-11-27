@@ -7,7 +7,7 @@ import { canonicalJson, randomToken, sha256, sha256File } from '../core/hash.js'
 import { hardenDatabase } from '../core/busy.js'
 import { EvidenceStore } from '../evidence/store.js'
 import { readSql } from '../core/schemas.js'
-import { Catalog, type LinkFileRecord } from '../meshstore/catalog.js'
+import { Catalog, noSnapshot, type LinkFileRecord } from '../meshstore/catalog.js'
 import { openSnapshot } from '../meshstore/snapshot.js'
 
 export const LINK_FORMAT_VERSION = '0.3'
@@ -395,7 +395,7 @@ export function buildLinkFile(catalog: Catalog, dataDir: string, workspace: stri
   if (ws.members.length < 2) throw new ProofmeshError('INVALID_ARGUMENT', `workspace ${workspace} needs at least two repositories to link`)
   const members: Member[] = ws.members.sort().map((repository_id) => {
     const snap = catalog.currentSnapshot(repository_id)
-    if (!snap) throw new ProofmeshError('SNAPSHOT_UNAVAILABLE', `no published snapshot for ${catalog.repository(repository_id).name}; run "proofmesh index" first`, { detail: 'none' })
+    if (!snap) throw noSnapshot(catalog, repository_id, catalog.repository(repository_id).name)
     return { repository_id, snapshot_id: snap.id, name: catalog.repository(repository_id).name, db: openSnapshot(catalog, snap) }
   })
   try {

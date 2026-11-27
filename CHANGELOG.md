@@ -11,6 +11,10 @@ Calls into a library resolve to its repository when both are in one workspace (p
 - Upgrade note: link format 0.3 (new link types `calls`, `inherits`, `implements`, `references`, and the `package_symbol` rule), so the next `proofmesh workspace link` seals a new link file; older link files stay readable. `get_ecosystem` lists the new link types.
 - Not done yet: `trace_paths` and `find_tests` across repositories, the public library and application pair in `bench/parity` (scenario 4), ecosystems other than npm, and chains that cross into a third repository.
 
+Every command with no snapshot to read names a failed index (closes #173; FR1000, FR1001):
+
+- `bundle export`, `discover`, the Observatory's galaxy, `workspace link`, `scip run` and `notes accept` each had their own refusal for a repository with no published snapshot, and after a failed first index still said `run "proofmesh index" first` (or, for `scip run` and `notes accept`, their own words). They now give the refusal `status` gives (#167): an open index job, else `last index job <id> failed at <time>: <error>; run "proofmesh index" again` with `job_id`, `job_state`, `job_finished_at` and `job_error` in its details, else `run "proofmesh index" first`. `workspace link` names the member instead of `this repository`. The Observatory shows the same message.
+
 Docs link to the code they name, and say when it changes (closes #29; FR820 to FR826):
 
 - A Markdown doc's inline code and links are matched by name, with no model, to the files and symbols they name: `Ledger.consume`, `total()`, `Ledger`, `src/ledger.ts`, `[the ledger](../src/ledger.ts)`. Each is a new `mentions` relationship from the doc at its line, origin `documentation`, so always `inferred`; a name of several symbols is `ambiguous` with its candidates, never guessed. Fenced code, bare member names such as `id`, words such as `true` and links with a scheme are not recorded. `get_relationships` with `types: ["mentions"]`, inbound, lists the docs that name a symbol or file.
