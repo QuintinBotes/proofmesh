@@ -29,9 +29,11 @@ const typeshed = path.join(pyrightRoot, 'dist', 'typeshed-fallback')
 let server: ChildProcess
 let buffer = Buffer.alloc(0), nextId = 1
 const pending = new Map<number, (v: unknown) => void>()
-// Untyped code can make Pyright infer return types across the whole program for one definition request; PROOFMESH_PYRIGHT_UNANNOTATED=off
-// tells it not to analyse unannotated function bodies, trading some resolution inside them for bounded time.
-const settings = () => ({ typeCheckingMode: 'off', diagnosticMode: 'openFilesOnly', autoSearchPaths: false, extraPaths, analyzeUnannotatedFunctions: process.env.PROOFMESH_PYRIGHT_UNANNOTATED !== 'off' })
+// Untyped code can make Pyright infer return types across the whole program for one definition request; PROOFMESH_PYRIGHT_UNANNOTATED=off,
+// which the core passes as `pyright_unannotated` at initialize, tells it not to analyse unannotated function bodies, trading some resolution
+// inside them for bounded time.
+let unannotated: 'on' | 'off' = 'on'
+const settings = () => ({ typeCheckingMode: 'off', diagnosticMode: 'openFilesOnly', autoSearchPaths: false, extraPaths, analyzeUnannotatedFunctions: unannotated !== 'off' })
 function write(m: unknown) { const s = JSON.stringify(m); server.stdin!.write(`Content-Length: ${Buffer.byteLength(s)}\r\n\r\n${s}`) }
 /** How long one Pyright request may take before its call is reported unresolved; a stuck request must not stall the whole index. */
 const REQUEST_MS = 60000
@@ -948,6 +950,7 @@ readline.createInterface({ input: process.stdin }).on('line', async (line) => {
     if (req.method === 'initialize') {
       await Parser.init()
       workspace = req.params.workspace
+      unannotated = req.params.config?.pyright_unannotated === 'off' ? 'off' : 'on'
       pythonFiles = new Set((req.params.files as Array<{ path: string; language: string }>).filter((x) => x.language === 'python').map((x) => x.path))
       sitePackages = findSitePackages(req.params.repository_root)
       const distributions = sitePackages ? fs.readdirSync(sitePackages).filter((d) => d.endsWith('.dist-info')).map((d) => d.replace(/\.dist-info$/, '')).sort() : []
@@ -955,7 +958,7 @@ readline.createInterface({ input: process.stdin }).on('line', async (line) => {
       extraPaths = sitePackages ? searchPaths(sitePackages, req.params.repository_root) : []
       await startSession()
       reply({
-        adapter: { id: 'python', version: VERSION, protocol_version: '1.1', languages: ['python'], toolchain: { ...toolchain(['python']), pyright: pyrightVersion } },
+        adapter: { id: 'python', version: VERSION, protocol_version: '1.1', languages: ['python'], toolchain: { ...toolchain(['python']), pyright: pyrightVersion, pyright_unannotated: unannotated } },
         capabilities: { symbols: true, imports: true, resolved_calls: true }, external_inputs: distributions.map((d) => `pypi:${d.replace(/-(?=[^-]*$)/, '/')}`), units: await units(),
       })
     } else if (req.method === 'workspace') {

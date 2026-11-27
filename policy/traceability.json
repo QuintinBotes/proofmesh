@@ -1597,6 +1597,12 @@
     ],
     "FR651": [
       "packages/proofmesh/test/syntax-chained-calls.test.ts"
+    ],
+    "FR670": [
+      "packages/proofmesh/test/python.test.ts"
+    ],
+    "FR671": [
+      "packages/proofmesh/test/python.test.ts"
     ]
   },
   "manual": {
