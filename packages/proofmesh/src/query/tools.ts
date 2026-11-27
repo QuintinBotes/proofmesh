@@ -4,7 +4,7 @@ import { queryId } from '../core/hash.js'
 import { applyLimits, type AppliedLimits } from '../core/limits.js'
 import { BUNDLE_FORMAT_VERSION, check, ENVELOPE_VERSION } from '../core/schemas.js'
 import type { Envelope, Limits, ListQueriesData } from '../core/generated.js'
-import { CATALOG_VERSION, Catalog, LEASE_OWNER, type PropertyRead, type SnapshotRow } from '../meshstore/catalog.js'
+import { CATALOG_VERSION, Catalog, LEASE_OWNER, type IndexJob, type PropertyRead, type SnapshotRow } from '../meshstore/catalog.js'
 import { FORMAT_VERSION, openSnapshot } from '../meshstore/snapshot.js'
 import { PROTOCOL_VERSION } from '../indexer/adapter-host.js'
 import { LINK_FORMAT_VERSION } from '../links/index.js'
@@ -244,7 +244,8 @@ function runRepositoryTool(dataDir: string, tool: string, input: Record<string, 
     }
     if (!snapshot) {
       const job = catalog.openJobs(repo.id).at(-1)
-      throw new ProofmeshError('SNAPSHOT_UNAVAILABLE', `no published snapshot for this repository; ${job ? `index job ${job.id} is ${job.state}${job.phase ? ` (${job.phase}${job.total ? ` ${job.done}/${job.total}` : job.done ? ` ${job.done} files found` : ''})` : ''}; poll it with get_job` : 'run "proofmesh index" first'}`, { detail: 'none', ...(job ? { job_id: job.id } : {}) })
+      if (job) throw new ProofmeshError('SNAPSHOT_UNAVAILABLE', `no published snapshot for this repository; index job ${job.id} is ${job.state}${job.phase ? ` (${job.phase}${job.total ? ` ${job.done}/${job.total}` : job.done ? ` ${job.done} files found` : ''})` : ''}; poll it with get_job`, { detail: 'none', job_id: job.id })
+      throw noSnapshot(catalog, repo.id)
     }
     const db = openSnapshot(catalog, snapshot)
     try {
@@ -275,6 +276,20 @@ function runRepositoryTool(dataDir: string, tool: string, input: Record<string, 
   } finally {
     catalog.close()
   }
+}
+
+/** The repository's last index job when it failed or was interrupted, with the one line every status surface shows for it (FR870). */
+export function lastIndexFailure(catalog: Catalog, repositoryId: string): { job: IndexJob; note: string } | null {
+  const job = catalog.lastJob(repositoryId)
+  if (job?.state !== 'failed' && job?.state !== 'interrupted') return null
+  return { job, note: `last index job ${job.id} ${job.state}${job.finished_at ? ` at ${job.finished_at}` : ''}${job.error ? `: ${job.error}` : ''}` }
+}
+
+/** The refusal for a repository with no published snapshot: it names the last index job when that failed, else says to index. */
+export function noSnapshot(catalog: Catalog, repositoryId: string): ProofmeshError {
+  const failed = lastIndexFailure(catalog, repositoryId)
+  if (!failed) return new ProofmeshError('SNAPSHOT_UNAVAILABLE', 'no published snapshot for this repository; run "proofmesh index" first', { detail: 'none' })
+  return new ProofmeshError('SNAPSHOT_UNAVAILABLE', `no published snapshot for this repository; ${failed.note}; run "proofmesh index" again`, { detail: 'none', job_id: failed.job.id, job_state: failed.job.state, job_finished_at: failed.job.finished_at, job_error: failed.job.error })
 }
 
 const SNAPSHOT_FRESHNESS: Envelope['freshness'] = { mode: 'snapshot', status: 'as_of_snapshot' }
@@ -660,6 +675,7 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     const cycles = (meta.module_cycles ? JSON.parse(meta.module_cycles) : []) as ModuleCycle[]
     const docMentions = { ...mentionCounts(ctx.db), stale: meta.doc_links ? (JSON.parse(meta.doc_links) as { stale: unknown[] }).stale.length : 0 }
     const fileSummary = [...groups.values()].sort((a, b) => b.files - a.files || (a.extension < b.extension ? -1 : 1)).slice(0, 50)
+    const failed = lastIndexFailure(ctx.catalog, ctx.repo.id)
     return {
       data: {
         repository: { id: ctx.repo.id, name: ctx.repo.name, git: JSON.parse(meta.git ?? '{"available":false}') },
@@ -692,6 +708,7 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
       shrink: ['files', 'hubs'],
       more: all.length > ctx.limits.max_rows,
       limitations: [
+        ...(failed ? [`Warning: ${failed.note}; this answer is from snapshot ${ctx.snapshot.id}, which an earlier index published.`] : []),
         ...(docMentions.stale ? [`${docMentions.stale} doc mention${docMentions.stale === 1 ? '' : 's'} name code that was renamed, moved or deleted; find_stale_mentions (profile extra) lists ${docMentions.stale === 1 ? 'it' : 'them'} with ${docMentions.stale === 1 ? 'its' : 'their'} file and line.`] : []),
         ...cycles.map((c) => `Warning: build modules ${c.modules.join(', ')} form a cycle through syntax-tier name matches, and ${c.ecosystem} forbids module cycles; the edges are ${c.edges.map((e) => `${e.from} to ${e.to} (${e.type}, ${e.sites} site${e.sites === 1 ? '' : 's'}, first ${e.path}:${e.line})`).join(', ')}.`),
         ...[generatedLeftOut('hubs', (ctx.db.prepare("select count(*) as n from file where json_extract(capabilities, '$.generated') = 'true'").get() as { n: number }).n, input.include_generated === true)].filter((n): n is string => !!n),

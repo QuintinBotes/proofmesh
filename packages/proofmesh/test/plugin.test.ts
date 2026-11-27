@@ -115,6 +115,26 @@ describe('#133 a plugin installed without the proofmesh CLI says so and how to i
   })
 })
 
+describe('FR873 the SessionStart hook names the last index job that failed (#167)', () => {
+  it('FR873: with no snapshot and a failed last job, the hook says which job failed, when and why; with no job, it says only that there is no snapshot', () => {
+    const repo = tmpDir('pm-plugin-failed-')
+    fs.writeFileSync(path.join(repo, 'a.ts'), 'export const a = 1\n')
+    const dataDir = tmpDir()
+    cli(['--data-dir', dataDir, 'init'])
+    const repoId = cli(['--data-dir', dataDir, 'repo', 'add', repo]).stdout.trim()
+    const shim = tmpDir('pm-plugin-bin-')
+    fs.writeFileSync(path.join(shim, 'proofmesh'), `#!/bin/sh\nexec "${process.execPath}" "${BIN}" "$@"\n`, { mode: 0o755 })
+    const env = { PATH: `${shim}:${process.env.PATH}`, PROOFMESH_DATA_DIR: dataDir, PROOFMESH_HOOK_STATE: tmpDir('pm-plugin-state-') }
+    const name = path.basename(repo)
+    expect(hook('session', { cwd: repo }, env)?.additionalContext).toBe(`Proofmesh has ${name} registered but no published snapshot of it; run /proofmesh:index before asking it anything.`)
+    const c = Catalog.open(dataDir)
+    const job = c.createJob(repoId, 'test'), at = new Date().toISOString()
+    c.updateJob(job, { state: 'failed', finished_at: at, error: 'the index host was killed by SIGKILL' })
+    c.close()
+    expect(hook('session', { cwd: repo }, env)?.additionalContext).toBe(`Proofmesh has ${name} registered but no published snapshot of it; last index job ${job} failed at ${at}: the index host was killed by SIGKILL; run /proofmesh:index before asking it anything.`)
+  })
+})
+
 describe('#141 the root README installs the CLI onto PATH, where Claude Code and the plugin can run it', () => {
   const ROOT_DIR = path.join(import.meta.dirname, '..', '..', '..')
   const install = fs.readFileSync(path.join(ROOT_DIR, 'README.md'), 'utf8').split('\n## Install\n')[1]!.split('\n## ')[0]!

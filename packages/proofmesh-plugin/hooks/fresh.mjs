@@ -77,7 +77,12 @@ else {
     const repo = repositoryOf(input.cwd ?? process.cwd())
     const r = repo && proofmesh(['status', repo.id, '--fresh', '--json'])
     if (!installed) say('SessionStart', `proofmesh: not installed. The Proofmesh plugin's MCP server and hooks need the proofmesh CLI on PATH; install it: ${INSTALL}`, true)
-    else if (repo && r.status !== 0) say('SessionStart', `Proofmesh has ${repo.name} registered but no published snapshot of it; run /proofmesh:index before asking it anything.`)
+    else if (repo && r.status !== 0) {
+      // The refusal's details name the last index job when it failed (FR873), so Claude does not index as if nothing was tried.
+      let d
+      try { d = JSON.parse(r.stdout).error.details } catch {}
+      say('SessionStart', `Proofmesh has ${repo.name} registered but no published snapshot of it${d?.job_state ? `; last index job ${d.job_id} ${d.job_state}${d.job_finished_at ? ` at ${d.job_finished_at}` : ''}${d.job_error ? `: ${d.job_error}` : ''}` : ''}; run /proofmesh:index before asking it anything.`)
+    }
     else if (repo) {
       const f = JSON.parse(r.stdout)
       if (f.current) say('SessionStart', `Proofmesh's snapshot ${f.snapshot_id} of ${repo.name} matches the working tree.`)

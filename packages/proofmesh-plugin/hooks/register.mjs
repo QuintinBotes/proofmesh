@@ -60,9 +60,14 @@ export async function callTool($, tool, args) {
   return body
 }
 
+// The last index job when it failed, in the words `proofmesh status` uses, less the job id and time (FR873).
+const lastFailed = (j) => (j?.state === 'failed' || j?.state === 'interrupted' ? `last index job ${j.state}${j.error ? `: ${j.error}` : ''}` : '')
+let failed = ''
+
 async function line($) {
-  if (kind === 'current') return `current ${snapshot} (${age((await $.clock.now()) - published)})`
-  if (kind === 'behind') return edited.size ? `behind (${plural(edited.size, 'file')} edited)` : `behind (${plural(changed, 'file')} changed)`
+  const tail = failed ? `; ${failed}` : ''
+  if (kind === 'current') return `current ${snapshot} (${age((await $.clock.now()) - published)})${tail}`
+  if (kind === 'behind') return `${edited.size ? `behind (${plural(edited.size, 'file')} edited)` : `behind (${plural(changed, 'file')} changed)`}${tail}`
   return text
 }
 
@@ -83,9 +88,17 @@ async function refresh($) {
   const seen = edits
   try {
     const f = await proofmesh($, ['status', repo.id, '--fresh', '--json'])
-    if (f.exitCode !== 0) return await (f.stderr.includes('SNAPSHOT_UNAVAILABLE') ? show($, 'missing') : show($, 'unknown', `unknown (${lastLine(f.stderr)})`))
+    if (f.exitCode !== 0) {
+      if (!f.stderr.includes('SNAPSHOT_UNAVAILABLE')) return await show($, 'unknown', `unknown (${lastLine(f.stderr)})`)
+      // The refusal's details name the last index job when it failed; a CLI older than FR872 prints none.
+      let d
+      try { d = JSON.parse(f.stdout).error.details } catch {}
+      const reason = lastFailed(d && { state: d.job_state, error: d.job_error })
+      return await show($, 'missing', reason ? `missing; ${reason}` : 'missing')
+    }
     const fresh = JSON.parse(f.stdout)
     recording = fresh.trail_recording === true
+    failed = lastFailed(fresh.failed_job)
     const status = await callTool($, 'workspace_status', { repository_id: repo.id, envelope: 'compact' })
     snapshot = status.snapshot.id
     published = Date.parse(status.snapshot.published_at)
@@ -470,7 +483,7 @@ export function register(on) {
     const lines = [await line($), `repository ${repo.name} (${repo.id}) at ${repo.root}${published ? `, snapshot published ${age((await $.clock.now()) - published)} ago` : ''}`, `files edited since: ${edited.size ? [...edited].join(', ') : 'none'}`]
     try {
       const r = await proofmesh($, ['status', repo.id])
-      lines.push(...(r.exitCode === 0 ? r.stdout.split('\n').filter((l) => /^(index job |adapters available|snapshot )/.test(l)) : [lastLine(r.stderr)]))
+      lines.push(...(r.exitCode === 0 ? r.stdout.split('\n').filter((l) => /^(index job |last index job |adapters available|snapshot )/.test(l)) : [lastLine(r.stderr)]))
     } catch (err) {
       lines.push(`proofmesh status failed: ${why(err)}`)
     }

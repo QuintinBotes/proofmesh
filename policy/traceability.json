@@ -1772,6 +1772,19 @@
     ],
     "FR826": [
       "packages/proofmesh/test/doc-links.test.ts"
+    ],
+    "FR870": [
+      "packages/proofmesh/test/jobs.test.ts"
+    ],
+    "FR871": [
+      "packages/proofmesh/test/jobs.test.ts"
+    ],
+    "FR872": [
+      "packages/proofmesh/test/jobs.test.ts"
+    ],
+    "FR873": [
+      "packages/proofmesh/test/plugin.test.ts",
+      "packages/proofmesh-plugin/tests/status.test.ts"
     ]
   },
   "manual": {

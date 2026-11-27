@@ -139,3 +139,60 @@ describe('FR840 an index whose host dies by a signal or a non-zero exit is faile
     expect(job.error).toMatch(/SIGKILL/)
   }, 60000)
 })
+
+describe('FR870 status names the last index job that failed, and why (#167)', () => {
+  const KILLED = "the index host was killed by SIGKILL before it recorded the job's outcome"
+  const failJob = async (d: string, repoId: string) => {
+    const { Catalog } = await import('../src/meshstore/catalog.js')
+    const c = Catalog.open(d)
+    const id = c.createJob(repoId, 'test')
+    c.updateJob(id, { state: 'failed', started_at: new Date().toISOString(), finished_at: new Date().toISOString(), error: KILLED })
+    c.close()
+    return id
+  }
+
+  it('FR870 FR872: with no snapshot and a failed last job, status --json (its refusal as JSON on stdout) and every tool refuse naming the job and its error; with no job at all, run "proofmesh index" first', async () => {
+    const repo = tmpDir('pm-failed-')
+    fs.writeFileSync(`${repo}/a.ts`, 'export const a = 1\n')
+    const d = tmpDir()
+    cli(['--data-dir', d, 'init'])
+    const repoId = cli(['--data-dir', d, 'repo', 'add', repo]).stdout.trim()
+    const never = cli(['--data-dir', d, 'status', repoId, '--json'])
+    expect(never.status).toBe(1)
+    expect(never.stderr).toContain('SNAPSHOT_UNAVAILABLE: no published snapshot for this repository; run "proofmesh index" first')
+    const job = await failJob(d, repoId)
+    const r = cli(['--data-dir', d, 'status', repoId, '--json'])
+    expect(r.status).toBe(1)
+    expect(r.stderr).toContain(`SNAPSHOT_UNAVAILABLE: no published snapshot for this repository; last index job ${job} failed at `)
+    expect(r.stderr).toContain(KILLED)
+    expect(r.stderr).not.toContain('first')
+    const err = JSON.parse(r.stdout).error
+    expect(err.code).toBe('SNAPSHOT_UNAVAILABLE')
+    expect(err.details).toMatchObject({ job_id: job, job_state: 'failed', job_error: KILLED })
+    // The plain text status, the --fresh check the plugin reads and any snapshot tool say the same.
+    expect(cli(['--data-dir', d, 'status', repoId]).stderr).toContain(`last index job ${job} failed at `)
+    const fresh = cli(['--data-dir', d, 'status', repoId, '--fresh', '--json'])
+    expect(fresh.stderr).toContain(KILLED)
+    expect(JSON.parse(fresh.stdout).error.details).toMatchObject({ job_id: job, job_state: 'failed', job_error: KILLED })
+    expect(() => tool(d, 'find_symbols', { repository_id: repoId, text: 'a' })).toThrow(KILLED)
+  }, 30000)
+
+  it('FR871: a snapshot older than a failed last job still answers, with the failure named in status, its --fresh check and the workspace_status limitations', async () => {
+    const { dataDir: d, repoId, snapshotId } = await indexedDataDir(copyFixture())
+    expect(tool(d, 'workspace_status').limitations.join('\n')).not.toContain('last index job')
+    expect(JSON.parse(cli(['--data-dir', d, 'status', repoId, '--fresh', '--json']).stdout).failed_job).toBeNull()
+    const job = await failJob(d, repoId)
+    const env = tool(d, 'workspace_status')
+    expect(env.snapshot!.id).toBe(snapshotId)
+    expect(env.limitations).toContainEqual(expect.stringMatching(new RegExp(`^Warning: last index job ${job} failed at \\S+: ${KILLED}; this answer is from snapshot ${snapshotId}, which an earlier index published\\.$`)))
+    const text = cli(['--data-dir', d, 'status', repoId])
+    expect(text.status).toBe(0)
+    expect(text.stdout).toMatch(new RegExp(`^last index job ${job} failed at \\S+: ${KILLED}$`, 'm'))
+    expect(JSON.parse(cli(['--data-dir', d, 'status', repoId, '--json']).stdout).limitations.join('\n')).toContain(`last index job ${job} failed at `)
+    expect(JSON.parse(cli(['--data-dir', d, 'status', repoId, '--fresh', '--json']).stdout).failed_job).toMatchObject({ id: job, state: 'failed', error: KILLED })
+    // An index that succeeds afterwards is the last job, and the warning goes.
+    expect(cli(['--data-dir', d, 'index', repoId]).status).toBe(0)
+    expect(tool(d, 'workspace_status').limitations.join('\n')).not.toContain('last index job')
+    expect(cli(['--data-dir', d, 'status', repoId]).stdout).not.toContain('last index job')
+  }, 60000)
+})
