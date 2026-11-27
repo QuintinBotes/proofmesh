@@ -13,23 +13,23 @@ describe('A11 the Galaxy payload: every symbol of the snapshot in one compact bi
     const g = load()
     expect(g.names.slice().sort()).toEqual([
       'packages/api/src/handler:dispatch', 'packages/api/src/handler:handleInvoice', 'packages/api/src/handler:handlers',
-      'packages/billing/src/invoice:Line', 'packages/billing/src/invoice:invoiceTotal',
+      'packages/billing/src/invoice:Line', 'packages/billing/src/invoice:Line.cents', 'packages/billing/src/invoice:invoiceTotal',
       'packages/format/src/currency:formatAmount', 'packages/legacy/src/format:formatAmount',
     ])
     const name = (i: number) => g.names[i]!
     const links = Array.from({ length: g.links.length / 2 }, (_, j) => `${name(g.links[j * 2]!)} -> ${name(g.links[j * 2 + 1]!)}`).sort()
-    // invoiceTotal's use of the Line type is a TypeScript reference (FR086), and dispatch's read of the handlers variable is one too
-    // (FR102), so each is a resolved link.
-    expect(links).toEqual(['packages/api/src/handler:dispatch -> packages/api/src/handler:handlers', 'packages/api/src/handler:handleInvoice -> packages/billing/src/invoice:invoiceTotal', 'packages/billing/src/invoice:invoiceTotal -> packages/billing/src/invoice:Line', 'packages/billing/src/invoice:invoiceTotal -> packages/format/src/currency:formatAmount'])
-    expect(g.areas.map((a) => [a.name, a.count])).toEqual([['packages/api/src', 3], ['packages/billing/src', 2], ['packages/format/src', 1], ['packages/legacy/src', 1], ['(root)', 0], ['packages/api', 0], ['packages/billing/dist', 0]])
+    // invoiceTotal's use of the Line type is a TypeScript reference (FR086), its read of line.cents is one too (FR1021), and dispatch's
+    // read of the handlers variable is one (FR102), so each is a resolved link.
+    expect(links).toEqual(['packages/api/src/handler:dispatch -> packages/api/src/handler:handlers', 'packages/api/src/handler:handleInvoice -> packages/billing/src/invoice:invoiceTotal', 'packages/billing/src/invoice:invoiceTotal -> packages/billing/src/invoice:Line', 'packages/billing/src/invoice:invoiceTotal -> packages/billing/src/invoice:Line.cents', 'packages/billing/src/invoice:invoiceTotal -> packages/format/src/currency:formatAmount'])
+    expect(g.areas.map((a) => [a.name, a.count])).toEqual([['packages/billing/src', 3], ['packages/api/src', 3], ['packages/format/src', 1], ['packages/legacy/src', 1], ['(root)', 0], ['packages/api', 0], ['packages/billing/dist', 0]])
     expect(g.names.map((n, i) => [n.split(':')[0]!.split('/').slice(0, 3).join('/'), g.areas[g.area[i]!]!.name]).every(([a, b]) => a === b)).toBe(true)
   })
 
   it('FR059 each area carries its coverage: files by disposition, call sites, unresolved calls, and why files were not analysed', () => {
     const none = { indexed: 0, unsupported: 0, excluded: 0, failed: 0, pending: 0 }
     expect(load().areas).toEqual([
+      { name: 'packages/billing/src', count: 3, files: { ...none, indexed: 2 }, calls: { sites: 2, unresolved: 0 }, gaps: [] },
       { name: 'packages/api/src', count: 3, files: { ...none, indexed: 1 }, calls: { sites: 2, unresolved: 1 }, gaps: [] },
-      { name: 'packages/billing/src', count: 2, files: { ...none, indexed: 2 }, calls: { sites: 2, unresolved: 0 }, gaps: [] },
       { name: 'packages/format/src', count: 1, files: { ...none, indexed: 2 }, calls: { sites: 1, unresolved: 0 }, gaps: [] },
       { name: 'packages/legacy/src', count: 1, files: { ...none, indexed: 1 }, calls: { sites: 1, unresolved: 0 }, gaps: [] },
       { name: '(root)', count: 0, files: { ...none, indexed: 1, unsupported: 1 }, calls: { sites: 0, unresolved: 0 }, gaps: [['no_adapter:.md', 1]] },
@@ -59,7 +59,7 @@ describe('A11 the Galaxy payload: every symbol of the snapshot in one compact bi
     const g = load()
     expect(matchIndices(g, 'FORMAT').map((i) => g.names[i]).sort()).toEqual(['packages/format/src/currency:formatAmount', 'packages/legacy/src/format:formatAmount'])
     expect(matchIndices(g, 'f')).toEqual([])
-    expect(rankMatches(g, matchIndices(g, 'invoice'), 'invoice').map((i) => g.names[i])).toEqual(['packages/billing/src/invoice:invoiceTotal', 'packages/api/src/handler:handleInvoice', 'packages/billing/src/invoice:Line'])
+    expect(rankMatches(g, matchIndices(g, 'invoice'), 'invoice').map((i) => g.names[i])).toEqual(['packages/billing/src/invoice:invoiceTotal', 'packages/api/src/handler:handleInvoice', 'packages/billing/src/invoice:Line', 'packages/billing/src/invoice:Line.cents'])
     expect(shortName('Demo.Garden.Watering.Schedules.SprinklerScheduleDiagnostics')).toBe('SprinklerScheduleDiagnostics')
   })
 })

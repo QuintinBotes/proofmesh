@@ -1952,6 +1952,12 @@
     ],
     "FR1010": [
       "packages/proofmesh/test/typescript-references.test.ts"
+    ],
+    "FR1020": [
+      "packages/proofmesh/test/typescript-property-references.test.ts"
+    ],
+    "FR1021": [
+      "packages/proofmesh/test/typescript-property-references.test.ts"
     ]
   },
   "manual": {
