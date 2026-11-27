@@ -6,7 +6,7 @@ export const CAP = 5
 
 export type Rel = AnalyzeResponse['relationships'][number]
 export type Sym = { producer: string; local_id: string; path: string; kind: string; name: string; qualified_name: string; start: number; end: number }
-export type Project = { id: string; name: string; manifest: string; dir: string; eco: 'go' | 'maven' | 'gradle' | 'cargo' | 'npm' }
+export type Project = { id: string; name: string; manifest: string; dir: string; eco: 'go' | 'maven' | 'gradle' | 'cargo' | 'composer' | 'gem' | 'npm' }
 export type Item<P> = { rel: Rel; producer: P }
 
 /** What every language's rules read: symbols, the module graph and file text. */
@@ -19,6 +19,8 @@ export type Model = {
   /** Whether a module declares any dependency of this name, in any scope, inside the repository or not. */
   declares: (from: Project | undefined, name: string) => boolean
   read: (file: string) => Buffer | undefined
+  /** Composer's PSR-4 map: a namespace prefix and the directory, relative to the repository, its classes are in. */
+  autoload: Array<{ project: Project; prefix: string; dir: string }>
 }
 
 /** The rows' own words, kept, plus what this pass adds. */
