@@ -1585,6 +1585,12 @@
     ],
     "FR601": [
       "packages/proofmesh/test/syntax-rust-turbofish-calls.test.ts"
+    ],
+    "FR650": [
+      "packages/proofmesh/test/syntax-chained-calls.test.ts"
+    ],
+    "FR651": [
+      "packages/proofmesh/test/syntax-chained-calls.test.ts"
     ]
   },
   "manual": {

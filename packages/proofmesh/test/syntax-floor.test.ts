@@ -75,7 +75,7 @@ describe('FR310 FR311 FR312 FR316 FR319 without the .NET SDK the syntax tier rea
   it('FR311 scenario 1: its calls are unresolved, each with the name it calls and no target', () => {
     const found = calls(setup())
     expect(found.map((c) => [c.from, c.site])).toEqual(CS_SYNTAX_CALLS)
-    expect([...new Set(found.map((c) => c.callee))].sort()).toEqual(['AuditClient', 'Calculate', 'PlaceOrder', 'Post', 'Round', 'Run'])
+    expect([...new Set(found.map((c) => c.callee))].sort()).toEqual(['AuditClient', 'Calculate', 'PlaceOrder', 'Post', 'Round', 'Run', 'Send'])
     expect(found.every((c) => c.resolution === 'unresolved' && c.reason === 'outside_capability' && c.origin === 'syntax')).toBe(true)
   }, 240000)
 

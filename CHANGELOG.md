@@ -4,6 +4,12 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 ## Unreleased
 
+Every call of a chain is its own `calls` row (closes #134; FR650, FR651):
+
+- In `(0..3).map(f).collect()` (Rust), `b().C().D()` (Go), `x.a().b()` (TypeScript) or `new AuditClient().Send(total)` (C#), only the first call had a row: the core keyed a relationship row by its source, the site's start byte and its target, every call of a chain starts at the receiver, and an unresolved call has no target to tell them apart, so the later calls became extra evidence of the first and their callee names were lost. The key now holds the site's start and end byte, so each call is its own row with one evidence row, in every language and both tiers. A call or reference reported twice at the same span is still one row.
+- Expectations that changed: `syntax-floor.test.ts` (cs-orders at the syntax tier) gains the callee `Send`, whose site was already listed; `csharp.golden.test.ts` (cs-orders, precise tier) blames 2 unresolved sites on the missing package `Contoso.Missing.Client`, not 1, since `new AuditClient()` and `.Send(total)` are now two rows. No fixture oracle file changed: they list call sites, which were already there.
+- Upgrade note: snapshot identity gains `site_key: span`, so the first index after upgrading builds a new snapshot (adapter facts are still replayed from the cache). A re-indexed repository with chained calls reports more `calls` rows and more unresolved calls in `workspace_status`, one per call a chain had merged.
+
 A parity benchmark scores ProofMesh and every local alternative on one truth (part of #25; FR510 to FR516):
 
 - `sh bench/parity/run.sh` copies `src/` and `LICENSE` of TypeORM at `3d55188c` (504 files, MIT) into `$TMPDIR`, never into this repository, and asks ProofMesh, Graphify 0.9.108, scip-typescript 0.3.15 (with the scip CLI 0.10.0), Serena v2.1.0 and aider-chat 0.86.2 the twelve question classes of `bench/graph-bench`, scored by `bench/graph-bench/truth.mjs`. `out/parity.md` has the quality table, callers at three levels, and the costs: full build, peak memory, disk, no-change re-index, one-edit rebuild (medians of three runs), ms and bytes per question, and `tools/list` bytes.
@@ -21,7 +27,7 @@ FFI seams between languages, as inferred links (#22; FR460 to FR467):
 The syntax tier records a Rust turbofish call (closes #124; FR600, FR601):
 
 - `f::<u8>()`, `x.collect::<Vec<_>>()` and `std::iter::repeat::<u8>(0)` had no `calls` row: tree-sitter wraps the function of a turbofish call in a `generic_function` node, which no call pattern matched. Each is now one unresolved `calls` row, `outside_capability`, with the function's last name as `detail.callee`. A path call keeps the qualifier it has without the turbofish (`std::iter`).
-- Not done: in a chain such as `(0..3).map(f).collect::<Vec<_>>()`, `collect` still has no row of its own, with or without a turbofish, because every call of a chain is keyed at the chain's start (#134).
+- Not done here: in a chain such as `(0..3).map(f).collect::<Vec<_>>()`, `collect` had no row of its own, with or without a turbofish, because every call of a chain was keyed at the chain's start; #134, above, fixes it.
 - Upgrade note: the syntax adapter is 0.3.0, so cached facts are not replayed, and a re-indexed Rust repository reports one more unresolved call per turbofish call.
 
 The syntax tier records a Rust call through a path (closes #116; FR500, FR501):
