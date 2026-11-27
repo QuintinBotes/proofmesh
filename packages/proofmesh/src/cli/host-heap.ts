@@ -36,10 +36,11 @@ export function stopWithOuterProcess(): void {
 }
 
 /**
- * Runs this CLI again under `--max-old-space-size` from the machine rule and resolves with its exit code, or with a named error when the
- * child died of heap exhaustion. No shell, an allowlisted environment, signals passed on; no timeout, because an index has no fixed length.
+ * Runs this CLI again under `--max-old-space-size` from the machine rule and resolves with its exit code, and how it died when that was a
+ * signal or a non-zero exit, or rejects with a named error when the child died of heap exhaustion. No shell, an allowlisted environment,
+ * signals passed on; no timeout, because an index has no fixed length.
  */
-export function runUnderHeap(argv: string[]): Promise<number> {
+export function runUnderHeap(argv: string[]): Promise<{ code: number; died?: string }> {
   // A heap flag the person gave the outer process stands; it is passed on last, so it wins over the rule's.
   const given = [...process.execArgv].reverse().find((a) => a.startsWith(FLAG))
   const mb = given ? Number(given.slice(FLAG.length)) : hostHeapMb().mb
@@ -57,7 +58,10 @@ export function runUnderHeap(argv: string[]): Promise<number> {
     child.on('close', (code, signal) => {
       for (const s of SIGNALS) process.off(s, pass)
       if (exhausted && aborted(code, signal)) reject(hostOutOfMemory(mb))
-      else resolve(code ?? (signal ? 128 + (({ SIGINT: 2, SIGTERM: 15, SIGHUP: 1, SIGKILL: 9 } as Record<string, number>)[signal] ?? 0) : 1))
+      else resolve({
+        code: code ?? (signal ? 128 + (({ SIGINT: 2, SIGTERM: 15, SIGHUP: 1, SIGKILL: 9 } as Record<string, number>)[signal] ?? 0) : 1),
+        ...(signal ? { died: `was killed by signal ${signal}` } : code ? { died: `exited with code ${code}` } : {}),
+      })
     })
   })
 }
