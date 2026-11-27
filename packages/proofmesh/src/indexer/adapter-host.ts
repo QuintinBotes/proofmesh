@@ -5,7 +5,7 @@ import path from 'node:path'
 import { StringDecoder } from 'node:string_decoder'
 import { checkAdapterMessage as check } from '../core/schemas.js'
 import { log } from '../core/log.js'
-import { machineMemoryMb } from './memory.js'
+import { machineMemoryMb, NODE_GC_FLAGS } from './memory.js'
 import type { AnalyzeResponse, InitializeRequest, InitializeResponse } from '../core/generated.js'
 
 /** `stored` is the message without the adapter's stderr: stderr can hold source text or environment values, so only the live error carries it. */
@@ -51,7 +51,7 @@ export function typescriptAdapterPath(): string {
 
 /** .NET adapters run under `dotnet`; JavaScript adapters run under this Node. */
 /** A .dll runs on .NET, a JavaScript file on this Node, and anything else as an executable, so an adapter can be written in any language. */
-const launcher = (entry: string, budgetMb?: number): [string, string[]] => (entry.endsWith('.dll') ? ['dotnet', [entry]] : /\.[cm]?js$/.test(entry) ? [process.execPath, [...(budgetMb ? [`--max-old-space-size=${budgetMb}`] : []), entry]] : [entry, []])
+const launcher = (entry: string, budgetMb?: number): [string, string[]] => (entry.endsWith('.dll') ? ['dotnet', [entry]] : /\.[cm]?js$/.test(entry) ? [process.execPath, [...NODE_GC_FLAGS, ...(budgetMb ? [`--max-old-space-size=${budgetMb}`] : []), entry]] : [entry, []])
 
 /**
  * Every running adapter, and the signal handlers that exist only while one runs. Adapters are detached, so the terminal's

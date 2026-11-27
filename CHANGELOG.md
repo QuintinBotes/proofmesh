@@ -31,6 +31,17 @@ The Proof lens replaces the Trace a path tab, and a Diff row opens with one requ
 - A Diff row opened by name: a `find_symbols` request, then the card. `compare_snapshots` already names each head symbol's id, so a row now opens with the card's one request.
 - After a symbol was explored, Diff drew Explore's neighbourhood graph over its own controls, which took the clicks meant for Compare and the rows, and the conclusion bar spoke of that symbol. Diff now draws no scene of another view.
 
+A cold build in less memory and time, with the same facts (part of #32; FR1240 to FR1244):
+
+- The index host and every JavaScript adapter start with `--max-semi-space-size=4 --heap-growing-percent=25`, ahead of their heap limit. V8's defaults let each hold about 490 MB on the parity fixture for 60 to 160 MB of live data. A heap flag given to the CLI still wins.
+- Capture no longer fsyncs each object as it writes it. The objects are fsynced on the thread pool while the adapters run, and the index waits for that before it seals the snapshot, so they are durable before anything published cites them. One fsync per file was most of capture's time.
+- The TypeScript adapter (0.2.6) keeps a byte-offset map only for files with non-ASCII text (it kept 4 bytes per character for every file), turns each file's facts into JSON text as soon as the file is read, and writes a reply a megabyte at a time. Its facts are byte for byte the same.
+- A staging snapshot keeps up to 64 MB of SQLite pages in memory (it kept 2 MB), so writing relationships rereads fewer index pages. The sealed file is byte for byte the same.
+- Parity fixture (`bench/parity`, medians of 3): full build 8.8 s to 5.3 s, peak memory of the largest process 522 MB to 358 MB. Graphify took 3.5 s and 3.3 s in the same runs, so ProofMesh is still slower.
+- Graph benchmark (Orbit, 874 files, medians of 3 on a loaded machine): the largest process peaks at 1.3 GB, down from 1.7 GB, still over the 600 MB bar; `tsc --noEmit` alone needs 1.2 GB for that program. A cold build at load 9 took 24 s, down from 30 s. Q1 to Q13 are unchanged.
+- Not done: the store size bar (the snapshot holds rows and indexes, not source text, so it needs a format change), and bounding TypeScript memory per program below what the checker needs.
+- Upgrade note: the TypeScript adapter is 0.2.6, so the next index of a TypeScript repository reanalyses every file once.
+
 Evidence in one request: the Proof lens (part of #45; FR1180 to FR1187):
 
 - Opening a symbol made four requests in series (`galaxy/symbol`, `get_symbol`, `get_relationships`, `read_evidence`), and an edge's evidence a second `get_relationships`. `get_symbol_card` (the `extra` MCP profile) now answers a symbol's card in one read-only request: the symbol, its verified declaration, and the first rows of each side, each with its call site's lines, the cited span, its basis, resolution and reason, and each side's total. It is bounded like every tool: `max_rows` per side, `max_bytes` for the whole answer, and `direction` with `offset` for the next rows. A Galaxy point's `galaxy/symbol` request carries its card, so a point also opens with one request.

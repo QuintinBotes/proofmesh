@@ -8,7 +8,7 @@ import type * as TS from 'typescript'
 import { graphqlDocument } from '../../syntax/src/contracts.js'
 
 const ts = createRequire(import.meta.url)('typescript') as typeof TS
-const VERSION = '0.2.5'
+const VERSION = '0.2.6'
 type Range = { start_byte: number; end_byte: number; start_line: number; end_line: number }
 type Ref = { symbol: string } | { file: string } | { external: { module: string; name: string } }
 
@@ -56,7 +56,8 @@ const unique = (id: string) => { const n = (named.get(id) ?? 0) + 1; named.set(i
 const refNames = new Set<string>()
 /** Symbol kinds a use can reference. */
 const REFERABLE = /^(class|interface|enum|type_alias|variable|function|method|property)$/
-const byteMaps = new Map<TS.SourceFile, Int32Array>()
+/** Per file, the UTF-8 offset of each UTF-16 position; for a file of ASCII text, whose offsets are its positions, only its byte order mark (#32). */
+const byteMaps = new Map<TS.SourceFile, Int32Array | number>()
 
 /** Memoised: it is asked for every declaration and call, and path.relative cost a quarter of a second an index (#31); the workspace is set once. */
 const relOf = new Map<string, string>()
@@ -100,10 +101,12 @@ function bomBytes(file: string): number {
 /** UTF-8 byte offset in the file as stored for every UTF-16 position of the file's text. */
 function bytesAt(sf: TS.SourceFile, pos: number): number {
   let map = byteMaps.get(sf)
-  if (!map) {
+  if (map === undefined) {
     const text = sf.text
-    map = new Int32Array(text.length + 1)
     let b = bomBytes(sf.fileName)
+    // A map is 4 bytes per character, kept for every file of the program: only text with a non-ASCII character needs one.
+    if (!/[^\x00-\x7f]/.test(text)) { byteMaps.set(sf, b); return b + pos }
+    map = new Int32Array(text.length + 1)
     for (let i = 0; i < text.length; i++) {
       map[i] = b
       const c = text.charCodeAt(i)
@@ -115,7 +118,7 @@ function bytesAt(sf: TS.SourceFile, pos: number): number {
     map[text.length] = b
     byteMaps.set(sf, map)
   }
-  return map[pos]!
+  return typeof map === 'number' ? map + pos : map[pos]!
 }
 
 function range(sf: TS.SourceFile, start: number, end: number): Range {
@@ -1109,7 +1112,16 @@ function importTarget(spec: string, p: string, sf: TS.SourceFile, project: Proje
 function analyze(paths: string[]) {
   if (!projects.length) buildProjects()
   const symbols: unknown[] = [], relationships: unknown[] = [], file_results: unknown[] = [], diagnostics: unknown[] = []
+  // Each file's facts become JSON text once the file is read, so a batch holds its reply and not every fact object of its files as well (#32).
+  const json = { symbols: [] as string[], relationships: [] as string[], file_results: [] as string[], diagnostics: [] as string[] }
+  const flush = () => {
+    for (const [out, facts] of [[json.symbols, symbols], [json.relationships, relationships], [json.file_results, file_results], [json.diagnostics, diagnostics]] as const) {
+      for (const f of facts) out.push(JSON.stringify(f))
+      facts.length = 0
+    }
+  }
   for (const p of paths) {
+    flush()
     const project = projectOf.get(p)
     const sf = project?.program.getSourceFile(path.join(workspace, p))
     if (!project || !sf) {
@@ -1199,7 +1211,15 @@ function analyze(paths: string[]) {
       capabilities: { text: 'complete', syntax: 'complete', symbols: 'complete', imports: unresolvedImports ? 'partial' : 'complete', references: 'partial', resolved_calls: unresolvedCalls ? 'partial' : 'complete', framework: clientEndpoints.length || graphqlUnread ? 'partial' : 'unsupported' },
     })
   }
-  return { symbols, relationships, file_results, diagnostics }
+  flush()
+  // The result as pieces of JSON text, in order, so it is written a part at a time and never held as one string and its bytes.
+  const pieces: string[] = []
+  for (const [name, items] of Object.entries(json)) {
+    pieces.push(`${pieces.length ? '],' : '{'}"${name}":[`)
+    items.forEach((x, i) => pieces.push(i ? `,${x}` : x))
+  }
+  pieces.push(']}')
+  return pieces
 }
 
 const send = (msg: unknown) => process.stdout.write(JSON.stringify(msg) + '\n')
@@ -1224,7 +1244,11 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
       // Every fact this adapter produces belongs to one analysed file.
       send({ jsonrpc: '2.0', id: req.id, result: { symbols: [], relationships: [], file_results: [], diagnostics: [] } })
     } else if (req.method === 'analyze') {
-      send({ jsonrpc: '2.0', id: req.id, result: analyze(req.params.paths) })
+      // The reply is one line written a megabyte at a time, from the result's JSON text (analyze), after the whole result is made.
+      const pieces = analyze(req.params.paths)
+      let chunk = `{"jsonrpc":"2.0","id":${JSON.stringify(req.id)},"result":`
+      for (const p of pieces) { chunk += p; if (chunk.length >= 1 << 20) { process.stdout.write(chunk); chunk = '' } }
+      process.stdout.write(`${chunk}}\n`)
     } else if (req.method === 'shutdown') {
       send({ jsonrpc: '2.0', id: req.id, result: {} })
       process.exit(0)

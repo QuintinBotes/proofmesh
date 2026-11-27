@@ -188,12 +188,15 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
     const docs: Array<{ path: string; hash: string; generated?: true }> = []
     for (const [i, d] of discovered.entries()) {
       if (i && i % 1000 === 0) progress({ phase: 'capture', done: i, total: discovered.length })
-      if (isDoc(d)) docs.push({ path: d.path, hash: store.put(fs.readFileSync(path.join(root, d.path))), ...(d.generated ? { generated: d.generated } : {}) })
+      if (isDoc(d)) docs.push({ path: d.path, hash: store.put(fs.readFileSync(path.join(root, d.path)), 'later'), ...(d.generated ? { generated: d.generated } : {}) })
       if (d.status !== 'capture') continue
       const bytes = fs.readFileSync(path.join(root, d.path))
       if (d.role !== 'registry' && !isUtf8(bytes)) notUtf8.add(d.path)
-      captured.push({ ...d, hash: store.put(bytes) })
+      captured.push({ ...d, hash: store.put(bytes, 'later') })
     }
+    // The captured objects are made durable while the adapters run, and before the snapshot that cites them is sealed.
+    const durable = store.flush()
+    durable.catch(() => {})
     for (const run of runs) { run.sources = run.sources.filter((d) => !notUtf8.has(d.path)); run.configs = run.configs.filter((d) => !notUtf8.has(d.path)) }
     runs = runs.filter((r) => r.sources.length)
     progress({ phase: 'capture', done: discovered.length, total: discovered.length })
@@ -575,6 +578,7 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
       const partialResult: IndexResult['partial'] = partial.size ? { adapters: [...partial.keys()].sort(), missing, files: runs.filter((r) => partial.has(r.spec.id)).reduce((n, r) => n + r.sources.length, 0) } : undefined
       if (partialResult) db.prepare("insert into meta (key, value) values ('partial', ?)").run(canonicalJson({ ...partialResult, paths: [...partial.values()].flatMap((p) => p.paths).sort().slice(0, 20), reason: [...partial].map(([a, p]) => `${a}: ${p.reason}`).join('; ') }))
       progress({ phase: 'seal', done: 0, total: 0 })
+      await durable
       sealAndPublish(catalog, db, stagingFile, snapshotId, repo.id, keepCurrent)
       fs.rmSync(stagingDir(dataDir, snapshotId), { recursive: true, force: true })
       for (const run of runs) cache.prune(repo.id, run.spec.id, run.keys!.values())
