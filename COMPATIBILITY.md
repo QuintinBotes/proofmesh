@@ -24,6 +24,8 @@ Added to the MCP envelope and the `analyze_impact` schema (#159), in every envel
 
 Added to the adapter protocol in 1.3 (#38): an optional `sites` array on a relationship, further ranges in the same file that are evidence of the same relationship. The core writes each as one more evidence row of the assertion; the assertion, its id, its edge and its first `site` stay as before. A 1.0 to 1.2 adapter sends none and is read as before. The TypeScript adapter (0.2.2) now speaks 1.3 and gives a `references` row every site of a use after the first, so `get_relationships` lists the same rows with more `site.evidence` ids, and a shorthand destructuring of a repository member (`const { escape } = driver`) and the uses of its local are a reference to that member. Snapshot identity changes with the adapter version, so the next index rebuilds.
 
+The C# adapter (0.1.1) and the Python adapter (0.1.1) speak adapter protocol 1.3 too (#38): a C# `references` row now carries every further site of the same use, and Python records `references` for a use of a repository class or function other than a call (FR1286, FR1287). `get_relationships` lists more `references` rows for Python and more `site.evidence` ids for C#. Snapshot identity changes with the adapter versions, so the next index rebuilds.
+
 Added to the MCP envelope (#39): `snapshot.imported` (`origin`, `imported_at`, `stale_count`), present only on an answer from a snapshot imported with `proofmesh snapshot import`, and `snapshot_export` in `list_queries`' `contract`. The change is additive and envelope version 0.1 stays. Lean text from an imported snapshot has `imported` after `current` or `stale` in its first line.
 
 Deprecations are listed in CHANGELOG.md under the release that announces them.

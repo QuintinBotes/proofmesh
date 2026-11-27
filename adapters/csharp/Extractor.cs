@@ -20,7 +20,7 @@ public static class Extractor
             : null;
         var path = index.PathOf(tree)!;
         var rels = new List<FactRelationship>();
-        var references = new Dictionary<(string Owner, string Target), (FactSite Site, SortedSet<string> Uses)>();
+        var references = new Dictionary<(string Owner, string Target), (FactSite Site, SortedSet<string> Uses, List<FactRange> More)>();
         var unresolved = 0;
         var root = tree.GetRoot();
         foreach (var node in root.DescendantNodes())
@@ -48,8 +48,9 @@ public static class Extractor
                 {
                     var owner = index.OwnerOf(name) ?? index.ModuleOf(path);
                     if (owner is null || owner == reference.Target) break;
-                    if (references.TryGetValue((owner, reference.Target), out var seen)) seen.Uses.Add(reference.Use);
-                    else references[(owner, reference.Target)] = (new FactSite(path, index.RangeOf(tree, reference.Site.Span)), new SortedSet<string>(StringComparer.Ordinal) { reference.Use });
+                    var at = index.RangeOf(tree, reference.Site.Span);
+                    if (references.TryGetValue((owner, reference.Target), out var seen)) { seen.Uses.Add(reference.Use); seen.More.Add(at); }
+                    else references[(owner, reference.Target)] = (new FactSite(path, at), new SortedSet<string>(StringComparer.Ordinal) { reference.Use }, []);
                     break;
                 }
                 case BaseTypeDeclarationSyntax { BaseList: { } baseList } type when model.GetDeclaredSymbol(type) is INamedTypeSymbol declared && index.LocalIdOf(declared) is { } source:
@@ -87,9 +88,9 @@ public static class Extractor
                 }
             }
         }
-        // One reference per user and target, cited at its first site, with every way the user touches the target.
-        foreach (var ((owner, target), (site, uses)) in references)
-            rels.Add(new FactRelationship("references", "semantic_resolver", FactRef.Sym(owner), site, "resolved", FactRef.Sym(target), Detail: new Dictionary<string, string> { ["use"] = string.Join(",", uses) }));
+        // One reference per user and target, cited at its first site, with every way the user touches the target and every further site (protocol 1.3).
+        foreach (var ((owner, target), (site, uses, more)) in references)
+            rels.Add(new FactRelationship("references", "semantic_resolver", FactRef.Sym(owner), site, "resolved", FactRef.Sym(target), Detail: new Dictionary<string, string> { ["use"] = string.Join(",", uses) }, Sites: more.Count > 0 ? more : null));
         return new FileFacts(rels, unresolved);
     }
 

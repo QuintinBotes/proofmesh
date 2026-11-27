@@ -12,7 +12,7 @@ describe('C# references (fixtures/cs-references)', () => {
     ;({ dataDir } = await indexedDataDir(fixtureRepo('cs-references')))
   })
   const site = (db: Database.Database, assertionId: string) => {
-    const e = db.prepare('select ae.evidence_id as id, e.start_line as line, e.source_kind as kind from assertion_evidence ae join evidence e on e.id = ae.evidence_id where ae.assertion_id = ?').get(assertionId) as { id: string; line: number; kind: string }
+    const e = db.prepare('select ae.evidence_id as id, e.start_line as line, e.source_kind as kind from assertion_evidence ae join evidence e on e.id = ae.evidence_id where ae.assertion_id = ? order by e.start_byte limit 1').get(assertionId) as { id: string; line: number; kind: string }
     return { line: e.line, text: evidenceSlice(dataDir, db, e.id), kind: e.kind }
   }
 

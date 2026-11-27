@@ -20,7 +20,8 @@ public sealed record FactExternal(string Module, string Name);
 public sealed record FactSite(string Path, FactRange Range);
 
 public sealed record FactRelationship(string Type, string Origin, FactRef Source, FactSite Site, string Resolution,
-    FactRef? Target = null, string? Reason = null, IReadOnlyList<string>? Candidates = null, IReadOnlyDictionary<string, string>? Detail = null);
+    FactRef? Target = null, string? Reason = null, IReadOnlyList<string>? Candidates = null, IReadOnlyDictionary<string, string>? Detail = null,
+    IReadOnlyList<FactRange>? Sites = null);
 
 public sealed record FileResult(string Path, string Status, IReadOnlyDictionary<string, string> Capabilities, string? Detail = null);
 public sealed record Diagnostic(string Level, string Message, string? Path = null);

@@ -21,5 +21,11 @@ namespace Shop.Wire
         {
             return new Dictionary<string, string> { ["CustomerName"] = order.CustomerName, ["Total"] = order.Total.ToString() };
         }
+
+        public static string Describe(OrderDto order)
+        {
+            var name = order.CustomerName.Trim();
+            return name.Length > 0 ? name : order.CustomerName;
+        }
     }
 }
