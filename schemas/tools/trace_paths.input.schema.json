@@ -202,6 +202,10 @@
         }
       ],
       "description": "Whether the walk follows candidate edges: a call site that binds one candidate, or an ambiguous one of at most five. true follows them, false never does, auto (the default) follows them when every subject's file was analysed by the syntax tier alone. Every row reached through one is inferred; a site with more than five candidates is never followed."
+    },
+    "include_workspace": {
+      "type": "boolean",
+      "description": "true lets source_id or target_id be a symbol of another repository of this repository's workspaces, by its id in the snapshot the workspace's sealed link file was built from, and lets a path cross into another repository where a call reaches a package that repository builds (an npm package.json). Each node of another repository carries its repository and commit; a crossing hop's rule is package_symbol, inferred when the installed version is not the built one."
     }
   }
 }

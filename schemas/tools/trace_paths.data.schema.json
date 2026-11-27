@@ -262,6 +262,30 @@
           "generated": {
             "type": "boolean",
             "description": "Present and true when the file is generated (FR292); absent otherwise."
+          },
+          "repository": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "name",
+              "commit"
+            ],
+            "description": "Present on a node of another repository of the workspace (include_workspace): that repository, and the commit its snapshot was built from. Its id is of that snapshot.",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "commit": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
           }
         }
       }
@@ -316,6 +340,64 @@
               "generated": {
                 "type": "boolean",
                 "description": "Present and true when the file is generated (FR292); absent otherwise."
+              }
+            }
+          }
+        }
+      }
+    },
+    "workspace": {
+      "type": "array",
+      "description": "With include_workspace: each workspace that holds this repository, its link file (null when none is sealed), and each member's side of it: the snapshot and commit the link file was built from, and whether that snapshot is still the member's current one.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "link_file_id",
+          "members"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "link_file_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "members": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "id",
+                "name",
+                "commit",
+                "snapshot_id",
+                "current"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "commit": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "snapshot_id": {
+                  "type": "string"
+                },
+                "current": {
+                  "type": "boolean"
+                }
               }
             }
           }

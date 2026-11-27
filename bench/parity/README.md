@@ -52,7 +52,37 @@ sh bench/parity/run.sh          # then read bench/parity/out/parity.md
 | `aider-map.py` | aider's `RepoMap.get_repo_map`, run by aider's own Python, offline and with the same maps each run |
 | `install.sh` | Installs the pinned comparators in user space |
 | `rename.mjs` | After `run.sh` built the fixture: scores `plan_rename`'s code sites for ten pinned symbols against the TypeScript language service's `findRenameLocations`, at `file:line` (#38); exits 1 on any miss or extra |
+| `xrepo.sh`, `xrepo.mjs` | Cross-repository calls on a public library and application pair (#28 scenario 4), below |
 | `../graph-bench/lib.mjs` | Truth per question, scoring, and the Graphify and ProofMesh adapters, shared with `bench/graph-bench` |
+
+## Cross-repository calls: a library and an application (#28, SC-002)
+
+```sh
+sh bench/parity/xrepo.sh        # prints one row per library callee and the share resolved; exits 1 under 95%
+```
+
+- The pair is [Excalibur](https://github.com/excaliburjs/Excalibur) at tag v0.32.0 (`7cb426da0dae70eb50a42341a35e7bbd74395579`,
+  BSD-2-Clause) and its sample game [sample-tactics](https://github.com/excaliburjs/sample-tactics) at
+  `bfe18ba107897ab5c662fdb909fb0b10669daf1a` (BSD-2-Clause), which depends on `excalibur` ^0.32.0. The first run fetches both commits
+  and the published package `excalibur@0.32.0` (`npm pack`) once into `$TMPDIR/parity-xrepo` (`PARITY_XREPO` moves it): `lib/` and
+  `app/` hold each repository's `src/`, licence, `package.json` and `tsconfig.json` (the library without `src/spec` and
+  `src/stories`), `installed/excalibur` the package as `npm install` leaves it, and a `PROVENANCE` note. None of it is ever committed
+  here. A `PARITY_XREPO` with no `PROVENANCE` is refused.
+- Every run after that is offline. It copies the fixture into a new directory under `$TMPDIR` (named on stderr, removed at exit),
+  makes `lib/` and `app/` git repositories, and puts the package at `app/node_modules/excalibur`.
+- **Truth:** `bench/graph-bench/truth.mjs` over the application's sources with its own compiler options and `excalibur` mapped to
+  the library's `src/engine/index.ts`: every call or `new` in the application whose callee the checker declares in the library.
+- **ProofMesh:** both repositories registered and indexed, in one workspace, linked; then, over MCP in the core profile, for each
+  callee the truth names, `get_relationships` inbound `calls` with `include_workspace` from the library's side. A truth site counts
+  when a resolved row of the application names its `file:line`. A resolved row the truth does not hold is counted as extra.
+
+Run on 2026-11-27 with this change, ProofMesh 0.1.0, TypeScript 6.0.3, on an Apple M5 Max (macOS, Node 26.13.1): the link file holds
+400 resolved `calls` and 7 resolved `inherits` from sample-tactics into Excalibur, and
+
+> 400 of 400 application call sites into excalibur resolved to the library's symbol (100.0%); 0 resolved rows the checker does not count.
+
+over 81 library callees (from `vec`, 51 sites, and `delay`, 25, to constructors such as `Actor` and `ImageSource` and members such
+as `GraphicsComponent.use` and `Vector.scale`). Two runs in a row gave the same table.
 
 ## The comparators
 

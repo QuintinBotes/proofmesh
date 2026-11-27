@@ -14,6 +14,16 @@ A reproducible Observatory benchmark with published budgets (part of #41; FR1160
 - Not done yet: a run on a quiet machine to show three cold runs agree within 10% (SC-002); a click on a point of the canvas (evidence is opened from the Galaxy table's Explore button, which runs the same code); a software-renderer run.
 - The benchmark also times the command palette (#43), as `frames.mjs` did before, and opens evidence through the Proof lens (#45).
 
+Tests and paths across repositories, chains through a third, and a public pair (part of #28; FR1260 to FR1264):
+
+- `find_tests` takes `include_workspace: true`: the tests in the other repositories of a workspace that reach the subjects through a package this repository builds are listed after its own, each with `repository`, one deeper than the site that crosses in, and a chain in its own repository that ends at that site. Without it, nothing changes.
+- `trace_paths` takes `include_workspace: true`: `source_id` or `target_id` may be a symbol of another repository of the workspace, by its id there, and a path crosses a `package_symbol` link from its call site. Nodes of another repository carry `repository`, a crossing hop has the rule `package_symbol` and the link's basis, and a lean row ends `repo=<name>@<commit>`. Dispatch is not followed across repositories.
+- A chain continues through any number of repositories: `analyze_impact` and `find_tests` follow from what they reach in one member into the members that use a package that member builds (a library, an application that publishes a package, and an application of that), and `trace_paths` follows a path through each.
+- `sh bench/parity/xrepo.sh` measures scenario 4 on a public pair, Excalibur 0.32.0 and its sample game sample-tactics, pinned by commit and never committed: 400 of 400 application call sites into the library that the TypeScript checker counts resolve to the library's symbol (100%), with no extra rows.
+- A package published from a subdirectory of a monorepository (`packages/geo/package.json`) resolves to that package's symbols alone, now tested (FR1265).
+- The core `tools/list` is 19,758 bytes (14 tools), at most 20,000.
+- Not done yet: ecosystems other than npm, and dispatch across repositories.
+
 Evidence in one request: the Proof lens (part of #45; FR1180 to FR1187):
 
 - Opening a symbol made four requests in series (`galaxy/symbol`, `get_symbol`, `get_relationships`, `read_evidence`), and an edge's evidence a second `get_relationships`. `get_symbol_card` (the `extra` MCP profile) now answers a symbol's card in one read-only request: the symbol, its verified declaration, and the first rows of each side, each with its call site's lines, the cited span, its basis, resolution and reason, and each side's total. It is bounded like every tool: `max_rows` per side, `max_bytes` for the whole answer, and `direction` with `offset` for the next rows. A Galaxy point's `galaxy/symbol` request carries its card, so a point also opens with one request.

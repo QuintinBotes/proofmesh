@@ -1,0 +1,7 @@
+{
+  "name": "fx-map",
+  "private": true,
+  "dependencies": {
+    "fx-app": "^1.0.0"
+  }
+}
