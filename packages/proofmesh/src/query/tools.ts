@@ -925,7 +925,7 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
         ...(lastChange && ctx.snapshot.published_at && ctx.snapshot.published_at < lastChange ? [`Snapshot ${ctx.snapshot.id} was published before the session's last change (${lastChange}); index again for the dependents of the code as it was changed.`] : []),
         ...(missing.length ? [`${missing.length} changed file${missing.length === 1 ? ' is' : 's are'} not in this snapshot: ${missing.slice(0, 20).join(', ')}.`] : []),
         ...(stopped ? ['The impact search stopped at a limit for a changed symbol; more dependents may exist.'] : []),
-        'A dependent counts as opened when a successful opened entry names its file or its symbol; a search covers the files under the path it searched, and a search of the whole repository covers none, since the trail keeps no matches. Steps taken through Bash are not recorded.',
+        'A dependent counts as opened when a successful opened entry names its file or its symbol; a search covers the files under the path it searched, and a search of the whole repository covers none, since the trail keeps no matches. Of the steps taken through Bash, only a plain cat, head, tail, sed -n, grep, rg or find command that names its paths is recorded.',
       ],
       lean: (data) => [
         ...(data.entries as typeof entries).map(entryRow),

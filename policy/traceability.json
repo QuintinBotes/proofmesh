@@ -1592,6 +1592,18 @@
       "packages/proofmesh-plugin/tests/trail.test.ts",
       "packages/proofmesh/test/session-trail.test.ts"
     ],
+    "FR800": [
+      "packages/proofmesh-plugin/tests/trail.test.ts"
+    ],
+    "FR801": [
+      "packages/proofmesh-plugin/tests/trail.test.ts"
+    ],
+    "FR802": [
+      "packages/proofmesh-plugin/tests/trail.test.ts"
+    ],
+    "FR803": [
+      "packages/proofmesh-plugin/tests/trail.test.ts"
+    ],
     "FR690": [
       "packages/proofmesh/test/plugin.test.ts"
     ],

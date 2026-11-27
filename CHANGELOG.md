@@ -4,6 +4,11 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 ## Unreleased
 
+The session trail records reads and searches made through Bash (closes #149; FR800 to FR803):
+
+- In configurations of Claude Code with no Grep or Glob tool, most searches and many reads go through Bash, and the trail ignored them, so `/pm-trail` and `get_session_trail` listed dependents as `never_seen` that the session had read. The plugin's hooks module now reads a Bash command that is one plain `cat`, `head`, `tail` or `sed -n` (recorded `opened`) or `grep`, `rg` or `find` (recorded `searched`), optionally piped into `head` or `tail`. It records each path the command names inside the repository, resolved against the shell's directory after a `cd`, with tool `Bash`. It keeps no command, pattern, option value or output.
+- A command it cannot read with confidence records nothing rather than a guess. That covers a variable, a glob, a redirect, `;` or `&&`, a pipe into anything else, an option it does not know, a search that names no path, `sed` without `-n`, and `find` with `-exec` or `-delete`. `get_session_trail`'s limitation now says which Bash steps are recorded.
+
 The TypeScript adapter counts a UTF-8 byte order mark (closes #156; FR810):
 
 - In a `.ts` or `.js` file that starts with a UTF-8 BOM, every range was 3 bytes early: the TypeScript compiler drops the BOM when it reads a file, and the adapter counted byte offsets on that text, while the core stores ranges against the captured file, BOM included. `read_evidence` and every evidence text began 3 bytes before the declaration and lost its last 3 bytes. The adapter now counts the BOM, so each range is the bytes of its declaration, and a module's range is the whole file, BOM included, as in the syntax tier. The syntax tier, Python and C# already counted it.
