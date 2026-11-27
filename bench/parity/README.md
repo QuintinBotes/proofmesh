@@ -49,7 +49,7 @@ sh bench/parity/run.sh          # then read bench/parity/out/parity.md
 | `run.sh` | Builds the fixture once, then runs `run.mjs` |
 | `run.mjs` | Copies the fixture, times each tool's builds, asks each question, scores every answer and writes `out/` |
 | `questions.json` | The twelve questions and their targets in the fixture |
-| `aider-map.py` | aider's `RepoMap.get_repo_map`, run by aider's own Python |
+| `aider-map.py` | aider's `RepoMap.get_repo_map`, run by aider's own Python, offline and with the same maps each run |
 | `install.sh` | Installs the pinned comparators in user space |
 | `rename.mjs` | After `run.sh` built the fixture: scores `plan_rename`'s code sites for ten pinned symbols against the TypeScript language service's `findRenameLocations`, at `file:line` (#38); exits 1 on any miss or extra |
 | `../graph-bench/lib.mjs` | Truth per question, scoring, and the Graphify and ProofMesh adapters, shared with `bench/graph-bench` |
@@ -91,6 +91,29 @@ A newer version of a comparator is added as a second column, never by replacing 
   1,024 and 4,096 tokens, inbound (the files of the callers, importers, implementers, dependents or type users) and
   outbound (the target file's own imports). Its build time is the map's own time in a fresh tags cache, without
   Python's start-up.
+- **aider runs offline** (#187). Its model only counts tokens, but building it reads model prices from
+  `~/.aider/caches/model_prices_and_context_window.json` and downloads them from `raw.githubusercontent.com` when that
+  file is missing or more than a day old. `aider-map.py` therefore runs aider with a HOME of its own, a new directory
+  under `$TMPDIR` removed when it ends, holding a copy of the price file that ships inside the installed litellm
+  (`model_prices_and_context_window_backup.json`), written when it starts. So aider never downloads it, and
+  `~/.aider` is neither read nor written. Tokens are counted with the tiktoken files bundled in litellm. Any network
+  connection or name lookup in that process fails, and the step fails with it (`not run: ... aider tried to reach the
+  network (<host>)`).
+- **aider's maps are the same in every run** (#191). They varied between runs, even on one copy, and
+  `PYTHONHASHSEED=0` did not help, for three reasons:
+  - tree-sitter 0.25 returns each capture's nodes in an order that changes with the process's memory, and aider
+    0.86.2's `get_tags_raw` counts the last node of each capture twice, so a different reference was counted twice in
+    each run;
+  - aider weighs an edge with `num_refs = sqrt(num_refs)` inside its loop over a name's defining files (a set), so the
+    weights depend on that set's order;
+  - Python's string hashing was random, as `-I` ignores `PYTHONHASHSEED`, and a tag held the absolute path of the
+    run's copy.
+  
+  The harness keeps aider's ranking as it is and fixes its inputs. `aider-map.py` sorts each capture's nodes into
+  source order and gives aider file names relative to the fixture root. `run.mjs` runs it with `-s -P`, with no
+  other `PYTHON*` variable and with `PYTHONHASHSEED=0`, which `aider-map.py` requires. Each run then makes every map a
+  second time, in a second copy of the fixture at another path with a fresh tags cache, and `parity.md` says whether
+  every map is the same or names the questions and budgets whose maps differ.
 - **ProofMesh's context map** (`get_context_map`, #33) is scored as aider's map is: the question's target file as the focus, at
   4,096 and 16,384 bytes (about aider's 1,024 and 4,096 tokens), asked over MCP in the `data` profile; its rows' paths are the
   files it names. `parity.md` shows both beside aider's, per question and as a mean.
@@ -117,10 +140,10 @@ Versions: ProofMesh 0.1.0 @ fc33d43; Graphify 0.9.108; scip-typescript 0.3.15 (s
 
 | Q | class | truth | ProofMesh | Graphify | scip-typescript | Serena | aider |
 |---|---|---|---|---|---|---|---|
-| Q1 | callers | 48 | 100 / 100 | 100 / 100 | 100 / 51 | 100 / 51 | 1k: in 2% out 44%; 4k: in 2% out 56% |
-| Q2 | callers | 78 | 100 / 100 | 99 / 100 | 97 / 97 | 100 / 100 | 1k: in 8% out 19%; 4k: in 15% out 59% |
-| Q3 | callers | 18 | 100 / 100 | 0 / - | 100 / 100 | 100 / 50 | 1k: in 0% out 56%; 4k: in 0% out 78% |
-| Q4 | implementations | 12 | 100 / 100 | 100 / 100 | 100 / 60 | 100 / 57 | 1k: in 0% out 56%; 4k: in 0% out 78% |
+| Q1 | callers | 48 | 100 / 100 | 100 / 100 | 100 / 51 | 100 / 51 | 1k: in 2% out 44%; 4k: in 2% out 61% |
+| Q2 | callers | 78 | 100 / 100 | 99 / 100 | 97 / 97 | 100 / 100 | 1k: in 8% out 22%; 4k: in 15% out 59% |
+| Q3 | callers | 18 | 100 / 100 | 0 / - | 100 / 100 | 100 / 50 | 1k: in 0% out 61%; 4k: in 0% out 78% |
+| Q4 | implementations | 12 | 100 / 100 | 100 / 100 | 100 / 60 | 100 / 57 | 1k: in 0% out 61%; 4k: in 0% out 78% |
 | Q5 | importers | 72 | 100 / 100 | 100 / 100 | 100 / 100 | no tool | 1k: in 0% out -; 4k: in 0% out - |
 | Q6 | dependents | 316 | 100 / 100 | 98 / 100 | 100 / 100 (derived) | no tool | 1k: in 0% out -; 4k: in 0% out - |
 | Q7 | transitive_callers | 11 | 100 / 50 | 91 / 100 | 100 / 12 (derived) | 100 / 34 (derived) | 1k: in 0% out -; 4k: in 0% out - |
@@ -145,19 +168,19 @@ Versions: ProofMesh 0.1.0 @ fc33d43; Graphify 0.9.108; scip-typescript 0.3.15 (s
 
 | Q | focus | ProofMesh get_context_map 4096 bytes | ProofMesh get_context_map 16384 bytes | aider 1k tokens | aider 4k tokens |
 |---|---|---|---|---|---|
-| Q1 | `src/globals.ts` | in 72% out 100% | in 100% out 100% | in 2% out 44% | in 2% out 56% |
+| Q1 | `src/globals.ts` | in 72% out 100% | in 100% out 100% | in 2% out 44% | in 2% out 61% |
 | Q2 | `src/data-source/DataSource.ts` | in 62% out 57% | in 92% out 100% | in 8% out 22% | in 15% out 59% |
 | Q3 | `src/driver/Driver.ts` | in 50% out 83% | in 100% out 100% | in 0% out 61% | in 0% out 78% |
 | Q4 | `src/driver/Driver.ts` | in 100% out 83% | in 100% out 100% | in 0% out 61% | in 0% out 78% |
-| Q5 | `src/error/TypeORMError.ts` | in 53% out - | in 94% out - | in 0% out - | in 3% out - |
+| Q5 | `src/error/TypeORMError.ts` | in 53% out - | in 94% out - | in 0% out - | in 0% out - |
 | Q6 | `src/util/StringUtils.ts` | in 9% out - | in 27% out - | in 0% out - | in 0% out - |
 | Q7 | `src/util/StringUtils.ts` | in 100% out - | in 100% out - | in 0% out - | in 0% out - |
 | Q9 | `src/common/ObjectLiteral.ts` | in 47% out - | in 100% out - | in 0% out - | in 0% out - |
-| mean | | in 62% out 81% | in 89% out 100% | in 1% out 47% | in 3% out 68% |
+| mean | | in 62% out 81% | in 89% out 100% | in 1% out 47% | in 2% out 69% |
 
 Each map is asked with the question's target file as its focus (aider: in the chat, its file and name mentioned). Inbound: the files of the truth's callers, importers, implementers, dependents or type users; outbound: the files the target file imports.
 
-Run on 2026-11-27 with this change (`sh bench/parity/run.sh`, ProofMesh at the branch of #33); the other tables above are from the earlier run. The 16,384-byte maps stop at 100 rows (`limits.max_rows`), 7 to 10 KB, and a cursor pages the rest.
+Run on 2026-11-27 with this change (`sh bench/parity/run.sh`, ProofMesh at the branch of #33); the other tables above are from the earlier run. aider's cells in both tables are from two runs in a row on 2026-11-27 with the offline, repeatable aider step (#187, #191), at 247c6af. Every score row of the two runs is equal, their 16 raw aider maps are equal byte for byte, and each run's `parity.md` reads: "aider's 16 maps, made again in a second copy of the fixture at another path with a fresh tags cache: every one is the same." The 16,384-byte maps stop at 100 rows (`limits.max_rows`), 7 to 10 KB, and a cursor pages the rest.
 
 ### Cost (medians of 3 runs)
 
