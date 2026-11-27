@@ -1624,6 +1624,9 @@
     ],
     "FR671": [
       "packages/proofmesh/test/python.test.ts"
+    ],
+    "FR680": [
+      "packages/proofmesh/test/csharp.golden.test.ts"
     ]
   },
   "manual": {

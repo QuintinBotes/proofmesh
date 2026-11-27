@@ -143,7 +143,7 @@ export class AdapterProcess {
       stdio: ['pipe', 'pipe', 'pipe'],
       // Its own process group, so a stop reaches what the adapter started (such as MSBuild nodes) and not only the adapter.
       detached: process.platform !== 'win32',
-      env: { PATH: process.env.PATH ?? '', HOME: process.env.HOME ?? '', PROOFMESH_LOG_LEVEL: process.env.PROOFMESH_LOG_LEVEL ?? 'info', DOTNET_CLI_TELEMETRY_OPTOUT: '1', DOTNET_NOLOGO: '1', ...(this.budgetMb ? { DOTNET_GCHeapHardLimit: `0x${(this.budgetMb * 1048576).toString(16)}` } : {}), ...(process.env.DOTNET_ROOT ? { DOTNET_ROOT: process.env.DOTNET_ROOT } : {}) },
+      env: { PATH: process.env.PATH ?? '', HOME: process.env.HOME ?? '', PROOFMESH_LOG_LEVEL: process.env.PROOFMESH_LOG_LEVEL ?? 'info', DOTNET_CLI_TELEMETRY_OPTOUT: '1', DOTNET_NOLOGO: '1', ...(this.budgetMb ? { DOTNET_GCHeapHardLimit: `0x${(this.budgetMb * 1048576).toString(16)}` } : {}), ...(process.env.DOTNET_ROOT ? { DOTNET_ROOT: process.env.DOTNET_ROOT } : {}), ...(process.env.NUGET_PACKAGES ? { NUGET_PACKAGES: process.env.NUGET_PACKAGES } : {}) },
     })
     let hostKilled: string | undefined, exit: { code: number | null; signal: NodeJS.Signals | null } | undefined, settled = false
     let inputTimer: NodeJS.Timeout | undefined, drainTimer: NodeJS.Timeout | undefined

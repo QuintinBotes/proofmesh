@@ -4,7 +4,7 @@ import type Database from 'better-sqlite3'
 import { afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { Catalog, initDataDir } from '../src/meshstore/catalog.js'
 import { indexRepository } from '../src/indexer/coordinator.js'
-import { evidenceSlice, expectedFor, fixtureRepo, indexedDataDir, ROOT, tmpDir, tool, withSnapshot } from './helpers.js'
+import { evidenceSlice, expectedFor, fixtureRepo, indexedDataDir, indexedRepo, ROOT, rows, tmpDir, tool, withSnapshot } from './helpers.js'
 
 const byKey = <T>(key: (x: T) => string) => (a: T, b: T) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0)
 const qn = (db: Database.Database, id: string) => (db.prepare('select qualified_name from symbol where id = ?').get(id) as { qualified_name: string }).qualified_name
@@ -126,5 +126,29 @@ describe('the trust boundary for build logic (fixtures/cs-sentinel)', () => {
     const { marker, mode } = await indexSentinel(true)
     expect(fs.existsSync(marker)).toBe(true)
     expect(mode).toEqual({ value: 'trusted_build' })
+  }, 240000)
+})
+
+describe('the NuGet global packages folder (#142)', () => {
+  const real = process.env.NUGET_PACKAGES
+  afterEach(() => { if (real === undefined) delete process.env.NUGET_PACKAGES; else process.env.NUGET_PACKAGES = real })
+
+  it('FR680 with NUGET_PACKAGES set, the C# adapter reads a package from that folder: an external input with its hash, and a call into it resolves', async () => {
+    // A package that exists only in this folder, laid out as a restore leaves it; its assembly is one the adapter build already restored.
+    const cache = tmpDir('pm-nuget-')
+    const pkg = path.join(cache, 'microsoft.extensions.primitives', '9.9.9')
+    fs.mkdirSync(path.join(pkg, 'lib', 'net10.0'), { recursive: true })
+    fs.copyFileSync(path.join(ROOT, 'adapters', 'csharp', 'bin', 'Release', 'net10.0', 'Microsoft.Extensions.Primitives.dll'), path.join(pkg, 'lib', 'net10.0', 'Microsoft.Extensions.Primitives.dll'))
+    fs.writeFileSync(path.join(pkg, 'microsoft.extensions.primitives.9.9.9.nupkg.sha512'), 'c2hhNTEy\n')
+    process.env.NUGET_PACKAGES = cache
+    const { dataDir } = await indexedRepo({
+      'App/App.csproj': '<Project Sdk="Microsoft.NET.Sdk">\n  <ItemGroup>\n    <PackageReference Include="Microsoft.Extensions.Primitives" Version="9.9.9" />\n  </ItemGroup>\n</Project>\n',
+      'App/Probe.cs': 'namespace App;\n\npublic class Probe\n{\n    public bool Empty(string s) => Microsoft.Extensions.Primitives.StringValues.IsNullOrEmpty(s);\n}\n',
+    })
+    const adapters = withSnapshot(dataDir, (db) => JSON.parse((db.prepare("select value from meta where key = 'adapters'").get() as { value: string }).value)) as Array<{ id: string; external_inputs: string[] }>
+    expect(adapters.find((a) => a.id === 'csharp')!.external_inputs).toContain('nuget:Microsoft.Extensions.Primitives/9.9.9 sha512:c2hhNTEy')
+    const call = withSnapshot(dataDir, (db) => rows(db, 'calls')).find((r) => r.from === 'App.Probe.Empty')
+    expect(call).toMatchObject({ resolution: 'resolved_external', reason: null })
+    expect(call!.to).toMatch(/StringValues\.IsNullOrEmpty/)
   }, 240000)
 })
