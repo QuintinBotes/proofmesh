@@ -26,6 +26,15 @@ sh bench/parity/run.sh          # then read bench/parity/out/parity.md
     "include": ["src"] }
   ```
 
+- Each run works on its own copy of the fixture, in a new directory under `$TMPDIR` that it names on stderr
+  (`parity: fixture copy <dir>`) and removes when it ends; the ProofMesh data, the SCIP index, Serena's home (linked to
+  the shared home's language servers) and the results are kept there too. The fixture at `PARITY_FIXTURE` is only
+  read, so two runs at once, on one fixture and one `out/`, never edit, index or clean up each other's files: each
+  exits 0 with its own table. Each file of `out/` is put in whole, by rename, from the run that wrote it last; when
+  two runs end at the same moment, `parity.md`, `results.json`, `truth.json` and `raw/` can come from different runs.
+  The first run builds the fixture in a directory of its own and renames it into place, so runs that start together
+  with no fixture use one whole copy. A `PARITY_FIXTURE` that exists without a `PROVENANCE` note is refused, not
+  replaced.
 - Needs Node 22.13+, git, `sqlite3` and `/usr/bin/time`. Comparators are looked up on `PATH`, after
   `$PARITY_TOOLS/bin` and `$PARITY_TOOLS/npm/node_modules/.bin` (default `~/.local/share/proofmesh-parity`, where
   `install.sh` puts them). A comparator that is missing, at another version or failing reads `not run: <reason>` in
@@ -38,7 +47,7 @@ sh bench/parity/run.sh          # then read bench/parity/out/parity.md
 | File | What it does |
 |---|---|
 | `run.sh` | Builds the fixture once, then runs `run.mjs` |
-| `run.mjs` | Times each tool's builds, asks each question, scores every answer and writes `out/` |
+| `run.mjs` | Copies the fixture, times each tool's builds, asks each question, scores every answer and writes `out/` |
 | `questions.json` | The twelve questions and their targets in the fixture |
 | `aider-map.py` | aider's `RepoMap.get_repo_map`, run by aider's own Python |
 | `install.sh` | Installs the pinned comparators in user space |
@@ -93,8 +102,8 @@ A newer version of a comparator is added as a second column, never by replacing 
 - `tools/list` bytes are the bytes of the JSON of the tool array an MCP server lists.
 - The one-edit rebuild adds `const parityEdit = "<unique>"` after `super(message)` in the constructor of
   `src/error/TypeORMError.ts` (72 files import it), rebuilds, restores the file with `git checkout` and rebuilds again.
-  The tool caches inside the fixture (`graphify-out/`, `.serena/`, `.aider.tags.cache.v4/`) are added to its
-  `.git/info/exclude`, so `git status --porcelain` there is empty after the run.
+  The tool caches inside the run's copy of the fixture (`graphify-out/`, `.serena/`, `.aider.tags.cache.v4/`) are
+  added to its `.git/info/exclude`, so `git status --porcelain` there is empty after the run.
 
 ## Latest results
 

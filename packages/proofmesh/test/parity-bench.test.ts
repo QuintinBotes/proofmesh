@@ -1,4 +1,4 @@
-import { execFileSync, spawnSync } from 'node:child_process'
+import { execFileSync, spawn, spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -20,17 +20,19 @@ function fixture(): string {
   execFileSync('git', ['-C', dir, '-c', 'user.name=t', '-c', 'user.email=t@localhost', 'commit', '-q', '-m', 'fixture'])
   return dir
 }
+// A graphify at another version on PATH, and no other comparator.
+function parityEnv(fix: string, out: string): NodeJS.ProcessEnv {
+  const bin = tmpDir('pm-parity-bin-')
+  fs.writeFileSync(path.join(bin, 'graphify'), '#!/bin/sh\necho "graphify 0.9.120"\n', { mode: 0o755 })
+  return { ...process.env, PATH: [bin, path.dirname(process.execPath), '/usr/bin', '/bin'].join(':'), PARITY_TOOLS: tmpDir('pm-parity-tools-'), PARITY_FIXTURE: fix, PARITY_OUT: out, PARITY_RUNS: '1' }
+}
+const RUN_SH = path.join(ROOT, 'bench/parity/run.sh')
 
 describe('FR510 to FR516 the parity benchmark scores every tool on one truth, and a missing comparator is not run', () => {
   it('FR510 FR511 FR512 FR513 FR514 FR515 FR924 FR946 with no comparator at its pinned version, the harness fills the ProofMesh column, says why each other did not run, restores the fixture and exits 0', () => {
     const fix = fixture()
     const out = tmpDir('pm-parity-out-')
-    const bin = tmpDir('pm-parity-bin-')
-    fs.writeFileSync(path.join(bin, 'graphify'), '#!/bin/sh\necho "graphify 0.9.120"\n', { mode: 0o755 })
-    const r = spawnSync('sh', [path.join(ROOT, 'bench/parity/run.sh')], {
-      encoding: 'utf8',
-      env: { ...process.env, PATH: [bin, path.dirname(process.execPath), '/usr/bin', '/bin'].join(':'), PARITY_TOOLS: tmpDir('pm-parity-tools-'), PARITY_FIXTURE: fix, PARITY_OUT: out, PARITY_RUNS: '1' },
-    })
+    const r = spawnSync('sh', [RUN_SH], { encoding: 'utf8', env: parityEnv(fix, out) })
     expect(r.status, r.stderr).toBe(0)
     const md = fs.readFileSync(path.join(out, 'parity.md'), 'utf8')
     expect(md).toBe(r.stdout.replace(/\n$/, ''))
@@ -59,8 +61,56 @@ describe('FR510 to FR516 the parity benchmark scores every tool on one truth, an
     expect(md).toContain('Fixture after the edit step: clean')
     expect(fs.readFileSync(path.join(fix, 'src/error/TypeORMError.ts'), 'utf8')).toBe(ERROR_TS)
     expect(execFileSync('git', ['-C', fix, 'status', '--porcelain'], { encoding: 'utf8' })).toBe('')
-    expect(fs.readFileSync(path.join(fix, '.git/info/exclude'), 'utf8')).toMatch(/^graphify-out\/\n\.serena\/\n\.aider\.tags\.cache\.v4\/$/m)
   }, 300000)
+
+  it('FR1030 FR1031 two runs started together on one PARITY_FIXTURE and one PARITY_OUT each work on their own copy, leave the fixture as it was, remove their copy and exit 0 with the same scores', async () => {
+    const fix = fixture()
+    const before = { error: fs.readFileSync(path.join(fix, 'src/error/TypeORMError.ts'), 'utf8'), exclude: fs.readFileSync(path.join(fix, '.git/info/exclude'), 'utf8'), head: execFileSync('git', ['-C', fix, 'rev-parse', 'HEAD'], { encoding: 'utf8' }) }
+    const out = tmpDir('pm-parity-out-')
+    const tmp = fs.realpathSync(tmpDir('pm-parity-tmp-'))
+    const env = { ...parityEnv(fix, out), TMPDIR: tmp }
+    const runOnce = () => new Promise<{ status: number | null; stdout: string; stderr: string }>((resolve) => {
+      const p = spawn('sh', [RUN_SH], { env })
+      let stdout = '', stderr = ''
+      p.stdout.on('data', (d) => (stdout += d))
+      p.stderr.on('data', (d) => (stderr += d))
+      p.on('close', (status) => resolve({ status, stdout, stderr }))
+    })
+    const runs = await Promise.all([runOnce(), runOnce()])
+    for (const r of runs) expect(r.status, r.stderr).toBe(0)
+    // FR1030: each run names its own copy under TMPDIR, never the fixture it was given, and removes it when it ends.
+    const copies = runs.map((r) => /^parity: fixture copy (.+)$/m.exec(r.stderr)?.[1] ?? '')
+    expect(copies[0]).not.toBe(copies[1])
+    for (const c of copies) {
+      expect(c.startsWith(tmp + path.sep), c).toBe(true)
+      expect(fs.existsSync(c), c).toBe(false)
+    }
+    expect(fs.readdirSync(tmp).filter((f) => f.startsWith('parity-'))).toEqual([])
+    // FR1030: the fixture both runs were given is only read: its file, commit, status and exclude are as before.
+    expect(fs.readFileSync(path.join(fix, 'src/error/TypeORMError.ts'), 'utf8')).toBe(before.error)
+    expect(execFileSync('git', ['-C', fix, 'rev-parse', 'HEAD'], { encoding: 'utf8' })).toBe(before.head)
+    expect(execFileSync('git', ['-C', fix, 'status', '--porcelain', '--ignored'], { encoding: 'utf8' })).toBe('')
+    expect(fs.readFileSync(path.join(fix, '.git/info/exclude'), 'utf8')).toBe(before.exclude)
+    // FR515 and FR1031: each run's copy was clean after its edit step, both score alike, and out/ holds one whole result.
+    // A snapshot id names the repository, so it differs between the two copies; an error cell may quote it.
+    const rows = (md: string) => md.split('\n').filter((l) => /^\| Q\d+ \| /.test(l)).map((l) => l.replace(/snap_[0-9a-f]+/g, 'snap_'))
+    for (const r of runs) expect(r.stdout).toContain('Fixture after the edit step: clean (tool caches graphify-out/, .serena/, .aider.tags.cache.v4/ are in .git/info/exclude)')
+    // 16 score rows plus the 8 rows of the context map table (#33, FR924), which also start with a question.
+    expect(rows(runs[0].stdout).length).toBe(24)
+    expect(rows(runs[1].stdout)).toEqual(rows(runs[0].stdout))
+    const md = fs.readFileSync(path.join(out, 'parity.md'), 'utf8')
+    expect(runs.map((r) => r.stdout.replace(/\n$/, ''))).toContain(md)
+    expect(fs.readdirSync(out).sort()).toEqual(['parity.md', 'raw', 'results.json', 'truth.json'])
+  }, 300000)
+
+  it('FR1032 run.sh refuses a PARITY_FIXTURE that is not a parity fixture, naming it, and leaves it as it was', () => {
+    const dir = tmpDir('pm-parity-notfixture-')
+    fs.writeFileSync(path.join(dir, 'keep.txt'), 'mine\n')
+    const r = spawnSync('sh', [RUN_SH], { encoding: 'utf8', env: parityEnv(dir, tmpDir('pm-parity-out-')), timeout: 60000 })
+    expect(r.status).toBe(1)
+    expect(r.stderr).toContain(`parity: ${dir} is not a parity fixture (no PROVENANCE); remove it or set PARITY_FIXTURE to another directory`)
+    expect(fs.readdirSync(dir)).toEqual(['keep.txt'])
+  })
 
   it('FR516 comparators are benchmark-only: no package depends on one, results are ignored, and the README names each licence', () => {
     const manifests = execFileSync('git', ['-C', ROOT, 'ls-files', '*package.json'], { encoding: 'utf8' }).split('\n').filter(Boolean)

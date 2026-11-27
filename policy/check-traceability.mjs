@@ -17,7 +17,7 @@ for (const [id, files] of Object.entries(t.items)) {
 // Completeness, not only consistency: every MUST requirement of the spec, every amendment the goal names (A1 to A13), and every
 // success criterion must be traced to a test or a manual check, so a requirement nobody mapped fails here instead of passing silently.
 const spec = fs.readFileSync(path.join(root, 'specs', '001-proofmesh-foundation', 'spec.md'), 'utf8')
-const must = spec.split('\n').flatMap((l) => { const m = /^\s*[-*]?\s*\*{0,2}((?:FR|NFR)\d{3})\*{0,2}[:.\s]/.exec(l); return m && l.includes('MUST') ? [m[1]] : [] })
+const must = spec.split('\n').flatMap((l) => { const m = /^\s*[-*]?\s*\*{0,2}((?:FR|NFR)\d{3,4})\*{0,2}[:.\s]/.exec(l); return m && l.includes('MUST') ? [m[1]] : [] })
 const required = [...new Set([...must, ...Array.from({ length: 13 }, (_, i) => `A${i + 1}`), ...(spec.match(/\bSC0\d\d\b/g) ?? [])])]
 for (const id of required) if (!t.items[id] && !t.manual[id]) problems.push(`${id} is required but not traced to a test or a manual check`)
 if (problems.length) { console.error(problems.join('\n')); process.exit(1) }

@@ -1750,6 +1750,15 @@
     "FR516": [
       "packages/proofmesh/test/parity-bench.test.ts"
     ],
+    "FR1030": [
+      "packages/proofmesh/test/parity-bench.test.ts"
+    ],
+    "FR1031": [
+      "packages/proofmesh/test/parity-bench.test.ts"
+    ],
+    "FR1032": [
+      "packages/proofmesh/test/parity-bench.test.ts"
+    ],
     "FR600": [
       "packages/proofmesh/test/syntax-rust-turbofish-calls.test.ts"
     ],

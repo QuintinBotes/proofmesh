@@ -4,6 +4,9 @@
 //
 // Usage: node run.mjs --fixture <dir>   (run.sh builds the fixture). Writes out/parity.md, out/results.json, out/raw/
 // (PARITY_OUT moves out/). PARITY_RUNS sets the runs each median is taken over (3).
+// Each run works in a directory of its own under $TMPDIR, removed when it ends: a copy of the fixture, which is only read,
+// the ProofMesh data, the SCIP index, Serena's home and the results, which go into out/ by rename at the end. So runs
+// started together never edit, index or clean up each other's files (#177).
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
@@ -15,18 +18,31 @@ import { makeTruth, score, graphifyAdapter, proofmeshAdapter, bfs, tarjan, last 
 const HERE = path.dirname(new URL(import.meta.url).pathname)
 const ROOT = path.resolve(HERE, '../..')
 const argv = process.argv.slice(2)
-const FIX = path.resolve(argv[argv.indexOf('--fixture') + 1] ?? '')
-if (!argv.includes('--fixture') || !fs.existsSync(path.join(FIX, 'tsconfig.json'))) { console.error('usage: node run.mjs --fixture <dir>'); process.exit(2) }
+const SRC = path.resolve(argv[argv.indexOf('--fixture') + 1] ?? '')
+if (!argv.includes('--fixture') || !fs.existsSync(path.join(SRC, 'tsconfig.json'))) { console.error('usage: node run.mjs --fixture <dir>'); process.exit(2) }
 const OUT = path.resolve(process.env.PARITY_OUT ?? path.join(HERE, 'out'))
 const RUNS = Number(process.env.PARITY_RUNS ?? 3)
-const PM_DATA = path.join(OUT, 'pm-data')
+const WORK = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'parity-run-')))
+process.on('exit', () => fs.rmSync(WORK, { recursive: true, force: true, maxRetries: 3 }))
+for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(sig, () => process.exit(128 + os.constants.signals[sig]))
+const FIX = path.join(WORK, 'fixture')
+const CACHES = ['graphify-out/', '.serena/', '.aider.tags.cache.v4/']
+fs.cpSync(SRC, FIX, { recursive: true, filter: (f) => !CACHES.includes(`${path.relative(SRC, f)}/`) }) // a fixture an older harness ran in holds caches
+const PM_DATA = path.join(WORK, 'pm-data')
 const PIN = { graphify: '0.9.108', 'scip-typescript': '0.3.15', scip: '0.10.0', serena: '2.1.0', aider: '0.86.2' }
 const EDIT_FILE = 'src/error/TypeORMError.ts'
-fs.rmSync(path.join(OUT, 'raw'), { recursive: true, force: true })
-fs.mkdirSync(path.join(OUT, 'raw'), { recursive: true })
-const raw = (name, data) => fs.writeFileSync(path.join(OUT, 'raw', name), typeof data === 'string' ? data : JSON.stringify(data, null, 1))
+fs.mkdirSync(path.join(WORK, 'raw'))
+const raw = (name, data) => fs.writeFileSync(path.join(WORK, 'raw', name), typeof data === 'string' ? data : JSON.stringify(data, null, 1))
 const Q = JSON.parse(fs.readFileSync(path.join(HERE, 'questions.json'), 'utf8')).questions
 const log = (s) => console.error(`parity: ${s}`)
+log(`fixture copy ${FIX}`)
+// Serena rewrites serena_config.yml (its project list) at each start and logs into its home: each run has a home of its own,
+// linked to the shared home's language servers, so none is downloaded.
+const SERENA_SHARED = process.env.SERENA_HOME || path.join(os.homedir(), '.serena')
+process.env.SERENA_HOME = path.join(WORK, 'serena-home')
+fs.mkdirSync(process.env.SERENA_HOME)
+if (fs.existsSync(path.join(SERENA_SHARED, 'language_servers'))) fs.symlinkSync(path.join(SERENA_SHARED, 'language_servers'), path.join(process.env.SERENA_HOME, 'language_servers'))
+if (fs.existsSync(path.join(SERENA_SHARED, 'serena_config.yml'))) fs.copyFileSync(path.join(SERENA_SHARED, 'serena_config.yml'), path.join(process.env.SERENA_HOME, 'serena_config.yml'))
 const run = (cmd, args, opts = {}) => spawnSync(cmd, args, { encoding: 'utf8', maxBuffer: 1 << 30, ...opts })
 const median = (xs) => { const s = [...xs].sort((a, b) => a - b); return s.length ? s[(s.length - 1) >> 1] : null }
 const du = (p) => (fs.existsSync(p) ? Number(run('du', ['-sk', p]).stdout.split('\t')[0]) * 1024 : 0)
@@ -51,14 +67,13 @@ function pinned(name, cmd = name) {
 // ---------- fixture and truth ----------
 const fixtureCommit = /^Commit: (\S+)/m.exec(fs.readFileSync(path.join(FIX, 'PROVENANCE'), 'utf8'))?.[1] ?? 'unknown'
 const git = (...args) => run('git', ['-C', FIX, ...args])
-const CACHES = ['graphify-out/', '.serena/', '.aider.tags.cache.v4/']
 const exclude = path.join(FIX, '.git/info/exclude')
 const excluded = fs.existsSync(exclude) ? fs.readFileSync(exclude, 'utf8') : ''
 fs.appendFileSync(exclude, CACHES.filter((c) => !excluded.split('\n').includes(c)).map((c) => c + '\n').join(''))
 log('truth (TypeScript checker)')
-const tr = run('node', [path.join(ROOT, 'bench/graph-bench/truth.mjs'), FIX, path.join(OUT, 'truth.json')])
+const tr = run('node', [path.join(ROOT, 'bench/graph-bench/truth.mjs'), FIX, path.join(WORK, 'truth.json')])
 if (tr.status !== 0) throw new Error(`truth.mjs failed: ${tr.stderr}`)
-const truth = makeTruth(JSON.parse(fs.readFileSync(path.join(OUT, 'truth.json'), 'utf8')))
+const truth = makeTruth(JSON.parse(fs.readFileSync(path.join(WORK, 'truth.json'), 'utf8')))
 const { T, truthFor, callKeys, srcFiles } = truth
 const fileOf = (key) => key.split('::')[0]
 
@@ -170,7 +185,7 @@ function scipIndex(json) {
   return { info, refs, impls, key, find }
 }
 function runScip() {
-  const dir = path.join(OUT, 'scip'), index = path.join(dir, 'index.scip')
+  const dir = path.join(WORK, 'scip'), index = path.join(dir, 'index.scip')
   const cost = costs({ store: dir, cold: () => { fs.rmSync(dir, { recursive: true, force: true }); fs.mkdirSync(dir) }, build: () => ['scip-typescript', ['index', '--cwd', FIX, '--output', index, '--no-progress-bar']] })
   const t0 = performance.now()
   const S = scipIndex(JSON.parse(run('scip', ['print', '--json', index]).stdout))
@@ -380,7 +395,7 @@ const scored = Q.map((q) => {
   return row
 })
 const meta = { fixture: `typeorm @ ${fixtureCommit} (src/, ${T.files.length} files)`, proofmesh: `${pmVersion} @ ${pmCommit}`, truth: `${T.tool} ${T.ts_version}`, runs: RUNS, when: new Date().toISOString(), machine: `${os.type()} ${os.release()} ${os.arch()}, ${os.cpus()[0]?.model ?? ''} x${os.cpus().length}, ${Math.round(os.totalmem() / 2 ** 30)} GB, Node ${process.version}`, fixture_clean: status === '', fixture_status: status }
-fs.writeFileSync(path.join(OUT, 'results.json'), JSON.stringify({ meta, tools: Object.fromEntries(Object.entries(results).map(([k, v]) => [k, { ...v, answers: undefined }])), questions: scored }, (k, v) => (v instanceof Set ? [...v] : v), 1))
+fs.writeFileSync(path.join(WORK, 'results.json'), JSON.stringify({ meta, tools: Object.fromEntries(Object.entries(results).map(([k, v]) => [k, { ...v, answers: undefined }])), questions: scored }, (k, v) => (v instanceof Set ? [...v] : v), 1))
 
 const head = `| Q | class | truth | ${TOOLS.map((t) => t.label).join(' | ')} |`
 const sep = `|---|---|---|${TOOLS.map(() => '---|').join('')}`
@@ -439,5 +454,15 @@ const md = [
   `Fixture after the edit step: ${meta.fixture_clean ? 'clean' : `NOT clean: ${status.replace(/\n/g, ', ')}`} (tool caches ${CACHES.join(', ')} are in .git/info/exclude).`,
   '',
 ].join('\n')
-fs.writeFileSync(path.join(OUT, 'parity.md'), md)
+fs.writeFileSync(path.join(WORK, 'parity.md'), md)
+
+// Into out/ by rename, so a run that shares PARITY_OUT never reads or removes a file half written. Each file is whole, but
+// two runs that end at the same moment can leave files of both.
+fs.mkdirSync(OUT, { recursive: true })
+const staged = (name) => path.join(OUT, `.${name}.${process.pid}`)
+for (const name of ['truth.json', 'results.json', 'parity.md']) { fs.copyFileSync(path.join(WORK, name), staged(name)); fs.renameSync(staged(name), path.join(OUT, name)) }
+fs.cpSync(path.join(WORK, 'raw'), staged('raw'), { recursive: true })
+try { fs.renameSync(path.join(OUT, 'raw'), staged('raw-old')) } catch (e) { if (e.code !== 'ENOENT') throw e }
+try { fs.renameSync(staged('raw'), path.join(OUT, 'raw')) } catch (e) { if (e.code !== 'ENOTEMPTY' && e.code !== 'EEXIST') throw e } // another run's raw/ went in first
+for (const name of ['raw', 'raw-old']) fs.rmSync(staged(name), { recursive: true, force: true })
 console.log(md)
