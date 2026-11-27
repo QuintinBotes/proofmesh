@@ -92,20 +92,20 @@ A newer version of a comparator is added as a second column, never by replacing 
 
 ## Latest results
 
-Run on 2026-11-27 (`sh bench/parity/run.sh`, medians of three runs), on an Apple M5 Max (18 cores, 64 GB), macOS (Darwin 25.6.0), Node 26.13.1, while other jobs shared the machine.
+Run on 2026-11-27 (`sh bench/parity/run.sh`, medians of three runs), on an Apple M5 Max (18 cores, 64 GB), macOS (Darwin 25.6.0), Node 26.13.1. Other jobs shared the machine (load average about 70), so every time below is several times what it is on an idle machine: an earlier run the same day at a lower load measured full builds of 19.0 s (ProofMesh), 8.7 s (Graphify), 4.2 s (scip-typescript) and 4.8 s (aider), and one-edit rebuilds of 8.2 s, 2.2 s, 3.4 s and 1.2 s. Quality, memory, disk and bytes do not depend on load.
 
-Fixture: typeorm @ 3d55188c0dd1256f520143379ecf97f45e71acba (src/, 504 files). ProofMesh 0.1.0 @ 30fc4ff. Truth: typescript-checker 6.0.3. Run 2026-11-27 on Darwin 25.6.0 arm64, Apple M5 Max x18, 64 GB, Node v26.13.1.
+Fixture: typeorm @ 3d55188c0dd1256f520143379ecf97f45e71acba (src/, 504 files). ProofMesh 0.1.0 @ f85a3cb. Truth: typescript-checker 6.0.3. Run 2026-11-27 on Darwin 25.6.0 arm64, Apple M5 Max x18, 64 GB, Node v26.13.1.
 
-Versions: ProofMesh 0.1.0 @ 30fc4ff; Graphify 0.9.108; scip-typescript 0.3.15 (scip CLI 0.10.0); Serena 2.1.0 (claude-code context, tools interface); aider 0.86.2.
+Versions: ProofMesh 0.1.0 @ f85a3cb; Graphify 0.9.108; scip-typescript 0.3.15 (scip CLI 0.10.0); Serena 2.1.0 (claude-code context, tools interface); aider 0.86.2.
 
 ### Quality: recall / precision (%)
 
 | Q | class | truth | ProofMesh | Graphify | scip-typescript | Serena | aider |
 |---|---|---|---|---|---|---|---|
 | Q1 | callers | 48 | 100 / 100 | 100 / 100 | 100 / 51 | 100 / 51 | 1k: in 2% out 44%; 4k: in 2% out 56% |
-| Q2 | callers | 78 | 97 / 97 | 99 / 100 | 97 / 97 | 100 / 100 | 1k: in 8% out 19%; 4k: in 15% out 49% |
-| Q3 | callers | 18 | 100 / 100 | 0 / - | 100 / 100 | 100 / 50 | 1k: in 0% out 61%; 4k: in 0% out 78% |
-| Q4 | implementations | 12 | 100 / 100 | 100 / 100 | 100 / 60 | 100 / 57 | 1k: in 0% out 61%; 4k: in 0% out 78% |
+| Q2 | callers | 78 | 100 / 100 | 99 / 100 | 97 / 97 | 100 / 100 | 1k: in 8% out 22%; 4k: in 15% out 59% |
+| Q3 | callers | 18 | 100 / 100 | 0 / - | 100 / 100 | 100 / 50 | 1k: in 0% out 56%; 4k: in 0% out 78% |
+| Q4 | implementations | 12 | 100 / 100 | 100 / 100 | 100 / 60 | 100 / 57 | 1k: in 0% out 56%; 4k: in 0% out 78% |
 | Q5 | importers | 72 | 100 / 100 | 100 / 100 | 100 / 100 | no tool | 1k: in 0% out -; 4k: in 3% out - |
 | Q6 | dependents | 316 | 100 / 100 | 98 / 100 | 100 / 100 (derived) | no tool | 1k: in 0% out -; 4k: in 0% out - |
 | Q7 | transitive_callers | 11 | 100 / 50 | 91 / 100 | 100 / 12 (derived) | 100 / 34 (derived) | 1k: in 0% out -; 4k: in 0% out - |
@@ -122,20 +122,20 @@ Versions: ProofMesh 0.1.0 @ 30fc4ff; Graphify 0.9.108; scip-typescript 0.3.15 (s
 | Q | ProofMesh | Graphify | scip-typescript | Serena |
 |---|---|---|---|---|
 | Q1 | 100 / 100 · 100 / 100 · 100 / 100 | 100 / 100 · 89 / 100 · 100 / 100 | 100 / 51 · 100 / 53 · 100 / 100 | 100 / 51 · 100 / 53 · 100 / 100 |
-| Q2 | 97 / 97 · 100 / 100 · 100 / 100 | 99 / 100 · 93 / 100 · 92 / 100 | 97 / 97 · 99 / 99 · 100 / 100 | 100 / 100 · 99 / 99 · 100 / 100 |
+| Q2 | 100 / 100 · 100 / 100 · 100 / 100 | 99 / 100 · 93 / 100 · 92 / 100 | 97 / 97 · 99 / 99 · 100 / 100 | 100 / 100 · 99 / 99 · 100 / 100 |
 | Q3 | 100 / 100 · 100 / 100 · 100 / 100 | 0 / - · 0 / - · 0 / - | 100 / 100 · 100 / 100 · 100 / 100 | 100 / 50 · 100 / 50 · 100 / 40 |
 
 ### Cost (medians of 3 runs)
 
 | | ProofMesh | Graphify | scip-typescript | Serena | aider |
 |---|---|---|---|---|---|
-| Full build | 19.0 s | 8.7 s | 4.2 s | live | 4.8 s |
-| Peak memory (largest process) | 451 MB | 189 MB | 402 MB | 168 MB (server and language server, whole session) | 286 MB |
+| Full build | 31.8 s | 25.3 s | 26.4 s | live | 30.2 s |
+| Peak memory (largest process) | 459 MB | 187 MB | 460 MB | 167 MB (server and language server, whole session) | 284 MB |
 | Disk (own store) | 61 MB | 14 MB | 13 MB | 10 MB | 1 MB |
-| No-change re-index | 2.5 s | 505 ms | 3.8 s | live | 592 ms |
-| One edit (a statement in the constructor of src/error/TypeORMError.ts) | 8.2 s | 2.2 s | 3.4 s | live | 1.2 s |
-| ms per question, Q1–Q9 | 6–202 | 151–300 | n/a (decode 431 ms once) | 217–2573 | 62–1044 |
-| bytes per answer, Q1–Q9 | 384–24102 | 80–25364 | n/a (decode 431 ms once) | 3449–191986 | 3450–5443 |
+| No-change re-index | 8.6 s | 2.2 s | 22.1 s | live | 2.5 s |
+| One edit (a statement in the constructor of src/error/TypeORMError.ts) | 13.3 s | 11.3 s | 28.1 s | live | 3.9 s |
+| ms per question, Q1–Q9 | 9–172 | 824–1639 | n/a (decode 2.5 s once) | 389–7157 | 207–2769 |
+| bytes per answer, Q1–Q9 | 384–24176 | 80–25364 | n/a (decode 2.5 s once) | 3449–191986 | 3450–5464 |
 | `tools/list` bytes (MCP) | 18338 (13 tools) | CLI | index file | 25188 (21 tools) | Python API |
 
 Fixture after the edit step: clean (tool caches graphify-out/, .serena/, .aider.tags.cache.v4/ are in .git/info/exclude).
@@ -148,7 +148,7 @@ On Q1 to Q9, against the study's figures (R / P):
 | Q | ProofMesh (study / here) | Graphify | scip-typescript | Serena |
 |---|---|---|---|---|
 | Q1 | 100 / 100 · 100 / 100 | 100 / 100 · 100 / 100 | 100 / 51 · 100 / 51 | 100 / 73 · **100 / 51** |
-| Q2 | 100 / 100 · **97 / 97** | 9 / 100 · **99 / 100** | 100 / 100 · **97 / 97** | 94 / 97 · **100 / 100** |
+| Q2 | 100 / 100 · 100 / 100 | 9 / 100 · **99 / 100** | 100 / 100 · **97 / 97** | 94 / 97 · **100 / 100** |
 | Q3 | 100 / 100 · 100 / 100 | 0 / - · 0 / - | 100 / 100 · 100 / 100 | 100 / 50 · 100 / 50 |
 | Q4 | 100 / 100 · 100 / 100 | 100 / 100 · 100 / 100 | 100 / 60 · 100 / 60 | 100 / 60 · **100 / 57** |
 | Q5 | 100 / 100 · 100 / 100 | 100 / 100 · 100 / 100 | 100 / 100 · 100 / 100 | no tool · no tool |
@@ -158,8 +158,8 @@ On Q1 to Q9, against the study's figures (R / P):
 Bold cells differ by more than one point; the scorer was not changed to close them.
 
 - Q2 here targets `DataSource.getMetadata`, which two getters call (`Repository.metadata`, `JoinAttribute.metadata`).
-  ProofMesh records no symbol for a getter and names the class instead (#127), and scip-typescript gives a getter
-  no enclosing range, so both lose those two callers. Graphify's 9% in the study was on another target.
+  scip-typescript gives a getter no enclosing range, so it names the class and loses those two callers (ProofMesh did
+  too until #127). Graphify's 9% in the study was on another target.
 - Serena's Q1 and Q4 precision differ with the target: it lists every import line as a `File` reference, and
   `find_implementations` on `Driver` adds subclasses of implementers and `DriverUtils.buildColumnAlias`.
 - ProofMesh's Q7 precision (50%) and Serena's are lower because both follow calls through the interface method
