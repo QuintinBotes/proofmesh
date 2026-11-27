@@ -20,7 +20,7 @@ type Props = {
 /** Symbols are drawn once their cell is this many pixels across (FR1404); before that the areas, directories and files stand for them. */
 const POINTS_PX = 4
 /** Cells added to the graph per task: each batch, and sigma's processing of all the cells added so far, stays inside the main thread's 100 ms budget (#208). */
-const CELL_BATCH = 4000
+const CELL_BATCH = 16000
 /** A symbol's point is this share of its cell's side. */
 const POINT = 0.12
 // Neutral cells, darker the deeper (FR1406): colour is kept for basis, change and coverage.
@@ -183,7 +183,8 @@ export function Terrain({ data: d, terrain: t, query, focusArea, hoverArea, over
     const addCells = (from: number) => {
       for (let k = from; k < Math.min(cells.length, from + CELL_BATCH); k++) graph.addNode(cells[k]![0], cells[k]![1])
       if (from + CELL_BATCH < cells.length) batch = window.setTimeout(() => addCells(from + CELL_BATCH), 0)
-      else { setReady(true); update() }
+      // Ready once sigma has drawn the last cells, so a pointer finds them from then on.
+      else s.once('afterRender' as never, (() => { setReady(true); update() }) as never)
     }
     batch = window.setTimeout(() => {
       layer = points(pos, d.n); find = grid(pos, d.n, side)

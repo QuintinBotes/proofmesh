@@ -4,6 +4,9 @@ import { lowerNames, parseGalaxy } from './galaxyData'
 
 const scope = self as unknown as { onmessage: (e: MessageEvent<ArrayBuffer>) => void; postMessage: (m: unknown, transfer: Transferable[]) => void }
 scope.onmessage = ({ data }) => {
-  const galaxy = parseGalaxy(data), names = lowerNames(galaxy.names)
-  scope.postMessage({ galaxy, names }, [data, names.starts.buffer])
+  const galaxy = parseGalaxy(data)
+  // The page draws from the payload while its names are lowered for search, which follow in a second message.
+  scope.postMessage({ galaxy }, [data])
+  const names = lowerNames(galaxy.names)
+  scope.postMessage({ names }, [names.starts.buffer])
 }

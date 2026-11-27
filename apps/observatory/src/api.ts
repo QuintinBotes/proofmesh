@@ -54,7 +54,12 @@ export function loadGalaxy(buf: ArrayBuffer): Promise<GalaxyData> {
   if (typeof Worker === 'undefined') return parseGalaxySliced(buf)
   return new Promise((resolve, reject) => {
     const worker = new Worker(new URL('./galaxyWorker.ts', import.meta.url), { type: 'module' })
-    worker.onmessage = ({ data }: MessageEvent<{ galaxy: GalaxyData; names: LoweredNames }>) => { worker.terminate(); rememberNames(data.galaxy, data.names); resolve(data.galaxy) }
+    let galaxy: GalaxyData | undefined
+    // The payload comes first and is drawn; its lowered names follow, and a search before them lowers the names here.
+    worker.onmessage = ({ data }: MessageEvent<{ galaxy: GalaxyData } | { names: LoweredNames }>) => {
+      if ('galaxy' in data) resolve(galaxy = data.galaxy)
+      else { worker.terminate(); rememberNames(galaxy!, data.names) }
+    }
     worker.onerror = (e) => { worker.terminate(); reject(new Error(`the Galaxy could not be read: ${e.message}`)) }
     worker.postMessage(buf, [buf])
   })
