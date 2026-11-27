@@ -36,6 +36,7 @@ import { addKeys } from './keys.js'
 import { leanName, leanRow, leanText, quote } from './lean.js'
 import { generatedLeftOut, generatedPaths, markGenerated, withGeneratedPaths } from './generated-policy.js'
 import { innermost } from './symbol-at.js'
+import { findCycles, findEntryPoints, findHubs, findUnused, type CycleEdge, type EntryPoint, type Hub, type UnusedRow } from './structure.js'
 import { compare, hasBodyHash, unreadableFiles } from './compare.js'
 import { loadSchema } from '../core/schemas.js'
 import { changes, workingTree } from '../indexer/freshness.js'
@@ -46,10 +47,10 @@ import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 
-export const TOOLS = ['workspace_status', 'list_repositories', 'list_snapshots', 'list_workspaces', 'find_symbols', 'get_symbol', 'get_relationships', 'trace_paths', 'read_evidence', 'get_overview', 'analyze_impact', 'find_tests', 'search_sources', 'get_memory', 'verify_claim', 'request_index', 'get_job', 'get_claims', 'save_memory', 'get_table_reach', 'get_property_reads', 'get_external_usage', 'find_query_source', 'compare_snapshots', 'list_queries', 'get_ecosystem', 'prepare_verification', 'get_verification', 'impact_completeness', 'get_symbols_at', 'get_session_trail', 'find_stale_mentions'] as const
+export const TOOLS = ['workspace_status', 'list_repositories', 'list_snapshots', 'list_workspaces', 'find_symbols', 'get_symbol', 'get_relationships', 'trace_paths', 'read_evidence', 'get_overview', 'analyze_impact', 'find_tests', 'search_sources', 'get_memory', 'verify_claim', 'request_index', 'get_job', 'get_claims', 'save_memory', 'get_table_reach', 'get_property_reads', 'get_external_usage', 'find_query_source', 'compare_snapshots', 'list_queries', 'get_ecosystem', 'prepare_verification', 'get_verification', 'impact_completeness', 'get_symbols_at', 'get_session_trail', 'find_stale_mentions', 'find_unused', 'find_cycles', 'find_entry_points', 'find_hubs'] as const
 export type ToolName = (typeof TOOLS)[number]
 /** The query tools whose results are code locations: they answer in the lean envelope on request, and by default over MCP (FR099). */
-export const LEAN = new Set<string>(['find_symbols', 'get_symbol', 'get_symbols_at', 'get_relationships', 'trace_paths', 'analyze_impact', 'find_tests', 'get_session_trail'])
+export const LEAN = new Set<string>(['find_symbols', 'get_symbol', 'get_symbols_at', 'get_relationships', 'trace_paths', 'analyze_impact', 'find_tests', 'get_session_trail', 'find_unused', 'find_cycles', 'find_entry_points', 'find_hubs'])
 /** A lean answer is its text; the envelope beside it is what the text was rendered from, for in-process callers. */
 export type Answer = Envelope & { text?: string }
 
@@ -64,6 +65,7 @@ export const CAPABILITY: Record<ToolName, ListQueriesData['tools'][number]['capa
   verify_claim: 'read', request_index: 'management', get_job: 'read', get_claims: 'read', save_memory: 'management', get_table_reach: 'read',
   get_property_reads: 'read', get_external_usage: 'read', find_query_source: 'read', compare_snapshots: 'read', list_queries: 'read',
   get_ecosystem: 'read', prepare_verification: 'management', get_verification: 'read', impact_completeness: 'management', get_symbols_at: 'read', get_session_trail: 'read', find_stale_mentions: 'read',
+  find_unused: 'read', find_cycles: 'read', find_entry_points: 'read', find_hubs: 'read',
 }
 
 /**
@@ -78,6 +80,7 @@ export const PROFILE: Record<ToolName, ListQueriesData['tools'][number]['profile
   list_snapshots: 'extra', list_workspaces: 'extra', get_ecosystem: 'extra', compare_snapshots: 'extra', impact_completeness: 'extra', request_index: 'extra',
   // A maintainer's question after a refactor, like compare_snapshots; workspace_status (core) counts the stale mentions and says how to list them.
   get_job: 'extra', get_memory: 'extra', save_memory: 'extra', find_stale_mentions: 'extra',
+  find_unused: 'extra', find_cycles: 'extra', find_entry_points: 'extra', find_hubs: 'extra',
 }
 /** How a client loads the tools of another profile, said by list_queries, which lists them all (FR422). */
 const PROFILES_NOTE = 'Over MCP, proofmesh mcp lists the core profile; start it with --tools <profile[,profile]> (core, data, claims, extra) or --tools all to list the others. A tool outside the profiles it was started with answers INVALID_ARGUMENT naming its profile.'
@@ -128,7 +131,7 @@ type Partial = {
 }
 
 /** Tools whose shrink list has a total order and honours ctx.page.offset, so a cursor continues it with no omission or duplicate. */
-const PAGED = new Set<ToolName>(['get_symbols_at', 'find_symbols', 'get_relationships', 'search_sources', 'workspace_status', 'find_tests', 'impact_completeness'])
+const PAGED = new Set<ToolName>(['get_symbols_at', 'find_symbols', 'get_relationships', 'search_sources', 'workspace_status', 'find_tests', 'impact_completeness', 'find_unused', 'find_cycles', 'find_entry_points'])
 /** Tools that answer over a workspace's link file rather than one repository snapshot (A28). None yet in this file; get_ecosystem joins at integration. */
 const WORKSPACE_SCOPED = new Set<ToolName>([])
 
@@ -1144,6 +1147,70 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
       lean: (data) => (data.tests as Array<TestRow & { chain: Array<{ path: string; line: number }> }>).map((t) => t.evidence === 'import_only'
         ? leanRow(null, t.path, t.line, ['import_only', ...(t.basis === 'inferred' ? ['inferred'] : [])])
         : leanRow(leanName(t), t.chain[0]!.path, t.chain[0]!.line, [`depth=${t.depth}`, ...(t.evidence === 'dispatch' || t.evidence === 'reference' ? [t.evidence] : []), ...(t.basis === 'inferred' ? ['inferred'] : [])])),
+    }
+  },
+
+  find_unused(ctx, input) {
+    const kinds = (input.kinds as string[] | undefined) ?? ['function', 'class', 'interface', 'type_alias', 'enum', 'variable']
+    const { rows, checked } = findUnused(ctx.db, ctx.store, { kinds, pathPrefix: input.path_prefix as string | undefined, topLevelOnly: input.top_level_only !== false, includeTests: input.include_tests === true })
+    const count = (f: (r: UnusedRow) => boolean) => rows.filter(f).length
+    const by = (b: UnusedRow['by']) => count((r) => r.by === b)
+    const totals = { checked, unused: count((r) => r.group === 'unused'), reachable_only_by: { test: by('test'), framework: by('framework'), public_export: by('public_export') }, possibly_used: count((r) => r.group === 'possibly_used') }
+    const refs = referencesNote(snapshotSummary(ctx.db, ctx.snapshot.id).capabilities.references)
+    const end = ctx.page.offset + ctx.limits.max_rows
+    const limitations = [
+      'A symbol is unused when no resolved relationship from another symbol uses it (a call, reference, import, inheritance or injection). A use by reflection, configuration, a string or a call that did not resolve is not seen, so read possibly_used and the unresolved calls before deleting anything.',
+      ...(refs ? [refs] : []),
+      ...(totals.reachable_only_by.public_export ? ['public_export: exported from a file that a package.json main, module, types or exports names, or that such a file re-exports (export * or export from).'] : []),
+      ...(input.include_tests === true ? [] : ['Test code was not checked; a symbol only test code uses is listed under reachable_only_by test.']),
+    ]
+    return {
+      data: { symbols: rows.slice(ctx.page.offset, end), totals }, more: rows.length > end, stop_reasons: rows.length > end ? ['max_rows'] : [], limitations, shrink: 'symbols',
+      lean: (data) => (data.symbols as UnusedRow[]).map((r) => leanRow(leanName(r), r.path, r.line, [r.kind, r.group === 'reachable_only_by' ? `reachable_only_by=${r.by}` : r.group, ...(r.sites ? [`sites=${r.sites}`] : []), ...(r.inferred ? ['inferred'] : [])])),
+    }
+  },
+
+  find_cycles(ctx, input) {
+    const r = findCycles(ctx.db, { pathPrefix: input.path_prefix as string | undefined, includeTypeOnly: input.include_type_only !== false, includeTests: input.include_tests !== false, isTest: isTestPath })
+    const end = ctx.page.offset + ctx.limits.max_rows
+    const typeOnly = r.cycles.filter((c) => c.type_only).length
+    const totals = { cycles: r.cycles.length, type_only: typeOnly, files: new Set(r.cycles.flatMap((c) => c.files)).size, edges: r.edges.length }
+    const limitations = [
+      `${totals.cycles} cycle${totals.cycles === 1 ? '' : 's'} over ${totals.files} file${totals.files === 1 ? '' : 's'}: ${totals.cycles - typeOnly} runtime, ${typeOnly} only through type-only imports (type_only); ${totals.edges} import${totals.edges === 1 ? '' : 's'} inside them.`,
+      'Only imports that resolved to a file of the repository, or that bind one module by name (inferred), are edges; an import that did not resolve can hide a cycle.',
+    ]
+    return {
+      data: { cycles: r.cycles, edges: r.edges.slice(ctx.page.offset, end), totals }, more: r.edges.length > end, stop_reasons: r.edges.length > end ? ['max_rows'] : [], limitations, shrink: 'edges',
+      lean: (data) => (data.edges as CycleEdge[]).map((e) => leanRow(e.to, e.from, e.line, [`cycle=${e.cycle}`, ...(e.kind === 'static' ? [] : [e.kind]), ...(e.inferred ? ['inferred'] : [])])),
+    }
+  },
+
+  find_entry_points(ctx, input) {
+    const rows = findEntryPoints(ctx.db, ctx.store, { pathPrefix: input.path_prefix as string | undefined, includeTests: input.include_tests === true, isTest: isTestPath })
+    const end = ctx.page.offset + ctx.limits.max_rows
+    const totals = { not_imported: 0, endpoint: 0, job: 0, main: 0, bin: 0, exports: 0 }
+    for (const e of rows) totals[e.reason]++
+    const limitations = [
+      'A module is not_imported when no file under the prefix imports it through a resolved import (static, dynamic or re-export): an entry point, a script, or a file nothing uses. A file loaded by path at run time (a worker, a preload, a config) is listed too.',
+      'Framework entry points are the endpoints and jobs the snapshot records; package entries come from package.json main, module, types, exports and bin, mapped to the indexed file they name (a .js path to its .ts source), else shown at the manifest as not_indexed.',
+    ]
+    return {
+      data: { entries: rows.slice(ctx.page.offset, end), totals }, more: rows.length > end, stop_reasons: rows.length > end ? ['max_rows'] : [], limitations, shrink: 'entries',
+      lean: (data) => (data.entries as EntryPoint[]).map((e) => e.reason === 'not_imported' ? leanRow(null, e.path, e.line, ['not_imported'])
+        : e.kind ? leanRow(e.name, e.path, e.line, [e.kind]) : e.name === null ? leanRow(null, e.path, e.line, [e.reason]) : leanRow(e.name, e.path, e.line, [e.reason, 'not_indexed'])),
+    }
+  },
+
+  find_hubs(ctx, input) {
+    const by = (input.by as 'fan_in' | 'fan_out' | 'betweenness' | undefined) ?? 'fan_in'
+    const r = findHubs(ctx.db, { top: Math.min(Number(input.top ?? 10), ctx.limits.max_rows), by, kinds: input.kinds as string[] | undefined, pathPrefix: input.path_prefix as string | undefined, includeTests: input.include_tests !== false, deadline: ctx.started + ctx.limits.timeout_ms })
+    const limitations = [
+      'fan_in counts the distinct symbols that use one through a resolved relationship (a call, reference, import, inheritance or injection); fan_out the distinct symbols it uses. Unresolved calls count for neither.',
+      ...(r.sampled !== null ? [`betweenness was computed from ${r.sampled} evenly spaced source symbols, not every one, and scaled up${r.timedOut ? ', stopping at timeout_ms' : ''}: an estimate.`] : []),
+    ]
+    return {
+      data: { hubs: r.hubs, by, sampled_sources: r.sampled }, stop_reasons: r.timedOut ? ['timeout'] : [], limitations, shrink: 'hubs',
+      lean: (data) => (data.hubs as Hub[]).map((h) => leanRow(leanName(h), h.path, h.line, [h.kind, `fan_in=${h.fan_in}`, `fan_out=${h.fan_out}`, ...(h.betweenness !== undefined ? [`betweenness=${h.betweenness}`] : [])])),
     }
   },
 

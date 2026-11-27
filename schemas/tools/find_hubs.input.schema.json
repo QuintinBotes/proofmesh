@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "find_hubs.input.schema.json",
+  "title": "find_hubs input",
+  "description": "The symbols the most code depends on (FR943), ranked by fan_in (distinct symbols that call, reference, import, inherit or inject it through a resolved relationship), fan_out (distinct symbols it uses) or betweenness (shortest use paths that pass through it), with both counts. Lean over MCP: `<name> <path>:<line> <kind> fan_in=<n> fan_out=<n>`.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "repository_id": {
+      "type": "string",
+      "pattern": "^repo_[0-9a-z]+$",
+      "description": "Optional when exactly one repository is registered."
+    },
+    "snapshot_id": {
+      "oneOf": [
+        {
+          "type": "string",
+          "pattern": "^snap_[0-9a-z]+$"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Null pins the current published snapshot."
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "timeout_ms": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_rows": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_depth": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "freshness": {
+      "enum": [
+        "snapshot",
+        "strict"
+      ],
+      "description": "snapshot (default) answers from the published snapshot. strict first checks that the working tree is exactly what the snapshot was built from; if not, it starts an index and refuses with STALE_INPUT naming the changed files."
+    },
+    "envelope": {
+      "enum": [
+        "full",
+        "compact",
+        "lean"
+      ],
+      "description": "lean, the default over MCP: plain text with no JSON and no structuredContent. A header `# <tool> · <n> rows · <snapshot> current` (stale when the snapshot is older than the repository's current one), one `<name> <path>:<line>` row per result, then `# ` lines for the limitations of this answer and `# more: cursor <c>` when a next page exists. The line is the call, import or reference site for relationship, impact and path rows and the declaration for symbol rows; tags follow: in or out when both directions are asked, depth=<n>, dispatch, external, candidate, ambiguous, unresolved:<reason>, and the relationship type when the query mixes types. A name or path with a space, quote or # is quoted as JSON. compact: the JSON envelope without the snapshot-wide parts an earlier answer gave (coverage, unresolved reasons, standing limitations). full: the whole JSON envelope. Ask for compact or full for ids, evidence and totals."
+    },
+    "cursor": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096,
+      "description": "The next_cursor of the previous page. It continues the same query on the same snapshot; it expires after an hour."
+    },
+    "top": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 100,
+      "description": "Default 10."
+    },
+    "by": {
+      "enum": [
+        "fan_in",
+        "fan_out",
+        "betweenness"
+      ],
+      "description": "Default fan_in. betweenness is sampled from at most 1,000 evenly spaced sources on a larger graph, and says so."
+    },
+    "kinds": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "function",
+          "class",
+          "method",
+          "interface",
+          "type_alias",
+          "variable",
+          "module",
+          "struct",
+          "enum",
+          "property",
+          "field",
+          "constructor",
+          "namespace",
+          "endpoint",
+          "job"
+        ]
+      },
+      "description": "Only symbols of these kinds. Default every kind."
+    },
+    "path_prefix": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Only files whose repository-relative path starts with this, such as `src/`. Default: the whole repository."
+    },
+    "include_tests": {
+      "type": "boolean",
+      "description": "Default true. False leaves test code out of the graph: neither ranked nor counted as a user."
+    }
+  }
+}

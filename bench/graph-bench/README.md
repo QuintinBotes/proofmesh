@@ -133,6 +133,30 @@ Q8's answer names every hop as `name path:line`, so the path needs no `get_symbo
 per row, Q2 is 230 bytes against Graphify's 96 (2.4x): its 12 callers make 47 calls, and Graphify lists one site per caller
 (4% of the call sites). The other questions are within 2x either way (Q1 58 / 62, Q5 34 / 69, Q7 57 / 58).
 
+## Dead code, cycles, entry points and hubs through tools (2026-11-27, #34)
+
+`run.mjs` now asks Q10 to Q12 of `find_unused`, `find_cycles` and `find_entry_points`, and a new Q13 (the ten symbols with the
+most distinct callers and referrers in the truth) of `find_hubs`, over MCP from a second server started with `--tools extra`, so
+the default listing the first server measures is unchanged. Nothing is read from the snapshot's SQL. Graphify's answers are
+still computed from `graph.json` (Q13 the same way: distinct sources per target over its use relations). Same Orbit copy and
+sealed snapshot (`snap_7be31f93fdcb4923d3b72b56`); Graphify 0.9.108.
+
+| Q | Question (tool call) | ProofMesh R / P | ms / bytes | Graphify R / P (graph.json) |
+|---|---|---|---|---|
+| Q10 | Dead top-level functions (`find_unused` kinds function, path_prefix `src/`, rows tagged `unused`) | 100% / 100% | 831 / 4,906 | 75% / 6% |
+| Q11 | Files in an import cycle (`find_cycles` path_prefix `src/`, type-only included) | 100% / 100% | 135 / 9,713 | 78% / 100% |
+| Q12 | Modules nothing under `src/` imports (`find_entry_points`, rows tagged `not_imported`) | 100% / 80% | 188 / 991 | 100% / 100% |
+| Q13 | The ten hubs by fan-in (`find_hubs` top 10) | 7 of 10 | 285 / 910 | 5 of 10 |
+
+- Q10: the four functions the snapshot-SQL answer added (`src/isolation/srt-chromium-preload.d.mts`) are `possibly_used`: a test
+  loads the JavaScript module beside them by path and calls them on an untyped value, which an unresolved call by name could
+  reach. 48 functions only tests use are `reachable_only_by=test`, not `unused`.
+- Q12: the two extras are `src/isolation/srt-chromium-preload.mjs` and its `.d.mts`, which nothing imports (node loads the
+  preload by path). The truth's program (`src/**/*.ts`) does not hold either file, so it cannot count them.
+- Q13: the truth's top ten holds `run-store.ts` `id` and `state` and `context.ts` `run`, properties ranked by their reads; the
+  TypeScript adapter records no property read as a reference, so `find_hubs` ranks `OrbitConfig`, `Clock` and the test harness
+  `Lab` in their place.
+
 ## Symbol identity across renames and moves (issue 7, SC-2)
 
 `node bench/graph-bench/identity-mutation.mjs [<orbit-clone-or-url>] [--n 50] [--seed 7]` clones the same Orbit commit into a temporary directory, renames 25 and moves 25 random top-level functions (one per file, seeded), commits, indexes both trees with `index --rev`, and checks what `compare_snapshots` pairs. It exits 1 on any wrong pair or a paired rate below 95%. Result of 2026-11-24 (seed 7, 3,881 candidate functions in 685 files): 50 of 50 mutated functions paired as `renamed` or `moved` with the right target, 0 wrong pairs among 50 pairs, 0 ambiguous, 0 below the pairing floor. About 80 seconds.

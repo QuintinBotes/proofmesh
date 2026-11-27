@@ -22,7 +22,7 @@ function fixture(): string {
 }
 
 describe('FR510 to FR516 the parity benchmark scores every tool on one truth, and a missing comparator is not run', () => {
-  it('FR510 FR511 FR512 FR513 FR514 FR515 with no comparator at its pinned version, the harness fills the ProofMesh column, says why each other did not run, restores the fixture and exits 0', () => {
+  it('FR510 FR511 FR512 FR513 FR514 FR515 FR946 with no comparator at its pinned version, the harness fills the ProofMesh column, says why each other did not run, restores the fixture and exits 0', () => {
     const fix = fixture()
     const out = tmpDir('pm-parity-out-')
     const bin = tmpDir('pm-parity-bin-')
@@ -36,14 +36,15 @@ describe('FR510 to FR516 the parity benchmark scores every tool on one truth, an
     expect(md).toBe(r.stdout.replace(/\n$/, ''))
     // FR510: one row per question class, one column per tool, the fixture and ProofMesh commits and every version in the header.
     expect(md).toContain('| Q | class | truth | ProofMesh | Graphify | scip-typescript | Serena | aider |')
-    for (let i = 1; i <= 12; i++) expect(md).toMatch(new RegExp(`^\\| Q${i} \\| `, 'm'))
+    for (let i = 1; i <= 13; i++) expect(md).toMatch(new RegExp(`^\\| Q${i} \\| `, 'm'))
     expect(md).toMatch(/^Fixture: typeorm @ test-fixture \(src\/, 2 files\)\. ProofMesh 0\.1\.0 @ [0-9a-f]+\. Truth: typescript-checker /m)
     expect(md).toMatch(/^Versions: ProofMesh 0\.1\.0 @ [0-9a-f]+; Graphify not run \(graphify 0\.9\.120 is not the pinned 0\.9\.108\); scip-typescript not run/m)
     // FR511 and FR514: another version and a missing tool are each `not run: <reason>`; the ProofMesh cells are scored.
     const q1 = md.split('\n').find((l) => l.startsWith('| Q1 |'))!.split(' | ')
     expect(q1[3]).toMatch(/^\d+ \/ (\d+|-)$/)
     expect(q1.slice(4).join(' | ')).toBe('not run: graphify 0.9.120 is not the pinned 0.9.108 | not run: scip-typescript is not installed (sh bench/parity/install.sh); scip is not installed (sh bench/parity/install.sh) | not run: serena is not installed (sh bench/parity/install.sh) | not run: aider is not installed (sh bench/parity/install.sh) |')
-    expect(md).toMatch(/^\| Q10 \| dead_code \| \d+ \| \d+ \/ (\d+|-) \(data\) \| not run/m)
+    // FR946: ProofMesh answers Q10 to Q13 through its structure tools over MCP, so its cells carry no (data) mark.
+    for (const [q, kind] of [['Q10', 'dead_code'], ['Q11', 'cycles'], ['Q12', 'roots'], ['Q13', 'hubs']]) expect(md).toMatch(new RegExp(`^\\| ${q} \\| ${kind} \\| \\d+ \\| \\d+ / (\\d+|-) \\| not run`, 'm'))
     // FR512: callers at three levels; FR513: the cost rows, with ProofMesh measured and its tools/list bytes.
     expect(md).toMatch(/^\| Q1 \| \d+ \/ (\d+|-) · \d+ \/ (\d+|-) · \d+ \/ (\d+|-) \| not run/m)
     for (const row of ['Full build', 'Peak memory (largest process)', 'Disk (own store)', 'No-change re-index', 'One edit (a statement in the constructor of src/error/TypeORMError.ts)']) expect(md).toMatch(new RegExp(`^\\| ${row.replace(/[()./]/g, '\\$&')} \\| \\d+(\\.\\d)? (ms|s|MB) \\| not run \\| not run \\| not run \\| not run \\|$`, 'm'))

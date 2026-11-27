@@ -17,7 +17,7 @@ beforeAll(async () => {
 })
 afterAll(async () => { await client?.close() })
 
-const TOOLS = ['analyze_impact', 'compare_snapshots', 'find_query_source', 'find_stale_mentions', 'find_symbols', 'find_tests', 'get_claims', 'get_ecosystem', 'get_external_usage', 'get_job', 'get_memory', 'get_overview', 'get_property_reads', 'get_relationships', 'get_session_trail', 'get_symbol', 'get_symbols_at', 'get_table_reach', 'get_verification', 'impact_completeness', 'list_queries', 'list_repositories', 'list_snapshots', 'list_workspaces', 'prepare_verification', 'read_evidence', 'request_index', 'save_memory', 'search_sources', 'trace_paths', 'verify_claim', 'workspace_status']
+const TOOLS = ['analyze_impact', 'compare_snapshots', 'find_cycles', 'find_entry_points', 'find_hubs', 'find_query_source', 'find_stale_mentions', 'find_symbols', 'find_tests', 'find_unused', 'get_claims', 'get_ecosystem', 'get_external_usage', 'get_job', 'get_memory', 'get_overview', 'get_property_reads', 'get_relationships', 'get_session_trail', 'get_symbol', 'get_symbols_at', 'get_table_reach', 'get_verification', 'impact_completeness', 'list_queries', 'list_repositories', 'list_snapshots', 'list_workspaces', 'prepare_verification', 'read_evidence', 'request_index', 'save_memory', 'search_sources', 'trace_paths', 'verify_claim', 'workspace_status']
 
 describe('AC22 MCP tool contracts', () => {
   it('FR035 FR421 with --tools all lists exactly the M0 tools plus the M2, M3, M5 and M6 tools, each with its input schema file unchanged', async () => {
@@ -64,10 +64,11 @@ describe('AC22 MCP tool contracts', () => {
       ['find_symbols', { text: 'formatAmount' }], ['get_symbol', { symbol_id: handle }], ['get_relationships', { subject_id: handle }],
       ['trace_paths', { source_id: handle, target_id: target }], ['analyze_impact', { subject_ids: [target] }], ['find_tests', { subject_ids: [target] }],
       ['get_symbols_at', { locations: ['packages/api/src/handler.ts:1'] }], ['get_session_trail', { session_id: 'a-session-with-no-trail' }],
+      ['find_unused', {}], ['find_cycles', {}], ['find_entry_points', {}], ['find_hubs', {}],
     ]
     expect(calls.map(([name]) => name).sort()).toEqual([...LEAN].sort())
-    // get_session_trail is in the data profile; the default client lists core only.
-    const data = await mcpClient(d, '--tools', 'core,data')
+    // get_session_trail is in the data profile and the structure tools in extra; the default client lists core only.
+    const data = await mcpClient(d, '--tools', 'core,data,extra')
     onTestFinished(() => data.close())
     for (const [name, args] of calls) {
       const via = PROFILE[name as keyof typeof PROFILE] === 'core' ? client : data

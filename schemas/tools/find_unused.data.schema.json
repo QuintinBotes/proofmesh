@@ -1,0 +1,131 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "find_unused.data.schema.json",
+  "title": "find_unused data",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "symbols",
+    "totals"
+  ],
+  "properties": {
+    "symbols": {
+      "type": "array",
+      "description": "unused first, then reachable_only_by, then possibly_used; each by path and line.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "kind",
+          "name",
+          "qualified_name",
+          "path",
+          "line",
+          "group"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string",
+            "description": "The stable_key of the symbol (FR280)."
+          },
+          "kind": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "qualified_name": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "line": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "generated": {
+            "type": "boolean",
+            "description": "Present and true when the file is generated (FR292); absent otherwise."
+          },
+          "group": {
+            "enum": [
+              "unused",
+              "reachable_only_by",
+              "possibly_used"
+            ]
+          },
+          "by": {
+            "enum": [
+              "test",
+              "framework",
+              "public_export"
+            ],
+            "description": "For reachable_only_by: what alone reaches the symbol."
+          },
+          "sites": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "For possibly_used: inferred edges and unresolved calls by name that could reach it."
+          },
+          "inferred": {
+            "type": "boolean",
+            "description": "For possibly_used: true when an inferred (candidate) edge names it."
+          }
+        }
+      }
+    },
+    "totals": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "checked",
+        "unused",
+        "reachable_only_by",
+        "possibly_used"
+      ],
+      "description": "Over every symbol checked, before row limits.",
+      "properties": {
+        "checked": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unused": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "reachable_only_by": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "test",
+            "framework",
+            "public_export"
+          ],
+          "properties": {
+            "test": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "framework": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "public_export": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "possibly_used": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

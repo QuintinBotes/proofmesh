@@ -1800,6 +1800,28 @@
     ],
     "FR904": [
       "packages/proofmesh/test/xrepo-symbols.test.ts"
+    ],
+    "FR940": [
+      "packages/proofmesh/test/structure-tools.test.ts"
+    ],
+    "FR941": [
+      "packages/proofmesh/test/structure-tools.test.ts"
+    ],
+    "FR942": [
+      "packages/proofmesh/test/structure-tools.test.ts"
+    ],
+    "FR943": [
+      "packages/proofmesh/test/structure-tools.test.ts"
+    ],
+    "FR944": [
+      "packages/proofmesh/test/structure-tools.test.ts"
+    ],
+    "FR945": [
+      "packages/proofmesh/test/structure-tools.test.ts"
+    ],
+    "FR946": [
+      "packages/proofmesh/test/parity-bench.test.ts",
+      "bench/graph-bench/lib.mjs"
     ]
   },
   "manual": {
