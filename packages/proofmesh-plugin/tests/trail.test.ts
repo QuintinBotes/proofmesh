@@ -166,6 +166,26 @@ test('FR615: a path outside the repository is not recorded, a subagent\'s call k
   ])
 })
 
+// A mod's own tool call, as /pm-trail's MCP calls reach tool.call in a real session, is not a step Claude took.
+const prober = {
+  name: 'prober',
+  register(on: On) {
+    on('command.run', { command: 'probe' }, async ($: Dollar) => {
+      await $.tool.call({ tool: 'Read', file_path: '/work/app/src/probed.ts' })
+      return { text: 'probed' }
+    })
+  },
+}
+
+test('FR610: only calls Claude made are recorded, not a mod\'s own tool calls', { plugins: [prober] }, async ($, on) => {
+  const w = world(on, { recording: true })
+  await start($, w)
+  await $.command.run({ command: 'probe', args: '' })
+  await $.tool.call({ tool: 'Read', file_path: '/work/app/src/a.ts' })
+  await endTurn($, w)
+  expect(w.entries().map((e) => e.path)).toEqual(['src/a.ts'])
+})
+
 test('FR615: entries are sent at turn end and at session end, one process a flush, and nothing is sent when nothing was recorded', async ($, on) => {
   const w = world(on, { recording: true })
   await start($, w)

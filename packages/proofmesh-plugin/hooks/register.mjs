@@ -210,7 +210,8 @@ export function register(on) {
     idle = 0
     try {
       if (EDITS.has(e.tool) && result.deny === undefined && result.isError !== true) await noteEdit($, e)
-      if (recording) await noteTrail($, e, result)
+      // Only Claude's calls: this module's own MCP calls (/pm-trail's, /pm-status's) reach this hook too, from the plugin.
+      if (recording && next.origin.plugin === 'engine') await noteTrail($, e, result)
     } catch {}
     return result
   })
