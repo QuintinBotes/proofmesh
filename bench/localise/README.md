@@ -46,18 +46,14 @@ node bench/localise/run.mjs            # then read bench/localise/out/results.md
 ## Latest results
 
 Run on 2026-11-27 (`node bench/localise/run.mjs --jobs 2`, Python indexed with `PROOFMESH_PYRIGHT=off`), on an Apple
-M5 Max (18 cores, 64 GB), macOS, Node 26.13.1, while other jobs shared the machine. A query took 231 ms at the median
-(589 ms at most); 45 of the 46 problem statements asked had more than 32 indexed terms and were cut to their 32 heaviest.
+M5 Max (18 cores, 64 GB), macOS, Node 26.13.1, while other jobs shared the machine (load average 40 to 110). Every tree
+was indexed. A query took 328 ms at the median (1,316 ms at most); 49 of the 50 problem statements had more than 32
+indexed terms and were cut to their 32 heaviest.
 
 | | file Acc@1 | @3 | @5 | @10 | function Acc@5 | @10 |
 |---|---|---|---|---|---|---|
 | BM25 | 26 | 44 | 56 | 60 | 18.2 | 25 |
-| ProofMesh `search_concepts` | 54 | 70 | **70** | 78 | 34.1 | **52.3** |
+| ProofMesh `search_concepts` | 54 | 72 | **74** | 82 | 34.1 | **52.3** |
 
 The bar of #27, file Acc@5 at least 66 (60, and BM25 + 10) and function Acc@10 at least 35 (BM25 + 10), is met.
 Function Acc counts the 44 instances whose gold patch changes a line inside a function.
-
-Four instances score a miss because ProofMesh cannot index their tree: one source file that is not UTF-8 fails the
-whole index (#139). They are `pylint-dev__pylint-7114` and `pylint-dev__pylint-7228`
-(`tests/functional/i/implicit/implicit_str_concat_latin1.py`), and `sphinx-doc__sphinx-10451` and
-`sphinx-doc__sphinx-8627` (`tests/roots/test-pycode/cp_1251_coded.py`).
