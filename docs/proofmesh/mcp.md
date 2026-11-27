@@ -23,7 +23,7 @@ A client that does not defer tool loading puts every listed tool's name, descrip
 `search_concepts` takes a description, such as an issue or a task in prose, and ranks the symbols and files that match it, with no model and no network. It is in the `core` profile: finding where to start is the first step of most tasks, and without it an agent falls back to many `search_sources` calls.
 
 ```
-# search_concepts · 6 rows · snap_24675f1602ea4654d8384a35 current
+# search_concepts · 6 rows · snap_3dc3206b273ef32924950c3d current
 RelationLoader.load src/query-builder/RelationLoader.ts:26 method score=24.048 terms=loader,relation,relationloader via=RelationLoader.enableLazyLoad
 RelationLoader.enableLazyLoad src/query-builder/RelationLoader.ts:386 method score=23.706 terms=lazy,relationloader,loader,relation
 RelationLoader src/query-builder/RelationLoader.ts:12 class score=21.592 terms=relationloader,relation,loader,lazy

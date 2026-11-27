@@ -3456,7 +3456,7 @@ path_prefix?: string
  */
 include_tests?: boolean
 /**
- * lean (the default over MCP) is plain text. Each row is `<name> <path>:<line> <kind>` for a symbol, then `<path>:<line> file` for a file, tagged score=<n>, terms=<a,b> (up to five) and via=<name> when graph proximity raised it. compact or full: the JSON envelope, with ids.
+ * lean, the default over MCP: plain text. Each row is `<name> <path>:<line> <kind>` for a symbol, then `<path>:<line> file` for a file, tagged score=<n>, terms=<a,b> (up to five) and via=<name> when graph proximity raised it. compact or full: the JSON envelope, with ids.
  */
 envelope?: ("full" | "compact" | "lean")
 }

@@ -42,9 +42,9 @@ node bench/localise/run.mjs            # then read bench/localise/out/results.md
 
 ## Latest results
 
-Run on 2026-11-27 (`node bench/localise/run.mjs --jobs 2`, Python indexed with `PROOFMESH_PYRIGHT=off`), on an Apple
-M5 Max (18 cores, 64 GB), macOS, Node 26.13.1, while other jobs shared the machine. A query took 252 ms at the median
-(599 ms at most); 45 of the 46 problem statements asked had more than 32 indexed terms and were cut to their 32 heaviest.
+Run on 2026-11-27 (`node bench/localise/run.mjs --jobs 3`, Python indexed with `PROOFMESH_PYRIGHT=off`), on an Apple
+M5 Max (18 cores, 64 GB), macOS, Node 26.13.1, while other jobs shared the machine. A query took 103 ms at the median
+(504 ms at most); 45 of the 46 problem statements asked had more than 32 indexed terms and were cut to their 32 heaviest.
 
 | | file Acc@1 | @3 | @5 | @10 | function Acc@5 | @10 |
 |---|---|---|---|---|---|---|
