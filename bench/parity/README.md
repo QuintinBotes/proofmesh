@@ -153,6 +153,12 @@ A newer version of a comparator is added as a second column, never by replacing 
   `not_imported`) and `find_hubs` (top 10 by fan-in) (#34), through a second server started with `--tools extra`, so the
   `tools/list` bytes below stay those of the default listing. Graphify's Q10 to Q13 are computed from
   `graph.json`, also `(data)`.
+- **ProofMesh through `query_graph`** (#36): each question is asked again as one read-only query, over the second
+  server started with `--tools extra`, `PARITY_RUNS` times. A target is named by its qualified name; the queries are
+  `queryGraphQuery` in `../graph-bench/lib.mjs`, and each answer is in `out/raw/pm-query-<Q>.txt`. Its own table puts each answer's score
+  beside the typed tools' answer and says whether their items are the same, with the median time per question and the p95 over Q1
+  to Q12, the questions #36 set its target on. That p95 includes the MCP round trip, as every time here does. Q13 (hubs) ranks every
+  use, so its count is cut at max_rows before it ranks (FR963).
 - `tools/list` bytes are the bytes of the JSON of the tool array an MCP server lists.
 - The one-edit rebuild adds `const parityEdit = "<unique>"` after `super(message)` in the constructor of
   `src/error/TypeORMError.ts` (72 files import it), rebuilds, restores the file with `git checkout` and rebuilds again.
@@ -234,6 +240,33 @@ recall and precision are both the share of the ten in common. `find_hubs` misses
 TypeScript adapter does not record as references. Q10's four extras (`EJSONserialize`, `EJSONdeserialize`, `parse`,
 `stringify` in `bson.typings.ts`) are used only as `typeof f` in a type (#175), and its one miss, `createConnection`
 of `src/globals.ts`, is `possibly_used`: an unresolved call by that name could reach it.
+
+### ProofMesh through `query_graph` (#36)
+
+Run on 2026-11-27 at ProofMesh 969d78d (`PARITY_RUNS=3`), on the same machine with a load average between 9 and 44. Every comparator ran at its pinned version. Q10 to Q13's typed answers are from the structure tools (#34):
+
+| Q | class | ProofMesh (typed tools) | ProofMesh query_graph | same items as typed | ms (median) |
+|---|---|---|---|---|---|
+| Q1 | callers | 100 / 100 | 100 / 100 | yes | 8 |
+| Q2 | callers | 100 / 100 | 100 / 100 | yes | 8 |
+| Q3 | callers | 100 / 100 | 100 / 100 | yes | 6 |
+| Q4 | implementations | 100 / 100 | 100 / 100 | yes | 4 |
+| Q5 | importers | 100 / 100 | 100 / 100 | yes | 8 |
+| Q6 | dependents | 100 / 100 | 100 / 100 | no (+0 −1) | 21 |
+| Q7 | transitive_callers | 100 / 50 | 100 / 100 | no (+0 −11) | 4 |
+| Q8 | path | valid 3 hops (shortest 3) | valid 3 hops (shortest 3) | yes | 16 |
+| Q9 | type_users | 100 / 100 | 100 / 100 | yes | 26 |
+| Q10 | dead_code | 99 / 100 | 100 / 100 | no (+1 −0) | 9 |
+| Q11 | cycles | 100 / 100 | 98 / 100 | no (+0 −5) | 43 |
+| Q12 | roots | 100 / 100 | 100 / 100 | yes | 30 |
+| Q13 | hubs | 80 / 80 | 10 / 10 (cut) | no (+9 −9) | 42 |
+
+query_graph p95 over Q1–Q12, 3 runs each: 43 ms (target 500 ms).
+
+- Q6 and Q11 differ because a variable-length pattern follows at most 6 hops (FR962). On Q6, one dependent of `StringUtils.ts` is more than 6 imports away: 315 of 316, which rounds to 100% recall. On Q11, five files are only in import cycles longer than 6.
+- Q7 differs on purpose. `analyze_impact` follows calls through the interface method that `DefaultNamingStrategy.columnName` implements; `query_graph` follows only the calls the snapshot resolved. So it equals the truth, which counts direct calls only.
+- Q10 says "top-level" as `f.qualified_name ENDS WITH ':' + f.name`. A module path can hold a dot (`bson.typings`), so a test for a dot in the qualified name would drop real functions. Its one item beyond `find_unused` is `createConnection`: `find_unused` calls it `possibly_used`, because an unresolved call by that name could reach it.
+- Q13 ranks every call and reference by its target. That is tens of thousands of rows, so `count` is cut at `max_rows` (1,000) before it ranks, and the answer says so (FR963). `find_hubs` answers this question.
 
 ### Against the study of 2026-11-20 (scenario 3 of #25)
 

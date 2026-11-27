@@ -2221,6 +2221,27 @@
     ],
     "FR1244": [
       "packages/proofmesh/test/cold-build.test.ts"
+    ],
+    "FR960": [
+      "packages/proofmesh/test/graph-query.test.ts"
+    ],
+    "FR961": [
+      "packages/proofmesh/test/graph-query.test.ts"
+    ],
+    "FR962": [
+      "packages/proofmesh/test/graph-query.test.ts"
+    ],
+    "FR963": [
+      "packages/proofmesh/test/graph-query.test.ts"
+    ],
+    "FR964": [
+      "packages/proofmesh/test/graph-query.test.ts"
+    ],
+    "FR965": [
+      "packages/proofmesh/test/graph-query.test.ts"
+    ],
+    "FR966": [
+      "packages/proofmesh/test/parity-bench.test.ts"
     ]
   },
   "manual": {
