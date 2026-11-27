@@ -55,8 +55,8 @@ describe('request_index and get_job: background indexing with progress', () => {
   })
 })
 
-describe('a finished index job is never read as interrupted (#130)', () => {
-  it('FR740 the index records its outcome while it holds the lease, and get_job reads a running row again once the lease is free', async () => {
+describe('FR740 a finished index job is never read as interrupted (#130)', () => {
+  it('the index records its outcome while it holds the lease, and get_job reads a running row again once the lease is free', async () => {
     const { Catalog, initDataDir, LEASE_OWNER } = await import('../src/meshstore/catalog.js')
     const { indexRepository } = await import('../src/indexer/coordinator.js')
     const d = tmpDir()
