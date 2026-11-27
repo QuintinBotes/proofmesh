@@ -23,6 +23,8 @@ const edited = new Set()
 let edits = 0, idle = 0, ticks = 0, busy = false, queue = Promise.resolve(), shown
 // Off until `proofmesh status --fresh` says a person turned the trail on for this repository.
 let recording = false, trail = []
+// Entries of this session trail record did not store, and the last reason, so /pm-trail never shows a trail with holes as whole.
+let lost = 0, lostWhy = ''
 const PANE = 'pm-impact'
 const SHOWN = 20
 // Per repository-relative path, the line ranges the session's edits touched, kept in the file's lines as they now are, and the snapshot
@@ -257,11 +259,22 @@ async function addTrail($, e, result, step, subject) {
   })
 }
 
-/** Hands the buffered entries to ProofMesh in one process. */
+/**
+ * Hands the buffered entries to ProofMesh in one process. A batch it refuses, or that never reaches it, is counted with the reason and
+ * not sent again: trail record stores a batch whole or not at all, and a batch it refused once would take the next turn's down with it.
+ */
 async function flush($) {
   if (!trail.length) return
-  const lines = trail.splice(0).map((t) => JSON.stringify(t)).join('\n') + '\n'
-  try { await proofmesh($, ['trail', 'record'], lines) } catch {}
+  const batch = trail.splice(0)
+  try {
+    const r = await proofmesh($, ['trail', 'record'], batch.map((t) => JSON.stringify(t)).join('\n') + '\n')
+    if (r.exitCode === 0) return
+    lostWhy = lastLine(r.stderr)
+  } catch (err) {
+    // Whole, since the last part of a process that failed to start is only the name it looked for.
+    lostWhy = lastLine(String(err?.message ?? err))
+  }
+  lost += batch.length
 }
 
 /** /pm-trail's text from get_session_trail's envelope. */
@@ -269,6 +282,7 @@ function trailText(t) {
   const d = t.data, n = d.entries.length
   return [
     `session trail ${d.session_id} in ${repo.name}, as of snapshot ${t.snapshot.id}: ${n} entr${n === 1 ? 'y' : 'ies'}${d.cut ? ' (cut at 10,000)' : ''}`,
+    ...(lost ? [`# incomplete: ${lost} entr${lost === 1 ? 'y' : 'ies'} of this session ${lost === 1 ? 'was' : 'were'} not recorded (${lostWhy})`] : []),
     ...d.entries.map((e) => `  ${[e.seq, e.kind, e.tool.replace(PROOFMESH_TOOL, '$1'), e.path ?? e.symbol_id ?? '-', ...(e.outcome === 'failed' ? ['failed'] : []), ...(e.agent_id ? [`agent=${e.agent_id}`] : [])].join(' ')}`),
     ...d.changed.flatMap((c) => [
       `changed ${c.name} ${c.path}:${c.line}: ${plural(c.never_seen.length + c.searched_only.length, 'dependent')} not opened`,
