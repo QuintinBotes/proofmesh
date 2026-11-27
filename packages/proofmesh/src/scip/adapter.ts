@@ -7,7 +7,7 @@ import { syntaxSymbols, type Spans, type SyntaxFile } from './syntax-spans.js'
 import { DEFINITION, readDocument, type ScipOccurrence, type ScipRange, type ScipSymbol } from './decode.js'
 import { loadIndexes, type RoutedDocument } from './load.js'
 
-const VERSION = '0.1.0'
+const VERSION = '0.2.0'
 type Range = { start_byte: number; end_byte: number; start_line: number; end_line: number }
 type Definition = { local_id: string; path: string; qualified: string; kind?: string; range: Range; named: Range; occurrence: ScipOccurrence; info?: ScipSymbol }
 
@@ -179,7 +179,7 @@ async function initialize(params: { workspace: string; repository_root?: string;
     }
   }
   return {
-    adapter: { id: 'scip', version: VERSION, protocol_version: '1.0', languages: [...new Set([...documents.values()].map((d) => d.language || 'unknown'))].sort(), toolchain: tools },
+    adapter: { id: 'scip', version: VERSION, protocol_version: '1.2', languages: [...new Set([...documents.values()].map((d) => d.language || 'unknown'))].sort(), toolchain: tools },
     capabilities: { symbols: true, references: true, resolved_calls: true },
     // An index Proofmesh ran an indexer for is build evaluation (A38): its mode, and the indexer's identity, are part of snapshot identity.
     analysis_mode: indexes.some((ix) => ix.run) ? 'trusted_build' : 'no_execution',
@@ -229,7 +229,7 @@ async function analyse(p: string, facts: Spans) {
   const own = definitionsIn.get(p) ?? []
   const symbols = [...(text ? [module] : []), ...own.map((d) => {
     const ds = parseSymbol(d.occurrence.symbol)!.descriptors
-    return { local_id: d.local_id, path: p, kind: d.kind ?? kindOf(d.info, ds), name: ds.filter((x) => x.suffix !== '[' && x.suffix !== '(').at(-1)!.name, qualified_name: d.qualified, range: d.range, signature: d.info?.signature ?? null }
+    return { local_id: d.local_id, path: p, kind: d.kind ?? kindOf(d.info, ds), name: ds.filter((x) => x.suffix !== '[' && x.suffix !== '(').at(-1)!.name, qualified_name: d.qualified, range: d.range, signature: d.info?.signature ?? null, detail: { scip: d.occurrence.symbol } }
   })]
   const relationships: unknown[] = []
   // Occurrences of global symbols that could not be read, or whose ranges do not fit the file, make the file's facts partial.

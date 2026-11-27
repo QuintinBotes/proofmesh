@@ -113,6 +113,17 @@
                 "test_support"
               ]
             }
+          },
+          "detail": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "scip": {
+                "type": "string",
+                "description": "The SCIP index's own symbol for this definition, as the index wrote it (FR441)."
+              }
+            },
+            "description": "Optional (protocol 1.2). Facts about the symbol beside its name: scip, the symbol a SCIP index gave the definition, which the qualified name replaces with the form of its language (FR441). Absent: none."
           }
         }
       }

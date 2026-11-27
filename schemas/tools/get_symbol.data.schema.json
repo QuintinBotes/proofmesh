@@ -108,6 +108,17 @@
         "generated": {
           "type": "boolean",
           "description": "Present and true when the file is generated (FR292); absent otherwise."
+        },
+        "detail": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "scip": {
+              "type": "string",
+              "description": "The SCIP index's own symbol for this definition, as the index wrote it (FR441)."
+            }
+          },
+          "description": "What the adapter recorded beside the symbol's name, when it recorded any: scip, the SCIP index's own symbol for a definition the SCIP importer declared (FR441). Absent when the adapter sent none (no built-in adapter but the SCIP importer sends it), and in a snapshot sealed before format 0.11."
         }
       }
     }

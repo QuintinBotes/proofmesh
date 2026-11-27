@@ -589,7 +589,7 @@ class FactWriter {
   ) {
     this.stmt = {
       evidence: db.prepare('insert or ignore into evidence (id, file_id, object_hash, start_byte, end_byte, start_line, end_line, source_kind, extractor, extractor_version, analysis_mode) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'),
-      symbol: db.prepare('insert into symbol (id, file_id, kind, name, qualified_name, start_byte, end_byte, start_line, end_line, signature, stable_key, evidence_id, roles) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'),
+      symbol: db.prepare('insert into symbol (id, file_id, kind, name, qualified_name, start_byte, end_byte, start_line, end_line, signature, stable_key, evidence_id, roles, detail) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'),
       fts: db.prepare('insert into symbol_fts (symbol_id, name, qualified_name) values (?, ?, ?)'),
       assertion: db.prepare('insert into assertion (id, type, origin, resolution, source_kind, source_id, target_kind, target_id, reason, detail, adapter, adapter_version, analysis_mode) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'),
       assertionEvidence: db.prepare('insert or ignore into assertion_evidence (assertion_id, evidence_id) values (?, ?)'),
@@ -669,7 +669,7 @@ class FactWriter {
         throw new AdapterProtocolError(`duplicate symbol ${s.local_id}`)
       }
       const ev = this.evidence(s.path, s.range, this.configPaths.has(s.path) ? 'configuration' : 'declaration', p)
-      this.stmt.symbol!.run(id, this.fileId(s.path), s.kind, s.name, s.qualified_name, s.range.start_byte, s.range.end_byte, s.range.start_line, s.range.end_line, s.signature, stableKeys.get(s)!, ev, s.roles?.length ? JSON.stringify([...new Set(s.roles)].sort()) : null)
+      this.stmt.symbol!.run(id, this.fileId(s.path), s.kind, s.name, s.qualified_name, s.range.start_byte, s.range.end_byte, s.range.start_line, s.range.end_line, s.signature, stableKeys.get(s)!, ev, s.roles?.length ? JSON.stringify([...new Set(s.roles)].sort()) : null, s.detail?.scip !== undefined ? JSON.stringify(s.detail) : null)
       this.stmt.fts!.run(id, s.name, s.qualified_name)
       this.localToSymbol.set(key, id)
     }
@@ -707,7 +707,7 @@ class FactWriter {
       const id = derivedId('sym', 24, this.snapshotId, file, 'team', owner, rule.startByte)
       const range = lineOf(rule)
       this.keys.add(`${file}#${owner}#team`)
-      this.stmt.symbol!.run(id, this.fileId(file), 'team', owner, owner, range.start_byte, range.end_byte, range.start_line, range.end_line, null, `${file}#${owner}#team`, this.evidence(file, range, 'configuration', p), null)
+      this.stmt.symbol!.run(id, this.fileId(file), 'team', owner, owner, range.start_byte, range.end_byte, range.start_line, range.end_line, null, `${file}#${owner}#team`, this.evidence(file, range, 'configuration', p), null, null)
       this.stmt.fts!.run(id, owner, owner)
       teams.set(owner, id)
       return id

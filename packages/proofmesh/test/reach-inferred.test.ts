@@ -23,8 +23,8 @@ const canon = (x: unknown): unknown => {
   if (x && typeof x === 'object') {
     const o = x as Record<string, unknown>, keys = Object.keys(o)
     if (keys.length && keys.every((k) => /^[a-z]+_[0-9a-f]{16,}$/.test(k))) return keys.map((k) => JSON.stringify(canon(o[k])).replace(ID, '<id>')).sort()
-    // FR280 added each row's stable key; the digest is of everything else, which those rows leave as it was.
-    return Object.fromEntries(keys.filter((k) => k !== 'key' && k !== 'from_key').map((k) => [k, canon(o[k])]))
+    // FR280 and FR440 added each row's stable keys; the digest is of everything else, which those rows leave as it was.
+    return Object.fromEntries(keys.filter((k) => k !== 'key' && k !== 'from_key' && k !== 'to_key').map((k) => [k, canon(o[k])]))
   }
   return x
 }
