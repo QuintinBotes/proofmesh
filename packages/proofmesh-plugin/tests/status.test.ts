@@ -141,7 +141,7 @@ test('FR484 scenario 5 and SC-002: /pm-status answers at once with no turn, for 
   let turns = 0
   on('turn.start', ($, e) => { turns++; return { turnId: e.turnId } })
   await start($, w)
-  expect(w.registered).toEqual([{ name: 'pm-status', description: expect.any(String), immediate: true }, { name: 'pm-trail', description: expect.any(String), immediate: true }])
+  expect(w.registered).toEqual([{ name: 'pm-status', description: expect.any(String), immediate: true }, { name: 'pm-trail', description: expect.any(String), immediate: true }, { name: 'pm-impact', description: expect.any(String), immediate: true }])
   await $.tool.call({ tool: 'MultiEdit', file_path: '/work/app/src/a.ts', edits: [] })
   await $.tool.call({ tool: 'NotebookEdit', notebook_path: '/work/app/notes.ipynb', new_source: 'x' })
   const answer = await $.command.run({ command: 'pm-status', args: '' })

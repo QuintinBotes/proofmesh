@@ -21,4 +21,18 @@ Each entry holds the repository-relative path or symbol id, the tool, the time, 
 
 `/pm-trail` answers at once, with no model turn. It lists the trail in order. Then, for each symbol in a file the session changed, it lists the dependents the session never opened, with their `file:line`. A dependent is `never seen`, or `searched only` when a search covered its directory. If recording is off, `/pm-trail` says how to turn it on. MCP clients get the same answer from `get_session_trail`, in the `data` profile.
 
+## Impact pane and /pm-impact
+
+`/pm-impact` opens a pane beside the transcript, and closes it if it is open. The pane never opens by itself. It lists what the session's edits reach, grouped by file:
+
+- each symbol the session changed (`changed formatAmount line 1`)
+- under it, each dependent from `analyze_impact`: the relationship type, the name, the `file:line` of the site that reaches the change, the evidence class (`resolved`, or `inferred` when a hop of the chain is), the depth, and the answer's notes, such as a truncation
+- the tests from `find_tests` that reach it, or `no test reaches it`
+
+The module finds the changed symbols from the line numbers in each edit's result, never from the files' text. Once a snapshot with the edits is current, it asks `get_symbols_at` for those lines, then `analyze_impact` and `find_tests` once per changed symbol. All three are in the `core` profile. Ten edits before one snapshot cost one question per symbol, and no tool call waits on ProofMesh. A symbol whose body is the same as before the session's first edit of its file is left out, so an undone edit leaves the list. While the snapshot is behind the edits, the pane keeps the last answer, marked `behind`, and asks again when the next snapshot is published.
+
+At most 20 changed symbols are shown, then a count. An edited file no adapter reads, or one outside the repository, is listed as `not indexed` with the reason. A ProofMesh call that fails is one row, `impact: unknown (<reason>)`. With the session trail on, each dependent in a file the session never opened is marked `not opened`, and the count heads the list.
+
+Pressing a dependent's row, or its `open` button, copies its `file:line`. The `file:line` is not a link: the Desktop app links only `https:` and `http://localhost` addresses. In a session with nothing to draw on (`claude -p`, the Agent SDK), `/pm-impact` prints the same list as text. Like `/pm-status`, it answers at once and starts no model turn.
+
 Run the module's tests with `pnpm test:plugin` (`claude plugin test packages/proofmesh-plugin`).

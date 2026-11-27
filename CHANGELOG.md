@@ -25,6 +25,13 @@ The Observatory stays busy until every query it started has answered (closes #13
 
 - The conclusion bar kept one loading flag, so the first query to finish cleared it. A starting point clicked in Explore while the first load's `get_overview` was still running was shown as answered (`aria-busy` false, the old text back) when that load finished, before the symbol's own answer came. Assistive technology was told the view was idle while it still loaded, and the e2e Explore test checked the URL too early and failed under load. The click was never lost: the browser always reached `?focus=`. The bar now counts the queries in flight and shows `Loading…` until the last one answers.
 
+An impact pane in the Claude Code plugin: an edit's dependents and tests while Claude works (part of #115; FR700 to FR706):
+
+- `/pm-impact` opens a pane, or closes it, that lists the symbols the session's edits changed, grouped by file. Under each: its dependents from `analyze_impact`, with relationship type, `file:line` of the site, evidence class (`resolved` or `inferred`) and depth, and the tests from `find_tests` that reach it. With the session trail on (#114), dependents in files the session never opened are marked `not opened` under a count. Pressing a row or its `open` button copies the `file:line`. With no surface (`claude -p`, the Agent SDK), `/pm-impact` prints the same list as text, with no model turn.
+- The changed symbols come from the line numbers of each edit's result and `get_symbols_at`, asked once a snapshot with the edits is current. `analyze_impact` and `find_tests` are asked once per changed symbol per published snapshot, pinned to it. A symbol whose body hash (`get_symbol`) matches the snapshot before the session's first edit is left out, so an undone edit leaves the list. While the snapshot is behind, the last answer stays, marked `behind`.
+- At most 20 changed symbols, then a count. Unindexed or outside files are listed as `not indexed (<reason>)`, and a failed call is one row.
+- Not done: the spec's `file:line` link in the Desktop app. The Desktop app links only `https:` and `http://localhost`, so the `file:line` is plain text there, copied on a press. The evidence class has no `heuristic`: `analyze_impact` tells only resolved from inferred.
+
 `PROOFMESH_PYRIGHT_UNANNOTATED=off` reaches the Python adapter (closes #135; FR670, FR671):
 
 - The setting had no effect: the core starts every adapter with an allowlisted environment that did not carry it, so the adapter always analysed unannotated bodies. The core now reads it and passes it as `pyright_unannotated` in the configuration of initialize; the adapter's environment is still an allowlist.
