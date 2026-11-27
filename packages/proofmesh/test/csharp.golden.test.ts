@@ -81,9 +81,10 @@ for (const fixture of ['cs-orders', 'cs-linked', 'cs-transitive', 'cs-inherited'
     const inputs = adapters.find((a) => a.id === 'csharp')!.external_inputs
     expect(inputs).toContain('nuget:Contoso.Missing.Client/1.0.0 missing')
     expect(inputs.some((i) => /^pack:Microsoft\.NETCore\.App\.Ref\/\d+\.\d+/.test(i))).toBe(true)
-    expect(tool(dataDir, 'find_symbols', { text: 'OrderService' }).limitations).toContain('1 external input was missing when this snapshot was built; 1 unresolved site is blamed on them as dependency_missing, and workspace_status counts them by package.')
+    // Two sites: `new AuditClient()` and the chained `.Send(total)` on it (#134).
+    expect(tool(dataDir, 'find_symbols', { text: 'OrderService' }).limitations).toContain('1 external input was missing when this snapshot was built; 2 unresolved sites are blamed on them as dependency_missing, and workspace_status counts them by package.')
     // #37: counted per package, so a project lacking several packages adds a site to each.
-    expect((tool(dataDir, 'workspace_status', {}).data as { calls: { dependency_missing_by_package: Record<string, number> } }).calls.dependency_missing_by_package).toEqual({ 'Contoso.Missing.Client': 1 })
+    expect((tool(dataDir, 'workspace_status', {}).data as { calls: { dependency_missing_by_package: Record<string, number> } }).calls.dependency_missing_by_package).toEqual({ 'Contoso.Missing.Client': 2 })
   })
 
   it.runIf(fixture === 'cs-orders')('FR017 the same-named C# decoy acquires no inbound resolved edge', () => {

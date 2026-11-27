@@ -225,7 +225,8 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
     const configs = Object.fromEntries(runs.map((r) => [r.spec.id, r.config!]))
     // Raising a budget must index again: a file the old budget failed is not the answer under the new one. Facts do not change with it.
     const budgets = Object.fromEntries(runs.map((r) => [r.spec.id, r.budgetMb!]))
-    const identity = { repository_id: repo.id, manifest_hash: manifest, config_hash: sha256(canonicalJson({ ...analysisConfig(), generated_policy: GENERATED_POLICY, adapters: configs, adapter_memory_mb: budgets })), analysis_mode: analysisMode, adapters, format_version: FORMAT_VERSION, format_ddl: sha256(readSql(`snapshot-format/${FORMAT_VERSION}.sql`)), ownership: OWNERSHIP_VERSION, resolution: RESOLUTION_VERSION, seams: SEAMS_VERSION, schema_seams: SCHEMA_SEAMS_VERSION, ffi_seams: FFI_SEAMS_VERSION }
+    // site_key: an assertion is keyed by its site's span, not its start byte (#134), so a snapshot written the old way is not reused.
+    const identity = { repository_id: repo.id, manifest_hash: manifest, config_hash: sha256(canonicalJson({ ...analysisConfig(), generated_policy: GENERATED_POLICY, adapters: configs, adapter_memory_mb: budgets })), analysis_mode: analysisMode, adapters, format_version: FORMAT_VERSION, format_ddl: sha256(readSql(`snapshot-format/${FORMAT_VERSION}.sql`)), ownership: OWNERSHIP_VERSION, resolution: RESOLUTION_VERSION, seams: SEAMS_VERSION, schema_seams: SCHEMA_SEAMS_VERSION, ffi_seams: FFI_SEAMS_VERSION, site_key: 'span' }
     // The fallbacks a published snapshot recorded. One made while analysing (an adapter died) is not a function of the inputs, so it is never the answer to a later index:
     // the identity takes a `retry` number past each such snapshot, and the adapter is asked again.
     const recorded = (id: string): Array<{ adapter: string; files: number; reason: string; kind: string }> => {
@@ -761,7 +762,8 @@ class FactWriter {
         imports.set(key, entry)
         continue
       }
-      const id = derivedId('as', 24, this.snapshotId, r.type, source.id, r.site.path, r.site.range.start_byte, target.id ?? '')
+      // Keyed by the site's whole span: every call of a chain (a.map().collect()) starts at the receiver, so a start byte alone merged them (FR650).
+      const id = derivedId('as', 24, this.snapshotId, r.type, source.id, r.site.path, r.site.range.start_byte, r.site.range.end_byte, target.id ?? '')
       if (!this.seenAssertion.has(id)) {
         const reason = resolved ? null : (r.reason ?? r.resolution)
         this.stmt.assertion!.run(id, r.type, r.origin, r.resolution, source.kind, source.id, target.kind, target.id, reason, r.detail ? canonicalJson(r.detail) : null, p.id, p.version, p.mode)
