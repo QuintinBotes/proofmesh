@@ -1007,6 +1007,12 @@
     "FR210": [
       "packages/proofmesh/test/reach-inferred.test.ts"
     ],
+    "FR560": [
+      "packages/proofmesh/test/reach-inferred.test.ts"
+    ],
+    "FR561": [
+      "packages/proofmesh/test/reach-inferred.test.ts"
+    ],
     "FR211": [
       "packages/proofmesh/test/rosetta.test.ts"
     ],

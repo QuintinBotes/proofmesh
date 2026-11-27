@@ -29,6 +29,12 @@ TypeScript and JavaScript `get` and `set` accessors are method symbols, so the c
 - The syntax tier already declared the first accessor of a pair but dropped the second, so a call in the setter came from the class; it now comes from the pair's method, with the same key as the precise tier.
 - Upgrade note: the TypeScript adapter's version is 0.2.0 and the syntax adapter's 0.2.0, so their cached facts are not replayed and the next index re-analyses TypeScript and JavaScript. Snapshots of code with accessors gain one method per accessor pair, and caller answers that named the class now name the accessor.
 
+Reach through inferred edges: what `find_tests` and `impact_completeness` say about candidate edges is tested (part of #21; FR560, FR561):
+
+- Tests only; no behaviour changed, and every new test passed on main. `find_tests` counts the candidate call sites it did not follow in its own note (`4 call sites with no single resolved target name code on these paths as a candidate; ...` for Go `Add` with `include_inferred` false), and `impact_completeness` says that candidate edges were followed and why, how many ambiguous sites past the cap it stopped at, and with `false` how many sites it did not follow. FR560 and FR561 write that down: FR204 keeps `find_tests`' note, which predates issue 21, so its count is not FR209's sentence.
+- SC-3 of #21: `bench/graph-bench` on Orbit before (11842f3) and after (89a2f51) #64 sealed the same snapshot and gave byte-identical raw answers to all twelve questions; only times differed.
+- Not done: SC-2 of #21, Go and Java recall and precision on a per-language benchmark, which does not exist yet (#9).
+
 The C# adapter is built by `pnpm build`, and an unbuilt one says so (closes #100; FR385 to FR387):
 
 - `pnpm build` ends with `node scripts/build-csharp.mjs`, which runs `dotnet build adapters/csharp -c Release -nologo -v:q -m:1` when `dotnet` is on PATH and fails the build if that fails. Without `dotnet` it prints `skipped: build the C# adapter (...)` and succeeds, unless an earlier adapter build exists, which would stay in use, and then fails, as `scripts/update.mjs` already did. `update:all` already built the adapter and still does.
