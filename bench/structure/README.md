@@ -17,7 +17,7 @@ node bench/structure/run.mjs              # then read bench/structure/out/struct
 - ProofMesh is asked over MCP (`proofmesh mcp --tools core,extra`), in the compact envelope, paging with the cursor until the answer is whole. ast-grep runs as `ast-grep run -p <pattern> -l <language> --json=stream <files>` on the files the repository tracks with that language's extensions.
 - SC-001: for every pattern, the sets of matched `path:start-end` line ranges must be equal.
 - SC-002: `$D.escape($A)` scoped by `reachable_from: DataSource.initialize` must return exactly those of its unscoped matches whose enclosing symbol `trace_paths` reaches from `DataSource.initialize`.
-- SC-003: the p95 time per TypeScript pattern on the parity fixture, over `STRUCTURE_RUNS` runs (3), must be at most ast-grep's. ProofMesh's time includes the MCP round trip.
+- SC-003, as FR1880 restates it: the p95 time per TypeScript pattern on the parity fixture, over `STRUCTURE_RUNS` runs (3), must be at most `p95_budget_ms` in `patterns.json` (1,500 ms). ProofMesh's time includes the MCP round trip. ast-grep's p95 is printed beside each pattern for comparison and is no longer the bar: each search is one Node process that parses with the WebAssembly grammars on one thread, where ast-grep is native and multi-threaded. The header records the machine's load; time it on an otherwise idle machine.
 - The script exits 1 when any of the three fails, and 2 when ast-grep or the fixture is missing.
 - `--record` rewrites `fixtures-answers.json`, ast-grep's answers on `fixtures/`. `packages/proofmesh/test/search-structure.test.ts` replays them against the matcher, so parity on `fixtures/` is checked without the CLI.
 

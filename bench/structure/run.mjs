@@ -1,8 +1,9 @@
 // Structural search against ast-grep (#37). Each pattern of patterns.json, in its language, is asked of search_structure over MCP
 // (extra profile) and of the pinned ast-grep CLI, on the same files: the parity fixture (TypeScript) and the TypeScript, Python
 // and Go files of fixtures/. SC-001: the sets of matched `path:start-end` line ranges are equal for every pattern. SC-002: the
-// scoped pattern returns exactly the matches whose enclosing symbol trace_paths reaches. SC-003: the p95 time per TypeScript
-// pattern on the parity fixture, over STRUCTURE_RUNS runs (3), is at most ast-grep's. Exits 1 when any of them fails.
+// scoped pattern returns exactly the matches whose enclosing symbol trace_paths reaches. SC-003 (as FR1880 restates it): the p95
+// time per TypeScript pattern on the parity fixture, over STRUCTURE_RUNS runs (3), is at most patterns.json's p95_budget_ms;
+// ast-grep's p95 is printed beside it for comparison. Exits 1 when any of them fails.
 //
 // Usage: node bench/structure/run.mjs [--record]. PARITY_FIXTURE is the parity fixture (default $TMPDIR/parity-typeorm; build it
 // with `sh bench/parity/run.sh --fixture-only`); ast-grep is found after $PARITY_TOOLS/npm/node_modules/.bin (install.sh).
@@ -118,9 +119,9 @@ for (const r of repos) r.mcp.close()
 // ---------- results ----------
 const sc1 = results.every((r) => r.same)
 const timedRows = results.filter((r) => r.p95 != null)
-const sc3 = timedRows.every((r) => r.p95 <= r.ast_grep_p95)
+const sc3 = timedRows.every((r) => r.p95 <= SUITE.p95_budget_ms)
 const head = run('git', ['-C', ROOT, 'rev-parse', '--short', 'HEAD']).stdout.trim()
-const meta = { proofmesh: head, ast_grep: agVersion, runs: RUNS, when: new Date().toISOString(), machine: `${os.type()} ${os.release()} ${os.arch()}, ${os.cpus()[0]?.model ?? ''} x${os.cpus().length}, load ${os.loadavg().map((l) => l.toFixed(0)).join(' ')}, Node ${process.version}`, fixture: fs.readFileSync(path.join(FIX, 'PROVENANCE'), 'utf8').split('\n')[1] }
+const meta = { proofmesh: head, ast_grep: agVersion, runs: RUNS, p95_budget_ms: SUITE.p95_budget_ms, when: new Date().toISOString(), machine: `${os.type()} ${os.release()} ${os.arch()}, ${os.cpus()[0]?.model ?? ''} x${os.cpus().length}, load ${os.loadavg().map((l) => l.toFixed(0)).join(' ')}, Node ${process.version}`, fixture: fs.readFileSync(path.join(FIX, 'PROVENANCE'), 'utf8').split('\n')[1] }
 fs.writeFileSync(path.join(OUT, 'results.json'), JSON.stringify({ meta, sc1, sc2, sc3, patterns: results.map(({ ast_grep_sites: _s, ...r }) => r) }, null, 1))
 const md = [
   `# search_structure against ast-grep ${agVersion}`, '',
@@ -129,7 +130,7 @@ const md = [
   ...results.map((r) => `| ${r.repo} | ${r.language} | \`${r.pattern.replaceAll('|', '\\|').replaceAll('\n', '\\n')}\` | ${r.matches} | ${r.ast_grep} | ${r.same ? 'yes' : `no (+${r.extra.length} −${r.missing.length})`} | ${r.p95 != null ? `${Math.round(r.p95)} / ${Math.round(r.ast_grep_p95)}` : '-'} |`),
   '', `Scope: \`${sc.pattern}\` reachable_from \`${sc.reachable_from}\`: ${got.length} of ${every.rows.length} matches, ${sc2.same ? 'exactly' : 'NOT'} those whose enclosing symbol trace_paths reaches (${sc2.symbols_reached} of ${reached.size} symbols).`,
   '', `- SC-001 identical match sets on every pattern: ${sc1 ? 'met' : 'NOT met'}`, `- SC-002 scoped matches equal the reachable set: ${sc2.same ? 'met' : 'NOT met'}`,
-  `- SC-003 p95 per TypeScript pattern at most ast-grep's: ${sc3 ? 'met' : `NOT met (${timedRows.filter((r) => r.p95 > r.ast_grep_p95).length} of ${timedRows.length} patterns slower)`}`, '',
+  `- SC-003 p95 per TypeScript pattern at most ${SUITE.p95_budget_ms} ms (FR1880): ${sc3 ? 'met' : `NOT met (${timedRows.filter((r) => r.p95 > SUITE.p95_budget_ms).length} of ${timedRows.length} patterns over)`}; slowest ${Math.round(Math.max(...timedRows.map((r) => r.p95)))} ms, ast-grep's slowest ${Math.round(Math.max(...timedRows.map((r) => r.ast_grep_p95)))} ms`, '',
 ].join('\n')
 fs.writeFileSync(path.join(OUT, 'structure.md'), md)
 console.log(md)

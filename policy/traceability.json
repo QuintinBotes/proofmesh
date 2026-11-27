@@ -2055,6 +2055,9 @@
     "FR1067": [
       "packages/proofmesh/test/search-structure.test.ts"
     ],
+    "FR1880": [
+      "bench/structure/run.mjs"
+    ],
     "FR1140": [
       "e2e/palette.spec.ts",
       "e2e/accessibility.spec.ts"

@@ -4,6 +4,8 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 ## Unreleased
 
+`search_structure`'s latency target is restated (closes #37; FR1880). SC-003 asked for a p95 per TypeScript pattern no slower than the native, multi-threaded ast-grep CLI, which one Node process parsing with WebAssembly grammars on one thread cannot meet. `bench/structure` now checks each pattern's p95 on the parity fixture against a 1,500 ms budget (`p95_budget_ms` in `patterns.json`), MCP round trip included, and still prints ast-grep's time beside it.
+
 A Python file the Python adapter analysed reports `references: partial` even when it records no use, as it was read for them (#224; FR1640). A snapshot of Python alone now gives the partial references note instead of `References other than calls and imports are not analysed for this snapshot.`, and the language census counts those files as partial.
 
 A bounded, read-only graph query for composed questions (#36; FR960 to FR966):

@@ -170,7 +170,7 @@ search_structure { "pattern": "for (const $X of $Y) {\n  $$$\n  await $Z\n  $$$\
   ```
 
 - **Bounds.** A pattern is untrusted input that runs over captured source, so it is bounded and never run. The match runs in the syntax adapter's own process with a minimal environment and a 1 GiB heap. That process stops at `timeout_ms` and returns what it found, and it is killed one second later if it has not stopped. A pattern is at most 4,096 characters. A file over 1 MiB is not parsed, and one search reads at most 64 MiB of source; both are counted in a limitation. The matcher keeps only the rows of the page asked for, so `max_rows` pages with a cursor and `completion.total` counts every match. After a timeout, the total counts the matches found before it.
-- `bench/structure` compares every answer with the pinned ast-grep CLI. Every match set is the same. ast-grep is still several times faster on the parity fixture (SC-003 of #37, open).
+- `bench/structure` compares every answer with the pinned ast-grep CLI. Every match set is the same. Each TypeScript pattern answers on the parity fixture in at most 1.5 s at p95, MCP round trip included (FR1880). ast-grep's native, multi-threaded CLI is still several times faster, and the benchmark prints its time beside each pattern.
 
 ## Graph query: `query_graph` (FR960 to FR966)
 
