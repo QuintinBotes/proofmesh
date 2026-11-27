@@ -17,6 +17,7 @@ import { effectiveCodeowners, ownerRule, OWNERSHIP_VERSION, parseCodeowners, typ
 import { EvidenceStore } from '../evidence/store.js'
 import { manifestHash, unstable } from './freshness.js'
 import { fillBodyHashes } from './body-hash.js'
+import { fillTerms, TERMS_VERSION } from './terms.js'
 import { adapterBudget, AdapterBudgetError, AdapterProcess, AdapterProtocolError, PROTOCOL_VERSION } from './adapter-host.js'
 import { assemble, FactCache, fileKeys, splitByFile, type FileFacts } from './fact-cache.js'
 import { analysisConfig, checkoutCommit, discoverAsync, gitInfo, type Discovered } from './discovery.js'
@@ -59,7 +60,7 @@ type Rel = AnalyzeResponse['relationships'][number]
 type AdapterRun = { spec: AdapterSpec; sources: Discovered[]; configs: Discovered[]; process?: AdapterProcess; manifest?: InitializeResponse['adapter']; inputs?: string[]; mode: Mode; units?: InitializeResponse['units']; keys?: Map<string, string>; entrySha256?: string; budgetMb?: number; budgetSource?: 'setting' | 'machine'; config?: Record<string, unknown>; unstartable?: AdapterBudgetError; /** The failure an adapter died with: files it has no cached facts for are not asked of it again. */ dead?: AdapterProtocolError; cap?: number; streak?: number; /** Why a fallback adapter could not start or answer workspace: it is not asked again, and its files go to the syntax tier. */ initFailure?: AdapterProtocolError }
 type Producer = { id: string; version: string; mode: Mode }
 /** The versions of this build's analysis that a snapshot's identity names; an imported snapshot must name the same (FR1082). */
-export const analysisVersions = () => ({ format_version: FORMAT_VERSION, format_ddl: sha256(readSql(`snapshot-format/${FORMAT_VERSION}.sql`)), ownership: OWNERSHIP_VERSION, resolution: RESOLUTION_VERSION, seams: SEAMS_VERSION, schema_seams: SCHEMA_SEAMS_VERSION, ffi_seams: FFI_SEAMS_VERSION, doc_links: DOC_LINKS_VERSION, site_key: 'span' })
+export const analysisVersions = () => ({ format_version: FORMAT_VERSION, format_ddl: sha256(readSql(`snapshot-format/${FORMAT_VERSION}.sql`)), ownership: OWNERSHIP_VERSION, resolution: RESOLUTION_VERSION, seams: SEAMS_VERSION, schema_seams: SCHEMA_SEAMS_VERSION, ffi_seams: FFI_SEAMS_VERSION, doc_links: DOC_LINKS_VERSION, terms: TERMS_VERSION, site_key: 'span' })
 
 /** Import kinds, strongest first: a file that imports another both for its values and for its types depends on it at run time. */
 const IMPORT_KINDS = ['static', 're_export', 'type_only']
@@ -547,6 +548,7 @@ export async function indexRepository(dataDir: string, repoIdOrPath: string, onP
       }
       db.prepare("insert into meta (key, value) values ('doc_links', ?)").run(canonicalJson({ docs: Object.fromEntries(docs.map((d) => [d.path, d.hash])), stale }))
       if (unreadable.length) db.prepare("insert into meta (key, value) values ('body_hash_missing', ?)").run(canonicalJson({ count: unreadable.length, paths: unreadable.slice(0, 20) }))
+      fillTerms(db, store)
       // A key the core had to disambiguate means an adapter named two declarations alike: recorded, never silent (FR147).
       if (writer.disambiguated.length) db.prepare("insert into meta (key, value) values ('key_disambiguated', ?)").run(canonicalJson({ count: writer.disambiguated.length, truncated: false, keys: writer.disambiguated }))
       // Build modules a syntax-tier edge ties into a cycle, in an ecosystem whose builds forbid one (FR178).

@@ -2013,6 +2013,24 @@
     "FR1200": [
       "apps/observatory/test/galaxy.test.ts",
       "e2e/casefold.spec.ts"
+    ],
+    "FR580": [
+      "packages/proofmesh/test/concepts.test.ts"
+    ],
+    "FR581": [
+      "packages/proofmesh/test/concepts.test.ts"
+    ],
+    "FR582": [
+      "packages/proofmesh/test/concepts.test.ts"
+    ],
+    "FR583": [
+      "packages/proofmesh/test/concepts.test.ts"
+    ],
+    "FR584": [
+      "packages/proofmesh/test/concepts.test.ts"
+    ],
+    "FR585": [
+      "packages/proofmesh/test/concepts.test.ts"
     ]
   },
   "manual": {

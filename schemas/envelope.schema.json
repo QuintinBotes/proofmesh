@@ -66,7 +66,8 @@
         "find_hubs",
         "get_context_map",
         "plan_rename",
-        "search_structure"
+        "search_structure",
+        "search_concepts"
       ]
     },
     "snapshot": {

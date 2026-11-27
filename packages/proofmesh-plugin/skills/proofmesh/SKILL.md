@@ -11,6 +11,7 @@ The repository is indexed in Proofmesh, and its tools answer from a sealed snaps
 - `get_relationships`: callers, callees, imports and framework relationships of a symbol, or of a file named by its `path`; each row names the file and line.
 - `trace_paths`: how one symbol reaches another, with the limits that bounded the search.
 - `analyze_impact` and `find_tests`: what a change touches and which tests reach it; `analyze_impact` with `paths` and `types: ["imports"]` lists the files that depend on a file.
+- `search_concepts`: from a description (an issue, a task in prose) to the symbols and files most likely involved, ranked, each with the words that matched; start here when you know what the code does but not its names.
 - `search_sources`: text search over the indexed files when a name is unknown.
 - `read_evidence`: the exact bytes behind a fact.
 - `find_query_source`: the endpoints and jobs likely behind a SQL statement, ranked by evidence.

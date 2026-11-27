@@ -26,6 +26,8 @@ node_modules/
 /bench/parity/out/
 # Structural search benchmark (bench/structure): its results.
 /bench/structure/out/
+# Localisation benchmark results; its dataset and trees are cached outside the clone.
+/bench/localise/out/
 
 # Release artifacts are built locally and never committed.
 /release/out/

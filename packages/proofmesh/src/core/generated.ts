@@ -4,7 +4,7 @@
 export interface Envelope {
 schema_version: "0.1"
 query_id: string
-tool: ("workspace_status" | "list_repositories" | "list_snapshots" | "list_workspaces" | "find_symbols" | "get_symbol" | "get_relationships" | "trace_paths" | "read_evidence" | "get_overview" | "analyze_impact" | "find_tests" | "search_sources" | "get_memory" | "verify_claim" | "request_index" | "get_job" | "get_claims" | "save_memory" | "get_table_reach" | "get_property_reads" | "get_external_usage" | "find_query_source" | "compare_snapshots" | "list_queries" | "get_ecosystem" | "prepare_verification" | "get_verification" | "impact_completeness" | "get_symbols_at" | "get_session_trail" | "find_stale_mentions" | "find_unused" | "find_cycles" | "find_entry_points" | "find_hubs" | "get_context_map" | "plan_rename" | "search_structure")
+tool: ("workspace_status" | "list_repositories" | "list_snapshots" | "list_workspaces" | "find_symbols" | "get_symbol" | "get_relationships" | "trace_paths" | "read_evidence" | "get_overview" | "analyze_impact" | "find_tests" | "search_sources" | "get_memory" | "verify_claim" | "request_index" | "get_job" | "get_claims" | "save_memory" | "get_table_reach" | "get_property_reads" | "get_external_usage" | "find_query_source" | "compare_snapshots" | "list_queries" | "get_ecosystem" | "prepare_verification" | "get_verification" | "impact_completeness" | "get_symbols_at" | "get_session_trail" | "find_stale_mentions" | "find_unused" | "find_cycles" | "find_entry_points" | "find_hubs" | "get_context_map" | "plan_rename" | "search_structure" | "search_concepts")
 /**
  * The sealed snapshot or link file that answered; null for a catalog tool, which answers from the list of registered repositories.
  */
@@ -3357,6 +3357,108 @@ freshness?: ("snapshot" | "strict")
  * compact leaves out the snapshot-wide parts of the envelope (unresolved reasons, standing limitations) that an earlier answer from the same snapshot already gave; query-specific limits stay. Over MCP, answers after the first full one per snapshot are compact unless full is asked for.
  */
 envelope?: ("full" | "compact")
+}
+
+export interface SearchConceptsData {
+symbols: {
+id: string
+kind: ("function" | "class" | "method" | "interface" | "type_alias" | "variable" | "module" | "struct" | "enum" | "property" | "field" | "constructor" | "namespace" | "project" | "package" | "endpoint" | "table" | "message" | "channel" | "job" | "feature_flag" | "config_key" | "team" | "service")
+name: string
+qualified_name: string
+path: string
+start_line: number
+/**
+ * The rank score: lexical relevance plus any graph-proximity boost (docs/proofmesh/mcp.md states the formula).
+ */
+score: number
+/**
+ * Up to five query terms that matched, the heaviest first.
+ * 
+ * @maxItems 5
+ */
+terms: string[]
+/**
+ * The best lexical match this symbol is one or two resolved relationships from, when that proximity raised its score.
+ */
+via?: string
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
+/**
+ * The stable_key of the symbol (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file.
+ */
+key?: string
+}[]
+files: {
+path: string
+/**
+ * Where to start reading: the declaration of the file's best symbol, else the first line a term occurs on.
+ */
+line: number
+/**
+ * The rank score: lexical relevance plus any graph-proximity boost (docs/proofmesh/mcp.md states the formula).
+ */
+score: number
+/**
+ * Up to five query terms that matched, the heaviest first.
+ * 
+ * @maxItems 5
+ */
+terms: string[]
+/**
+ * Present and true when the file is generated (FR292); absent otherwise.
+ */
+generated?: boolean
+}[]
+/**
+ * The query terms ranked by, the heaviest first: the words of the text the index holds, stop words left out.
+ */
+terms: string[]
+/**
+ * Present when the text had more indexed terms than the 32 kept: how many lighter ones were left out.
+ */
+terms_dropped?: number
+}
+
+/**
+ * Rank the symbols and files that match a description (an issue, a task in prose), with no model; each row has file:line, a score and the words that matched.
+ */
+export interface SearchConceptsInput {
+/**
+ * Optional when exactly one repository is registered.
+ */
+repository_id?: string
+/**
+ * Null pins the current published snapshot.
+ */
+snapshot_id?: (string | null)
+limits?: {
+timeout_ms?: number
+max_rows?: number
+max_bytes?: number
+max_depth?: number
+}
+/**
+ * The description, up to a whole issue body. Its heaviest terms are kept, at most 32, and the answer says when it was cut.
+ */
+text: string
+/**
+ * Only symbols of these kinds; files are ranked all the same.
+ */
+kinds?: ("function" | "class" | "method" | "interface" | "type_alias" | "variable" | "module" | "struct" | "enum" | "property" | "field" | "constructor" | "namespace" | "project" | "package" | "endpoint" | "table" | "message" | "channel" | "job" | "feature_flag" | "config_key" | "team" | "service")[]
+/**
+ * Only symbols and files under this path prefix.
+ */
+path_prefix?: string
+/**
+ * true ranks test code by its score alone; by default it ranks below production code, recognised as find_symbols recognises it.
+ */
+include_tests?: boolean
+/**
+ * lean (the default over MCP) is plain text. Each row is `<name> <path>:<line> <kind>` for a symbol, then `<path>:<line> file` for a file, tagged score=<n>, terms=<a,b> (up to five) and via=<name> when graph proximity raised it. compact or full: the JSON envelope, with ids.
+ */
+envelope?: ("full" | "compact" | "lean")
 }
 
 export interface SearchSourcesData {
