@@ -3,7 +3,8 @@
 import path from 'node:path'
 import type Database from 'better-sqlite3'
 import type { EvidenceStore } from '../evidence/store.js'
-import { isTestPath } from './tests.js'
+import { excludeGeneratedSql } from './generated-policy.js'
+import { isTestPath, rolesSql } from './tests.js'
 
 /** Relationship types by which one symbol uses another. `contains` and `overrides` are structure, not use. */
 export const USE_TYPES = ['calls', 'references', 'inherits', 'implements', 'imports', 'injects', 'renders', 'uses_hook', 'uses_context', 'provides_context'] as const
@@ -11,7 +12,10 @@ export const USE_TYPES = ['calls', 'references', 'inherits', 'implements', 'impo
 const FRAMEWORK_TYPES = ['exposes', 'runs', 'handles', 'registered_as', 'dispatches_to', 'consumes', 'listens_on'] as const
 const marks = (n: number) => Array(n).fill('?').join(', ')
 const push = <K, V>(m: Map<K, V[]>, k: K, v: V) => { const l = m.get(k); if (l) l.push(v); else m.set(k, [v]) }
-const prefixLike = (p: string | undefined) => (p ? `${p.replace(/[\\%_]/g, (c) => `\\${c}`)}%` : '%')
+/** A path prefix in SQL, case-sensitive as the filters in JavaScript are (LIKE folds ASCII case). Bind the prefix, or '' for none. */
+const UNDER = 'instr(f.path, ?) = 1'
+/** Generated files are left out of a listing unless asked for (FR299). */
+const notGenerated = (include: boolean) => (include ? '' : ` and ${excludeGeneratedSql()}`)
 /** A symbol nested in another symbol of its file (a member, a local); a namespace or module does not count as nesting. */
 const NESTED_SQL = "exists (select 1 from symbol t where t.file_id = s.file_id and t.id <> s.id and t.kind not in ('module', 'namespace', 'project', 'package') and t.start_byte <= s.start_byte and t.end_byte >= s.end_byte and (t.start_byte < s.start_byte or t.end_byte > s.end_byte))"
 
@@ -31,7 +35,7 @@ export function manifestEntries(db: Database.Database, store: EvidenceStore): Ma
     const strings = (v: unknown): string[] => (typeof v === 'string' ? [v] : v && typeof v === 'object' ? Object.values(v).flatMap(strings) : [])
     const dir = path.posix.dirname(m.path)
     const add = (kind: ManifestEntry['kind'], key: string) => {
-      for (const target of [...new Set(strings(json[key]))]) out.push({ kind, manifest: m.path, line: lineOf(key), target, file: resolveEntry(indexed, dir, target) })
+      for (const target of [...new Set(strings(json[key]))]) out.push({ kind, manifest: m.path, line: lineOf(target) > 1 ? lineOf(target) : lineOf(key), target, file: resolveEntry(indexed, dir, target) })
     }
     for (const key of ['main', 'module', 'types', 'typings']) add('main', key)
     add('exports', 'exports')
@@ -149,13 +153,13 @@ export function findCycles(db: Database.Database, o: { pathPrefix?: string; incl
 export type EntryPoint = { reason: 'not_imported' | 'endpoint' | 'job' | 'main' | 'bin' | 'exports'; path: string; line: number; name: string | null; kind: string | null; id: string | null; manifest?: string; target?: string }
 
 /** Modules nothing in scope imports, then framework entry points (endpoints, jobs) and the entries package manifests name. */
-export function findEntryPoints(db: Database.Database, store: EvidenceStore, o: { pathPrefix?: string; includeTests: boolean; isTest: (p: string) => boolean }): EntryPoint[] {
+export function findEntryPoints(db: Database.Database, store: EvidenceStore, o: { pathPrefix?: string; includeTests: boolean; includeGenerated: boolean; isTest: (p: string) => boolean }): EntryPoint[] {
   const inPrefix = (p: string) => !o.pathPrefix || p.startsWith(o.pathPrefix)
   const imported = new Set(importEdges(db).filter((e) => inPrefix(e.from)).map((e) => e.to))
-  const modules = (db.prepare("select f.path from file f join symbol s on s.file_id = f.id and s.kind = 'module' where f.disposition = 'indexed' and f.path like ? escape '\\' group by f.id order by f.path").all(prefixLike(o.pathPrefix)) as Array<{ path: string }>)
+  const modules = (db.prepare(`select f.path from file f join symbol s on s.file_id = f.id and s.kind = 'module' where f.disposition = 'indexed' and ${UNDER}${notGenerated(o.includeGenerated)} group by f.id order by f.path`).all(o.pathPrefix ?? '') as Array<{ path: string }>)
     .filter((f) => !imported.has(f.path) && (o.includeTests || !o.isTest(f.path)))
     .map((f): EntryPoint => ({ reason: 'not_imported', path: f.path, line: 1, name: null, kind: 'module', id: null }))
-  const framework = (db.prepare("select s.id, s.kind, s.name, s.qualified_name, f.path, s.start_line as line from symbol s join file f on f.id = s.file_id where s.kind in ('endpoint', 'job') and f.path like ? escape '\\' order by s.kind, f.path, s.start_line, s.qualified_name, s.id").all(prefixLike(o.pathPrefix)) as Array<{ id: string; kind: 'endpoint' | 'job'; name: string; qualified_name: string; path: string; line: number }>)
+  const framework = (db.prepare(`select s.id, s.kind, s.name, s.qualified_name, f.path, s.start_line as line from symbol s join file f on f.id = s.file_id where s.kind in ('endpoint', 'job') and ${UNDER}${notGenerated(o.includeGenerated)} order by s.kind, f.path, s.start_line, s.qualified_name, s.id`).all(o.pathPrefix ?? '') as Array<{ id: string; kind: 'endpoint' | 'job'; name: string; qualified_name: string; path: string; line: number }>)
     .map((s): EntryPoint => ({ reason: s.kind, path: s.path, line: s.line, name: s.qualified_name, kind: s.kind, id: s.id }))
   const manifests = manifestEntries(db, store).filter((m) => inPrefix(m.file ?? m.manifest))
     .map((m): EntryPoint => ({ reason: m.kind, path: m.file ?? m.manifest, line: m.file ? 1 : m.line, name: m.file ? null : m.target, kind: null, id: null, manifest: m.manifest, target: m.target }))
@@ -170,14 +174,19 @@ export type UnusedRow = { id: string; kind: string; name: string; qualified_name
  * registration or a package's public exports reach is listed under reachable_only_by; one an inferred edge or an unresolved call by its
  * name could reach is listed under possibly_used, with the count of such sites.
  */
-export function findUnused(db: Database.Database, store: EvidenceStore, o: { kinds: string[]; pathPrefix?: string; topLevelOnly: boolean; includeTests: boolean }): { rows: UnusedRow[]; checked: number } {
+export function findUnused(db: Database.Database, store: EvidenceStore, o: { kinds: string[]; pathPrefix?: string; topLevelOnly: boolean; includeTests: boolean; includeGenerated: boolean }): { rows: UnusedRow[]; checked: number } {
+  // A snapshot sealed before roles existed (format 0.9) has no roles column.
+  const roles = rolesSql(db, 's')
   const symbolKinds = o.kinds.filter((k) => k !== 'module')
   const candidates = symbolKinds.length ? db.prepare(`select s.id, s.kind, s.name, s.qualified_name, f.path, s.start_line as line, s.start_byte, s.evidence_id from symbol s join file f on f.id = s.file_id
-    where s.kind in (${marks(symbolKinds.length)}) and f.disposition = 'indexed' and f.path like ? escape '\\'${o.includeTests ? '' : ' and not pm_is_test(f.path, s.roles)'}${o.topLevelOnly ? ` and not ${NESTED_SQL}` : ''}
-    order by f.path, s.start_byte, s.qualified_name, s.id`).all(...symbolKinds, prefixLike(o.pathPrefix)) as Array<Omit<UnusedRow, 'group'> & { start_byte: number; evidence_id: string }> : []
+    where s.kind in (${marks(symbolKinds.length)}) and f.disposition = 'indexed' and ${UNDER}${notGenerated(o.includeGenerated)}${o.includeTests ? '' : ` and not pm_is_test(f.path, ${roles})`}${o.topLevelOnly ? ` and not ${NESTED_SQL}` : ''}
+    order by f.path, s.start_byte, s.qualified_name, s.id`).all(...symbolKinds, o.pathPrefix ?? '') as Array<Omit<UnusedRow, 'group'> & { start_byte: number; evidence_id: string }> : []
   // Each user of a symbol, and whether that user is test code; a symbol's use of itself (recursion) is no use.
-  const users = db.prepare(`select distinct e.src, coalesce(pm_is_test(f.path, s.roles), 0) as test from edge e left join symbol s on s.id = e.src left join file f on f.id = coalesce(s.file_id, e.src)
-    where e.dst = ? and e.src <> e.dst and e.resolution = 'resolved' and e.type in (${marks(USE_TYPES.length)})`)
+  const usersBy = (types: readonly string[]) => db.prepare(`select distinct e.src, coalesce(pm_is_test(f.path, ${roles}), 0) as test from edge e left join symbol s on s.id = e.src left join file f on f.id = coalesce(s.file_id, e.src)
+    where e.dst = ? and e.src <> e.dst and e.resolution = 'resolved' and e.type in (${types.map((t) => `'${t}'`).join(', ')})`)
+  const users = usersBy(USE_TYPES)
+  // Through dispatch only a call or reference reaches an implementation; another implementation of the member is no user of it.
+  const callers = usersBy(['calls', 'references'])
   const framework = db.prepare(`select 1 from edge where (dst = ? or src = ?) and resolution = 'resolved' and type in (${marks(FRAMEWORK_TYPES.length)}) limit 1`)
   // An implementation or override is used when the member it implements is: calls through an interface or base land on it (dispatch).
   const dispatched = db.prepare(`select t.dst from edge t where t.src = ? and t.type in ('implements', 'overrides') and t.resolution = 'resolved'`)
@@ -201,15 +210,25 @@ export function findUnused(db: Database.Database, store: EvidenceStore, o: { kin
     const at = new RegExp(`\\b(?:function\\*?|class|interface|type|enum|const|let|var|namespace|module)\\s+${c.name.replace(/[$]/g, '\\$&')}(?![\\w$])`).exec(head)
     return at ? head.slice(0, at.index) : ''
   }
-  const usersOf = (id: string) => users.all(id, ...USE_TYPES) as Array<{ src: string; test: number }>
+  // The local names a file exports by an export list (`export { f, g as h }`), read once per file.
+  const lists = new Map<string, Set<string>>()
+  const exportList = (evidenceId: string) => {
+    const hash = (declaration.get(evidenceId) as { object_hash: string } | undefined)?.object_hash ?? ''
+    if (!lists.has(hash)) {
+      if (!texts.has(hash)) texts.set(hash, store.read(hash)?.toString('latin1') ?? '')
+      lists.set(hash, new Set([...texts.get(hash)!.matchAll(/\bexport\s*(?:type\s*)?\{([^}]*)\}(?!\s*from\b)/g)].flatMap((m) => m[1]!.split(',').map((x) => x.trim().split(/\s+as\s+/)[0]!.replace(/^type\s+/, '')).filter(Boolean))))
+    }
+    return lists.get(hash)!
+  }
+  const usersOf = (id: string) => users.all(id) as Array<{ src: string; test: number }>
   const rows: UnusedRow[] = []
   for (const { start_byte: _b, evidence_id, ...c } of candidates) {
     let found = usersOf(c.id)
-    if (!found.some((u) => !u.test || o.includeTests)) found = [...found, ...(dispatched.all(c.id) as Array<{ dst: string }>).flatMap((d) => usersOf(d.dst))]
+    if (!found.some((u) => !u.test || o.includeTests)) found = [...found, ...(dispatched.all(c.id) as Array<{ dst: string }>).flatMap((d) => callers.all(d.dst) as Array<{ src: string; test: number }>)]
     if (found.some((u) => !u.test || o.includeTests)) continue
     if (found.length) rows.push({ ...c, group: 'reachable_only_by', by: 'test' })
     else if (framework.get(c.id, c.id, ...FRAMEWORK_TYPES)) rows.push({ ...c, group: 'reachable_only_by', by: 'framework' })
-    else if (pub.has(c.path) && /\bexport\b/.test(modifiers({ name: c.name, evidence_id }))) rows.push({ ...c, group: 'reachable_only_by', by: 'public_export' })
+    else if (pub.has(c.path) && (/\bexport\b/.test(modifiers({ name: c.name, evidence_id })) || exportList(evidence_id).has(c.name))) rows.push({ ...c, group: 'reachable_only_by', by: 'public_export' })
     else {
       const inferred = (candidateSites.get(c.id) as { n: number }).n, named = byName.get(c.name) ?? 0
       rows.push(inferred + named ? { ...c, group: 'possibly_used', sites: inferred + named, ...(inferred ? { inferred: true } : {}) } : { ...c, group: 'unused' })
@@ -223,7 +242,7 @@ export function findUnused(db: Database.Database, store: EvidenceStore, o: { kin
 }
 
 /** Files no other file imports and none of whose symbols another file uses; tests and manifest entries are listed apart. */
-function unusedModules(db: Database.Database, o: { pathPrefix?: string; includeTests: boolean }, pub: Set<string>): { rows: UnusedRow[]; checked: number } {
+function unusedModules(db: Database.Database, o: { pathPrefix?: string; includeTests: boolean; includeGenerated: boolean }, pub: Set<string>): { rows: UnusedRow[]; checked: number } {
   const edges = importEdges(db).filter((e) => e.from !== e.to)
   const importers = new Map<string, string[]>()
   for (const e of edges) push(importers, e.to, e.from)
@@ -232,7 +251,7 @@ function unusedModules(db: Database.Database, o: { pathPrefix?: string; includeT
   const out: UnusedRow[] = []
   let checked = 0
   for (const m of db.prepare(`select s.id, s.kind, s.name, s.qualified_name, f.path, s.start_line as line, f.id as file_id from symbol s join file f on f.id = s.file_id
-    where s.kind = 'module' and f.disposition = 'indexed' and f.path like ? escape '\\' order by f.path`).all(prefixLike(o.pathPrefix)) as Array<Omit<UnusedRow, 'group'> & { file_id: string }>) {
+    where s.kind = 'module' and f.disposition = 'indexed' and ${UNDER}${notGenerated(o.includeGenerated)} order by f.path`).all(o.pathPrefix ?? '') as Array<Omit<UnusedRow, 'group'> & { file_id: string }>) {
     const { file_id, ...row } = m
     if (!o.includeTests && isTestPath(m.path)) continue
     checked++
@@ -260,8 +279,8 @@ export type Hub = { id: string; kind: string; name: string; qualified_name: stri
  * The most depended-on symbols: by fan_in (distinct symbols that use one through a resolved relationship), fan_out (distinct symbols one
  * uses) or betweenness (shortest use paths through one, Brandes; sampled from evenly spaced sources on a large graph).
  */
-export function findHubs(db: Database.Database, o: { top: number; by: 'fan_in' | 'fan_out' | 'betweenness'; kinds?: string[]; pathPrefix?: string; includeTests: boolean; deadline: number }): { hubs: Hub[]; sampled: number | null; timedOut: boolean } {
-  const testFilter = o.includeTests ? '' : ' and not pm_is_test(fs.path, ss.roles) and not pm_is_test(fd.path, sd.roles)'
+export function findHubs(db: Database.Database, o: { top: number; by: 'fan_in' | 'fan_out' | 'betweenness'; kinds?: string[]; pathPrefix?: string; includeTests: boolean; includeGenerated: boolean; deadline: number }): { hubs: Hub[]; sampled: number | null; timedOut: boolean } {
+  const testFilter = o.includeTests ? '' : ` and not pm_is_test(fs.path, ${rolesSql(db, 'ss')}) and not pm_is_test(fd.path, ${rolesSql(db, 'sd')})`
   const pairs = db.prepare(`select distinct e.src, e.dst from edge e join symbol ss on ss.id = e.src join file fs on fs.id = ss.file_id join symbol sd on sd.id = e.dst join file fd on fd.id = sd.file_id
     where e.resolution = 'resolved' and e.src <> e.dst and e.type in (${marks(USE_TYPES.length)})${testFilter}`).all(...USE_TYPES) as Array<{ src: string; dst: string }>
   const fanIn = new Map<string, number>(), fanOut = new Map<string, number>(), adj = new Map<string, string[]>()
@@ -273,15 +292,14 @@ export function findHubs(db: Database.Database, o: { top: number; by: 'fan_in' |
   if (o.by === 'betweenness') ({ score, sampled, timedOut } = betweenness(adj, o.deadline))
   else score = o.by === 'fan_in' ? fanIn : fanOut
   const kinds = o.kinds?.length ? new Set(o.kinds) : null
-  const symbol = db.prepare("select s.id, s.kind, s.name, s.qualified_name, f.path, s.start_line as line, pm_is_test(f.path, s.roles) as test from symbol s join file f on f.id = s.file_id where s.id = ?")
+  const symbol = db.prepare(`select s.id, s.kind, s.name, s.qualified_name, f.path, s.start_line as line from symbol s join file f on f.id = s.file_id where s.id = ?${notGenerated(o.includeGenerated)}`)
   const ranked = [...score].filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))
   const hubs: Hub[] = []
   for (const [id, n] of ranked) {
     if (hubs.length >= o.top) break
-    const s = symbol.get(id) as (Omit<Hub, 'fan_in' | 'fan_out'> & { test: number }) | undefined
+    const s = symbol.get(id) as Omit<Hub, 'fan_in' | 'fan_out'> | undefined
     if (!s || (kinds && !kinds.has(s.kind)) || (o.pathPrefix && !s.path.startsWith(o.pathPrefix))) continue
-    const { test: _t, ...row } = s
-    hubs.push({ ...row, fan_in: fanIn.get(id) ?? 0, fan_out: fanOut.get(id) ?? 0, ...(o.by === 'betweenness' ? { betweenness: Math.round(n * 100) / 100 } : {}) })
+    hubs.push({ ...s, fan_in: fanIn.get(id) ?? 0, fan_out: fanOut.get(id) ?? 0, ...(o.by === 'betweenness' ? { betweenness: Math.round(n * 100) / 100 } : {}) })
   }
   // Equal scores are ordered by id inside the query; the answer orders them by name, so it reads the same across snapshots.
   hubs.sort((a, b) => (o.by === 'fan_in' ? b.fan_in - a.fan_in : o.by === 'fan_out' ? b.fan_out - a.fan_out : b.betweenness! - a.betweenness!) || (a.qualified_name < b.qualified_name ? -1 : a.qualified_name > b.qualified_name ? 1 : a.path < b.path ? -1 : 1))

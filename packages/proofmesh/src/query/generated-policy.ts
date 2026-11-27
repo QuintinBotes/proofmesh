@@ -3,11 +3,11 @@
 import type Database from 'better-sqlite3'
 
 /**
- * The listings that leave generated files out unless `include_generated` is passed. `hubs` is implemented; `dead_code` and
- * `entry_points` are tools issue 34 has yet to build, and each must filter its rows with `excludeGeneratedSql`, accept
- * `include_generated`, and add `generatedLeftOut`'s note to its limitations.
+ * The listings that leave generated files out unless `include_generated` is passed: the hubs of `workspace_status` and `find_hubs`,
+ * `find_unused` (dead code) and `find_entry_points`. Each filters its rows with `excludeGeneratedSql`, accepts `include_generated`, and
+ * adds `generatedLeftOut`'s note to its limitations.
  */
-export const GENERATED_LISTINGS = { hubs: 'implemented', dead_code: 'pending_issue_34', entry_points: 'pending_issue_34' } as const
+export const GENERATED_LISTINGS = { hubs: 'implemented', dead_code: 'implemented', entry_points: 'implemented' } as const
 
 const IS_GENERATED = "json_extract(f.capabilities, '$.generated') = 'true'"
 /** An SQL condition on a joined `file f` that keeps the rows of files not flagged generated. */

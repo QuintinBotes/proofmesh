@@ -490,7 +490,7 @@ edges: number
 }
 
 /**
- * Import cycles among files (FR941): each strongly connected set of files under path_prefix once, with one row per import between its files at that import's path:line. Runtime cycles come first; a set that is strongly connected only when type-only imports count is listed apart, marked type_only, with only the imports no runtime cycle inside it lists. A cycle that holds only through an inferred import is marked inferred. Lean over MCP: `<imported file> <importing file>:<line> cycle=<n>`, tagged with the import kind when not static (re_export, type_only, dynamic) and inferred; pages with a cursor.
+ * Import cycles among files (FR941): each strongly connected set of files under path_prefix once, with one row per pair of its files that import, at the first import's path:line. Runtime cycles come first; a set that is strongly connected only when type-only imports count is listed apart, marked type_only, with only the imports no runtime cycle inside it lists. A cycle that holds only through an inferred import is marked inferred. Lean over MCP: `<imported file> <importing file>:<line> cycle=<n>`, tagged with the import kind when not static (re_export, type_only, dynamic) and inferred; pages with a cursor.
  */
 export interface FindCyclesInput {
 /**
@@ -600,6 +600,10 @@ cursor?: string
  */
 path_prefix?: string
 /**
+ * Default false: files the generated-code policy flags are left out, and a limitation says how many (FR299). True lists them.
+ */
+include_generated?: boolean
+/**
  * Default false: test files are not listed as entry points (their imports still count).
  */
 include_tests?: boolean
@@ -680,6 +684,10 @@ kinds?: [("function" | "class" | "method" | "interface" | "type_alias" | "variab
  * Only files whose repository-relative path starts with this, such as `src/`. Default: the whole repository.
  */
 path_prefix?: string
+/**
+ * Default false: files the generated-code policy flags are left out, and a limitation says how many (FR299). True lists them.
+ */
+include_generated?: boolean
 /**
  * Default true. False leaves test code out of the graph: neither ranked nor counted as a user.
  */
@@ -1161,6 +1169,10 @@ path_prefix?: string
  * Default true: only symbols not nested in another symbol of their file (no members or locals).
  */
 top_level_only?: boolean
+/**
+ * Default false: files the generated-code policy flags are left out, and a limitation says how many (FR299). True lists them.
+ */
+include_generated?: boolean
 /**
  * Default false: symbols in test code are not checked, and a symbol only test code uses is listed under reachable_only_by test. True checks test code too and counts its uses.
  */

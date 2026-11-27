@@ -12,7 +12,12 @@ const FILES: Record<string, string> = {
   'package.json': JSON.stringify({ name: 'shapes', version: '1.0.0', main: './src/index.js', bin: { shapes: './bin/cli.js' } }, null, 2),
   'tsconfig.json': JSON.stringify({ compilerOptions: { target: 'es2022', module: 'esnext', moduleResolution: 'bundler', strict: true, noEmit: true }, include: ['src', 'test'] }),
   'src/index.ts': "export * from './api'\n",
-  'src/api.ts': 'export function publicApi(): number {\n  return 1\n}\nexport const port = 3000\n',
+  'src/api.ts': 'export function publicApi(): number {\n  return 1\n}\nexport const port = 3000\nfunction listed(): number {\n  return 4\n}\nexport { listed }\n',
+  // An implementation nobody calls, of an interface member nobody calls either.
+  'src/runner.ts': 'export interface Runner {\n  run(): void\n}\nexport class Job implements Runner {\n  run(): void {}\n}\n',
+  // A file the generated-code policy flags (.gitattributes below).
+  'src/gen.ts': 'export function genDead(): void {}\n',
+  '.gitattributes': 'src/gen.ts linguist-generated\n',
   'src/log.ts': 'export function log(message: string): void {\n  console.log(message)\n}\n',
   'src/a.ts': "import { b } from './b'\nimport { log } from './log'\nexport function a(): number {\n  log('a')\n  return b()\n}\n",
   'src/b.ts': "import { a } from './a'\nimport { log } from './log'\nexport function b(): number {\n  log('b')\n  return 1\n}\nexport function callsA(): number {\n  return a()\n}\n",
@@ -56,6 +61,7 @@ describe('FR940 find_unused: code nothing uses, and what only tests, frameworks 
     expect(rows).toEqual([
       ['dead', 'src/util.ts', 1, 'unused', null],
       ['publicApi', 'src/api.ts', 1, 'reachable_only_by', 'public_export'],
+      ['listed', 'src/api.ts', 5, 'reachable_only_by', 'public_export'],
       ['onlyTests', 'src/util.ts', 2, 'reachable_only_by', 'test'],
       ['byName', 'src/util.ts', 5, 'possibly_used', 1],
     ])
@@ -66,6 +72,25 @@ describe('FR940 find_unused: code nothing uses, and what only tests, frameworks 
     expect(rows).toEqual([['port', 'reachable_only_by', 'public_export']])
   })
 
+  it('FR940 an implementation is not used by implementing a member: with no call through the interface it is unused', () => {
+    const rows = (data('find_unused', { kinds: ['method'], path_prefix: 'src/runner', top_level_only: false }).data.symbols as Row[]).map((r) => [r.qualified_name, r.group])
+    // Runner.run is used by its implementation, as an implemented interface is (FR940's use types); Job.run has no caller.
+    expect(rows).toEqual([['src/runner:Job.run', 'unused']])
+  })
+
+  it('FR940 FR299 a generated file is left out unless include_generated, and a limitation says how many were', () => {
+    const left = tool(d, 'find_unused', { kinds: ['function'], path_prefix: 'src/' })
+    expect((left.data.symbols as Row[]).map((r) => r.name)).not.toContain('genDead')
+    expect(left.limitations).toContain('1 generated file is left out of dead code; pass include_generated: true to list them.')
+    expect((data('find_unused', { kinds: ['function'], path_prefix: 'src/', include_generated: true }).data.symbols as Row[]).map((r) => r.name)).toContain('genDead')
+    expect((data('find_entry_points', { path_prefix: 'src/' }).data.entries as Row[]).map((e) => e.path)).not.toContain('src/gen.ts')
+    expect((data('find_entry_points', { path_prefix: 'src/', include_generated: true }).data.entries as Row[]).map((e) => e.path)).toContain('src/gen.ts')
+  })
+
+  it('FR940 path_prefix is case-sensitive', () => {
+    expect(data('find_unused', { kinds: ['function'], path_prefix: 'SRC/' }).data.symbols).toEqual([])
+  })
+
   it('FR940 a member only a framework route reaches is listed under reachable_only_by framework, with top_level_only false', () => {
     const rows = (data('find_unused', { kinds: ['class', 'method'], path_prefix: 'src/items', top_level_only: false }).data.symbols as Row[]).map((r) => [r.qualified_name, r.group, r.by ?? null])
     expect(rows).toEqual([['src/items.controller:ItemsController', 'unused', null], ['src/items.controller:ItemsController.list', 'reachable_only_by', 'framework']])
@@ -74,12 +99,12 @@ describe('FR940 find_unused: code nothing uses, and what only tests, frameworks 
   it('FR940 with include_tests, a use from test code counts and test code is checked too', () => {
     const rows = data('find_unused', { kinds: ['function'], include_tests: true }).data.symbols as Row[]
     expect(rows.map((r) => r.name)).not.toContain('onlyTests')
-    expect(data('find_unused', { kinds: ['function'] }).data.totals).toEqual({ checked: 9, unused: 1, reachable_only_by: { test: 1, framework: 0, public_export: 1 }, possibly_used: 1 })
+    expect(data('find_unused', { kinds: ['function'] }).data.totals).toEqual({ checked: 10, unused: 1, reachable_only_by: { test: 1, framework: 0, public_export: 2 }, possibly_used: 1 })
   })
 
   it('FR940 kinds module lists a file nothing imports and nothing uses', () => {
     const rows = (data('find_unused', { kinds: ['module'], path_prefix: 'src/' }).data.symbols as Row[]).map((r) => [r.path, r.group, r.by ?? null])
-    expect(rows).toEqual([['src/items.controller.ts', 'unused', null], ['src/main.ts', 'unused', null], ['src/server.ts', 'unused', null], ['src/index.ts', 'reachable_only_by', 'public_export'], ['src/util.ts', 'reachable_only_by', 'test']])
+    expect(rows).toEqual([['src/items.controller.ts', 'unused', null], ['src/main.ts', 'unused', null], ['src/runner.ts', 'unused', null], ['src/server.ts', 'unused', null], ['src/index.ts', 'reachable_only_by', 'public_export'], ['src/util.ts', 'reachable_only_by', 'test']])
   })
 })
 
@@ -121,7 +146,7 @@ describe('FR942 find_entry_points: modules nothing imports, and framework and ma
     const rows = (data('find_entry_points', { path_prefix: 'src/' }).data.entries as Row[]).map((e) => [e.reason, e.path, e.name, e.kind])
     expect(rows).toEqual([
       ['not_imported', 'src/index.ts', null, 'module'], ['not_imported', 'src/items.controller.ts', null, 'module'], ['not_imported', 'src/main.ts', null, 'module'],
-      ['not_imported', 'src/server.ts', null, 'module'], ['not_imported', 'src/util.ts', null, 'module'],
+      ['not_imported', 'src/runner.ts', null, 'module'], ['not_imported', 'src/server.ts', null, 'module'], ['not_imported', 'src/util.ts', null, 'module'],
       ['endpoint', 'src/items.controller.ts', 'GET items', 'endpoint'], ['endpoint', 'src/server.ts', 'GET health', 'endpoint'],
       ['main', 'src/index.ts', null, null],
     ])
@@ -130,7 +155,7 @@ describe('FR942 find_entry_points: modules nothing imports, and framework and ma
   it('FR942 over the whole repository a test import counts, test files are not entries, and a bin with no indexed file is shown at its manifest', () => {
     const rows = (data('find_entry_points').data.entries as Row[]).map((e) => [e.reason, e.path, e.name])
     expect(rows).toEqual([
-      ['not_imported', 'src/index.ts', null], ['not_imported', 'src/items.controller.ts', null], ['not_imported', 'src/main.ts', null], ['not_imported', 'src/server.ts', null],
+      ['not_imported', 'src/index.ts', null], ['not_imported', 'src/items.controller.ts', null], ['not_imported', 'src/main.ts', null], ['not_imported', 'src/runner.ts', null], ['not_imported', 'src/server.ts', null],
       ['endpoint', 'src/items.controller.ts', 'GET items'], ['endpoint', 'src/server.ts', 'GET health'], ['main', 'src/index.ts', null], ['bin', 'package.json', './bin/cli.js'],
     ])
   })
@@ -159,8 +184,8 @@ describe('FR944 FR945 the structure tools are in the extra profile and answer le
 
   it('FR945 each row is a lean row with its path:line and tags', async () => {
     expect((await text('find_unused', { kinds: ['function'], path_prefix: 'src/' })).split('\n').slice(1, 5)).toEqual([
-      'dead src/util.ts:1 function unused', 'publicApi src/api.ts:1 function reachable_only_by=public_export',
-      'onlyTests src/util.ts:2 function reachable_only_by=test', 'byName src/util.ts:5 function possibly_used sites=1',
+      'dead src/util.ts:1 function unused', 'publicApi src/api.ts:1 function reachable_only_by=public_export', 'listed src/api.ts:5 function reachable_only_by=public_export',
+      'onlyTests src/util.ts:2 function reachable_only_by=test',
     ])
     expect((await text('find_cycles', { path_prefix: 'src/' })).split('\n').slice(5, 9)).toEqual(['src/i.ts src/h.ts:2 cycle=3 type_only', 'src/g.ts src/i.ts:1 cycle=3', 'src/d.ts src/c.ts:1 cycle=4 type_only', 'src/c.ts src/d.ts:1 cycle=4 type_only'])
     expect((await text('find_entry_points', { path_prefix: 'src/' })).split('\n').slice(1, 3)).toEqual(['src/index.ts:1 not_imported', 'src/items.controller.ts:1 not_imported'])

@@ -100,6 +100,10 @@
       "type": "boolean",
       "description": "Default true: only symbols not nested in another symbol of their file (no members or locals)."
     },
+    "include_generated": {
+      "type": "boolean",
+      "description": "Default false: files the generated-code policy flags are left out, and a limitation says how many (FR299). True lists them."
+    },
     "include_tests": {
       "type": "boolean",
       "description": "Default false: symbols in test code are not checked, and a symbol only test code uses is listed under reachable_only_by test. True checks test code too and counts its uses."

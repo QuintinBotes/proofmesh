@@ -656,6 +656,13 @@ const fileAlias = (db: Database.Database, id: string): string | undefined => id.
   ? (db.prepare("select id from symbol where file_id = ? and kind = 'module' order by id limit 1").get(id) as { id: string } | undefined)?.id
   : (db.prepare("select file_id as id from symbol where id = ? and kind = 'module'").get(id) as { id: string } | undefined)?.id
 
+/** The note a structure listing carries when it left generated files under its prefix out (FR299). */
+const generatedNote = (ctx: Ctx, listing: string, input: Record<string, unknown>): string[] => {
+  const prefix = String(input.path_prefix ?? '')
+  const note = generatedLeftOut(listing, [...generatedPaths(ctx.db)].filter((p) => p.startsWith(prefix)).length, input.include_generated === true)
+  return note ? [note] : []
+}
+
 const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Partial> = {
   workspace_status(ctx, input) {
     const meta = Object.fromEntries((ctx.db.prepare('select key, value from meta').all() as Array<{ key: string; value: string }>).map((m) => [m.key, m.value]))
@@ -1152,7 +1159,7 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
 
   find_unused(ctx, input) {
     const kinds = (input.kinds as string[] | undefined) ?? ['function', 'class', 'interface', 'type_alias', 'enum', 'variable']
-    const { rows, checked } = findUnused(ctx.db, ctx.store, { kinds, pathPrefix: input.path_prefix as string | undefined, topLevelOnly: input.top_level_only !== false, includeTests: input.include_tests === true })
+    const { rows, checked } = findUnused(ctx.db, ctx.store, { kinds, pathPrefix: input.path_prefix as string | undefined, topLevelOnly: input.top_level_only !== false, includeTests: input.include_tests === true, includeGenerated: input.include_generated === true })
     const count = (f: (r: UnusedRow) => boolean) => rows.filter(f).length
     const by = (b: UnusedRow['by']) => count((r) => r.by === b)
     const totals = { checked, unused: count((r) => r.group === 'unused'), reachable_only_by: { test: by('test'), framework: by('framework'), public_export: by('public_export') }, possibly_used: count((r) => r.group === 'possibly_used') }
@@ -1161,8 +1168,9 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     const limitations = [
       'A symbol is unused when no resolved relationship from another symbol uses it (a call, reference, import, inheritance or injection). A use by reflection, configuration, a string or a call that did not resolve is not seen, so read possibly_used and the unresolved calls before deleting anything.',
       ...(refs ? [refs] : []),
-      ...(totals.reachable_only_by.public_export ? ['public_export: exported from a file that a package.json main, module, types or exports names, or that such a file re-exports (export * or export from).'] : []),
+      ...(totals.reachable_only_by.public_export ? ['public_export: exported (export, or an export list) from a file that a package.json main, module, types or exports names, or that such a file re-exports; a file re-exported by name counts whole.'] : []),
       ...(input.include_tests === true ? [] : ['Test code was not checked; a symbol only test code uses is listed under reachable_only_by test.']),
+      ...generatedNote(ctx, 'dead code', input),
     ]
     return {
       data: { symbols: rows.slice(ctx.page.offset, end), totals }, more: rows.length > end, stop_reasons: rows.length > end ? ['max_rows'] : [], limitations, shrink: 'symbols',
@@ -1186,13 +1194,14 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
   },
 
   find_entry_points(ctx, input) {
-    const rows = findEntryPoints(ctx.db, ctx.store, { pathPrefix: input.path_prefix as string | undefined, includeTests: input.include_tests === true, isTest: isTestPath })
+    const rows = findEntryPoints(ctx.db, ctx.store, { pathPrefix: input.path_prefix as string | undefined, includeTests: input.include_tests === true, includeGenerated: input.include_generated === true, isTest: isTestPath })
     const end = ctx.page.offset + ctx.limits.max_rows
     const totals = { not_imported: 0, endpoint: 0, job: 0, main: 0, bin: 0, exports: 0 }
     for (const e of rows) totals[e.reason]++
     const limitations = [
       'A module is not_imported when no file under the prefix imports it through a resolved import (static, dynamic or re-export): an entry point, a script, or a file nothing uses. A file loaded by path at run time (a worker, a preload, a config) is listed too.',
       'Framework entry points are the endpoints and jobs the snapshot records; package entries come from package.json main, module, types, exports and bin, mapped to the indexed file they name (a .js path to its .ts source), else shown at the manifest as not_indexed.',
+      ...generatedNote(ctx, 'entry points', input),
     ]
     return {
       data: { entries: rows.slice(ctx.page.offset, end), totals }, more: rows.length > end, stop_reasons: rows.length > end ? ['max_rows'] : [], limitations, shrink: 'entries',
@@ -1203,13 +1212,14 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
 
   find_hubs(ctx, input) {
     const by = (input.by as 'fan_in' | 'fan_out' | 'betweenness' | undefined) ?? 'fan_in'
-    const r = findHubs(ctx.db, { top: Math.min(Number(input.top ?? 10), ctx.limits.max_rows), by, kinds: input.kinds as string[] | undefined, pathPrefix: input.path_prefix as string | undefined, includeTests: input.include_tests !== false, deadline: ctx.started + ctx.limits.timeout_ms })
+    const r = findHubs(ctx.db, { top: Math.min(Number(input.top ?? 10), ctx.limits.max_rows), by, kinds: input.kinds as string[] | undefined, pathPrefix: input.path_prefix as string | undefined, includeTests: input.include_tests !== false, includeGenerated: input.include_generated === true, deadline: ctx.started + ctx.limits.timeout_ms })
     const limitations = [
-      'fan_in counts the distinct symbols that use one through a resolved relationship (a call, reference, import, inheritance or injection); fan_out the distinct symbols it uses. Unresolved calls count for neither.',
+      'fan_in counts the distinct symbols that use one through a resolved relationship (a call, reference, import, inheritance or injection); fan_out the distinct symbols it uses. Unresolved calls count for neither, nor do imports between files, so a module ranks by uses of its module symbol alone.',
+      ...generatedNote(ctx, 'hubs', input),
       ...(r.sampled !== null ? [`betweenness was computed from ${r.sampled} evenly spaced source symbols, not every one, and scaled up${r.timedOut ? ', stopping at timeout_ms' : ''}: an estimate.`] : []),
     ]
     return {
-      data: { hubs: r.hubs, by, sampled_sources: r.sampled }, stop_reasons: r.timedOut ? ['timeout'] : [], limitations, shrink: 'hubs',
+      data: { hubs: r.hubs, by, sampled_sources: r.sampled }, stop_reasons: [...(Number(input.top ?? 10) > ctx.limits.max_rows && r.hubs.length === ctx.limits.max_rows ? ['max_rows' as const] : []), ...(r.timedOut ? ['timeout' as const] : [])], limitations, shrink: 'hubs',
       lean: (data) => (data.hubs as Hub[]).map((h) => leanRow(leanName(h), h.path, h.line, [h.kind, `fan_in=${h.fan_in}`, `fan_out=${h.fan_out}`, ...(h.betweenness !== undefined ? [`betweenness=${h.betweenness}`] : [])])),
     }
   },

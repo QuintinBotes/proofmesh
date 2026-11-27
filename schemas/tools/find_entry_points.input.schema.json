@@ -71,6 +71,10 @@
       "minLength": 1,
       "description": "Only files whose repository-relative path starts with this, such as `src/`. Default: the whole repository."
     },
+    "include_generated": {
+      "type": "boolean",
+      "description": "Default false: files the generated-code policy flags are left out, and a limitation says how many (FR299). True lists them."
+    },
     "include_tests": {
       "type": "boolean",
       "description": "Default false: test files are not listed as entry points (their imports still count)."

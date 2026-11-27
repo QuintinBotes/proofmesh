@@ -1290,7 +1290,8 @@
       "packages/proofmesh/test/generated-vendored.test.ts"
     ],
     "FR299": [
-      "packages/proofmesh/test/generated-vendored.test.ts"
+      "packages/proofmesh/test/generated-vendored.test.ts",
+      "packages/proofmesh/test/structure-tools.test.ts"
     ],
     "FR330": [
       "packages/proofmesh/test/max-bytes-exact.test.ts"
