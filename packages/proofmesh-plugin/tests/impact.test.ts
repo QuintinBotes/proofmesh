@@ -40,9 +40,9 @@ const editCurrency = ($: Dollar) => $.tool.call({ tool: 'Edit', file_path: `${RO
  * Stubs Claude Code and ProofMesh for a session in /work/app: `w.snapshot` is the current snapshot and `w.current` whether it matches the tree;
  * the MCP tools answer as recorded on fixtures/ts-invoicing, the symbol at a currency.ts line being formatAmount and any other file not indexed.
  */
-function world(on: On, o: { recording?: boolean; symbolsAt?: (locations: string[]) => unknown[]; fail?: string; failures?: number; headHash?: string; writeLines?: number; listFailures?: number } = {}) {
+function world(on: On, o: { recording?: boolean; symbolsAt?: (locations: string[]) => unknown[]; fail?: string; failures?: number; headHash?: string; writeLines?: number; listFailures?: number; impact?: Envelope } = {}) {
   const clock = mock.clock(on, { now: NOW })
-  const w = { snapshot: BASE as string, current: true, clock, mcp: [] as Array<{ tool: string; args: Record<string, unknown> }>, log: [] as string[], copied: [] as Array<{ text: string; surface?: string }>, opened: [] as string[], closed: [] as string[], panes: [] as string[], tools: 0, turns: 0 }
+  const w = { snapshot: BASE as string, current: true, clock, mcp: [] as Array<{ tool: string; args: Record<string, unknown> }>, log: [] as string[], copied: [] as Array<{ text: string; surface?: string }>, opened: [] as string[], closed: [] as string[], panes: [] as string[], trail: [] as Array<Record<string, unknown>>, tools: 0, turns: 0 }
   on('session.start', () => ({ cwd: ROOT }))
   on('session.end', () => ({ sessionId: 's1' }))
   on('turn.complete', () => ({ text: '' }))
@@ -60,7 +60,7 @@ function world(on: On, o: { recording?: boolean; symbolsAt?: (locations: string[
     w.log.push('proofmesh')
     const [, cmd, , flag] = e.argv
     if (cmd === 'repo') return (o.listFailures ?? 0) > 0 && o.listFailures!-- ? { value: { exitCode: 1, stdout: '', stderr: 'proofmesh: catalog busy' } } : { value: { exitCode: 0, stdout: LIST, stderr: '' } }
-    if (cmd === 'trail') return { value: { exitCode: 0, stdout: 'recorded\n', stderr: '' } }
+    if (cmd === 'trail') { w.trail.push(...String(e.init?.stdin ?? '').trim().split('\n').map((l) => JSON.parse(l) as Record<string, unknown>)); return { value: { exitCode: 0, stdout: 'recorded\n', stderr: '' } } }
     if (flag === '--fresh') return { value: { exitCode: 0, stdout: JSON.stringify({ repository_id: REPO, name: 'app', snapshot_id: w.snapshot, current: w.current, changed_count: w.current ? 0 : 1, changed: [], trail_recording: o.recording ?? false }), stderr: '' } }
     return { value: { exitCode: 0, stdout: '', stderr: '' } }
   })
@@ -82,7 +82,7 @@ function world(on: On, o: { recording?: boolean; symbolsAt?: (locations: string[
       const key = args.key as string
       return answer(at(snap, { ...recorded, data: { symbol: { ...recorded.data.symbol, stable_key: key, ...(snap !== BASE && o.headHash ? { body_hash: o.headHash } : {}) } } }))
     }
-    if (e.tool === 'analyze_impact') return answer(RECORDED.impactLean.replace(HEAD, snap))
+    if (e.tool === 'analyze_impact') return answer(at(snap, o.impact ?? RECORDED.impact))
     if (e.tool === 'find_tests') return answer(at(snap, RECORDED.tests))
     return answer({ snapshot: {}, data: {} })
   })
@@ -140,7 +140,7 @@ const FORMAT_AMOUNT = [
   'no test reaches it',
 ]
 
-test('FR700 FR701 scenario 1 SC-001: after Claude edits formatAmount, the pane lists it under changed with its dependents (relationship, file:line, evidence class) and tests, as analyze_impact and find_tests answer on the same snapshot', async ($, on) => {
+test('FR700 FR701 FR863 scenario 1 SC-001: after Claude edits formatAmount, the pane lists it under changed with its dependents (relationship, file:line, evidence class) and tests, as analyze_impact and find_tests answer compact on the same snapshot', async ($, on) => {
   const w = world(on)
   await start($, w)
   await editCurrency($)
@@ -153,7 +153,7 @@ test('FR700 FR701 scenario 1 SC-001: after Claude edits formatAmount, the pane l
   // get_symbols_at for the changed line alone, the hunk's context lines left out, then the body hash of each symbol before the edit and now, all on the pinned snapshot.
   expect(w.calls('get_symbols_at').map((c) => c.args)).toEqual([{ repository_id: REPO, snapshot_id: HEAD, locations: [`${CURRENCY}:2`], envelope: 'compact' }])
   const key = RECORDED.symbolsAt.data.results[0]!.symbol.stable_key
-  expect(w.calls('analyze_impact').map((c) => c.args)).toEqual([{ repository_id: REPO, snapshot_id: HEAD, key, envelope: 'lean' }])
+  expect(w.calls('analyze_impact').map((c) => c.args)).toEqual([{ repository_id: REPO, snapshot_id: HEAD, key, envelope: 'compact' }])
   expect(w.calls('find_tests').map((c) => c.args)).toEqual([{ repository_id: REPO, snapshot_id: HEAD, key, envelope: 'compact' }])
 })
 
@@ -382,4 +382,72 @@ test('FR706 edge case: an edit made while a failed repository lookup waits for i
   await w.clock.advance(5000)
   const { lines } = await pane($, w, 'terminal')
   expect(lines.slice(0, 3)).toEqual([`impact as of ${HEAD} (current)`, CURRENCY, 'changed formatAmount line 1'])
+})
+
+test('FR864: an analyze_impact answer cut at max_rows shows the dependents it holds and the real total from completion.total', async ($, on) => {
+  const r = RECORDED.impact
+  const cut = { ...r, data: { ...r.data, dependents: r.data.dependents.slice(0, 1) }, completion: { ...r.completion, truncated: true, stop_reasons: ['max_rows'], total: 2 }, limitations: [...r.limitations, 'Results were truncated and this tool does not page; narrow the query or raise the limits.'] }
+  const w = world(on, { impact: cut })
+  await start($, w)
+  await editCurrency($)
+  await publish(w, HEAD)
+  for (const surface of SURFACES) {
+    const { ui, lines } = await pane($, w, surface)
+    expect(lines).toEqual([
+      `impact as of ${HEAD} (current)`,
+      CURRENCY,
+      'changed formatAmount line 1',
+      'calls invoiceTotal packages/billing/src/invoice.ts:9 resolved depth=1 open',
+      '# dependents: 1 of 2 shown (max_rows)',
+      '# 1 unresolved call site in this snapshot has an unknown target and could also reach these symbols.',
+      '# Results were truncated and this tool does not page; narrow the query or raise the limits.',
+      'no test reaches it',
+    ])
+    await ui.unmount()
+  }
+})
+
+test('FR860 FR864: a dependent whose relationship is recorded in another file is shown and copied at that site, and a depth stop that left no row out prints no count', async ($, on) => {
+  const r = RECORDED.impact
+  const registered = { ...r.data.dependents[0]!, relationship: 'registered_as', site: { path: 'src/Program.cs', start_line: 13 } }
+  const stopped = { ...r, data: { ...r.data, dependents: [registered] }, completion: { ...r.completion, truncated: true, stop_reasons: ['max_depth'], total: 1 }, limitations: ['The search stopped at the depth limit; more code may be affected.'] }
+  const w = world(on, { impact: stopped })
+  await start($, w)
+  await editCurrency($)
+  await publish(w, HEAD)
+  const { ui, lines } = await pane($, w, 'terminal')
+  expect(lines).toEqual([
+    `impact as of ${HEAD} (current)`,
+    CURRENCY,
+    'changed formatAmount line 1',
+    'registered_as invoiceTotal src/Program.cs:13 resolved depth=1 open',
+    '# The search stopped at the depth limit; more code may be affected.',
+    'no test reaches it',
+  ])
+  await ui.press({ key: 'dep:0' })
+  expect(w.copied).toEqual([{ text: 'src/Program.cs:13', surface: 'terminal' }])
+})
+
+test('FR865 FR866: a get_symbol call by bare id is recorded as opened, and the pane leaves the dependent with that id unmarked', async ($, on) => {
+  const w = world(on, { recording: true })
+  await start($, w)
+  const handler = RECORDED.impact.data.dependents[1]!
+  await $.tool.call({ tool: 'mcp__plugin_proofmesh_proofmesh__get_symbol', symbol_id: handler.id })
+  await editCurrency($)
+  await publish(w, HEAD)
+  for (const surface of SURFACES) {
+    const { ui, lines } = await pane($, w, surface)
+    expect(lines.slice(0, 6)).toEqual([
+      `impact as of ${HEAD} (current)`,
+      '1 dependent not opened',
+      CURRENCY,
+      'changed formatAmount line 1',
+      'calls invoiceTotal packages/billing/src/invoice.ts:9 resolved depth=1 not opened open',
+      'calls handleInvoice packages/api/src/handler.ts:5 resolved depth=2 open',
+    ])
+    await ui.unmount()
+  }
+  await $.turn.complete({ turnId: 't1', answer: 'done', durationMs: 1, isAborted: false, usage: null })
+  await w.clock.settle()
+  expect(w.trail.filter((t) => t.tool === 'mcp__plugin_proofmesh_proofmesh__get_symbol').map((t) => [t.kind, t.symbol_id, t.outcome])).toEqual([['opened', handler.id, 'ok']])
 })

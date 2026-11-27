@@ -58,6 +58,14 @@ describe('FR105 totals split executing from not-executing evidence (scenario 2)'
   })
 })
 
+describe('FR862 find_tests reports its uncut total beside truncated, as analyze_impact does (#159)', () => {
+  it('FR862 a compact answer cut at max_rows 1 has completion.total 2, and its row the id, line and evidence it had', () => {
+    const env = tool(d, 'find_tests', { paths: ['src/core.ts'], envelope: 'compact', limits: { max_rows: 1 } })
+    expect(env.completion).toMatchObject({ truncated: true, stop_reasons: ['max_rows'], total: 2 })
+    expect((env.data as unknown as { tests: Array<Row & { id: string }> }).tests.map((t) => [typeof t.id, t.line, t.evidence])).toEqual([['string', 2, 'transitive_call']])
+  })
+})
+
 describe('FR101 dispatch is followed where the snapshot records implements and overrides, and the answer says where it is not (scenario 3)', () => {
   it('TypeScript records them, so Unit.area and a function carry no dispatch limitation', () => {
     expect(ask('src/shape.ts#Unit.area').limitations.filter((l) => l.includes(DISPATCH))).toEqual([])

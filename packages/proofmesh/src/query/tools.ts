@@ -120,6 +120,8 @@ type Partial = {
   more?: boolean
   /** A continuation the tool computed itself, in its own units (search_sources: whole files scanned); null when the scan finished. */
   next_offset?: number | null
+  /** The rows the shrink list holds uncut, sent as completion.total. */
+  total?: number
   /** The lean rows of `data` as it stands after any cut, one per item of the first shrink list (FR096). */
   lean?: (data: Record<string, unknown>) => string[]
 }
@@ -388,7 +390,7 @@ function envelope(ctx: Ctx, tool: ToolName, requested: Limits | undefined, r: Pa
       : null
     // A lean answer's last line carries the cursor, in place of the note pointing at completion.next_cursor.
     const notes = stop.size && !(ctx.lean && next_cursor) ? [...limitations, next_cursor ? CONTINUED : PAGED.has(tool) ? NARROW : TRUNCATED] : limitations
-    const done: Envelope = { ...env, limitations: notes, completion: { truncated: stop.size > 0, stop_reasons: order.filter((o) => stop.has(o)), timed_out: stop.has('timeout'), next_cursor } }
+    const done: Envelope = { ...env, limitations: notes, completion: { truncated: stop.size > 0, stop_reasons: order.filter((o) => stop.has(o)), timed_out: stop.has('timeout'), next_cursor, ...(r.total === undefined ? {} : { total: r.total }) } }
     return ctx.lean ? { ...done, envelope: 'lean', text: leanText(tool, ctx.snapshot.id, current === ctx.snapshot.id, r.lean!(r.data), notes, next_cursor) } : done
   }
   const size = (a: Answer) => Buffer.byteLength(ctx.lean ? a.text! : JSON.stringify(a))
@@ -502,22 +504,15 @@ function siteOf(db: Database.Database, assertionId: string): { path: string; sta
 }
 
 /**
- * Impact rows: each dependent at the site of the edge that first reached it, or at its declaration when dispatch reached it (FR097).
- * Each row is rendered once and kept, since the byte budget renders the answer again for every row it drops.
+ * Each dependent at the site of the edge that first reached it, or at its declaration when dispatch reached it (FR097, FR860): the
+ * row's line in its own file and the relationship, and `site` when that edge is recorded in another file (a registration, say).
  */
-const impactRows = (ctx: Ctx, reached: Impact['reached_by'], mixed: boolean) => {
-  const rendered = new Map<string, string>()
-  return (list: Impact['dependents']) => list.map((x) => {
-    const kept = rendered.get(x.id)
-    if (kept !== undefined) return kept
-    const via = reached.get(x.id), site = via ? siteOf(ctx.db, via) : null
-    const line = site?.start_line ?? (ctx.db.prepare('select start_line from symbol where id = ?').get(x.id) as { start_line: number }).start_line
-    const type = via && mixed ? (ctx.db.prepare('select type from assertion where id = ?').get(via) as { type: string }).type : null
-    const row = leanRow(leanName(x), site?.path ?? x.path, line, [`depth=${x.depth}`, ...(!via ? ['dispatch'] : type ? [type] : []), ...(x.basis === 'inferred' ? ['inferred'] : [])])
-    rendered.set(x.id, row)
-    return row
-  })
-}
+const impactRows = (ctx: Ctx, dependents: Impact['dependents'], reached: Impact['reached_by']) => dependents.map((x) => {
+  const via = reached.get(x.id), site = via ? siteOf(ctx.db, via) : null
+  const line = site?.path === x.path ? site.start_line : (ctx.db.prepare('select start_line from symbol where id = ?').get(x.id) as { start_line: number }).start_line
+  const relationship = via ? (ctx.db.prepare('select type from assertion where id = ?').get(via) as { type: string }).type : 'dispatch'
+  return { ...x, line, relationship, ...(site && site.path !== x.path ? { site: { path: site.path, start_line: site.start_line } } : {}) }
+})
 
 type Boundaries = { items: Boundary[]; count: number; by_reason: Record<string, number> }
 const NO_BOUNDARIES: Boundaries & { name_matched: number } = { items: [], count: 0, by_reason: {}, name_matched: 0 }
@@ -749,8 +744,11 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
       ...leanReferencesNote(ctx, types),
     ]
     const stop: Array<'max_depth' | 'max_rows'> = [...(r.stopped_by === 'max_depth' ? ['max_depth' as const] : []), ...(r.stopped_by === 'node_budget' || r.totals.dependents > ctx.limits.max_rows ? ['max_rows' as const] : [])]
-    const rows = impactRows(ctx, reached_by, types.length > 1)
-    return { data: { subjects, types, ...r }, stop_reasons: stop, limitations, shrink: 'dependents', lean: (data) => rows(data.dependents as Impact['dependents']) }
+    const rows = impactRows(ctx, r.dependents, reached_by)
+    return {
+      data: { subjects, types, ...r, dependents: rows }, stop_reasons: stop, limitations, shrink: 'dependents', total: r.totals.dependents,
+      lean: (data) => (data.dependents as typeof rows).map((x) => leanRow(leanName(x), x.site?.path ?? x.path, x.site?.start_line ?? x.line, [`depth=${x.depth}`, ...(x.relationship === 'dispatch' ? ['dispatch'] : types.length > 1 ? [x.relationship] : []), ...(x.basis === 'inferred' ? ['inferred'] : [])])),
+    }
   },
 
   request_index(ctx) {
@@ -1104,7 +1102,7 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
         totals: { tests: r.rows.length, executing, not_executing: r.rows.length - executing, by_basis: byBasis(r.rows), by_project: [...byProject].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)).map(([name, count]) => ({ name, count })) },
         observed: { available: false, reason: 'No coverage data has been imported for this snapshot.' }, stopped_by: r.stopped_by,
       },
-      stop_reasons: [...(r.stopped_by === 'max_depth' ? ['max_depth' as const] : []), ...(r.rows.length > end ? ['max_rows' as const] : [])], more: r.rows.length > end, limitations, shrink: 'tests',
+      stop_reasons: [...(r.stopped_by === 'max_depth' ? ['max_depth' as const] : []), ...(r.rows.length > end ? ['max_rows' as const] : [])], more: r.rows.length > end, limitations, shrink: 'tests', total: r.rows.length,
       // A lean row is the test at its first call toward the subject, as an impact row is; a call is depth=1, a transitive call deeper (FR097, FR101).
       lean: (data) => (data.tests as Array<TestRow & { chain: Array<{ path: string; line: number }> }>).map((t) => t.evidence === 'import_only'
         ? leanRow(null, t.path, t.line, ['import_only', ...(t.basis === 'inferred' ? ['inferred'] : [])])
