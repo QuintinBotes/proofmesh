@@ -1641,9 +1641,10 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
       : []
     const limitations: string[] = [
       // An empty observed side most often means nothing was imported, so it is the first thing said (FR392).
+      // With no observed rows that sentence is the whole story; the window and read_kind notes are about reads there are none of (FR1700).
       ...(rows.length ? [] : [`No imported run observed property reads for ${[endpoint, entity].filter(Boolean).join(' and ')}, so reads and loaded_not_used are empty: they come only from an instrumented run imported with proofmesh observe import, and an empty list is not evidence that nothing reads a property.`]),
-      PROPERTY_READS_NOTE,
-      ...(rows.some((r) => r.read_kind === 'orm') ? ['ORM reads are the properties the ORM materialised or tracked, loaded but not necessarily used; application reads are what code read. loaded_not_used lists properties with ORM reads and no application read.'] : ['No import distinguished ORM reads from application reads (observations 0.3 read_kind), so every read counts as an application read.']),
+      ...(rows.length ? [PROPERTY_READS_NOTE] : []),
+      ...(!rows.length ? [] : rows.some((r) => r.read_kind === 'orm') ? ['ORM reads are the properties the ORM materialised or tracked, loaded but not necessarily used; application reads are what code read. loaded_not_used lists properties with ORM reads and no application read.'] : ['No import distinguished ORM reads from application reads (observations 0.3 read_kind), so every read counts as an application read.']),
       ...(entity && !unread.length && !rows.length ? ['The snapshot has no property symbols for that entity name and no import names it; check the qualified name.'] : []),
     ]
     // From an endpoint, the static side: entity properties read along resolved paths, and how it compares with what an import observed.
