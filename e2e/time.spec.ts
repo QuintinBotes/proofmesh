@@ -55,7 +55,7 @@ const shown = (id: string) => page.locator(`.terrain[data-ready][data-snapshot="
 const marked = (change: string) => page.locator(`.terrain .time-mark[data-change="${change}"]`).evaluateAll((ms) => ms.map((m) => m.getAttribute('data-name')).sort())
 const declared = (s: { what: string[] }) => s.what.some((w) => w === 'body' || w === 'signature')
 
-test('#48 S1 FR1761 FR1762 FR1763 from A to B: shared symbols stay put, the added symbols and file appear, titleCase is a cross where it was, and the counts are compare_snapshots\'', async () => {
+test('#48 S1 FR1761 FR1762 FR1763 from A to B: at most 1% of shared symbols move more than 2% of the width, the added symbols and file appear, titleCase is a cross where it was, and the counts are compare_snapshots\'', async () => {
   // The strip lists every snapshot newest first, each with its symbols and unresolved share from list_snapshots (FR1760).
   const listed = (await api('snapshots', {})).snapshots as Array<{ id: string; symbols: number; relationships: number; unresolved: number }>
   const strip = page.getByRole('list', { name: 'Snapshots, newest first' }).getByRole('button')
