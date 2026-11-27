@@ -37,7 +37,12 @@ test('FR010 Replay pins every view to an older snapshot and says so until the pe
   await expect(page.getByRole('main')).toContainText('invoiceTax')
 
   const pinned: string[] = []
-  page.on('request', (r) => { if (r.url().includes('/api/v1/') && r.method() === 'POST') pinned.push(`${r.url().split('/api/v1/')[1]} ${JSON.parse(r.postData() || '{}').snapshot_id ?? '-'}`) })
+  page.on('request', (r) => {
+    if (r.url().includes('/api/v1/') && r.method() === 'POST') pinned.push(`${r.url().split('/api/v1/')[1]} ${JSON.parse(r.postData() || '{}').snapshot_id ?? '-'}`)
+    // The Terrain's payload is read from its snapshot's address (FR1453), which names the snapshot.
+    const galaxy = /\/api\/v1\/galaxy\/v\d+\/([\w-]+)$/.exec(new URL(r.url()).pathname)
+    if (galaxy) pinned.push(`galaxy ${galaxy[1]}`)
+  })
   await answered(page, () => picker.selectOption(older))
   await expect(page.getByTestId('replay-banner')).toContainText(`Replaying snapshot ${older.slice(0, 13)}`)
   // The older snapshot does not know the new function: the same search now matches nothing.
