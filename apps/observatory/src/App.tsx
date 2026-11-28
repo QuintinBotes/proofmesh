@@ -682,7 +682,7 @@ export function App() {
           </div>
         )}
         {noWebGl && <div className="notice" role="status">WebGL is not available here, so Observatory shows the table view.</div>}
-        {mode === 'claims' && <ClaimsView onError={report} />}
+        {mode === 'claims' && <ClaimsView onError={report} galaxy={galaxy} terrain={terrain} snapshotId={replay ?? current?.id ?? null} map={!noWebGl && !tableView} onWebGlFailure={() => setNoWebGl(true)} />}
         {mode === 'diff' && (
           <>
             <div className="diff-filters" role="group" aria-label="Compare">

@@ -1,0 +1,40 @@
+/* Claims & trace (#50): claims pinned on the Terrain, their layers as equal cells, and a session's trail. */
+.claims-trace { position: absolute; inset: 0; overflow: auto; padding-top: 56px; box-sizing: border-box; --hatch: rgba(154, 166, 192, 0.45); }
+.claims-summary { margin: 0 18px 10px; font-weight: 600; }
+.claims-map { position: relative; height: 46vh; min-height: 280px; margin: 0 18px 14px; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.claims-trace .claims { height: auto; padding: 0 18px 18px; overflow: visible; }
+.claims-trace .claims-empty { padding: 24px; }
+
+/* A pin is a shape and a word, never colour alone (FR057): a round ✓, a square ✗, a dashed ring for a verdict of another snapshot. */
+.claim-pin { position: absolute; transform: translate(-50%, -100%); min-width: 22px; height: 22px; padding: 0 6px; font: 700 13px/20px system-ui, sans-serif; border: 2px solid currentColor; background: var(--panel); cursor: pointer; z-index: 3; white-space: nowrap; }
+.claim-pin.supported { border-radius: 11px; }
+.claim-pin.refuted, .claim-pin.invalid { border-radius: 2px; border-width: 3px; }
+.claim-pin.inconclusive { border-radius: 2px; transform: translate(-50%, -100%) rotate(0); }
+.claim-pin.stale, .claim-pin.none { border-style: dashed; border-radius: 11px; color: var(--dim); font-weight: 600; }
+.claim-pin[aria-pressed="true"] { outline: 2px solid var(--text); outline-offset: 2px; }
+.trail-mark { position: absolute; transform: translate(-50%, 4px); min-width: 16px; padding: 0 4px; border-radius: 8px; background: var(--text); color: var(--bg); font: 700 11px/16px system-ui, sans-serif; text-align: center; pointer-events: none; z-index: 2; }
+.trail-mark sup { font-size: 9px; margin-left: 1px; }
+
+/* Seven cells of one size in pipeline order; a failed or unavailable layer is the boldest, a layer not run or unsupported is hatched (FR061). */
+.layer-strip { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; list-style: none; margin: 14px 0 6px; padding: 0; }
+.layer-cell { display: flex; align-items: center; justify-content: center; text-align: center; min-height: 48px; padding: 6px; box-sizing: border-box; border: 1px solid currentColor; border-radius: 6px; font-size: 12px; font-weight: 600; overflow-wrap: anywhere; }
+.layer-cell.pass { color: #6ee7a8; }
+.layer-cell.fail, .layer-cell.unavailable, .layer-cell.inconclusive { border-width: 3px; font-weight: 800; }
+.layer-cell.fail { color: #ff7a7a; background: rgba(255, 122, 122, 0.14); }
+.layer-cell.unavailable, .layer-cell.inconclusive { color: #ffd36e; }
+.layer-cell.not_run, .layer-cell.unsupported { color: #c3cbe0; background-image: repeating-linear-gradient(45deg, var(--hatch) 0 2px, transparent 2px 8px); }
+
+.trail { padding: 0 18px 24px; }
+.trail select { margin-left: 6px; }
+.steps { padding-left: 0; list-style: none; font-size: 13px; }
+.steps li { padding: 3px 0; border-bottom: 1px solid var(--line); }
+.steps .snapshot-change { color: var(--dim); font-style: italic; }
+.missed { font-size: 13px; columns: 2 320px; }
+
+@media (prefers-color-scheme: light) {
+  .claims-trace { --hatch: rgba(74, 85, 104, 0.35); }
+  .layer-cell.pass { color: #0a6b3a; }
+  .layer-cell.fail { color: #a11a1a; background: rgba(161, 26, 26, 0.08); }
+  .layer-cell.unavailable, .layer-cell.inconclusive { color: #7a5200; }
+  .layer-cell.not_run, .layer-cell.unsupported { color: #4a5568; }
+}
