@@ -1038,6 +1038,7 @@ From #39: a fresh clone starts from the snapshot a teammate or CI built for the 
 - FR1764: MUST, under `prefers-reduced-motion: reduce`, switch Time's marks without animation and show the same counts.
 - FR1765: MUST name the pinned snapshot in the address (`?snapshot=<id>`), so a link opens that snapshot pinned. A link to a snapshot that is no longer listed MUST say so and offer the nearest one listed, the oldest, since retention retires the oldest first.
 - FR1620: MUST check FR1225 by the CPU time the test process spends in the layout (user and system, every thread of the process, so garbage collection counts), not by wall-clock time, so other processes on a busy machine cannot fail it while a layout that really does over a second of work still does (#221). The layout is synchronous computation with no I/O, so on an idle machine its wall-clock time is no more than about this CPU time; best-of-N wall-clock runs were not chosen, because under sustained load every run is stretched (the fastest of five reached 990 ms with the layout's own CPU time at 140 ms).
+- FR1560: MUST keep every Terrain ghost cell (an area with no symbols, FR1405) and its label inside the canvas and clear of the overlays on it (the zoom controls and the Graph/Table switch), after the first paint and after Fit everything, at a size where the labels show (#210).
 
 ### Open source and extensibility
 
