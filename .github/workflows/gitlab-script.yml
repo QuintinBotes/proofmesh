@@ -16,13 +16,13 @@ jobs:
         run: |
           ruby -ryaml -e 'puts YAML.load_file(".gitlab-ci.yml").fetch("proofmesh-impact").fetch("script")' > "$RUNNER_TEMP/job.sh"
           image=$(ruby -ryaml -e 'puts YAML.load_file(".gitlab-ci.yml").fetch("proofmesh-impact").fetch("image")')
-          ref=$(ruby -ryaml -e 'puts YAML.load_file(".gitlab-ci.yml").fetch("proofmesh-impact").fetch("variables").fetch("PROOFMESH_REF")')
+          ref=5945755764bfa13442a81dc5bc23353b9fe884e6
           docker run --rm -v "$GITHUB_WORKSPACE:/fixture" -w /fixture -v "$RUNNER_TEMP/job.sh:/job.sh:ro" \
             -e CI_MERGE_REQUEST_DIFF_BASE_SHA -e CI_COMMIT_SHA -e CI_PROJECT_DIR=/fixture -e CI_BUILDS_DIR=/builds \
             -e CI_PIPELINE_SOURCE=merge_request_event -e PROOFMESH_REF="$ref" "$image" \
             bash -ec 'git config --global --add safe.directory /fixture; mkdir -p /builds; bash -eo pipefail /job.sh'
           grep -F '2 dependents are neither changed nor tested.' proofmesh-report.md
-          grep -F 'analystScoreDoubles' proofmesh-tests.txt
+          grep -Fx 'test/analyst.test.ts' proofmesh-tests.txt
           test ! -e proofmesh-note.json
       - uses: actions/upload-artifact@v4
         with:
