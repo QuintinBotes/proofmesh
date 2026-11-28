@@ -118,3 +118,42 @@ it('FR3005 resumes a byte-limited native graph page at its returned row count', 
   expect(answer.items).toEqual([b, c])
   expect(answer.truncated).toBe(false)
 })
+
+it('FR3005 verifies both path endpoints, exact declarations and the kind of every directed hop', async () => {
+  const { pathScore } = await import(pathToFileURL(path.join(ROOT, 'bench/parity/agents/paths.mjs')).href)
+  const file = 'src/demo.ts'
+  const symbols = ['A.start', 'A.step', 'B.step', 'A.end'].map((qname, index) => ({
+    id: qname, qname, name: qname.split('.')[1], file, line: index + 1,
+  }))
+  const q = { source: { file, qname: 'A.start' }, target: { file, qname: 'A.end' } }
+  const compiler = { T: { symbols, calls: [
+    { caller: 'A.start', callee: 'A.step' }, { caller: 'A.step', callee: 'A.end' },
+  ] }, tFind: (_: string, qname: string) => qname, truthFor: () => ({ shortest: 2 }) }
+  const route = [q.source, { file, name: 'step', line: 2 }, q.target]
+  expect(pathScore(q, { path: route, kinds: ['calls', 'calls'] }, compiler).valid).toBe(true)
+  expect(pathScore(q, { path: route, kinds: ['calls', 'has_method'] }, compiler).valid).toBe(false)
+  expect(pathScore(q, { path: route.slice(1), kinds: ['calls'] }, compiler).valid).toBe(false)
+  expect(pathScore(q, { path: [q.source, { file, name: 'step', line: 3 }, q.target], kinds: ['calls', 'calls'] }, compiler).valid).toBe(false)
+})
+
+it('FR3005 scores unused public functions and counts distinct source symbols using each hub', async () => {
+  const { symbolUsage } = await import(pathToFileURL(path.join(ROOT, 'bench/parity/agents/symbol-usage.mjs')).href)
+  const file = 'src/demo.ts'
+  const id = (name: string) => file + '::' + name
+  const nodes = ['a', 'b', 'exported', 'a.nested'].map(n =>
+    `<node id="${id(n)}"><data key="kind">function</data><data key="name">${n.split('.').at(-1)}</data><data key="file_path">${file}</data></node>`)
+  const edge = (a: string, b: string, kind: string) => `<edge source="${id(a)}" target="${id(b)}"><data key="edge_kind">${kind}</data></edge>`
+  const xml = `<graphml xmlns="http://graphml.graphdrawing.org/xmlns"><graph>${nodes.join('')}${edge('a', 'b', 'calls')}${edge('a', 'b', 'references')}${edge('b', 'b', 'calls')}${edge('a.nested', 'b', 'reads')}${edge('a', 'exported', 'imports')}</graph></graphml>`
+  const call = async () => xml
+  expect((await symbolUsage('gortex', { kind: 'hubs', top: 1 }, call)).ranked).toEqual([[id('b'), 2]])
+  expect((await symbolUsage('gortex', { kind: 'dead_code', scope: 'src/' }, call)).items.sort()).toEqual([id('a'), id('exported')])
+})
+
+it('FR3005 names a missing native tool or facade operation before scoring', async () => {
+  const { requireOperation } = await import(pathToFileURL(path.join(ROOT, 'bench/parity/agents/callers.mjs')).href)
+  const surface = new Map([['trace', { inputSchema: { properties: { operation: { enum: ['walk'] } } } }]])
+  expect(() => requireOperation(surface, 'trace', { operation: 'walk' })).not.toThrow()
+  for (const [name, args] of [['trace', { operation: 'path' }], ['cypher', {}]] as const) {
+    expect(() => requireOperation(surface, name, args)).toThrow(expect.objectContaining({ code: 'unsupported_operation' }))
+  }
+})

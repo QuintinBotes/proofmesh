@@ -4,11 +4,13 @@ import os from 'node:os'
 import path from 'node:path'
 import { execFileSync, spawn } from 'node:child_process'
 import { setTimeout as sleep } from 'node:timers/promises'
-import { encode } from 'gpt-tokenizer/encoding/o200k_base'
+import { countTokens } from 'gpt-tokenizer/encoding/o200k_base'
 import { makeTruth } from '../../graph-bench/lib.mjs'
 import { McpClient } from '../../graph-bench/mcp-client.mjs'
-import { directCallers, payload, pins } from './callers.mjs'
+import { directCallers, payload, pins, requireOperation } from './callers.mjs'
 import { relatedItems } from './relations.mjs'
+import { callPath, pathScore } from './paths.mjs'
+import { symbolUsage } from './symbol-usage.mjs'
 
 const here = import.meta.dirname
 const source = execFileSync('sh', [path.resolve(here, '../fixture.sh')], { encoding: 'utf8' }).trim()
@@ -28,7 +30,7 @@ const sorted = items => [...new Set(items)].sort()
 const quantile = (values, p) => [...values].sort((a, b) => a - b)[Math.ceil(p * values.length) - 1]
 const cost = result => {
   const full = JSON.stringify(result)
-  return { bytes: Buffer.byteLength(full), tokens: encode(full).length }
+  return { bytes: Buffer.byteLength(full), tokens: countTokens(full) }
 }
 function diff(expected, actual) {
   const truth = new Set(expected), got = new Set(actual)
@@ -53,9 +55,20 @@ function oracle() {
     const t = compiler.truthFor(q), audit = reviewed.questions[q.id]
     if (sourceLine(fixture, audit.site) !== audit.source) throw new Error('Reviewed source changed: ' + q.id)
     if (audit.return_site && sourceLine(fixture, audit.return_site) !== audit.return_source) throw new Error('Reviewed return import changed: ' + q.id)
+    if (q.kind === 'path') {
+      for (const site of audit.remaining_sites) if (sourceLine(fixture, site.site) !== site.source) throw new Error('Reviewed call site changed: ' + site.site)
+      const kinds = audit.path.slice(1).map(() => 'calls')
+      const verified = pathScore(q, { path: audit.path, kinds }, compiler)
+      const sites = [audit, ...audit.remaining_sites]
+      const cited = verified.hops.every((hop, i) => compiler.T.calls.some(c =>
+        c.caller === hop.from && c.callee === hop.to && c.file + ':' + c.line === sites[i]?.site))
+      if (!verified.valid || !cited || verified.hops.length !== t.shortest) throw new Error('Reviewed path disagrees with fixture: ' + q.id)
+      expected[q.id] = { shortest: t.shortest, reviewed_path: audit.path }
+      continue
+    }
     if (q.kind !== 'callers') {
       if (!t.items.has(audit.item)) throw new Error('Reviewed relationship disagrees with fixture: ' + q.id)
-      expected[q.id] = { items: sorted(t.items) }
+      expected[q.id] = { items: sorted(t.items), ranked: t.ranked, tied_at_cut: t.tied_at_cut }
       continue
     }
     if (!t.pairs.has(audit.caller + ' ' + audit.site)) throw new Error('Reviewed positive disagrees with fixture: ' + q.id)
@@ -63,7 +76,7 @@ function oracle() {
     expected[q.id] = { callers: sorted(t.items), sites: sorted(t.sites), pairs: sorted(t.pairs) }
   }
   save('expected.json', expected)
-  return expected
+  return { expected, compiler }
 }
 function binary(name) {
   const key = 'PARITY_' + name.replaceAll('-', '_').toUpperCase()
@@ -105,7 +118,7 @@ function monitor(roots, privateExe) {
   return () => { clearInterval(timer); return peak }
 }
 
-async function measure(tool, expected) {
+async function measure(tool, expected, compiler) {
   const dir = path.join(work, tool), repo = path.join(dir, 'repo'), commands = []
   const row = { version: pins[tool], commands, questions: {} }
   fs.mkdirSync(dir)
@@ -174,21 +187,34 @@ async function measure(tool, expected) {
     const discovery = await client.request('tools/list', {})
     row.discovery = { tools: discovery.result.tools.length, ...cost(discovery.result) }
     save(tool + '-discovery.json', discovery.result)
+    const surface = new Map(discovery.result.tools.map(t => [t.name, t]))
     async function run(q) {
       const messages = []
       const before = performance.now()
-      const retrieve = q.kind === 'callers' ? directCallers : relatedItems
-      const answer = await retrieve(tool, q, async (name, args) => {
+      const retrieve = { callers: directCallers, path: callPath, dead_code: symbolUsage, hubs: symbolUsage }[q.kind] ?? relatedItems
+      const call = async (name, args) => {
+        requireOperation(surface, name, args)
         const input = { name, arguments: args }
         const r = await client.request('tools/call', input)
         messages.push({ input, reply: r })
+        if (r.error?.code === -32601) throw Object.assign(new Error(r.error.message), { code: 'unsupported_operation' })
         if (name === 'edit' && args.operation === 'export_graph' && !r.error && !r.result?.isError) {
           const text = r.result?.content?.find(c => c.type === 'text')?.text
           if (!text) throw new Error('Missing inline GraphML export')
           return text
         }
         return payload(r)
-      }, repo)
+      }
+      let answer
+      try {
+        answer = await retrieve(tool, q, call, repo)
+      } catch (e) {
+        if (e.code !== 'unsupported_operation') {
+          save(tool + '-' + q.id + '-failure.json', messages)
+          throw e
+        }
+        answer = { status: e.code, reason: e.message }
+      }
       const ms = performance.now() - before
       if (q.kind !== 'callers') return { ...answer, items: sorted(answer.items ?? []), messages, ms }
       const facts = answer.facts ?? []
@@ -196,32 +222,49 @@ async function measure(tool, expected) {
         pairs: sorted(facts.filter(f => f.site).map(f => f.file + '::' + f.caller + ' ' + f.site)), messages, ms }
     }
     for (const q of suite) {
-      const trials = []
       try {
-        const warmup = await run(q)
-        for (let i = 0; i < runs; i++) trials.push(await run(q))
-        const first = trials[0]
-        const semantic = t => JSON.stringify([t.status, t.truncated, t.callers, t.pairs, t.sites, t.items])
-        if ([warmup, ...trials].some(t => semantic(t) !== semantic(first))) throw new Error('Repeated retrieval changed the semantic result')
-        const costs = first.messages.map(m => cost(m.reply.result))
+        const semantic = t => JSON.stringify([t.status, t.truncated, t.callers, t.pairs, t.sites, t.items, t.path, t.kinds, t.ranked])
+        const warmup = semantic(await run(q))
+        let first
+        const warm_ms = []
+        for (let i = 0; i < runs; i++) {
+          const trial = await run(q)
+          if (semantic(trial) !== warmup) throw new Error('Repeated retrieval changed the semantic result')
+          warm_ms.push(Math.round(trial.ms * 10) / 10)
+          first ??= trial
+        }
+        const costs = first.messages.map(m => cost(m.reply.result ?? m.reply.error))
         const audit = reviewed.questions[q.id]
         const score = {
           status: first.status, method: first.method, reason: first.reason ?? first.site_limitation, truncated: first.truncated ?? false,
-          warm_ms: trials.map(t => Math.round(t.ms * 10) / 10), bytes: costs.reduce((s, c) => s + c.bytes, 0), tokens: costs.reduce((s, c) => s + c.tokens, 0),
+          warm_ms, bytes: costs.reduce((s, c) => s + c.bytes, 0), tokens: costs.reduce((s, c) => s + c.tokens, 0),
         }
         // Each class has its own answer contract: comparing costs requires every expected fact with no extras.
-        const fields = q.kind === 'callers' ? ['callers', 'sites', 'pairs'] : ['items']
+        const fields = q.kind === 'callers' ? ['callers', 'sites', 'pairs'] : q.kind === 'path' ? [] : ['items']
         const raw = { calls: first.messages }
         for (const field of fields) {
           score[field] = diff(expected[q.id][field], first[field])
           raw[field] = first[field]
         }
         score.exact_answer = first.status === 'answered' && !score.truncated && fields.every(field => !score[field].missing.length && !score[field].extra.length)
-        if (q.kind === 'callers') {
+        if (q.kind === 'path') {
+          score.path = pathScore(q, first, compiler)
+          score.exact_answer &&= score.path.valid
+          score.audit = { site: audit.site, source: audit.source, reviewed_path: audit.path }
+          raw.path = first.path ?? []
+          raw.kinds = first.kinds ?? []
+        } else if (q.kind === 'callers') {
           score.exact_site_answer = score.exact_answer
           score.audit = { caller_found: first.callers.includes(audit.caller), site_found: first.pairs.includes(audit.caller + ' ' + audit.site), source: audit.source }
         } else {
           score.audit = { site: audit.site, source: audit.source, item: audit.item, item_found: first.items.includes(audit.item) }
+        }
+        if (q.kind === 'hubs') {
+          score.ranked = first.ranked ?? []
+          score.expected_ranking = expected[q.id].ranked
+          score.tied_at_cut = expected[q.id].tied_at_cut
+          score.exact_answer &&= JSON.stringify(score.ranked) === JSON.stringify(score.expected_ranking)
+          raw.ranked = score.ranked
         }
         score.p50_ms = quantile(score.warm_ms, .5); score.p95_ms = quantile(score.warm_ms, .95)
         row.questions[q.id] = score
@@ -248,10 +291,10 @@ async function measure(tool, expected) {
 }
 
 try {
-  const commit = reviewed.upstream_commit, expected = oracle()
+  const commit = reviewed.upstream_commit, { expected, compiler } = oracle()
   const results = { commit, src_tree: reviewed.src_tree, tsconfig_blob: reviewed.tsconfig_blob, runs, host: os.platform() + '/' + os.arch(), node: process.version, tokenizer: 'o200k_base (gpt-tokenizer 4.1.2)', tools: {}, pending: questions.filter(q => !suite.includes(q)).map(q => q.id) }
   for (const tool of Object.keys(pins)) {
-    try { results.tools[tool] = await measure(tool, expected) }
+    try { results.tools[tool] = await measure(tool, expected, compiler) }
     catch (e) { results.tools[tool] = { status: 'not_run', version: pins[tool], reason: e.message } }
     console.log(tool, results.tools[tool].reason ?? 'finished')
   }
@@ -264,15 +307,20 @@ try {
     lines.push(a?.callers ? `| ${tool} | ${q.id} (${a.status}) | ${ratio(a.callers)} | ${ratio(a.sites)} | ${a.p50_ms} / ${a.p95_ms} | ${a.bytes} | ${a.tokens} |` : `| ${tool} | ${q.id} | ${a?.reason ?? data.reason} | — | — | — | — |`)
   }
   lines.push('', '## Relationship queries', '', '| Tool | Question | Correct / returned / expected items | Exact | p50 / p95 ms | Bytes | Tokens |', '|---|---|---|---|---|---|---|')
-  for (const [tool, data] of Object.entries(results.tools)) for (const q of suite.filter(q => q.kind !== 'callers')) {
+  for (const [tool, data] of Object.entries(results.tools)) for (const q of suite.filter(q => q.kind !== 'callers' && q.kind !== 'path')) {
     const a = data.questions?.[q.id]
     lines.push(a?.items ? `| ${tool} | ${q.id} ${q.kind} (${a.status}) | ${ratio(a.items)} | ${a.exact_answer} | ${a.p50_ms} / ${a.p95_ms} | ${a.bytes} | ${a.tokens} |` : `| ${tool} | ${q.id} | ${a?.reason ?? data.reason} | — | — | — | — |`)
+  }
+  lines.push('', '## Q8 call path', '', '| Tool | Status | Verified hops / reported | Truth shortest | Valid path | p50 / p95 ms | Bytes | Tokens |', '|---|---|---|---|---|---|---|---|')
+  for (const [tool, data] of Object.entries(results.tools)) {
+    const a = data.questions?.Q8
+    lines.push(a?.path ? `| ${tool} | ${a.status} | ${a.path.hops.filter(h => h.valid).length}/${a.path.hops.length} | ${a.path.shortest} | ${a.path.valid} | ${a.p50_ms} / ${a.p95_ms} | ${a.bytes} | ${a.tokens} |` : `| ${tool} | ${a?.reason ?? data.reason} | — | — | — | — | — | — |`)
   }
   lines.push('', '## Index and discovery costs', '', '| Tool | Index to ready (ms) | Sampled peak RSS (MiB) | Listed tools | Schema bytes | Schema tokens |', '|---|---:|---:|---:|---:|---:|')
   for (const [tool, r] of Object.entries(results.tools)) if (r.discovery) lines.push(`| ${tool} | ${r.cold_ms} | ${r.peak_rss_kib ? (r.peak_rss_kib / 1024).toFixed(1) : 'unavailable'} | ${r.discovery.tools} | ${r.discovery.bytes} | ${r.discovery.tokens} |`)
   lines.push('', '## Source audit', '', 'A saved edit moved the Q1 call in Entity.ts from line 34 to 35 immediately before the stale-source query.', '', '| Tool | Q1 caller matched | Q1 caller and site matched | Old line returned after edit | New line returned after edit |', '|---|---|---|---|---|')
   for (const [tool, r] of Object.entries(results.tools)) if (r.stale) lines.push(`| ${tool} | ${r.questions.Q1?.audit?.caller_found ?? 'unknown'} | ${r.questions.Q1?.audit?.site_found ?? 'unknown'} | ${r.stale.old_site_returned} | ${r.stale.moved_site_returned} |`)
-  lines.push('', 'Only exact, untruncated answers qualify for comparing costs within a question. Direct-caller questions also require exact caller/site pairs. The JSON files contain the raw replies, commands, audits and every missing or extra fact.', '', `Question classes pending adapter coverage: ${results.pending.join(', ')}.`)
+  lines.push('', 'Only exact, untruncated answers qualify for comparing costs within a question. Direct-caller questions also require exact caller/site pairs. The JSON files contain the raw replies, commands, audits and every missing or extra fact.', '', `Question classes pending adapter coverage: ${results.pending.join(', ') || 'none'}.`)
   fs.writeFileSync(path.join(out, 'report.md'), lines.join('\n') + '\n')
   console.log(path.join(out, 'report.md'))
 } finally { fs.rmSync(work, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }) }

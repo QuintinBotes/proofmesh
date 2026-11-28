@@ -3,6 +3,15 @@ import { last } from '../../graph-bench/lib.mjs'
 
 export const pins = { gortex: '0.64.11', gitnexus: '1.6.12', 'codebase-memory-mcp': '0.12.1' }
 
+export function requireOperation(tools, name, args) {
+  const tool = tools.get(name)
+  const choices = tool?.inputSchema?.properties?.operation?.enum
+  if (!tool || (args.operation && Array.isArray(choices) && !choices.includes(args.operation))) {
+    const operation = args.operation ? name + '.' + args.operation : name
+    throw Object.assign(new Error(operation + ' is absent from native tool discovery'), { code: 'unsupported_operation' })
+  }
+}
+
 export function payload(reply) {
   if (reply.error) throw new Error(reply.error.message)
   const result = reply.result

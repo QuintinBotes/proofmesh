@@ -25,11 +25,11 @@
           "status": "answered",
           "truncated": false,
           "warm_ms": [
-            1319.9,
-            1229,
-            1283.6,
-            1237.7,
-            1232.6
+            1215.5,
+            1216.6,
+            1212.6,
+            1212.1,
+            1231.1
           ],
           "bytes": 54678,
           "tokens": 13915,
@@ -75,18 +75,18 @@
             "site_found": true,
             "source": "getMetadataArgsStorage().tables.push({"
           },
-          "p50_ms": 1237.7,
-          "p95_ms": 1319.9
+          "p50_ms": 1215.5,
+          "p95_ms": 1231.1
         },
         "Q2": {
           "status": "answered",
           "truncated": false,
           "warm_ms": [
-            1846.6,
-            1850.7,
-            1827.4,
-            1817.5,
-            1972
+            1802.6,
+            1796.4,
+            1816.3,
+            1825.3,
+            1799.7
           ],
           "bytes": 34840,
           "tokens": 8571,
@@ -278,19 +278,19 @@
             "site_found": false,
             "source": "metadata: this.connection.getMetadata(entityTarget),"
           },
-          "p50_ms": 1846.6,
-          "p95_ms": 1972
+          "p50_ms": 1802.6,
+          "p95_ms": 1825.3
         },
         "Q3": {
           "status": "target_missing",
           "reason": "Gortex search returned 0 matching declarations in src/driver/Driver.ts",
           "truncated": false,
           "warm_ms": [
-            10.6,
-            10.2,
-            10.8,
-            9.9,
-            9.8
+            9.1,
+            9,
+            8.9,
+            9,
+            8.8
           ],
           "bytes": 4995,
           "tokens": 1120,
@@ -381,18 +381,18 @@
             "site_found": false,
             "source": "return this.connection.driver.escape(name)"
           },
-          "p50_ms": 10.2,
-          "p95_ms": 10.8
+          "p50_ms": 9,
+          "p95_ms": 9.1
         },
         "Q4": {
           "status": "answered",
           "truncated": false,
           "warm_ms": [
-            4.9,
-            4.6,
-            4.4,
-            4.4,
-            4.7
+            4.8,
+            4.2,
+            4.1,
+            4,
+            3.9
           ],
           "bytes": 7435,
           "tokens": 1837,
@@ -412,19 +412,19 @@
             "item": "src/driver/oracle/OracleDriver.ts::OracleDriver",
             "item_found": true
           },
-          "p50_ms": 4.6,
-          "p95_ms": 4.9
+          "p50_ms": 4.1,
+          "p95_ms": 4.8
         },
         "Q5": {
           "status": "answered",
           "method": "derived from native file and import graph",
           "truncated": false,
           "warm_ms": [
-            240.3,
-            240,
-            239.1,
-            236.1,
-            229.9
+            232,
+            229.2,
+            229.4,
+            228.3,
+            229.2
           ],
           "bytes": 2244705,
           "tokens": 832354,
@@ -442,19 +442,19 @@
             "item": "src/error/AlreadyHasActiveConnectionError.ts",
             "item_found": true
           },
-          "p50_ms": 239.1,
-          "p95_ms": 240.3
+          "p50_ms": 229.2,
+          "p95_ms": 232
         },
         "Q6": {
           "status": "answered",
           "method": "derived from native file and import graph",
           "truncated": false,
           "warm_ms": [
-            231,
-            231.1,
-            230.1,
-            228.6,
-            227.9
+            230.9,
+            229.3,
+            226.1,
+            229.6,
+            233.8
           ],
           "bytes": 2244705,
           "tokens": 832354,
@@ -479,18 +479,18 @@
             "item": "src/naming-strategy/DefaultNamingStrategy.ts",
             "item_found": true
           },
-          "p50_ms": 230.1,
-          "p95_ms": 231.1
+          "p50_ms": 229.6,
+          "p95_ms": 233.8
         },
         "Q7": {
           "status": "answered",
           "truncated": false,
           "warm_ms": [
-            463.4,
-            464,
-            463.1,
-            467.9,
-            467
+            460.4,
+            462.5,
+            463.6,
+            474.1,
+            466
           ],
           "bytes": 16950,
           "tokens": 4040,
@@ -511,18 +511,99 @@
             "item": "src/naming-strategy/DefaultNamingStrategy.ts::joinColumnName",
             "item_found": true
           },
-          "p50_ms": 464,
-          "p95_ms": 467.9
+          "p50_ms": 463.6,
+          "p95_ms": 474.1
+        },
+        "Q8": {
+          "status": "answered",
+          "truncated": false,
+          "warm_ms": [
+            6.4,
+            6.5,
+            6.6,
+            6.3,
+            6.2
+          ],
+          "bytes": 7260,
+          "tokens": 1658,
+          "exact_answer": true,
+          "path": {
+            "endpoints": true,
+            "hops": [
+              {
+                "from": "src/data-source/DataSource.ts#DataSource.initialize@248",
+                "to": "src/data-source/DataSource.ts#DataSource.buildMetadatas@692",
+                "kind": "calls",
+                "valid": true
+              },
+              {
+                "from": "src/data-source/DataSource.ts#DataSource.buildMetadatas@692",
+                "to": "src/connection/ConnectionMetadataBuilder.ts#ConnectionMetadataBuilder.buildSubscribers@51",
+                "kind": "calls",
+                "valid": true
+              },
+              {
+                "from": "src/connection/ConnectionMetadataBuilder.ts#ConnectionMetadataBuilder.buildSubscribers@51",
+                "to": "src/globals.ts#getMetadataArgsStorage@23",
+                "kind": "calls",
+                "valid": true
+              }
+            ],
+            "valid": true,
+            "path": [
+              {
+                "file": "src/data-source/DataSource.ts",
+                "qname": "DataSource.initialize"
+              },
+              {
+                "file": "src/data-source/DataSource.ts",
+                "qname": "DataSource.buildMetadatas"
+              },
+              {
+                "file": "src/connection/ConnectionMetadataBuilder.ts",
+                "qname": "ConnectionMetadataBuilder.buildSubscribers"
+              },
+              {
+                "file": "src/globals.ts",
+                "qname": "getMetadataArgsStorage"
+              }
+            ],
+            "shortest": 3
+          },
+          "audit": {
+            "site": "src/data-source/DataSource.ts:263",
+            "source": "await this.buildMetadatas()",
+            "reviewed_path": [
+              {
+                "file": "src/data-source/DataSource.ts",
+                "qname": "DataSource.initialize"
+              },
+              {
+                "file": "src/data-source/DataSource.ts",
+                "qname": "DataSource.buildMetadatas"
+              },
+              {
+                "file": "src/connection/ConnectionMetadataBuilder.ts",
+                "qname": "ConnectionMetadataBuilder.buildSubscribers"
+              },
+              {
+                "file": "src/globals.ts",
+                "qname": "getMetadataArgsStorage"
+              }
+            ]
+          },
+          "p50_ms": 6.4,
+          "p95_ms": 6.6
         },
         "Q9": {
           "status": "answered",
           "truncated": false,
           "warm_ms": [
-            19.1,
-            18.6,
-            18.8,
-            19.3,
-            18.6
+            18.9,
+            18,
+            18.1,
+            18.1,
+            18.2
           ],
           "bytes": 218915,
           "tokens": 50514,
@@ -540,19 +621,56 @@
             "item": "src/cache/DbQueryResultCache.ts",
             "item_found": true
           },
-          "p50_ms": 18.8,
-          "p95_ms": 19.3
+          "p50_ms": 18.1,
+          "p95_ms": 18.9
+        },
+        "Q10": {
+          "status": "answered",
+          "truncated": false,
+          "warm_ms": [
+            3628.2,
+            3949.7,
+            3817.4,
+            3757.2,
+            3708.4
+          ],
+          "bytes": 34072418,
+          "tokens": 10195848,
+          "items": {
+            "correct": 73,
+            "expected": 80,
+            "returned": 73,
+            "missing": [
+              "src/decorator/entity/Entity.ts::Entity",
+              "src/driver/mongodb/bson.typings.ts::calculateObjectSize",
+              "src/driver/mongodb/bson.typings.ts::deserialize",
+              "src/driver/mongodb/bson.typings.ts::deserializeStream",
+              "src/driver/mongodb/bson.typings.ts::serialize",
+              "src/driver/mongodb/bson.typings.ts::serializeWithBufferAndIndex",
+              "src/driver/mongodb/bson.typings.ts::setInternalBufferSize"
+            ],
+            "extra": []
+          },
+          "exact_answer": false,
+          "audit": {
+            "site": "src/container.ts:63",
+            "source": "export function useContainer(",
+            "item": "src/container.ts::useContainer",
+            "item_found": true
+          },
+          "p50_ms": 3757.2,
+          "p95_ms": 3949.7
         },
         "Q11": {
           "status": "answered",
           "method": "derived from native file and import graph",
           "truncated": false,
           "warm_ms": [
-            231.9,
-            230.7,
-            231.3,
-            229.4,
-            230.1
+            233.1,
+            229,
+            230.6,
+            234.4,
+            232.7
           ],
           "bytes": 2244705,
           "tokens": 832354,
@@ -580,19 +698,19 @@
             "item": "src/cache/QueryResultCacheFactory.ts",
             "item_found": true
           },
-          "p50_ms": 230.7,
-          "p95_ms": 231.9
+          "p50_ms": 232.7,
+          "p95_ms": 234.4
         },
         "Q12": {
           "status": "answered",
           "method": "derived from native file and import graph",
           "truncated": false,
           "warm_ms": [
-            232.6,
-            230.1,
+            231,
+            232.1,
+            233.2,
             232.5,
-            230.8,
-            229.5
+            231.5
           ],
           "bytes": 2244705,
           "tokens": 832354,
@@ -614,14 +732,140 @@
             "item": "src/cli-ts-node-commonjs.ts",
             "item_found": true
           },
-          "p50_ms": 230.8,
-          "p95_ms": 232.6
+          "p50_ms": 232.1,
+          "p95_ms": 233.2
+        },
+        "Q13": {
+          "status": "answered",
+          "truncated": false,
+          "warm_ms": [
+            3624.8,
+            3725.3,
+            3861.5,
+            3867.5,
+            3877.5
+          ],
+          "bytes": 34072418,
+          "tokens": 10195848,
+          "items": {
+            "correct": 6,
+            "expected": 10,
+            "returned": 10,
+            "missing": [
+              "src/query-builder/QueryBuilder.ts::expressionMap",
+              "src/query-runner/BaseQueryRunner.ts::connection",
+              "src/query-runner/BaseQueryRunner.ts::executeQueries",
+              "src/util/InstanceChecker.ts::InstanceChecker"
+            ],
+            "extra": [
+              "src/driver/mongodb/bson.typings.ts::Document",
+              "src/error/TypeORMError.ts::name",
+              "src/metadata/EntityMetadata.ts::EntityMetadata",
+              "src/util/InstanceChecker.ts::isTable"
+            ]
+          },
+          "exact_answer": false,
+          "audit": {
+            "site": "src/schema-builder/table/Table.ts:166",
+            "source": "return new Table({",
+            "item": "src/schema-builder/table/Table.ts::Table",
+            "item_found": true
+          },
+          "ranked": [
+            [
+              "src/schema-builder/table/Table.ts::Table",
+              481
+            ],
+            [
+              "src/common/ObjectLiteral.ts::ObjectLiteral",
+              381
+            ],
+            [
+              "src/error/TypeORMError.ts::name",
+              370
+            ],
+            [
+              "src/error/TypeORMError.ts::TypeORMError",
+              367
+            ],
+            [
+              "src/driver/Query.ts::Query",
+              221
+            ],
+            [
+              "src/schema-builder/table/TableColumn.ts::TableColumn",
+              174
+            ],
+            [
+              "src/metadata/ColumnMetadata.ts::ColumnMetadata",
+              163
+            ],
+            [
+              "src/driver/mongodb/bson.typings.ts::Document",
+              142
+            ],
+            [
+              "src/metadata/EntityMetadata.ts::EntityMetadata",
+              140
+            ],
+            [
+              "src/util/InstanceChecker.ts::isTable",
+              121
+            ]
+          ],
+          "expected_ranking": [
+            [
+              "src/schema-builder/table/Table.ts::Table",
+              579
+            ],
+            [
+              "src/error/TypeORMError.ts::TypeORMError",
+              450
+            ],
+            [
+              "src/common/ObjectLiteral.ts::ObjectLiteral",
+              373
+            ],
+            [
+              "src/util/InstanceChecker.ts::InstanceChecker",
+              244
+            ],
+            [
+              "src/driver/Query.ts::Query",
+              236
+            ],
+            [
+              "src/schema-builder/table/TableColumn.ts::TableColumn",
+              184
+            ],
+            [
+              "src/metadata/ColumnMetadata.ts::ColumnMetadata",
+              159
+            ],
+            [
+              "src/query-builder/QueryBuilder.ts::expressionMap",
+              158
+            ],
+            [
+              "src/query-runner/BaseQueryRunner.ts::connection",
+              158
+            ],
+            [
+              "src/query-runner/BaseQueryRunner.ts::executeQueries",
+              155
+            ]
+          ],
+          "tied_at_cut": [
+            "src/query-runner/BaseQueryRunner.ts::executeQueries"
+          ],
+          "p50_ms": 3861.5,
+          "p95_ms": 3877.5
         }
       },
       "reported_version": "gortex v0.64.11+c7abb9b\n  commit:  c7abb9b\n  built:   2026-10-26T21:24:14Z\n  go:      go1.27.3\n  os/arch: darwin/arm64",
       "profile": "embedded MCP, default facade; semantic enrichment and embeddings off",
-      "cold_ms": 3191,
-      "peak_rss_kib": 1209552,
+      "cold_ms": 2737,
+      "peak_rss_kib": 1146768,
       "discovery": {
         "tools": 21,
         "bytes": 15200,
@@ -662,9 +906,9 @@
           "reason": "CodeRelation.CALLS has no call-site line property",
           "truncated": false,
           "warm_ms": [
-            7.2,
-            6.8,
-            6.5,
+            7.3,
+            6.7,
+            7.7,
             5.8,
             5.7
           ],
@@ -808,8 +1052,8 @@
             "site_found": false,
             "source": "getMetadataArgsStorage().tables.push({"
           },
-          "p50_ms": 6.5,
-          "p95_ms": 7.2
+          "p50_ms": 6.7,
+          "p95_ms": 7.7
         },
         "Q2": {
           "status": "answered",
@@ -817,9 +1061,9 @@
           "truncated": false,
           "warm_ms": [
             5.8,
-            5.9,
-            5.8,
             5.7,
+            5.6,
+            8.3,
             5.6
           ],
           "bytes": 5553,
@@ -1020,8 +1264,8 @@
             "site_found": false,
             "source": "metadata: this.connection.getMetadata(entityTarget),"
           },
-          "p50_ms": 5.8,
-          "p95_ms": 5.9
+          "p50_ms": 5.7,
+          "p95_ms": 8.3
         },
         "Q3": {
           "status": "answered",
@@ -1029,10 +1273,10 @@
           "truncated": false,
           "warm_ms": [
             5,
-            5,
-            3.6,
             4.9,
-            7
+            3.5,
+            4.8,
+            4.9
           ],
           "bytes": 1086,
           "tokens": 313,
@@ -1121,18 +1365,18 @@
             "site_found": false,
             "source": "return this.connection.driver.escape(name)"
           },
-          "p50_ms": 5,
-          "p95_ms": 7
+          "p50_ms": 4.9,
+          "p95_ms": 5
         },
         "Q4": {
           "status": "answered",
           "truncated": false,
           "warm_ms": [
-            5.2,
-            3.6,
-            5.2,
+            5.1,
+            4.9,
             3.7,
-            5.1
+            3.4,
+            4.9
           ],
           "bytes": 1338,
           "tokens": 406,
@@ -1150,18 +1394,18 @@
             "item": "src/driver/oracle/OracleDriver.ts::OracleDriver",
             "item_found": true
           },
-          "p50_ms": 5.1,
-          "p95_ms": 5.2
+          "p50_ms": 4.9,
+          "p95_ms": 5.1
         },
         "Q5": {
           "status": "answered",
           "truncated": false,
           "warm_ms": [
-            4.8,
-            4.8,
             4.9,
+            5.6,
             5,
-            5.1
+            4.9,
+            4.8
           ],
           "bytes": 3970,
           "tokens": 1100,
@@ -1183,18 +1427,18 @@
             "item_found": true
           },
           "p50_ms": 4.9,
-          "p95_ms": 5.1
+          "p95_ms": 5.6
         },
         "Q6": {
           "status": "answered",
           "method": "derived from native file and import graph",
           "truncated": false,
           "warm_ms": [
-            56.4,
-            52.9,
-            54.1,
-            51.9,
-            51.6
+            51.8,
+            53.9,
+            50.8,
+            52.3,
+            51.8
           ],
           "bytes": 227020,
           "tokens": 60428,
@@ -1217,18 +1461,18 @@
             "item": "src/naming-strategy/DefaultNamingStrategy.ts",
             "item_found": true
           },
-          "p50_ms": 52.9,
-          "p95_ms": 56.4
+          "p50_ms": 51.8,
+          "p95_ms": 53.9
         },
         "Q7": {
           "status": "answered",
           "truncated": false,
           "warm_ms": [
-            14,
-            13.8,
-            14,
-            13.8,
-            13.7
+            14.1,
+            13.9,
+            14.3,
+            11.4,
+            13.9
           ],
           "bytes": 4393,
           "tokens": 1126,
@@ -1253,18 +1497,103 @@
             "item": "src/naming-strategy/DefaultNamingStrategy.ts::joinColumnName",
             "item_found": true
           },
-          "p50_ms": 13.8,
-          "p95_ms": 14
+          "p50_ms": 13.9,
+          "p95_ms": 14.3
+        },
+        "Q8": {
+          "status": "answered",
+          "truncated": false,
+          "warm_ms": [
+            26.9,
+            27,
+            25.8,
+            25.6,
+            26.2
+          ],
+          "bytes": 1145,
+          "tokens": 370,
+          "exact_answer": true,
+          "path": {
+            "endpoints": true,
+            "hops": [
+              {
+                "from": "src/data-source/DataSource.ts#DataSource.initialize@248",
+                "to": "src/data-source/DataSource.ts#DataSource.buildMetadatas@692",
+                "kind": "calls",
+                "valid": true
+              },
+              {
+                "from": "src/data-source/DataSource.ts#DataSource.buildMetadatas@692",
+                "to": "src/connection/ConnectionMetadataBuilder.ts#ConnectionMetadataBuilder.buildEntityMetadatas@75",
+                "kind": "calls",
+                "valid": true
+              },
+              {
+                "from": "src/connection/ConnectionMetadataBuilder.ts#ConnectionMetadataBuilder.buildEntityMetadatas@75",
+                "to": "src/globals.ts#getMetadataArgsStorage@23",
+                "kind": "calls",
+                "valid": true
+              }
+            ],
+            "valid": true,
+            "path": [
+              {
+                "file": "src/data-source/DataSource.ts",
+                "name": "initialize",
+                "line": 248
+              },
+              {
+                "file": "src/data-source/DataSource.ts",
+                "name": "buildMetadatas",
+                "line": 692
+              },
+              {
+                "file": "src/connection/ConnectionMetadataBuilder.ts",
+                "name": "buildEntityMetadatas",
+                "line": 75
+              },
+              {
+                "file": "src/globals.ts",
+                "name": "getMetadataArgsStorage",
+                "line": 23
+              }
+            ],
+            "shortest": 3
+          },
+          "audit": {
+            "site": "src/data-source/DataSource.ts:263",
+            "source": "await this.buildMetadatas()",
+            "reviewed_path": [
+              {
+                "file": "src/data-source/DataSource.ts",
+                "qname": "DataSource.initialize"
+              },
+              {
+                "file": "src/data-source/DataSource.ts",
+                "qname": "DataSource.buildMetadatas"
+              },
+              {
+                "file": "src/connection/ConnectionMetadataBuilder.ts",
+                "qname": "ConnectionMetadataBuilder.buildSubscribers"
+              },
+              {
+                "file": "src/globals.ts",
+                "qname": "getMetadataArgsStorage"
+              }
+            ]
+          },
+          "p50_ms": 26.2,
+          "p95_ms": 27
         },
         "Q9": {
           "status": "answered",
           "truncated": false,
           "warm_ms": [
-            3.3,
-            4.9,
-            4.8,
+            3.2,
+            3.2,
+            3.2,
             4.7,
-            4.7
+            3.1
           ],
           "bytes": 517,
           "tokens": 155,
@@ -1368,19 +1697,53 @@
             "item": "src/cache/DbQueryResultCache.ts",
             "item_found": false
           },
-          "p50_ms": 4.7,
-          "p95_ms": 4.9
+          "p50_ms": 3.2,
+          "p95_ms": 4.7
+        },
+        "Q10": {
+          "status": "answered",
+          "truncated": false,
+          "warm_ms": [
+            5,
+            4.8,
+            4.8,
+            4.9,
+            5
+          ],
+          "bytes": 52709,
+          "tokens": 13534,
+          "items": {
+            "correct": 80,
+            "expected": 80,
+            "returned": 84,
+            "missing": [],
+            "extra": [
+              "src/driver/mongodb/bson.typings.ts::EJSONdeserialize",
+              "src/driver/mongodb/bson.typings.ts::EJSONserialize",
+              "src/driver/mongodb/bson.typings.ts::parse",
+              "src/driver/mongodb/bson.typings.ts::stringify"
+            ]
+          },
+          "exact_answer": false,
+          "audit": {
+            "site": "src/container.ts:63",
+            "source": "export function useContainer(",
+            "item": "src/container.ts::useContainer",
+            "item_found": true
+          },
+          "p50_ms": 4.9,
+          "p95_ms": 5
         },
         "Q11": {
           "status": "answered",
           "method": "derived from native file and import graph",
           "truncated": false,
           "warm_ms": [
-            51.7,
-            52.2,
-            52.8,
-            52.1,
-            52.2
+            52.5,
+            50.9,
+            52.3,
+            52.5,
+            50.4
           ],
           "bytes": 227020,
           "tokens": 60428,
@@ -1403,19 +1766,19 @@
             "item": "src/cache/QueryResultCacheFactory.ts",
             "item_found": false
           },
-          "p50_ms": 52.2,
-          "p95_ms": 52.8
+          "p50_ms": 52.3,
+          "p95_ms": 52.5
         },
         "Q12": {
           "status": "answered",
           "method": "derived from native file and import graph",
           "truncated": false,
           "warm_ms": [
-            53.1,
-            52.2,
-            51.1,
-            50.8,
-            53.9
+            49.7,
+            50.6,
+            52.5,
+            49.9,
+            50.5
           ],
           "bytes": 227020,
           "tokens": 60428,
@@ -1439,14 +1802,142 @@
             "item": "src/cli-ts-node-commonjs.ts",
             "item_found": true
           },
-          "p50_ms": 52.2,
-          "p95_ms": 53.9
+          "p50_ms": 50.5,
+          "p95_ms": 52.5
+        },
+        "Q13": {
+          "status": "answered",
+          "truncated": false,
+          "warm_ms": [
+            12.7,
+            12.5,
+            12.5,
+            12.6,
+            12.5
+          ],
+          "bytes": 1528,
+          "tokens": 430,
+          "items": {
+            "correct": 5,
+            "expected": 10,
+            "returned": 10,
+            "missing": [
+              "src/common/ObjectLiteral.ts::ObjectLiteral",
+              "src/metadata/ColumnMetadata.ts::ColumnMetadata",
+              "src/schema-builder/table/Table.ts::Table",
+              "src/schema-builder/table/TableColumn.ts::TableColumn",
+              "src/util/InstanceChecker.ts::InstanceChecker"
+            ],
+            "extra": [
+              "src/data-source/DataSource.ts::driver",
+              "src/data-source/DataSource.ts::namingStrategy",
+              "src/driver/cockroachdb/CockroachQueryRunner.ts::query",
+              "src/query-runner/BaseQueryRunner.ts::getCachedTable",
+              "src/util/InstanceChecker.ts::isTable"
+            ]
+          },
+          "exact_answer": false,
+          "audit": {
+            "site": "src/schema-builder/table/Table.ts:166",
+            "source": "return new Table({",
+            "item": "src/schema-builder/table/Table.ts::Table",
+            "item_found": false
+          },
+          "ranked": [
+            [
+              "src/error/TypeORMError.ts::TypeORMError",
+              383
+            ],
+            [
+              "src/driver/cockroachdb/CockroachQueryRunner.ts::query",
+              188
+            ],
+            [
+              "src/driver/Query.ts::Query",
+              179
+            ],
+            [
+              "src/query-runner/BaseQueryRunner.ts::executeQueries",
+              155
+            ],
+            [
+              "src/query-builder/QueryBuilder.ts::expressionMap",
+              153
+            ],
+            [
+              "src/query-runner/BaseQueryRunner.ts::getCachedTable",
+              146
+            ],
+            [
+              "src/util/InstanceChecker.ts::isTable",
+              146
+            ],
+            [
+              "src/query-runner/BaseQueryRunner.ts::connection",
+              138
+            ],
+            [
+              "src/data-source/DataSource.ts::driver",
+              124
+            ],
+            [
+              "src/data-source/DataSource.ts::namingStrategy",
+              102
+            ]
+          ],
+          "expected_ranking": [
+            [
+              "src/schema-builder/table/Table.ts::Table",
+              579
+            ],
+            [
+              "src/error/TypeORMError.ts::TypeORMError",
+              450
+            ],
+            [
+              "src/common/ObjectLiteral.ts::ObjectLiteral",
+              373
+            ],
+            [
+              "src/util/InstanceChecker.ts::InstanceChecker",
+              244
+            ],
+            [
+              "src/driver/Query.ts::Query",
+              236
+            ],
+            [
+              "src/schema-builder/table/TableColumn.ts::TableColumn",
+              184
+            ],
+            [
+              "src/metadata/ColumnMetadata.ts::ColumnMetadata",
+              159
+            ],
+            [
+              "src/query-builder/QueryBuilder.ts::expressionMap",
+              158
+            ],
+            [
+              "src/query-runner/BaseQueryRunner.ts::connection",
+              158
+            ],
+            [
+              "src/query-runner/BaseQueryRunner.ts::executeQueries",
+              155
+            ]
+          ],
+          "tied_at_cut": [
+            "src/query-runner/BaseQueryRunner.ts::executeQueries"
+          ],
+          "p50_ms": 12.5,
+          "p95_ms": 12.7
         }
       },
       "reported_version": "1.6.12",
       "profile": "local syntax graph; no FTS or embeddings",
-      "cold_ms": 7834,
-      "peak_rss_kib": 1951440,
+      "cold_ms": 7859,
+      "peak_rss_kib": 1873088,
       "discovery": {
         "tools": 17,
         "bytes": 70227,
@@ -1482,14 +1973,14 @@
           "status": "answered",
           "truncated": false,
           "warm_ms": [
+            33.1,
             28.8,
-            29.5,
-            32.3,
-            28.1,
-            32.6
+            37.7,
+            33.5,
+            32.5
           ],
           "bytes": 7146,
-          "tokens": 1843,
+          "tokens": 1845,
           "callers": {
             "correct": 48,
             "expected": 48,
@@ -1532,21 +2023,21 @@
             "site_found": true,
             "source": "getMetadataArgsStorage().tables.push({"
           },
-          "p50_ms": 29.5,
-          "p95_ms": 32.6
+          "p50_ms": 33.1,
+          "p95_ms": 37.7
         },
         "Q2": {
           "status": "answered",
           "truncated": false,
           "warm_ms": [
+            32.8,
+            30.1,
+            36.4,
             30.9,
-            28.8,
-            30.3,
-            31.6,
             31.6
           ],
           "bytes": 1248,
-          "tokens": 355,
+          "tokens": 357,
           "callers": {
             "correct": 2,
             "expected": 78,
@@ -1816,19 +2307,19 @@
             "site_found": false,
             "source": "metadata: this.connection.getMetadata(entityTarget),"
           },
-          "p50_ms": 30.9,
-          "p95_ms": 31.6
+          "p50_ms": 31.6,
+          "p95_ms": 36.4
         },
         "Q3": {
           "status": "target_missing",
           "reason": "0 matching declarations in src/driver/Driver.ts",
           "truncated": false,
           "warm_ms": [
-            15,
-            15.2,
-            15.1,
-            16.5,
-            15.2
+            13.6,
+            14,
+            18.7,
+            14.3,
+            17
           ],
           "bytes": 524,
           "tokens": 129,
@@ -1919,21 +2410,21 @@
             "site_found": false,
             "source": "return this.connection.driver.escape(name)"
           },
-          "p50_ms": 15.2,
-          "p95_ms": 16.5
+          "p50_ms": 14.3,
+          "p95_ms": 18.7
         },
         "Q4": {
           "status": "answered",
           "truncated": false,
           "warm_ms": [
-            27.8,
-            31.1,
-            30.2,
-            32.1,
-            32
+            32.5,
+            29.6,
+            29.5,
+            36.8,
+            28.7
           ],
           "bytes": 2436,
-          "tokens": 691,
+          "tokens": 693,
           "items": {
             "correct": 12,
             "expected": 12,
@@ -1948,21 +2439,21 @@
             "item": "src/driver/oracle/OracleDriver.ts::OracleDriver",
             "item_found": true
           },
-          "p50_ms": 31.1,
-          "p95_ms": 32.1
+          "p50_ms": 29.6,
+          "p95_ms": 36.8
         },
         "Q5": {
           "status": "answered",
           "truncated": false,
           "warm_ms": [
-            31.2,
-            28,
-            29.3,
-            31.4,
-            27.6
+            27.6,
+            29.5,
+            29.8,
+            26.5,
+            30.8
           ],
           "bytes": 7768,
-          "tokens": 1959,
+          "tokens": 1961,
           "items": {
             "correct": 72,
             "expected": 72,
@@ -1977,19 +2468,19 @@
             "item": "src/error/AlreadyHasActiveConnectionError.ts",
             "item_found": true
           },
-          "p50_ms": 29.3,
-          "p95_ms": 31.4
+          "p50_ms": 29.5,
+          "p95_ms": 30.8
         },
         "Q6": {
           "status": "answered",
           "method": "derived from native file and import graph",
           "truncated": false,
           "warm_ms": [
-            153.4,
-            154.1,
-            159.2,
-            164.5,
-            152.7
+            174.2,
+            170.2,
+            160.6,
+            174,
+            178.2
           ],
           "bytes": 453782,
           "tokens": 111820,
@@ -2027,21 +2518,21 @@
             "item": "src/naming-strategy/DefaultNamingStrategy.ts",
             "item_found": true
           },
-          "p50_ms": 154.1,
-          "p95_ms": 164.5
+          "p50_ms": 174,
+          "p95_ms": 178.2
         },
         "Q7": {
           "status": "answered",
           "truncated": false,
           "warm_ms": [
-            78.9,
-            77.2,
-            77.1,
-            77.2,
-            81.9
+            87.9,
+            75.4,
+            81.6,
+            80.6,
+            84.5
           ],
           "bytes": 7394,
-          "tokens": 2103,
+          "tokens": 2127,
           "items": {
             "correct": 11,
             "expected": 11,
@@ -2056,21 +2547,67 @@
             "item": "src/naming-strategy/DefaultNamingStrategy.ts::joinColumnName",
             "item_found": true
           },
-          "p50_ms": 77.2,
-          "p95_ms": 81.9
+          "p50_ms": 81.6,
+          "p95_ms": 87.9
+        },
+        "Q8": {
+          "status": "no_path",
+          "reason": "Exhausted the reachable native call graph",
+          "truncated": false,
+          "warm_ms": [
+            109.2,
+            124.2,
+            109.9,
+            111.7,
+            122.1
+          ],
+          "bytes": 21146,
+          "tokens": 6692,
+          "exact_answer": false,
+          "path": {
+            "endpoints": false,
+            "hops": [],
+            "valid": false,
+            "path": [],
+            "shortest": 3
+          },
+          "audit": {
+            "site": "src/data-source/DataSource.ts:263",
+            "source": "await this.buildMetadatas()",
+            "reviewed_path": [
+              {
+                "file": "src/data-source/DataSource.ts",
+                "qname": "DataSource.initialize"
+              },
+              {
+                "file": "src/data-source/DataSource.ts",
+                "qname": "DataSource.buildMetadatas"
+              },
+              {
+                "file": "src/connection/ConnectionMetadataBuilder.ts",
+                "qname": "ConnectionMetadataBuilder.buildSubscribers"
+              },
+              {
+                "file": "src/globals.ts",
+                "qname": "getMetadataArgsStorage"
+              }
+            ]
+          },
+          "p50_ms": 111.7,
+          "p95_ms": 124.2
         },
         "Q9": {
           "status": "answered",
           "truncated": false,
           "warm_ms": [
-            30,
-            30.7,
+            36.9,
             32.3,
-            32.4,
-            31
+            31.1,
+            39.1,
+            30.3
           ],
           "bytes": 8768,
-          "tokens": 2276,
+          "tokens": 2278,
           "items": {
             "correct": 85,
             "expected": 85,
@@ -2085,19 +2622,66 @@
             "item": "src/cache/DbQueryResultCache.ts",
             "item_found": true
           },
-          "p50_ms": 31,
-          "p95_ms": 32.4
+          "p50_ms": 32.3,
+          "p95_ms": 39.1
+        },
+        "Q10": {
+          "status": "answered",
+          "truncated": false,
+          "warm_ms": [
+            75.8,
+            85.6,
+            86.6,
+            89.3,
+            92.1
+          ],
+          "bytes": 656540,
+          "tokens": 224802,
+          "items": {
+            "correct": 63,
+            "expected": 80,
+            "returned": 63,
+            "missing": [
+              "src/decorator/entity/Entity.ts::Entity",
+              "src/decorator/listeners/AfterInsert.ts::AfterInsert",
+              "src/decorator/listeners/AfterRecover.ts::AfterRecover",
+              "src/decorator/listeners/AfterRemove.ts::AfterRemove",
+              "src/decorator/listeners/AfterSoftRemove.ts::AfterSoftRemove",
+              "src/decorator/listeners/AfterUpdate.ts::AfterUpdate",
+              "src/decorator/listeners/BeforeInsert.ts::BeforeInsert",
+              "src/decorator/listeners/BeforeRecover.ts::BeforeRecover",
+              "src/decorator/listeners/BeforeRemove.ts::BeforeRemove",
+              "src/decorator/listeners/BeforeSoftRemove.ts::BeforeSoftRemove",
+              "src/decorator/listeners/BeforeUpdate.ts::BeforeUpdate",
+              "src/driver/mongodb/bson.typings.ts::calculateObjectSize",
+              "src/driver/mongodb/bson.typings.ts::deserialize",
+              "src/driver/mongodb/bson.typings.ts::deserializeStream",
+              "src/driver/mongodb/bson.typings.ts::serialize",
+              "src/driver/mongodb/bson.typings.ts::serializeWithBufferAndIndex",
+              "src/driver/mongodb/bson.typings.ts::setInternalBufferSize"
+            ],
+            "extra": []
+          },
+          "exact_answer": false,
+          "audit": {
+            "site": "src/container.ts:63",
+            "source": "export function useContainer(",
+            "item": "src/container.ts::useContainer",
+            "item_found": true
+          },
+          "p50_ms": 86.6,
+          "p95_ms": 92.1
         },
         "Q11": {
           "status": "answered",
           "method": "derived from native file and import graph",
           "truncated": false,
           "warm_ms": [
-            154.3,
-            158,
-            156.1,
-            158.7,
-            158
+            171.8,
+            170.1,
+            176.7,
+            165.5,
+            177.8
           ],
           "bytes": 453782,
           "tokens": 111820,
@@ -2212,19 +2796,19 @@
             "item": "src/cache/QueryResultCacheFactory.ts",
             "item_found": true
           },
-          "p50_ms": 158,
-          "p95_ms": 158.7
+          "p50_ms": 171.8,
+          "p95_ms": 177.8
         },
         "Q12": {
           "status": "answered",
           "method": "derived from native file and import graph",
           "truncated": false,
           "warm_ms": [
-            160,
-            154.4,
-            161.6,
-            150.3,
-            154.4
+            171.3,
+            187.6,
+            174.6,
+            182.9,
+            184.3
           ],
           "bytes": 453782,
           "tokens": 111820,
@@ -2247,14 +2831,144 @@
             "item": "src/cli-ts-node-commonjs.ts",
             "item_found": true
           },
-          "p50_ms": 154.4,
-          "p95_ms": 161.6
+          "p50_ms": 182.9,
+          "p95_ms": 187.6
+        },
+        "Q13": {
+          "status": "answered",
+          "truncated": false,
+          "warm_ms": [
+            1053.7,
+            1052.4,
+            1061.3,
+            1085.1,
+            1072.5
+          ],
+          "bytes": 9094342,
+          "tokens": 2885591,
+          "items": {
+            "correct": 4,
+            "expected": 10,
+            "returned": 10,
+            "missing": [
+              "src/metadata/ColumnMetadata.ts::ColumnMetadata",
+              "src/query-builder/QueryBuilder.ts::expressionMap",
+              "src/query-runner/BaseQueryRunner.ts::connection",
+              "src/schema-builder/table/Table.ts::Table",
+              "src/schema-builder/table/TableColumn.ts::TableColumn",
+              "src/util/InstanceChecker.ts::InstanceChecker"
+            ],
+            "extra": [
+              "src/decorator/entity/Entity.ts::Entity",
+              "src/decorator/tree/TreeChildren.ts::type",
+              "src/error/TypeORMError.ts::name",
+              "src/query-builder/Alias.ts::target",
+              "src/query-runner/BaseQueryRunner.ts::getCachedTable",
+              "src/util/InstanceChecker.ts::isTable"
+            ]
+          },
+          "exact_answer": false,
+          "audit": {
+            "site": "src/schema-builder/table/Table.ts:166",
+            "source": "return new Table({",
+            "item": "src/schema-builder/table/Table.ts::Table",
+            "item_found": false
+          },
+          "ranked": [
+            [
+              "src/error/TypeORMError.ts::name",
+              579
+            ],
+            [
+              "src/error/TypeORMError.ts::TypeORMError",
+              386
+            ],
+            [
+              "src/decorator/tree/TreeChildren.ts::type",
+              331
+            ],
+            [
+              "src/common/ObjectLiteral.ts::ObjectLiteral",
+              314
+            ],
+            [
+              "src/decorator/entity/Entity.ts::Entity",
+              213
+            ],
+            [
+              "src/driver/Query.ts::Query",
+              179
+            ],
+            [
+              "src/query-runner/BaseQueryRunner.ts::executeQueries",
+              155
+            ],
+            [
+              "src/query-builder/Alias.ts::target",
+              149
+            ],
+            [
+              "src/query-runner/BaseQueryRunner.ts::getCachedTable",
+              146
+            ],
+            [
+              "src/util/InstanceChecker.ts::isTable",
+              146
+            ]
+          ],
+          "expected_ranking": [
+            [
+              "src/schema-builder/table/Table.ts::Table",
+              579
+            ],
+            [
+              "src/error/TypeORMError.ts::TypeORMError",
+              450
+            ],
+            [
+              "src/common/ObjectLiteral.ts::ObjectLiteral",
+              373
+            ],
+            [
+              "src/util/InstanceChecker.ts::InstanceChecker",
+              244
+            ],
+            [
+              "src/driver/Query.ts::Query",
+              236
+            ],
+            [
+              "src/schema-builder/table/TableColumn.ts::TableColumn",
+              184
+            ],
+            [
+              "src/metadata/ColumnMetadata.ts::ColumnMetadata",
+              159
+            ],
+            [
+              "src/query-builder/QueryBuilder.ts::expressionMap",
+              158
+            ],
+            [
+              "src/query-runner/BaseQueryRunner.ts::connection",
+              158
+            ],
+            [
+              "src/query-runner/BaseQueryRunner.ts::executeQueries",
+              155
+            ]
+          ],
+          "tied_at_cut": [
+            "src/query-runner/BaseQueryRunner.ts::executeQueries"
+          ],
+          "p50_ms": 1061.3,
+          "p95_ms": 1085.1
         }
       },
       "reported_version": "codebase-memory-mcp 0.12.1",
       "profile": "default MCP; local indexing, cross-language LSP disabled",
-      "cold_ms": 2680,
-      "peak_rss_kib": 110416,
+      "cold_ms": 2782,
+      "peak_rss_kib": 118144,
       "discovery": {
         "tools": 17,
         "bytes": 20824,
@@ -2271,10 +2985,6 @@
       }
     }
   },
-  "pending": [
-    "Q8",
-    "Q10",
-    "Q13"
-  ],
+  "pending": [],
   "measured": "2026-11-28"
 }
