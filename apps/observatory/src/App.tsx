@@ -1,4 +1,4 @@
-import { createElement, useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { callTool, establishSession, fetchBundle, fetchGalaxy, fetchWorkspaces, galaxySymbol, listSnapshots, loadGalaxy, replaying, setReplay, setRepository, ToolError, type Bundle, type SnapshotInfo, type Workspace } from './api'
 import { DiffView } from './DiffView'
 import { overlay as diffOverlay, type CompareData } from './diff'
@@ -14,27 +14,12 @@ import { ProofLens, type Chain } from './ProofLens'
 import { defaultSelection, evidenceFor, LINK_WORDS, pairs, RELATION_COLOURS, RELATION_WORDS, relations, toEcosystem, type Ecosystem, type Relation } from './ecosystem'
 import { FRAMEWORK_TYPES, glyph, toScene, type TraceEnvelope } from './scene'
 import { visible } from './visible'
+import { GraphView, Terrain } from './views'
 import { VirtualTable } from './virtual'
 import { share } from './share'
 import { plural } from './plural'
 import { caveatLines, terrainSvg, CONTAINMENT, NO_MEANING, offlineHtml, pngWithText, sceneSvg, sceneTable, type Caveats, type Source } from './exporting'
 
-/**
- * A renderer's view, whose library loads on first use, so the first screen fetches only its own (FR1451); it draws nothing until
- * the module is in, then the view itself. Not React.lazy: its Suspense holds a view back for about 300 ms after its module arrives.
- */
-function lazyView<P extends object>(load: () => Promise<ComponentType<P>>): ComponentType<P> & { preload: () => Promise<unknown> } {
-  let loaded: ComponentType<P> | undefined, pending: Promise<unknown> | undefined
-  const preload = () => (pending ??= load().then((c) => { loaded = c }))
-  function View(props: P) {
-    const [, arrived] = useState(false)
-    useEffect(() => { if (!loaded) void preload().then(() => arrived(true)) }, [])
-    return loaded ? createElement(loaded, props) : null
-  }
-  return Object.assign(View, { preload })
-}
-const Terrain = lazyView(() => import('./Terrain').then((m) => { m.warmRenderer(); return m.Terrain }))
-const GraphView = lazyView(() => import('./GraphView').then((m) => m.GraphView))
 
 type Sym = { id: string; kind: string; name: string; qualified_name: string; path: string; start_line: number; signature: string | null }
 type Hub = { id: string; kind: string; name: string; qualified_name: string; inbound: number }
