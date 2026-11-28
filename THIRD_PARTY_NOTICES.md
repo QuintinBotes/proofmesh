@@ -61,6 +61,7 @@ Production dependencies of the Proofmesh packages, with their licenses as declar
 | jose | 6.2.15 | MIT |
 | json-schema-traverse | 1.0.0 | MIT |
 | json-schema-typed | 8.0.2 | BSD-2-Clause |
+| jsonc-parser | 3.3.1 | MIT |
 | math-intrinsics | 1.1.0 | MIT |
 | media-typer | 1.1.1 | MIT |
 | merge-descriptors | 2.0.0 | MIT |

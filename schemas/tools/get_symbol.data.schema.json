@@ -119,6 +119,58 @@
             }
           },
           "description": "What the adapter recorded beside the symbol's name, when it recorded any: scip, the SCIP index's own symbol for a definition the SCIP importer declared (FR441). Absent when the adapter sent none (no built-in adapter but the SCIP importer sends it), and in a snapshot sealed before format 0.11."
+        },
+        "notebook_cell": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "id",
+            "ordinal",
+            "cell_type",
+            "start_line",
+            "start_column",
+            "end_line",
+            "end_column"
+          ],
+          "properties": {
+            "id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "ordinal": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "cell_type": {
+              "enum": [
+                "code",
+                "markdown",
+                "raw"
+              ]
+            },
+            "reason": {
+              "type": "string"
+            },
+            "start_line": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "start_column": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "end_line": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "end_column": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "description": "Position in the decoded notebook cell. Ordinals, lines and UTF-16 columns start at one. The end is exclusive."
         }
       }
     },

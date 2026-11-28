@@ -101,6 +101,62 @@
           "generated": {
             "type": "boolean",
             "description": "Present and true when the file is generated (FR292); absent otherwise."
+          },
+          "notebook_cell": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "ordinal",
+              "cell_type",
+              "start_line",
+              "start_column",
+              "end_line",
+              "end_column"
+            ],
+            "properties": {
+              "id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "ordinal": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "cell_type": {
+                "enum": [
+                  "code",
+                  "markdown",
+                  "raw"
+                ]
+              },
+              "reason": {
+                "type": "string"
+              },
+              "start_line": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "start_column": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "end_line": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "end_column": {
+                "type": "integer",
+                "minimum": 1
+              }
+            },
+            "description": "Position in the decoded notebook cell. Ordinals, lines and UTF-16 columns start at one. The end is exclusive."
+          },
+          "cell_text": {
+            "type": "string",
+            "description": "Decoded notebook source covered by the verified byte range."
           }
         }
       }

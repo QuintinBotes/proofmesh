@@ -5,8 +5,9 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import readline from 'node:readline'
-import { Parser, Query, type Node } from 'web-tree-sitter'
+import { Parser, Query, type Node, type Tree } from 'web-tree-sitter'
 import { byteOffsets, grammarsDir, language, lastLine, manifest, parser, send, toolchain, type Range } from './common.js'
+import { readNotebook, type NotebookCell } from './notebook.js'
 import { prismaFacts } from './prisma.js'
 import { readSfc, virtualText } from './sfc.js'
 import { callFacts } from './scope.js'
@@ -112,16 +113,49 @@ function tags(name: string): Promise<Query> {
 // `analyze_calls`, which the public protocol does not name, and gets the name's byte range in each call's detail.
 async function analyse(file: string, callees = false) {
   const text = fs.readFileSync(path.join(workspace, file), 'utf8')
-  const at = byteOffsets(text)
-  const sfc = sfcSource(languageOf.get(file)!, text)
-  const lang = sfc?.lang ?? languageOf.get(file)!
+  const fileLanguage = languageOf.get(file)!
+  if (fileLanguage !== 'jupyter') return analyseSource(file, text, fileLanguage, callees)
+  const symbols: Array<Record<string, unknown>> = [], relationships: Array<Record<string, unknown>> = []
+  let partial = false
+  for (const cell of readNotebook(text)) {
+    if (cell.python === null) {
+      symbols.push(notebookNamespace(file, cell))
+      partial ||= !!cell.reason
+      continue
+    }
+    const facts = await analyseSource(file, cell.python, 'python', callees, cell)
+    symbols.push(...facts.symbols)
+    relationships.push(...facts.relationships)
+    partial ||= facts.result.capabilities.syntax !== 'complete'
+  }
+  return { symbols, relationships, result: { path: file, status: 'ok', capabilities: { text: 'complete', syntax: partial ? 'partial' : 'complete', symbols: 'partial', resolved_calls: 'unsupported', imports: 'unsupported', references: 'unsupported' } } }
+}
+
+function notebookNamespace(file: string, cell: NotebookCell) {
+  const qualified_name = `${file}:cell[${cell.key}]`
+  return { local_id: `${qualified_name}#module`, path: file, kind: 'namespace', name: `${cell.type} cell ${cell.id ?? cell.ordinal}`, qualified_name, range: cell.whole, signature: null }
+}
+
+async function analyseSource(file: string, text: string, fileLanguage: string, callees: boolean, cell?: NotebookCell) {
+  const sfc = sfcSource(fileLanguage, text)
+  const lang = sfc?.lang ?? fileLanguage
   const grammar = grammarOf(lang, file)
-  const tree = (await parser(grammar)).parse(sfc?.source ?? text)!
-  const range = (start: Node, end: Node = start): Range => ({ start_byte: at[start.startIndex]!, end_byte: Math.max(at[end.endIndex]!, at[start.startIndex]! + 1), start_line: start.startPosition.row + 1, end_line: end.endPosition.row + 1 })
-  const module = file.replace(/\.[^./]+$/, '')
-  const moduleId = `${file}#module`
-  // An empty file has no byte to cite, so it has no symbol.
-  const symbols: Array<Record<string, unknown>> = text ? [{ local_id: moduleId, path: file, kind: 'module', name: path.posix.basename(module), qualified_name: module, range: { start_byte: 0, end_byte: at[text.length]!, start_line: 1, end_line: lastLine(text) }, signature: null }] : []
+  const reader = await parser(grammar)
+  try {
+    const tree = reader.parse(sfc?.source ?? text)!
+    try { return await sourceFacts(file, text, lang, grammar, tree, callees, cell) }
+    finally { tree.delete() }
+  } finally { reader.delete() }
+}
+
+async function sourceFacts(file: string, text: string, lang: string, grammar: string, tree: Tree, callees: boolean, cell?: NotebookCell) {
+  const at = byteOffsets(text)
+  const range = (start: Node, end: Node = start): Range => cell ? cell.range(start.startIndex, end.endIndex) : ({ start_byte: at[start.startIndex]!, end_byte: Math.max(at[end.endIndex]!, at[start.startIndex]! + 1), start_line: start.startPosition.row + 1, end_line: end.endPosition.row + 1 })
+  const namespace = cell && notebookNamespace(file, cell)
+  const module = namespace?.qualified_name ?? file.replace(/\.[^./]+$/, '')
+  const localPrefix = namespace?.qualified_name ?? file
+  const moduleId = `${localPrefix}#module`
+  const symbols: Array<Record<string, unknown>> = namespace ? [namespace] : text ? [{ local_id: moduleId, path: file, kind: 'module', name: path.posix.basename(module), qualified_name: module, range: { start_byte: 0, end_byte: at[text.length]!, start_line: 1, end_line: lastLine(text) }, signature: null }] : []
   const syntax = tree.rootNode.hasError ? 'partial' : 'complete'
   if (lang === 'prisma') {
     const r = prismaFacts(tree.rootNode, file, module, range)
@@ -166,7 +200,7 @@ async function analyse(file: string, callees = false) {
     }
     if (!name) continue
     if (def && KINDS[def.name.slice('definition.'.length)]) {
-      const id = `${file}#${def.node.startIndex}`, kind = KINDS[def.name.slice('definition.'.length)]!
+      const id = `${localPrefix}#${def.node.startIndex}`, kind = KINDS[def.name.slice('definition.'.length)]!
       // A node two patterns match is one definition; a method beats a plain function (Rust matches both inside an impl).
       const seen = symbols.find((s) => s.local_id === id)
       // A Go type_spec is also matched as the struct or interface it declares, which is the more exact kind.
@@ -298,7 +332,7 @@ readline.createInterface({ input: process.stdin }).on('line', async (line) => {
       scanRepository(req.params.files, (p) => { try { return fs.readFileSync(path.join(workspace, p), 'utf8') } catch { return '' } })
       const deps = withoutCycles(new Map(req.params.files.map((f: { path: string; language: string }) => [f.path, unitDependencies(f.path, f.language)])))
       // Each file's facts depend on that file alone, so each is its own unit and only changed files are parsed again (A16).
-      reply({ adapter: { id: 'syntax', version: VERSION, protocol_version: '1.1', languages: SYNTAX_LANGUAGES, toolchain: toolchain(SYNTAX_LANGUAGES) }, capabilities: { syntax: true, symbols: true, resolved_calls: false }, external_inputs: [], units: req.params.files.map((f: { path: string }) => ({ id: f.path, files: [f.path], ...(deps.get(f.path)?.length ? { depends_on: deps.get(f.path) } : {}) })) })
+      reply({ adapter: { id: 'syntax', version: VERSION, protocol_version: '1.1', languages: [...SYNTAX_LANGUAGES, 'jupyter'], toolchain: toolchain(SYNTAX_LANGUAGES) }, capabilities: { syntax: true, symbols: true, resolved_calls: false }, external_inputs: [], units: req.params.files.map((f: { path: string }) => ({ id: f.path, files: [f.path], ...(deps.get(f.path)?.length ? { depends_on: deps.get(f.path) } : {}) })) })
     } else if (req.method === 'workspace') {
       reply({ symbols: [], relationships: [], file_results: [], diagnostics: [] })
     } else if (req.method === 'analyze' || req.method === 'analyze_calls') {
@@ -308,7 +342,7 @@ readline.createInterface({ input: process.stdin }).on('line', async (line) => {
           const r = await analyse(p, req.method === 'analyze_calls')
           out.symbols.push(...r.symbols); out.relationships.push(...r.relationships); out.file_results.push(r.result)
         } catch (e) {
-          out.file_results.push({ path: p, status: 'failed', capabilities: { text: 'complete', syntax: 'failed' } })
+          out.file_results.push({ path: p, status: 'failed', ...(languageOf.get(p) === 'jupyter' ? { detail: (e as Error).message } : {}), capabilities: { text: 'complete', syntax: 'failed' } })
           out.diagnostics.push({ level: 'error', message: `could not parse ${p}: ${(e as Error).message}` })
         }
       }

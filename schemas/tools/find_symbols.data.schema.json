@@ -95,6 +95,58 @@
           "key": {
             "type": "string",
             "description": "The stable_key of the symbol (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file."
+          },
+          "notebook_cell": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "ordinal",
+              "cell_type",
+              "start_line",
+              "start_column",
+              "end_line",
+              "end_column"
+            ],
+            "properties": {
+              "id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "ordinal": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "cell_type": {
+                "enum": [
+                  "code",
+                  "markdown",
+                  "raw"
+                ]
+              },
+              "reason": {
+                "type": "string"
+              },
+              "start_line": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "start_column": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "end_line": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "end_column": {
+                "type": "integer",
+                "minimum": 1
+              }
+            },
+            "description": "Position in the decoded notebook cell. Ordinals, lines and UTF-16 columns start at one. The end is exclusive."
           }
         }
       }

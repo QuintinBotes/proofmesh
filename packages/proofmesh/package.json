@@ -27,6 +27,7 @@
     "@proofmesh/adapter-syntax": "workspace:*",
     "@proofmesh/adapter-typescript": "workspace:*",
     "ajv": "^8.20.0",
-    "better-sqlite3": "^13.0.3"
+    "better-sqlite3": "^13.0.3",
+    "jsonc-parser": "3.3.1"
   }
 }

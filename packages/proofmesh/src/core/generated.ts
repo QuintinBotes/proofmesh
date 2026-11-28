@@ -1093,6 +1093,19 @@ generated?: boolean
  * The stable_key of the symbol (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file.
  */
 key?: string
+/**
+ * Position in the decoded notebook cell. Ordinals, lines and UTF-16 columns start at one. The end is exclusive.
+ */
+notebook_cell?: {
+id: (string | null)
+ordinal: number
+cell_type: ("code" | "markdown" | "raw")
+reason?: string
+start_line: number
+start_column: number
+end_line: number
+end_column: number
+}
 }[]
 }
 
@@ -2792,6 +2805,19 @@ detail?: {
  */
 scip?: string
 }
+/**
+ * Position in the decoded notebook cell. Ordinals, lines and UTF-16 columns start at one. The end is exclusive.
+ */
+notebook_cell?: {
+id: (string | null)
+ordinal: number
+cell_type: ("code" | "markdown" | "raw")
+reason?: string
+start_line: number
+start_column: number
+end_line: number
+end_column: number
+}
 }
 /**
  * Present only in the full envelope and only when an imported coverage report covers the subject's file (#241): what the newest import of that file that is not stale says of the lines whose innermost symbol is the subject, or the newest stale one when every import is stale.
@@ -2932,6 +2958,19 @@ detail?: {
  * The SCIP index's own symbol for this definition, as the index wrote it (FR441).
  */
 scip?: string
+}
+/**
+ * Position in the decoded notebook cell. Ordinals, lines and UTF-16 columns start at one. The end is exclusive.
+ */
+notebook_cell?: {
+id: (string | null)
+ordinal: number
+cell_type: ("code" | "markdown" | "raw")
+reason?: string
+start_line: number
+start_column: number
+end_line: number
+end_column: number
 }
 }
 /**
@@ -4398,6 +4437,23 @@ text: (string | null)
  * Present and true when the file is generated (FR292); absent otherwise.
  */
 generated?: boolean
+/**
+ * Position in the decoded notebook cell. Ordinals, lines and UTF-16 columns start at one. The end is exclusive.
+ */
+notebook_cell?: {
+id: (string | null)
+ordinal: number
+cell_type: ("code" | "markdown" | "raw")
+reason?: string
+start_line: number
+start_column: number
+end_line: number
+end_column: number
+}
+/**
+ * Decoded notebook source covered by the verified byte range.
+ */
+cell_text?: string
 }[]
 }
 

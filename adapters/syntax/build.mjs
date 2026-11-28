@@ -60,5 +60,5 @@ for (const [language, [pkg, wasm, ownTags]] of Object.entries(GRAMMARS)) {
 }
 fs.writeFileSync(path.join(dist, 'grammars', 'grammars.json'), JSON.stringify(manifest, null, 2) + '\n')
 for (const entry of ['main', 'terraform', 'python', 'build', 'pattern']) {
-  await build({ entryPoints: [path.join(here, 'src', `${entry}.ts`)], bundle: true, platform: 'node', format: 'esm', target: 'node22', outfile: path.join(dist, `${entry}.mjs`), external: ['web-tree-sitter'], logLevel: 'warning' })
+  await build({ entryPoints: [path.join(here, 'src', `${entry}.ts`)], bundle: true, platform: 'node', format: 'esm', target: 'node22', outfile: path.join(dist, `${entry}.mjs`), external: ['jsonc-parser', 'web-tree-sitter'], logLevel: 'warning' })
 }
