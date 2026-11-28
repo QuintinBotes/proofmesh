@@ -8,8 +8,16 @@ export class McpClient {
     this.next = 1
     this.pending = new Map()
     this.stderr = ''
-    this.proc.stdout.on('data', (d) => {
-      this.buf += d.toString('utf8')
+    const failed = (error) => {
+      this.failure = error
+      for (const request of this.pending.values()) request.reject(error)
+      this.pending.clear()
+    }
+    this.proc.once('error', failed)
+    this.proc.stdin.on('error', failed)
+    this.proc.once('close', (code, signal) => failed(new Error(`MCP process closed (${signal ?? code})`)))
+    this.proc.stdout.setEncoding('utf8').on('data', (d) => {
+      this.buf += d
       let i
       while ((i = this.buf.indexOf('\n')) >= 0) {
         const line = this.buf.slice(0, i).trim()
@@ -27,11 +35,12 @@ export class McpClient {
     this.proc.stderr.on('data', (d) => { this.stderr += d.toString('utf8') })
   }
   request(method, params) {
+    if (this.failure) return Promise.reject(this.failure)
     const id = this.next++
     const p = new Promise((resolve, reject) => {
       const timer = setTimeout(() => { if (this.pending.has(id)) { this.pending.delete(id); reject(new Error(`timeout ${method}`)) } }, 120000)
       timer.unref()
-      this.pending.set(id, { resolve: (m) => { clearTimeout(timer); resolve(m) }, reject })
+      this.pending.set(id, { resolve: (m) => { clearTimeout(timer); resolve(m) }, reject: e => { clearTimeout(timer); reject(e) } })
     })
     this.proc.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n')
     return p
