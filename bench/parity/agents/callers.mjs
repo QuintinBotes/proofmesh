@@ -23,11 +23,11 @@ function nexusRows(result) {
 
 export const quote = s => "'" + s.replaceAll('\\', '\\\\').replaceAll("'", "\\'") + "'"
 
-export function graphQuery(tool, call, project) {
+export function graphQuery(tool, call, project, options = {}) {
   const cbm = tool === 'codebase-memory-mcp'
   return async function query(statement) {
     if (!cbm) return { rows: nexusRows(await call('cypher', { repo: 'parity', statement })), truncated: false }
-    const r = await call('query_graph', { project, query: statement, format: 'json', max_rows: 1000 })
+    const r = await call('query_graph', { project, query: statement, format: 'json', max_rows: 1000, ...options })
     if (!Array.isArray(r.rows)) throw new Error('Codebase-Memory returned no Cypher rows')
     return { rows: r.rows, truncated: !!(r.has_more || r.truncated) }
   }

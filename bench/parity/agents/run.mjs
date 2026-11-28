@@ -52,6 +52,7 @@ function oracle() {
   for (const q of suite) {
     const t = compiler.truthFor(q), audit = reviewed.questions[q.id]
     if (sourceLine(fixture, audit.site) !== audit.source) throw new Error('Reviewed source changed: ' + q.id)
+    if (audit.return_site && sourceLine(fixture, audit.return_site) !== audit.return_source) throw new Error('Reviewed return import changed: ' + q.id)
     if (q.kind !== 'callers') {
       if (!t.items.has(audit.item)) throw new Error('Reviewed relationship disagrees with fixture: ' + q.id)
       expected[q.id] = { items: sorted(t.items) }
@@ -72,14 +73,26 @@ function binary(name) {
   }
   throw new Error(`${name} is unavailable; set ${key} to the pinned executable`)
 }
+function processTable() {
+  const table = execFileSync('ps', ['-axo', 'pid=,ppid=,rss=,command='], { encoding: 'utf8', maxBuffer: 32 << 20 })
+  return table.split('\n').map(l => /^\s*(\d+)\s+(\d+)\s+(\d+)\s+(.*)/.exec(l)).filter(Boolean)
+}
+const ownsCommand = (cmd, exe) => cmd === exe || cmd.startsWith(exe + ' ')
+async function waitForPrivateWorkers(exe) {
+  // This copy belongs to one trial. The final daemon cache flush can outlive its stdio parent.
+  const deadline = Date.now() + 30_000
+  while (processTable().some(([, , , , cmd]) => ownsCommand(cmd, exe))) {
+    if (Date.now() >= deadline) throw new Error('Private index worker did not exit after MCP shutdown')
+    await sleep(100)
+  }
+}
 function monitor(roots, privateExe) {
   let peak = null
   function sample() {
-    const table = execFileSync('ps', ['-axo', 'pid=,ppid=,rss=,command='], { encoding: 'utf8', maxBuffer: 32 << 20 })
-    const rows = table.split('\n').map(l => /^\s*(\d+)\s+(\d+)\s+(\d+)\s+(.*)/.exec(l)).filter(Boolean)
+    const rows = processTable()
     const pids = new Set(roots)
     // Codebase-Memory may detach an index worker; its executable is a private copy unique to this trial.
-    if (privateExe) for (const [, pid, , , cmd] of rows) if (cmd === privateExe || cmd.startsWith(privateExe + ' ')) pids.add(+pid)
+    if (privateExe) for (const [, pid, , , cmd] of rows) if (ownsCommand(cmd, privateExe)) pids.add(+pid)
     let count
     do {
       count = pids.size
@@ -119,6 +132,7 @@ async function measure(tool, expected) {
     privateExe = path.join(dir, 'codebase-memory-mcp')
     fs.copyFileSync(cmd, privateExe, fs.constants.COPYFILE_FICLONE)
     fs.chmodSync(privateExe, 0o700)
+    privateExe = fs.realpathSync(privateExe)
     cmd = privateExe
     Object.assign(env, { CBM_CACHE_DIR: path.join(dir, 'cache'), CBM_ALLOWED_ROOT: repo, CBM_DISABLE_LSP_CROSS: '1' })
     args = []
@@ -168,6 +182,11 @@ async function measure(tool, expected) {
         const input = { name, arguments: args }
         const r = await client.request('tools/call', input)
         messages.push({ input, reply: r })
+        if (name === 'edit' && args.operation === 'export_graph' && !r.error && !r.result?.isError) {
+          const text = r.result?.content?.find(c => c.type === 'text')?.text
+          if (!text) throw new Error('Missing inline GraphML export')
+          return text
+        }
         return payload(r)
       }, repo)
       const ms = performance.now() - before
@@ -187,7 +206,7 @@ async function measure(tool, expected) {
         const costs = first.messages.map(m => cost(m.reply.result))
         const audit = reviewed.questions[q.id]
         const score = {
-          status: first.status, reason: first.reason ?? first.site_limitation, truncated: first.truncated ?? false,
+          status: first.status, method: first.method, reason: first.reason ?? first.site_limitation, truncated: first.truncated ?? false,
           warm_ms: trials.map(t => Math.round(t.ms * 10) / 10), bytes: costs.reduce((s, c) => s + c.bytes, 0), tokens: costs.reduce((s, c) => s + c.tokens, 0),
         }
         // Each class has its own answer contract: comparing costs requires every expected fact with no extras.
@@ -220,7 +239,11 @@ async function measure(tool, expected) {
     return row
   } finally {
     if (!stopped) stop()
-    if (client) { fs.writeFileSync(path.join(out, tool + '-stderr.log'), client.stderr); client.close() }
+    if (client) {
+      await client.close()
+      if (privateExe) await waitForPrivateWorkers(privateExe)
+      fs.writeFileSync(path.join(out, tool + '-stderr.log'), client.stderr)
+    }
   }
 }
 
@@ -252,4 +275,4 @@ try {
   lines.push('', 'Only exact, untruncated answers qualify for comparing costs within a question. Direct-caller questions also require exact caller/site pairs. The JSON files contain the raw replies, commands, audits and every missing or extra fact.', '', `Question classes pending adapter coverage: ${results.pending.join(', ')}.`)
   fs.writeFileSync(path.join(out, 'report.md'), lines.join('\n') + '\n')
   console.log(path.join(out, 'report.md'))
-} finally { fs.rmSync(work, { recursive: true, force: true }) }
+} finally { fs.rmSync(work, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }) }

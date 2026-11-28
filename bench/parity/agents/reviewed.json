@@ -8,7 +8,10 @@
     "Q3": {"site": "src/query-builder/QueryBuilder.ts:561", "source": "return this.connection.driver.escape(name)", "caller": "src/query-builder/QueryBuilder.ts::escape", "excluded_site": "src/query-builder/QueryBuilder.ts:930", "excluded_source": "const name = this.escape(column.databaseName)"},
     "Q4": {"site": "src/driver/oracle/OracleDriver.ts:35", "source": "export class OracleDriver implements Driver {", "item": "src/driver/oracle/OracleDriver.ts::OracleDriver"},
     "Q5": {"site": "src/error/AlreadyHasActiveConnectionError.ts:1", "source": "import { TypeORMError } from \"./TypeORMError\"", "item": "src/error/AlreadyHasActiveConnectionError.ts"},
+    "Q6": {"site": "src/naming-strategy/DefaultNamingStrategy.ts:3", "source": "import { camelCase, snakeCase, titleCase } from \"../util/StringUtils\"", "item": "src/naming-strategy/DefaultNamingStrategy.ts"},
     "Q7": {"site": "src/naming-strategy/DefaultNamingStrategy.ts:159", "source": "return camelCase(relationName + \"_\" + referencedColumnName)", "item": "src/naming-strategy/DefaultNamingStrategy.ts::joinColumnName"},
-    "Q9": {"site": "src/cache/DbQueryResultCache.ts:224", "source": "let insertedValues: ObjectLiteral = options", "item": "src/cache/DbQueryResultCache.ts"}
+    "Q9": {"site": "src/cache/DbQueryResultCache.ts:224", "source": "let insertedValues: ObjectLiteral = options", "item": "src/cache/DbQueryResultCache.ts"},
+    "Q11": {"site": "src/cache/QueryResultCacheFactory.ts:4", "source": "import { DataSource } from \"../data-source/DataSource\"", "item": "src/cache/QueryResultCacheFactory.ts", "return_site": "src/data-source/DataSource.ts:33", "return_source": "import { QueryResultCacheFactory } from \"../cache/QueryResultCacheFactory\""},
+    "Q12": {"site": "src/cli-ts-node-commonjs.ts:3", "source": "import \"./cli\"", "item": "src/cli-ts-node-commonjs.ts"}
   }
 }
