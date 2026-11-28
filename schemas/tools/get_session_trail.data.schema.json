@@ -17,7 +17,7 @@
     },
     "recording": {
       "type": "boolean",
-      "description": "Whether the trail is being recorded for this repository now (proofmesh trail on)."
+      "description": "Whether the trail is being recorded for this repository now (proofmesh trail on): the Claude Code plugin's entries, and the subjects of each proofmesh mcp query."
     },
     "cut": {
       "type": "boolean",
@@ -74,6 +74,14 @@
           },
           "generated": {
             "type": "boolean"
+          },
+          "query_id": {
+            "type": "string",
+            "description": "The query proofmesh mcp recorded this subject of; its entries share it, one a subject."
+          },
+          "snapshot_id": {
+            "type": "string",
+            "description": "The snapshot the query read, whose symbol id this is: the base side for compare_snapshots."
           }
         }
       }
@@ -91,7 +99,8 @@
           "path",
           "line",
           "never_seen",
-          "searched_only"
+          "searched_only",
+          "opened"
         ],
         "properties": {
           "id": {
@@ -202,6 +211,50 @@
               }
             },
             "description": "Dependents under a path a search covered, in a file no entry opened."
+          },
+          "opened": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "id",
+                "kind",
+                "name",
+                "qualified_name",
+                "path",
+                "line",
+                "depth"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "qualified_name": {
+                  "type": "string"
+                },
+                "path": {
+                  "type": "string",
+                  "description": "The file of the use that reaches the changed symbol: the call, import or reference site."
+                },
+                "line": {
+                  "type": "integer"
+                },
+                "depth": {
+                  "type": "integer"
+                },
+                "generated": {
+                  "type": "boolean"
+                }
+              }
+            },
+            "description": "Dependents a successful opened entry names, by file or symbol: with never_seen and searched_only, every dependent once."
           }
         }
       }
