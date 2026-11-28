@@ -8,7 +8,7 @@
 | Link file format | 0.3 | `schemas/link-format/`. As the snapshot format. |
 | Bundle format | 0.1 | `schemas/bundle-format/`. A bundle names its format in `manifest.json`. `proofmesh bundle check` verifies bundles of this format and refuses another format rather than guessing; a format change is announced one minor release ahead, so a bundle kept as a record can still be checked with the release that wrote it. |
 | Snapshot export format | 0.1 | `schemas/snapshot-export/`. A file `proofmesh snapshot export` writes starts with the line `proofmesh-snapshot 0.1` and carries a snapshot of the snapshot file format above. `proofmesh snapshot import` reads this format only and refuses another rather than guessing, and also refuses a snapshot of another snapshot file format; carry snapshots between data directories of the same release. |
-| Catalog | 0023 | `schemas/catalog/`. Forward-only migrations, 0001 to the version shown, applied on open; a catalog newer than the CLI refuses to open. Back it up before upgrading (`proofmesh backup`). |
+| Catalog | 0024 | `schemas/catalog/`. Forward-only migrations, 0001 to the version shown, applied on open; a catalog newer than the CLI refuses to open. Back it up before upgrading (`proofmesh backup`). |
 | Node.js | 22.13 or later | The active LTS line. |
 | .NET | 10 | Only the C# adapter needs it. |
 
