@@ -12,6 +12,14 @@ Change review: a diff's blast radius and test reach on the Terrain (#49; FR1810 
 - `?change=<base>..<head>` (or `?change=<base>` for the working tree) opens it, with `&depth=<n>` and `&open=<stable key>` to open a row. More than 500 rows are drawn a window at a time. The export carries the range, the summary, the gate and the limits in its caption.
 - New route `/api/v1/galaxy/points` gives the Terrain point of each stable key in a snapshot.
 
+Claims & trace: what an agent session read, changed and claimed, on the Terrain (#50; FR1940 to FR1945, FR1950 to FR1957):
+
+- While a person has turned recording on (`proofmesh trail on <repo>`, off by default), `proofmesh mcp` keeps the subjects of each query it answers: symbol ids and repository-relative paths the snapshot holds, never source text or the query's words, in the local catalog beside the query record (migration 0024, `query_subject`), grouped by the session id the server holds for the connection. `list_queries` names a recorded query's `session_id`.
+- `get_session_trail` lists an MCP session's queries as entries with `query_id` and `snapshot_id`, compares the session's diff (`compare_snapshots`) with what it searched for and opened, matching symbols across snapshots by stable key, and adds `opened` to each changed symbol so the three lists hold every dependent once.
+- `proofmesh gc --records-days D` deletes a query's subjects with its record, and `proofmesh trail purge` with the session's trail; both say how many.
+- Observatory's Claims tab pins each claim on the Terrain at its source symbol (✓, ✗, or `checked at <snapshot>` when its last run was against another snapshot), summarises `1 of 4 claims refuted`, and shows the seven layers as equal cells in pipeline order with a failed layer boldest and `not run` and `unsupported` hatched. Below it, a recorded session's steps are numbered in order and on the map (`+n` for a subject visited again), with the dependents of its change it never looked at.
+- Upgrade note: catalog migration 0024. Back up the data directory before upgrading.
+
 Time: scrub snapshots on the same map (part of #48; FR1760 to FR1765):
 
 - The header's snapshot picker is now Time, in the left panel: a scrubber and a strip of every published snapshot, newest first, each with its symbols and unresolved share, which `list_snapshots` now gives (`symbols`, `relationships`, `unresolved`). `[` and `]` step one snapshot, and every view is pinned to the snapshot shown.

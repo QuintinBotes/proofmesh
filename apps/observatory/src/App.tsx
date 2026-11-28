@@ -712,10 +712,10 @@ export function App() {
           </div>
         )}
         {noWebGl && <div className="notice" role="status">WebGL is not available here, so Observatory shows the table view.</div>}
-        {mode === 'claims' && <ClaimsView onError={report} />}
+        {mode === 'claims' && <ClaimsView onError={report} galaxy={galaxy} terrain={terrain} snapshotId={replay ?? current?.id ?? null} map={!noWebGl && !tableView} onWebGlFailure={() => setNoWebGl(true)} />}
         {mode === 'diff' && diffSource === 'commits' && review && reviewTerrain && !noWebGl && <Terrain data={review.head} terrain={reviewTerrain} query="" focusArea={null} hoverArea={hoverArea}
           onOpen={(i) => { const m = review.marks.find((x) => 'point' in x && !x.base && x.point === i); if (m) openReviewRow(m.row) }} onHoverArea={setHoverArea} onBundle={() => undefined} onClear={() => undefined} onWebGlFailure={() => setNoWebGl(true)}
-          layer={(v) => <ChangeMarks review={review} view={v} open={reviewRow?.row.id ?? null} onOpen={openReviewRow} />} />}
+          drawOver={(v) => <ChangeMarks review={review} view={v} open={reviewRow?.row.id ?? null} onOpen={openReviewRow} />} />}
         {mode === 'diff' && diffSource === 'commits' && !review && !loading && <p className="hint">Name a base and a head commit on the left to see what the change reaches: every caller, implementer and importer of each changed symbol, and whether the diff or a test covers it.</p>}
         {mode === 'diff' && diffSource === 'snapshots' && (
           <>

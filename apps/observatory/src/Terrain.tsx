@@ -18,15 +18,15 @@ type Props = {
   onWebGlFailure: () => void
   /** Time's marks for the step shown (FR1762): drawn over the map at any zoom; a point's own mark is said in its tooltip. */
   marks?: Mark[] | null
-  /** A layer drawn over the cells for the current view, such as Change review's marks (FR1814). */
-  layer?: (view: View) => ReactNode
+  /** What another view draws over the Terrain where it puts it, such as claims at their symbols (#50). */
+  drawOver?: (view: View) => ReactNode
 }
 
 /** Symbols are drawn once their cell is this many pixels across (FR1404); before that the areas, directories and files stand for them. */
 const POINTS_PX = 4
 const BYTES = (hex: string): [number, number, number] => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)) as [number, number, number]
 
-export function Terrain({ data: d, terrain: t, query, focusArea, hoverArea, overlay, onOpen, onHover, onHoverArea, onBundle, onClear, show, onWebGlFailure, marks, layer }: Props) {
+export function Terrain({ data: d, terrain: t, query, focusArea, hoverArea, overlay, onOpen, onHover, onHoverArea, onBundle, onClear, show, onWebGlFailure, marks, drawOver }: Props) {
   const box = useRef<HTMLDivElement>(null)
   const sigma = useRef<Sigma | null>(null)
   const handlers = useRef({ onOpen, onHover, onHoverArea, onBundle, onWebGlFailure })
@@ -218,7 +218,6 @@ export function Terrain({ data: d, terrain: t, query, focusArea, hoverArea, over
         <i key={`${m.change}:${m.name}`} className={`time-mark ${m.change}`} data-change={m.change} data-name={m.name} aria-hidden="true"
           style={{ left: m.x * view.kx + view.bx, top: m.y * view.ky + view.by, ...(m.from ? { '--dx': `${(m.from[0] - m.x) * view.kx}px`, '--dy': `${(m.from[1] - m.y) * view.ky}px` } : {}) } as CSSProperties} />
       ))}
-      {view && layer?.(view)}
       {shown && (
         <div className="filter-chip" role="status">
           <span>{visible(filterLabel)}: <b>{shown.matched.toLocaleString('en')}</b> of {plural(d.n, 'symbol')}</span>
@@ -231,6 +230,7 @@ export function Terrain({ data: d, terrain: t, query, focusArea, hoverArea, over
         <button type="button" onClick={() => zoomBy(1 / 1.6)} aria-label="Zoom out" title="Zoom out">−</button>
         <button type="button" onClick={() => sigma.current?.getCamera().reset({ duration: 300 })} aria-label="Fit everything" title="Fit everything">⤢</button>
       </div>
+      {view && drawOver?.(view)}
       {tip && <div className="galaxy-tip" style={{ left: tip.x + 14, top: tip.y + 14 }} role="status"><b>{visible(tip.title)}</b>{tip.lines.map((l, i) => <div key={i} className="dim">{visible(l)}</div>)}</div>}
       <span hidden data-testid="terrain-strokes">{strokes.map((s: Stroke) => `${s.basis}:${s.pair.from}>${s.pair.to}`).join(' ')}</span>
     </div>
