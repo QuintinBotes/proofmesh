@@ -4,7 +4,7 @@
 export interface Envelope {
 schema_version: "0.1"
 query_id: string
-tool: ("workspace_status" | "list_repositories" | "list_snapshots" | "list_workspaces" | "find_symbols" | "get_symbol" | "get_relationships" | "trace_paths" | "read_evidence" | "get_overview" | "analyze_impact" | "find_tests" | "search_sources" | "get_memory" | "verify_claim" | "request_index" | "get_job" | "get_claims" | "save_memory" | "get_table_reach" | "get_property_reads" | "get_external_usage" | "find_query_source" | "compare_snapshots" | "list_queries" | "get_ecosystem" | "prepare_verification" | "get_verification" | "impact_completeness" | "get_symbols_at" | "get_session_trail" | "find_stale_mentions" | "find_unused" | "find_cycles" | "find_entry_points" | "find_hubs" | "get_context_map" | "plan_rename" | "plan_move" | "search_structure" | "search_concepts" | "get_symbol_card" | "query_graph")
+tool: ("workspace_status" | "list_repositories" | "list_snapshots" | "list_workspaces" | "find_symbols" | "get_symbol" | "get_relationships" | "trace_paths" | "read_evidence" | "get_overview" | "analyze_impact" | "find_tests" | "search_sources" | "get_memory" | "verify_claim" | "request_index" | "get_job" | "get_claims" | "save_memory" | "get_table_reach" | "get_property_reads" | "get_external_usage" | "find_query_source" | "compare_snapshots" | "list_queries" | "get_ecosystem" | "prepare_verification" | "get_verification" | "impact_completeness" | "get_symbols_at" | "get_session_trail" | "find_stale_mentions" | "find_unused" | "find_cycles" | "find_entry_points" | "find_hubs" | "get_context_map" | "plan_rename" | "plan_move" | "search_structure" | "search_concepts" | "get_symbol_card" | "query_graph" | "get_findings")
 /**
  * The sealed snapshot or link file that answered; null for a catalog tool, which answers from the list of registered repositories.
  */
@@ -192,6 +192,10 @@ depth: number
  * inferred when the strongest chain to the dependent has an inferred hop; the strongest chain is the shortest all-observed chain where one exists, and depth is that chain's.
  */
 basis: ("observed" | "inferred")
+/**
+ * How many imported SARIF findings (get_findings) are on this symbol; absent when none are (#30).
+ */
+findings?: number
 project: (string | null)
 /**
  * Where the relationship that first reached the dependent is recorded, when that is not in path: a registration in another file, say (FR860). For a file reached through imports (kind file): the import statement that reached it.
@@ -958,6 +962,10 @@ evidence: ("call" | "transitive_call" | "dispatch" | "reference" | "import_only"
  */
 basis: ("observed" | "inferred")
 /**
+ * How many imported SARIF findings (get_findings) are on this symbol; absent when none are (#30).
+ */
+findings?: number
+/**
  * For dispatch, the interface or base member the call resolved to.
  */
 via?: string
@@ -1545,6 +1553,98 @@ max_depth?: number
 freshness?: ("snapshot" | "strict")
 /**
  * compact leaves out the snapshot-wide parts of the envelope (unresolved reasons, standing limitations) that an earlier answer from the same snapshot already gave; query-specific limits stay. Over MCP, answers after the first full one per snapshot are compact unless full is asked for.
+ */
+envelope?: ("full" | "compact")
+}
+
+/**
+ * Imported SARIF findings by path and line (FR1902).
+ */
+export interface GetFindingsData {
+findings: {
+/**
+ * The name the SARIF file was imported under.
+ */
+import: string
+/**
+ * The run's tool and version, as the SARIF file names them.
+ */
+tool: string
+rule: string
+/**
+ * The SARIF level: error, warning, note or none (warning when the file gives none).
+ */
+level: string
+message: string
+path: string
+/**
+ * The finding's start line; null when the SARIF result names its file only.
+ */
+line: (number | null)
+end_line: (number | null)
+/**
+ * SARIF rank, 0 to 100, when the tool gave one.
+ */
+rank: (number | null)
+/**
+ * The rule's precision property (CodeQL's @precision), when the tool gave one.
+ */
+precision: (string | null)
+/**
+ * The innermost symbol whose span holds the line, or the file's module when none does (get_symbols_at).
+ */
+symbol: (null | {
+id: string
+kind: string
+name: string
+qualified_name: string
+})
+/**
+ * sarif_stale:<import> when the file's content in this snapshot is not what it was when the SARIF file was imported; null otherwise.
+ */
+stale: (string | null)
+}[]
+imports: {
+name: string
+tools: string[]
+findings: number
+/**
+ * Results left out at import: outside the repository, in a file not in the snapshot, or with no location.
+ */
+unattached: number
+added_at: string
+}[]
+/**
+ * Findings that match, before max_rows.
+ */
+total: number
+}
+
+/**
+ * Findings that data-flow and other analysers (CodeQL, Opengrep, ...) wrote as SARIF and a person imported with proofmesh sarif add, each with its tool, rule, level, message, path:line and the innermost symbol at that line; stale (sarif_stale:<name>) when its file changed since the import. Proofmesh runs no analyser. analyze_impact and find_tests rows carry findings=<n>.
+ */
+export interface GetFindingsInput {
+repository_id?: string
+/**
+ * Default is the repository's current snapshot.
+ */
+snapshot_id?: string
+/**
+ * Only the findings on these symbols.
+ */
+subject_ids?: string[]
+/**
+ * Only the findings in these files, repository-relative. With neither, every finding.
+ */
+paths?: string[]
+limits?: {
+timeout_ms?: number
+max_rows?: number
+max_bytes?: number
+max_depth?: number
+}
+/**
+ * compact leaves out the snapshot-wide parts of the envelope that an earlier answer from the same snapshot already gave.
  */
 envelope?: ("full" | "compact")
 }

@@ -4,7 +4,7 @@ import { extremityArrow, layerDashed, layerFill, pathCurved, sdfCircle, sdfRecta
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { ghostAreas, matchIndices, shortName, type GalaxyData } from './galaxyData'
 import { OVERLAY_RGB } from './diff'
-import { cellRect, coverageOf, drawnStrokes, FRAME, labels as labelsOf, pairText, symbolSide, type Label, type Pair, type Stroke, type Terrain as Model, type View } from './terrainModel'
+import { CELL, cellRect, coverageOf, drawnStrokes, FRAME, GHOST_SIDE, GHOST_Y, GHOSTS, ghostRect, labels as labelsOf, MATCH, POINT, STROKE, SYMBOL, pairText, symbolSide, type Label, type Pair, type Stroke, type Terrain as Model, type View } from './terrainModel'
 import { visible } from './visible'
 import { plural } from './plural'
 import { grid, points } from './points'
@@ -22,15 +22,7 @@ type Props = {
 
 /** Symbols are drawn once their cell is this many pixels across (FR1404); before that the areas, directories and files stand for them. */
 const POINTS_PX = 4
-/** A symbol's point is this share of its cell's side. */
-const POINT = 0.12
-// Neutral cells, darker the deeper (FR1406): colour is kept for basis, change and coverage.
-const CELL = ['rgba(150,164,196,0.16)', 'rgba(150,164,196,0.10)', 'rgba(150,164,196,0.08)']
-const SYMBOL = '#aab4c8', MATCH = '#ffd36e'
-const STROKE = { observed: '#7fd4ff', inferred: '#c79bff' } as const
 const BYTES = (hex: string): [number, number, number] => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)) as [number, number, number]
-/** Ghost areas hold files but no symbols, so they have no cell in the layout; they sit in a row below it (FR1405). */
-const GHOSTS = 10, GHOST_Y = FRAME * 1.04, GHOST_SIDE = FRAME * 0.06
 
 export function Terrain({ data: d, terrain: t, query, focusArea, hoverArea, overlay, onOpen, onHover, onHoverArea, onBundle, onClear, show, onWebGlFailure, marks }: Props) {
   const box = useRef<HTMLDivElement>(null)
@@ -215,7 +207,7 @@ export function Terrain({ data: d, terrain: t, query, focusArea, hoverArea, over
         )
       })}
       {view && [...ghosts.shown.map((a) => ({ name: a.name, text: coverageOf(a).text })), ...(ghosts.rest.areas ? [{ name: `+${plural(ghosts.rest.areas, 'smaller area')}`, text: `${plural(ghosts.rest.areas, 'more area')} with no symbols ${ghosts.rest.areas === 1 ? 'holds' : 'hold'} ${plural(ghosts.rest.files, 'file')} the graph cannot see; the table lists them` }] : [])].map((g, i) => {
-        const q = cellRectAt(view, i)
+        const q = ghostRect(view, i)
         return <div key={g.name} className="terrain-fog empty" data-area={g.name} title={g.text} aria-hidden="true" style={{ left: q.left, top: q.top, width: q.width, height: q.height }}>{q.width >= 40 && <span className="fog-label">{visible(g.name)}</span>}</div>
       })}
       {placed.map((l) => <div key={l.key} className={`terrain-label ${l.kind}${l.height > 16 ? ' stacked' : ''}`} data-kind={l.kind} title={l.title} style={{ left: l.kind === 'symbol' ? l.left + l.width / 2 : l.left, top: l.top }} aria-hidden="true">{l.kind === 'area' ? l.text.split(' ').map((x, i) => <span key={i}>{i ? ' ' : ''}{visible(x)}</span>) : visible(l.text)}</div>)}
@@ -240,13 +232,6 @@ export function Terrain({ data: d, terrain: t, query, focusArea, hoverArea, over
       <span hidden data-testid="terrain-strokes">{strokes.map((s: Stroke) => `${s.basis}:${s.pair.from}>${s.pair.to}`).join(' ')}</span>
     </div>
   )
-}
-
-/** The i-th ghost area's box on screen, in the row below the layout. */
-function cellRectAt(v: View, i: number) {
-  const x = FRAME * 0.01 + i * GHOST_SIDE * 1.25
-  const x0 = x * v.kx + v.bx, x1 = (x + GHOST_SIDE) * v.kx + v.bx, y0 = GHOST_Y * v.ky + v.by, y1 = (GHOST_Y + GHOST_SIDE) * v.ky + v.by
-  return { left: Math.min(x0, x1), top: Math.min(y0, y1), width: Math.abs(x1 - x0), height: Math.abs(y1 - y0) }
 }
 
 /** Moves the camera so a cell fills most of the view; nothing else moves (FR1404). */
