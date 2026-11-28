@@ -1,3 +1,4 @@
+import { readNotebook, type NotebookCell } from '../../../../adapters/syntax/src/notebook.js'
 import type Database from 'better-sqlite3'
 import { ProofmeshError } from '../core/errors.js'
 import { queryId } from '../core/hash.js'
@@ -495,6 +496,28 @@ const propertyReadRow = (r: PropertyRead, propertyOf: Database.Statement) => ({
 })
 
 type SymbolRow = { id: string; kind: string; name: string; qualified_name: string; path: string; start_line: number; end_line: number; signature: string | null; evidence_id: string }
+// Decode each verified notebook once within this tool call. Historical or third-party evidence can lack a cell.
+function notebookLocations(ctx: Ctx) {
+  const parsed = new Map<string, NotebookCell[]>()
+  function locate(hash: string, start: number, end: number, verifiedContent?: Buffer) {
+    if (!parsed.has(hash)) {
+      const content = verifiedContent ?? ctx.store.verify(hash).content
+      let cells: NotebookCell[] = []
+      if (content) {
+        try { cells = readNotebook(content.toString('utf8')) } catch { /* An older adapter may have indexed this as plain text. */ }
+      }
+      parsed.set(hash, cells)
+    }
+    return parsed.get(hash)!.find(cell => cell.whole.start_byte <= start && end <= cell.whole.end_byte)?.locate(start, end)
+  }
+  function forSymbol(s: SymbolRow) {
+    if (!s.path.toLowerCase().endsWith('.ipynb')) return {}
+    const e = ctx.db.prepare('select object_hash, start_byte, end_byte from evidence where id = ?').get(s.evidence_id) as { object_hash: string; start_byte: number; end_byte: number }
+    const cell = locate(e.object_hash, e.start_byte, e.end_byte)
+    return cell ? { notebook_cell: cell.address } : {}
+  }
+  return { locate, forSymbol }
+}
 /** Most locations one get_symbols_at call answers (FR119). */
 const MAX_LOCATIONS = 100
 const SYMBOL_SQL = 'select s.id, s.kind, s.name, s.qualified_name, f.path, s.start_line, s.end_line, s.signature, s.evidence_id from symbol s join file f on f.id = s.file_id'
@@ -508,8 +531,10 @@ function withRoles<T extends { id: string }>(db: Database.Database, symbols: T[]
   return symbols.map((s) => (stored.has(s.id) ? { ...s, roles: stored.get(s.id)! } : s))
 }
 /** A symbol as a lean row: at its declaration, with its kind, and its id when asked (FR096, FR100). */
-const symbolRow = (s: Pick<SymbolRow, 'id' | 'kind' | 'name' | 'qualified_name' | 'path' | 'start_line'>, ids = false) =>
-  leanRow(leanName(s), s.path, s.start_line, [s.kind, ...(ids ? [`id=${s.id}`] : [])])
+type CellAddress = ReturnType<NotebookCell['locate']>['address']
+const cellLabel = (cell?: CellAddress) => cell ? [`cell=${cell.id ?? cell.ordinal}`, `cell_line=${cell.start_line}`, ...(cell.reason ? [cell.reason] : [])] : []
+const symbolRow = (s: Pick<SymbolRow, 'id' | 'kind' | 'name' | 'qualified_name' | 'path' | 'start_line'> & { notebook_cell?: CellAddress }, ids = false) =>
+  leanRow(leanName(s), s.path, s.start_line, [s.kind, ...cellLabel(s.notebook_cell), ...(ids ? [`id=${s.id}`] : [])])
 
 /** The symbol a `{ name, path }` names: its lean name, else its plain name, unique in that file (FR100). */
 function symbolNamed(db: Database.Database, named: { name: string; path: string }): string {
@@ -1017,7 +1042,8 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
           when 'constructor' then 3 when 'variable' then 3 else 1 end,
         s.qualified_name, f.path, s.start_line, s.start_byte, s.kind, s.id
       limit @limit offset @offset`).all({ like: `%${escape(text)}%`, prefix: `${escape(lower)}%`, lower, limit: ctx.limits.max_rows + 1, offset: ctx.page.offset, ...(prefix ? { path: `${escape(prefix)}%` } : {}), ...Object.fromEntries((kinds ?? []).map((k, i) => [`k${i}`, k])) }) as SymbolRow[]
-    const symbols = withRoles(ctx.db, rows.slice(0, ctx.limits.max_rows).map(publicSymbol))
+    const notebooks = notebookLocations(ctx)
+    const symbols = withRoles(ctx.db, rows.slice(0, ctx.limits.max_rows).map(s => ({ ...publicSymbol(s), ...notebooks.forSymbol(s) })))
     // A path prefix that names no indexed file says so, so an empty answer is not read as "no such symbol" (FR015).
     const noPath = prefix !== undefined && !ctx.db.prepare("select 1 from file where disposition = 'indexed' and path like ? escape '\\' limit 1").get(`${escape(prefix)}%`)
     return { data: { symbols }, stop_reasons: rows.length > ctx.limits.max_rows ? ['max_rows'] : [], more: rows.length > ctx.limits.max_rows, shrink: 'symbols', lean: (data) => (data.symbols as typeof symbols).map((sym) => symbolRow(sym, input.include_ids === true)), limitations: [...(input.include_tests === false ? [TEST_FILTER_NOTE] : []), ...(noPath ? [`No indexed file is under path_prefix ${prefix}; the search covered nothing.`] : [])] }
@@ -1992,13 +2018,14 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     const detail = ctx.db.prepare("select 1 from pragma_table_info('symbol') where name = 'detail'").get() ?(ctx.db.prepare('select detail from symbol where id = ?').get(id) as { detail: string | null }).detail : null
     // Coverage in the full envelope only, and only when an imported report covers the file (FR2063).
     const cov = ctx.compact ? null : coverageOf(ctx.db, ctx.catalog.coverageImports(ctx.repo.id), [s.id])
+    const cell = notebookLocations(ctx).forSymbol(s)
     return {
-      data: { ...(navigation.length ? { generation: navigation } : {}), symbol: { ...withRoles(ctx.db, [s])[0]!, ...identity, ...(detail ? { detail: JSON.parse(detail) as Record<string, string> } : {}) }, ...(cov ? { coverage: coverageData(cov) } : {}) }, evidence_ids: [s.evidence_id],
+      data: { ...(navigation.length ? { generation: navigation } : {}), symbol: { ...withRoles(ctx.db, [s])[0]!, ...cell, ...identity, ...(detail ? { detail: JSON.parse(detail) as Record<string, string> } : {}) }, ...(cov ? { coverage: coverageData(cov) } : {}) }, evidence_ids: [s.evidence_id],
       limitations: !sealed ? ['This snapshot was sealed before body hashes existed, so body_hash is null; index again to compute it.']
         : identity.body_hash ? []
         : unreadableFiles(ctx.db).paths.includes(s.path) ? [`The content of ${s.path} was unavailable when the snapshot was sealed, so body_hash is null.`]
         : ['body_hash is null: the declaration span is no more than the name, so there is no text to hash.'],
-      lean: () => [leanRow(leanName(s), s.path, s.start_line, [s.kind, `stable_key=${quote(identity.stable_key)}`, ...(identity.body_hash ? [`body_hash=${identity.body_hash}`] : [])]), ...navigation.map((r) => leanRow(r.endpoint.name, r.endpoint.path, r.endpoint.start_line, [r.direction, `key=${quote(r.endpoint.key)}`, `producer=${quote(r.producer)}`]))],
+      lean: () => [leanRow(leanName(s), s.path, s.start_line, [s.kind, ...cellLabel(cell.notebook_cell), `stable_key=${quote(identity.stable_key)}`, ...(identity.body_hash ? [`body_hash=${identity.body_hash}`] : [])]), ...navigation.map((r) => leanRow(r.endpoint.name, r.endpoint.path, r.endpoint.start_line, [r.direction, `key=${quote(r.endpoint.key)}`, `producer=${quote(r.producer)}`]))],
     }
   },
 
@@ -2146,12 +2173,15 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
 
   read_evidence(ctx, input) {
     const ids = input.evidence_ids as string[]
+    const notebooks = notebookLocations(ctx)
     const evidence = ids.map((id) => {
       const e = ctx.db.prepare('select e.*, f.path from evidence e join file f on f.id = e.file_id where e.id = ?').get(id) as Record<string, any> | undefined
       if (!e) throw new ProofmeshError('NOT_FOUND', `evidence ${id} is not in snapshot ${ctx.snapshot.id}`)
       const { integrity, content } = ctx.store.verify(e.object_hash)
+      const cell = integrity.status === 'verified' && content && e.path.toLowerCase().endsWith('.ipynb') ? notebooks.locate(e.object_hash, e.start_byte, e.end_byte, content) : undefined
       return {
         id, path: e.path, start_line: e.start_line, end_line: e.end_line, start_byte: e.start_byte, end_byte: e.end_byte, object_hash: e.object_hash,
+        ...(cell ? { notebook_cell: cell.address, cell_text: cell.source } : {}),
         source_kind: e.source_kind, extractor: e.extractor, extractor_version: e.extractor_version, analysis_mode: e.analysis_mode,
         integrity, text: integrity.status === 'verified' && content ? content.subarray(e.start_byte, e.end_byte).toString('utf8') : null,
       }

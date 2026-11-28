@@ -49,6 +49,7 @@ const OPENAPI_NAME = /^((openapi|swagger)([.\-_].+)?|.+[.\-_](openapi|swagger))\
 export const CONTRACT_NAME = /\.(proto|graphql|gql)$/i
 
 const SYNTAX: Record<string, string> = {
+  '.ipynb': 'jupyter',
   '.java': 'java', '.go': 'go', '.rs': 'rust', '.rb': 'ruby', '.php': 'php',
   '.c': 'c', '.h': 'c', '.cpp': 'cpp', '.cc': 'cpp', '.cxx': 'cpp', '.hpp': 'cpp', '.hh': 'cpp', '.hxx': 'cpp',
   '.sh': 'bash', '.bash': 'bash', '.scala': 'scala', '.sc': 'scala', '.kt': 'kotlin', '.kts': 'kotlin',

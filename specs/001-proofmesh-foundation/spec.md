@@ -1249,3 +1249,4 @@ Each must produce a tested result or an explicit unsupported limitation, never s
 ### Per-language benchmark inputs
 
 - FR3001: MUST produce reproducible Go compiler observations on pinned Cobra inputs using two offline, memory-bounded indexer runs. The facts retain source ranges and role bits, and an empty or divergent result fails the run.
+- FR3002: MUST index nbformat 4 Python source and Markdown context with cell-relative citations and stable cell IDs, identify unsupported cell magics, and exclude saved output and execution counts from code facts.

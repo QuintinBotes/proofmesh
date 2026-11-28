@@ -9,7 +9,7 @@ const dist = path.join(here, 'dist')
 fs.rmSync(dist, { recursive: true, force: true })
 await build({
   entryPoints: [path.join(here, 'src/cli/main.ts')], outfile: path.join(dist, 'cli.mjs'), bundle: true, platform: 'node', format: 'esm', target: 'node22',
-  external: ['better-sqlite3', '@proofmesh/adapter-typescript'], logLevel: 'warning',
+  external: ['jsonc-parser', 'better-sqlite3', '@proofmesh/adapter-typescript'], logLevel: 'warning',
   banner: { js: "import { createRequire as __pmCreateRequire } from 'node:module'; const require = __pmCreateRequire(import.meta.url);" },
 })
 // The SCIP adapter runs as its own process, like every adapter (A24).
