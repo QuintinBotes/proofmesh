@@ -18,3 +18,13 @@ describe('FR1020 FR1021 a read or a write of a class property is a reference, wi
     expect(rows('a:Counter.count')).toEqual(['a:Counter.bump 4 write'])
   }, 120000)
 })
+
+describe('FR1860 a property\'s declared type and decorators are used by its class, its initializer by the property', () => {
+  it('FR1860 two properties typed Doc are one user, the class; a decorator is the class\'s call; a parameter property\'s type is the class\'s, as any constructor parameter\'s; an initializer is the property\'s', async () => {
+    const { dataDir } = await indexedRepo({ 'a.ts': 'export class Doc {}\nexport function tag() { return (..._: unknown[]) => {} }\nexport class Holder {\n  a: Doc\n  @tag() b: Doc\n  c = new Doc()\n  constructor(private d: Doc) {}\n}\n' })
+    const users = (subject: string, type: string) => (tool(dataDir, 'get_relationships', { subject_id: symbolId(dataDir, subject), direction: 'in', types: [type] }).data.relationships as Row[])
+      .map((x) => `${x.other.qualified_name} ${x.site.start_line} sites=${new Set(x.evidence_ids).size}`).sort()
+    expect(users('a:Doc', 'references')).toEqual(['a:Holder 4 sites=3', 'a:Holder.c 6 sites=1'])
+    expect(users('a:tag', 'calls')).toEqual(['a:Holder 5 sites=1'])
+  }, 120000)
+})
