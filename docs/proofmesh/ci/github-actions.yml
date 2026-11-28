@@ -68,8 +68,17 @@ jobs:
           # --format github annotates each such dependent and appends the report to $GITHUB_STEP_SUMMARY.
           pm completeness "$GITHUB_WORKSPACE" "$BASE..$HEAD" --format github || [ $? -eq 1 ]
           pm completeness "$GITHUB_WORKSPACE" "$BASE..$HEAD" --format markdown > "$RUNNER_TEMP/proofmesh-report.md" || [ $? -eq 1 ]
-          # Optional: the tests to run first. Exit 3 means the list may miss tests; run the full suite then.
-          pm tests "$GITHUB_WORKSPACE" --changed "$BASE..$HEAD" > "$RUNNER_TEMP/proofmesh-tests.txt" || echo "::notice::the test list may be incomplete; run the full suite"
+          # See test-selection-audit.md to join this artifact with the full-suite JUnit job.
+          # Keep the full-suite job running. Exit 3 is an answered selection with incomplete coverage.
+          rc=0
+          pm tests "$GITHUB_WORKSPACE" --changed "$BASE..$HEAD" --json > "$RUNNER_TEMP/proofmesh-selection.json" || rc=$?
+          case "$rc" in 0|3) ;; *) exit "$rc" ;; esac
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: proofmesh-selection
+          path: ${{ runner.temp }}/proofmesh-selection.json
+          if-no-files-found: error
 
       - name: Post or update the pull request comment
         env:

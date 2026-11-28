@@ -41,7 +41,7 @@ import { leanName, leanRow, leanText, quote } from './lean.js'
 import { leanQueryRows, parseGraphQuery, runGraphQuery, type Param, type QueryRow } from './graph-query.js'
 import { generatedLeftOut, generatedPaths, markGenerated, withGeneratedPaths } from './generated-policy.js'
 import { innermost } from './symbol-at.js'
-import { attachFindings, findingCounts } from './findings.js'
+import { findingDetails, attachFindings, findingCounts } from './findings.js'
 import { DEFAULT_THRESHOLDS, historyHeader, historyNotes, leanPartner, partners, type Partner, type Thresholds } from './cochanges.js'
 import { readHistory, type Window } from '../indexer/history.js'
 import { findCycles, findEntryPoints, findHubs, findUnused, type CycleEdge, type EntryPoint, type Hub, type UnusedRow } from './structure.js'
@@ -887,6 +887,44 @@ const observedOf = (cov: Coverage | null, imported: boolean) => !imported ? { av
   : cov.stale ? { available: false, reason: `The coverage report ${cov.source} is stale for these files: they changed since it was imported.` }
   : { available: true, reason: `The coverage report ${cov.source} (${cov.format}) covers these files.` }
 
+/** Trace registered entry points against one target with the same edge, site and dispatch rules as trace_paths. */
+function entryWitnesses(ctx: Ctx, roots: EntryPoint[], target: string, alternatives: boolean) {
+  if (!ctx.db.prepare('select 1 from symbol where id = ?').get(target)) throw new ProofmeshError('NOT_FOUND', `symbol ${target} is not in snapshot ${ctx.snapshot.id}`)
+  const types = ['exposes', 'runs', 'handles', 'calls', ...DISPATCH_TYPES]
+  const source = new SqliteEdges(ctx.db), deadline = ctx.started + ctx.limits.timeout_ms
+  const rank = (id: string) => id.startsWith('as_') ? assertionKey(ctx.db, id) : nodeKey(ctx.db, id)
+  const stops = new Set<'max_depth' | 'max_rows' | 'timeout'>()
+  const expanded = new Set<string>()
+  const hits = []
+  for (const root of roots) {
+    if (Date.now() >= deadline) { stops.add('timeout'); break }
+    const id = root.id ?? (root.kind === 'module' || root.name === null
+      ? fileAlias(ctx.db, fileAt(ctx, root.path).id) : undefined)
+    if (!id) continue
+    const result = trace(source, { source: id, target, types, resolutions: ['resolved'], maxDepth: ctx.limits.max_depth, maxRows: ctx.limits.max_rows, deadline, rank })
+    for (const visited of result.expanded) expanded.add(visited)
+    if (result.stopped_by) stops.add(result.stopped_by)
+    if (!result.paths.length) continue
+    const witnesses = result.paths.slice(0, alternatives ? 2 : 1).map((p) => p.assertions.map((assertion_id, i) => {
+      const a = ctx.db.prepare('select type, origin, resolution, detail from assertion where id = ?').get(assertion_id) as { type: string; origin: string; resolution: string; detail: string | null }
+      const site = siteOf(ctx.db, assertion_id)
+      return { from: p.nodes[i]!, to: p.nodes[i + 1]!, assertion_id, type: a.type, basis: basisOf(a)!, path: site.path, line: site.start_line, evidence_ids: site.evidence }
+    }))
+    hits.push({ ...root, id, witnesses })
+  }
+  const boundaries: Boundary[] = [], byReason: Record<string, number> = {}
+  let count = 0
+  const ids = [...expanded]
+  for (let i = 0; i < ids.length; i += 400) {
+    const group = ids.slice(i, i + 400)
+    const found = boundariesFrom(ctx.db, types, `a.source_id in (${group.map(() => '?').join(',')})`, Math.max(0, ctx.limits.max_rows - boundaries.length), ...group)
+    boundaries.push(...found.items)
+    count += found.count
+    for (const [reason, n] of Object.entries(found.by_reason)) byReason[reason] = (byReason[reason] ?? 0) + n
+  }
+  return { hits, stops: [...stops], unresolved: { scope: 'query' as const, items: boundaries, count, by_reason: byReason } }
+}
+
 const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Partial> = {
   workspace_status(ctx, input) {
     const meta = Object.fromEntries((ctx.db.prepare('select key, value from meta').all() as Array<{ key: string; value: string }>).map((m) => [m.key, m.value]))
@@ -1329,7 +1367,7 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     const all = attachFindings(ctx.db, imports).filter((f) => (!ids.size && !paths.size) || paths.has(f.path) || (f.symbol !== null && ids.has(f.symbol.id)))
     const stale = all.filter((f) => f.stale).length
     return {
-      data: { findings: all.slice(0, ctx.limits.max_rows), imports: imports.map((i) => ({ name: i.name, tools: i.tools, findings: i.findings.length, unattached: i.unattached.length, added_at: i.added_at })), total: all.length },
+      data: { findings: findingDetails(ctx.db, ctx.store, imports, all.slice(0, ctx.limits.max_rows), input.flow_steps as number | undefined), imports: imports.map((i) => ({ name: i.name, tools: i.tools, findings: i.findings.length, unattached: i.unattached.length, added_at: i.added_at })), total: all.length },
       stop_reasons: all.length > ctx.limits.max_rows ? ['max_rows'] : [], shrink: 'findings',
       limitations: [
         imports.length ? 'Findings are what the analysers named in each SARIF file reported when it was produced; Proofmesh runs no analyser and checks none of them.' : 'No SARIF file is imported for this repository; proofmesh sarif add <repository> <file.sarif> imports one.',
@@ -1688,7 +1726,9 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
   },
 
   find_entry_points(ctx, input) {
-    const rows = findEntryPoints(ctx.db, ctx.store, { pathPrefix: input.path_prefix as string | undefined, includeTests: input.include_tests === true, includeGenerated: input.include_generated === true, isTest: isTestPath })
+    const roots = findEntryPoints(ctx.db, ctx.store, { pathPrefix: input.path_prefix as string | undefined, includeTests: input.include_tests === true, includeGenerated: input.include_generated === true, isTest: isTestPath })
+    const search = input.target_id ? entryWitnesses(ctx, roots, String(input.target_id), input.alternative === true) : undefined
+    const rows = search?.hits ?? roots
     const end = ctx.page.offset + ctx.limits.max_rows
     const totals = { not_imported: 0, endpoint: 0, job: 0, main: 0, bin: 0, exports: 0 }
     for (const e of rows) totals[e.reason]++
@@ -1697,9 +1737,14 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
       'Framework entry points are the endpoints and jobs the snapshot records; package entries come from package.json main, module, types, exports and bin, mapped to the indexed file they name (a .js path to its .ts source), else shown at the manifest as not_indexed.',
       ...generatedNote(ctx, 'entry points', input),
     ]
+    if (search) limitations.push('Static reachability on this snapshot through resolved calls, registered handlers, jobs and possible dispatch. Unresolved sites and search limits can hide other roots. Each witness lists its call sites in order.')
     return {
-      data: { entries: rows.slice(ctx.page.offset, end), totals }, more: rows.length > end, stop_reasons: rows.length > end ? ['max_rows'] : [], limitations, shrink: 'entries',
-      lean: (data) => (data.entries as EntryPoint[]).map((e) => e.reason === 'not_imported' ? leanRow(null, e.path, e.line, ['not_imported'])
+      ...(search ? { unresolved: search.unresolved, evidence_ids: [...new Set(search.hits.slice(ctx.page.offset, end).flatMap((r) => r.witnesses.flat().flatMap((h) => h.evidence_ids)))] } : {}),
+      data: { entries: rows.slice(ctx.page.offset, end), totals }, more: rows.length > end, stop_reasons: [...(search?.stops ?? []), ...(rows.length > end ? ['max_rows' as const] : [])], limitations, shrink: 'entries',
+      lean: (data) => search ? (data.entries as typeof search.hits).flatMap((entry) => [
+        leanRow(entry.name, entry.path, entry.line, [entry.reason, 'static']),
+        ...entry.witnesses.flatMap((path, i) => path.map((hop) => leanRow(hop.type, hop.path, hop.line, [`path=${i + 1}`, hop.basis]))),
+      ]) : (data.entries as EntryPoint[]).map((e) => e.reason === 'not_imported' ? leanRow(null, e.path, e.line, ['not_imported'])
         : e.kind ? leanRow(e.name, e.path, e.line, [e.kind]) : e.name === null ? leanRow(null, e.path, e.line, [e.reason]) : leanRow(e.name, e.path, e.line, [e.reason, 'not_indexed'])),
     }
   },

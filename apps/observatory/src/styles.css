@@ -292,3 +292,8 @@ kbd { font: 11px ui-monospace, Menlo, monospace; padding: 0 5px; border: 1px sol
 .change-rows .words { opacity: 0.85; }
 .change-chain { margin: 4px 0 8px; padding-left: 20px; font-size: 12px; }
 .change-tests { padding-left: 16px; font-size: 12px; }
+
+.dependency-matrix { overflow-x: auto; margin-bottom: 1rem; }
+.dependency-matrix summary { cursor: pointer; width: fit-content; }
+.dependency-matrix[open] summary { margin-bottom: .6rem; }
+.dependency-matrix input { width: 4rem; }

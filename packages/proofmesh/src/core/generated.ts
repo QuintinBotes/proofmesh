@@ -571,6 +571,16 @@ target?: string
  * Present and true when the file is generated (FR292); absent otherwise.
  */
 generated?: boolean
+witnesses?: {
+from: string
+to: string
+type: string
+basis: ("inferred" | "observed")
+assertion_id: string
+path: string
+line: number
+evidence_ids: string[]
+}[][]
 }[]
 totals: {
 not_imported: number
@@ -624,6 +634,14 @@ include_generated?: boolean
  * Default false: test files are not listed as entry points (their imports still count).
  */
 include_tests?: boolean
+/**
+ * Return entry points with a static witness reaching this symbol in the selected snapshot.
+ */
+target_id?: string
+/**
+ * With target_id, include a second shortest witness when available.
+ */
+alternative?: boolean
 }
 
 export interface FindHubsData {
@@ -1770,6 +1788,25 @@ qualified_name: string
  * sarif_stale:<import> when the file's content in this snapshot is not what it was when the SARIF file was imported; null otherwise.
  */
 stale: (string | null)
+code_flow?: {
+total_steps: number
+truncated: boolean
+steps: {
+flow: number
+thread: number
+step: number
+uri: (string | null)
+path: (string | null)
+line: (number | null)
+end_line: (number | null)
+column: (number | null)
+end_column: (number | null)
+status: ("verified" | "stale" | "outside_repository" | "not_in_snapshot" | "no_position" | "unavailable" | "failed" | "unresolved_location")
+object_hash: (string | null)
+source_line: (string | null)
+line_truncated: boolean
+}[]
+}
 }[]
 imports: {
 name: string
@@ -1814,6 +1851,10 @@ max_depth?: number
  * compact leaves out the snapshot-wide parts of the envelope that an earlier answer from the same snapshot already gave.
  */
 envelope?: ("full" | "compact")
+/**
+ * Include up to this many ordered analyzer-reported code-flow steps per finding, with individually verified source lines where available.
+ */
+flow_steps?: number
 }
 
 export interface GetJobData {

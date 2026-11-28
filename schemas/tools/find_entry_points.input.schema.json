@@ -78,6 +78,15 @@
     "include_tests": {
       "type": "boolean",
       "description": "Default false: test files are not listed as entry points (their imports still count)."
+    },
+    "target_id": {
+      "type": "string",
+      "pattern": "^sym_[0-9a-z]+$",
+      "description": "Return entry points with a static witness reaching this symbol in the selected snapshot."
+    },
+    "alternative": {
+      "type": "boolean",
+      "description": "With target_id, include a second shortest witness when available."
     }
   }
 }

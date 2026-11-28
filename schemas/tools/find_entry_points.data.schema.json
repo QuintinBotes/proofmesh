@@ -72,6 +72,59 @@
           "generated": {
             "type": "boolean",
             "description": "Present and true when the file is generated (FR292); absent otherwise."
+          },
+          "witnesses": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "from": {
+                    "type": "string"
+                  },
+                  "to": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "type": "string"
+                  },
+                  "basis": {
+                    "enum": [
+                      "inferred",
+                      "observed"
+                    ]
+                  },
+                  "assertion_id": {
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "line": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "evidence_ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "from",
+                  "to",
+                  "type",
+                  "basis",
+                  "assertion_id",
+                  "path",
+                  "line",
+                  "evidence_ids"
+                ]
+              }
+            }
           }
         }
       }

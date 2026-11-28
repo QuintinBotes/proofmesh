@@ -116,6 +116,123 @@
               "null"
             ],
             "description": "sarif_stale:<import> when the file's content in this snapshot is not what it was when the SARIF file was imported; null otherwise."
+          },
+          "code_flow": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "total_steps": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "truncated": {
+                "type": "boolean"
+              },
+              "steps": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "flow": {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    "thread": {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    "step": {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    "uri": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "path": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "line": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "end_line": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "column": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "end_column": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ]
+                    },
+                    "status": {
+                      "enum": [
+                        "verified",
+                        "stale",
+                        "outside_repository",
+                        "not_in_snapshot",
+                        "no_position",
+                        "unavailable",
+                        "failed",
+                        "unresolved_location"
+                      ]
+                    },
+                    "object_hash": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "source_line": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "line_truncated": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "flow",
+                    "thread",
+                    "step",
+                    "uri",
+                    "path",
+                    "line",
+                    "end_line",
+                    "column",
+                    "end_column",
+                    "status",
+                    "object_hash",
+                    "source_line",
+                    "line_truncated"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "total_steps",
+              "truncated",
+              "steps"
+            ]
           }
         }
       }

@@ -1882,7 +1882,8 @@
       "packages/proofmesh/test/structure-tools.test.ts"
     ],
     "FR942": [
-      "packages/proofmesh/test/structure-tools.test.ts"
+      "packages/proofmesh/test/structure-tools.test.ts",
+      "packages/proofmesh/test/entry-witnesses.test.ts"
     ],
     "FR943": [
       "packages/proofmesh/test/structure-tools.test.ts"
@@ -2284,7 +2285,8 @@
     "FR1403": [
       "packages/proofmesh/test/observatory-parity.test.ts",
       "e2e/terrain-typeorm.spec.ts",
-      "e2e/terrain-basis.spec.ts"
+      "e2e/terrain-basis.spec.ts",
+      "e2e/dependency-matrix.spec.ts"
     ],
     "FR1404": [
       "apps/observatory/test/terrain.test.ts",
@@ -2455,7 +2457,8 @@
       "packages/proofmesh/test/sarif.test.ts"
     ],
     "FR1901": [
-      "packages/proofmesh/test/sarif.test.ts"
+      "packages/proofmesh/test/sarif.test.ts",
+      "packages/proofmesh/test/sarif-flow.test.ts"
     ],
     "FR1902": [
       "packages/proofmesh/test/sarif.test.ts"
@@ -2527,7 +2530,8 @@
       "packages/proofmesh/test/completeness-report.test.ts"
     ],
     "FR2143": [
-      "packages/proofmesh/test/completeness-report.test.ts"
+      "packages/proofmesh/test/completeness-report.test.ts",
+      "packages/proofmesh/test/selection-audit.test.ts"
     ],
     "FR2144": [
       "packages/proofmesh/test/completeness-report.test.ts"

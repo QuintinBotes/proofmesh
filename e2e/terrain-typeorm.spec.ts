@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { expect, test, type BrowserContext, type Page } from '@playwright/test'
+import { expect, test, type BrowserContext, type Page, type Locator } from '@playwright/test'
 import { answered, ROOT, startView } from './view'
 
 // #46 story 1 on the TypeORM sample: TypeORM's src/ at a pinned commit, built once by bench/parity/fixture.sh (the parity and
@@ -100,6 +100,33 @@ test('#46 S3 FR1403 a bundle chosen from the keyboard lists the relationships it
   await page.getByRole('button', { name: 'Close bundle' }).click()
 })
 
+const symbolPositions = async (symbols: Locator) => new Map(await symbols.evaluateAll((labels) => labels.map((l) => {
+    if (!l.dataset.point) throw new Error('Terrain symbol is missing its snapshot point index')
+    return [l.dataset.point, { x: l.offsetLeft, y: l.offsetTop }] as const
+  })))
+
+function expectSamePoints(before: Map<string, { x: number; y: number }>, after: typeof before, cx: number, cy: number) {
+  const shared = [...before.keys()].filter((k) => after.has(k))
+  expect(shared.length).toBeGreaterThan(0)
+  for (const k of shared) {
+    const b = before.get(k)!, a = after.get(k)!
+    expect(Math.abs(a.x - (cx + (b.x - cx) * 1.6)), k).toBeLessThan(1.5)
+    // The name hangs under the point by an eighth of the symbol's cell and 3 px; the cell scales with the zoom, the 3 px do not
+    // (1.8 px), and each reading is rounded to a whole pixel (up to 1.6 px more).
+    expect(Math.abs(a.y - (cy + (b.y - cy) * 1.6)), k).toBeLessThan(4)
+  }
+}
+
+test('FR1404 declarations with the same title can trade visibility while a displaced shared point fails (#307)', async ({ page: fixture }) => {
+  const draw = async (point: number, x: number) => {
+    await fixture.setContent(`<div style="position:relative"><i data-point="${point}" title="ReturnDocument" style="position:absolute;left:80px"></i><i data-point="0" title="anchor" style="position:absolute;left:${x}px"></i></div>`)
+    return symbolPositions(fixture.locator('[data-point]'))
+  }
+  const before = await draw(1, 10)
+  expectSamePoints(before, await draw(2, 16), 0, 0)
+  expect(() => expectSamePoints(before, new Map([['0', { x: 80, y: 0 }]]), 0, 0)).toThrow()
+})
+
 test('#46 S4 FR056 FR1404 zooming into src/data-source names its files, then its symbols, and no symbol moves at any zoom', async () => {
   await page.getByRole('region', { name: 'Areas' }).getByRole('button', { name: /^src\/data-source/ }).click()
   await expect(page.locator('.terrain-label.file', { hasText: 'DataSource.ts' })).toBeVisible()
@@ -110,27 +137,15 @@ test('#46 S4 FR056 FR1404 zooming into src/data-source names its files, then its
   // Zoom in about the view's centre: every named symbol's point scales away from it by the zoom factor, so none moved.
   const canvas = (await page.locator('.terrain-canvas').boundingBox())!
   const cx = canvas.width / 2, cy = canvas.height / 2
-  // A symbol's name is centred under its point: its left, before the centring transform, is the point's x. A qualified name some
-  // other symbol shares (an overload, a merged declaration) is left out, so each name stands for one point.
-  const at = async () => {
-    const all = await symbols.evaluateAll((ls) => ls.map((l) => [l.getAttribute('title')!, { x: l.offsetLeft, y: l.offsetTop }] as const))
-    return new Map(all.filter(([k]) => all.filter(([j]) => j === k).length === 1))
-  }
+  // A type and value can share a title even when decluttering shows just one of them at a time.
+  // The point index identifies the same symbol in both views of this snapshot.
   // The camera has finished moving before the first reading.
   await page.waitForTimeout(600)
-  const before = await at()
+  const before = await symbolPositions(symbols)
   await zoomIn.click()
   await page.waitForTimeout(600)
-  const after = await at()
-  const shared = [...before.keys()].filter((k) => after.has(k))
-  expect(shared.length).toBeGreaterThan(0)
-  for (const k of shared) {
-    const b = before.get(k)!, a = after.get(k)!
-    expect(Math.abs(a.x - (cx + (b.x - cx) * 1.6)), k).toBeLessThan(1.5)
-    // The name hangs under the point by an eighth of the symbol's cell and 3 px; the cell scales with the zoom, the 3 px do not
-    // (1.8 px), and each reading is rounded to a whole pixel (up to 1.6 px more).
-    expect(Math.abs(a.y - (cy + (b.y - cy) * 1.6)), k).toBeLessThan(4)
-  }
+  const after = await symbolPositions(symbols)
+  expectSamePoints(before, after, cx, cy)
   await page.getByRole('toolbar', { name: 'Terrain controls' }).getByRole('button', { name: 'Fit everything' }).click()
   await page.waitForTimeout(500)
 })
