@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "get_session_trail.input.schema.json",
   "title": "get_session_trail input",
-  "description": "The session trail of one Claude Code session in this repository, recorded by the Proofmesh plugin only where a person ran proofmesh trail on: what the session searched, opened, changed and claimed, in order, each a repository-relative path or a symbol id with the tool and the time, never source text. For each symbol declared in a file it changed, the dependents (analyze_impact) whose file no successful opened entry names, split into searched_only (under a path a search covered) and never_seen.",
+  "description": "The session trail of one session in this repository, recorded only where a person ran proofmesh trail on: what a Claude Code session searched, opened, changed and claimed (recorded by the Proofmesh plugin), or the subjects of each query of a proofmesh mcp session (list_queries names its session_id), in order, each a repository-relative path or a symbol id with the tool and the time, never source text. For each symbol declared in a file it changed, or that a diff it asked for (compare_snapshots) removed or changed, the dependents (analyze_impact) that no successful opened entry names, split into searched_only (under a path a search covered, or found by a search) and never_seen.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -30,7 +30,7 @@
       "type": "string",
       "minLength": 1,
       "maxLength": 200,
-      "description": "Claude Code's session id (the transcript file's name); /pm-trail passes the current session's."
+      "description": "Claude Code's session id (the transcript file's name; /pm-trail passes the current session's), or a proofmesh mcp session's id (mcp_...)."
     },
     "limits": {
       "type": "object",

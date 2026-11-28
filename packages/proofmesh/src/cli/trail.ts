@@ -37,7 +37,7 @@ export async function runTrail(dataDir: string, rest: string[], take: (args: str
       const repo = catalog.repository(opts[0])
       catalog.setTrailRecording(repo.id, sub === 'on')
       console.log(sub === 'on'
-        ? `session trail on for ${repo.name} (${repo.id}): the Claude Code plugin records the repository-relative paths and symbol ids its sessions search, open, change and claim, never source text; proofmesh trail off ${repo.id} stops it, proofmesh trail purge deletes what was recorded`
+        ? `session trail on for ${repo.name} (${repo.id}): the Claude Code plugin records the repository-relative paths and symbol ids its sessions search, open, change and claim, and proofmesh mcp the subjects of each query by its session, never source text; proofmesh trail off ${repo.id} stops it, proofmesh trail purge deletes what was recorded`
         : `session trail off for ${repo.name} (${repo.id}); what was recorded stays until proofmesh trail purge or gc`)
       return 0
     }
@@ -55,7 +55,8 @@ export async function runTrail(dataDir: string, rest: string[], take: (args: str
     if (sub === 'purge') {
       const session = take(opts, '--session')
       if (opts.length || (rest.includes('--session') && !session)) throw new ProofmeshError('INVALID_ARGUMENT', 'usage: proofmesh trail purge [--session <id>]')
-      console.log(`deleted ${catalog.purgeTrail(session)} trail entries`)
+      const n = catalog.purgeTrail(session)
+      console.log(`deleted ${n.trail} trail entries and the subjects of ${n.subjects} queries`)
       return 0
     }
     throw new ProofmeshError('INVALID_ARGUMENT', 'usage: proofmesh trail on <repo> | trail off <repo> | trail record (JSON lines on stdin) | trail purge [--session <id>]')
