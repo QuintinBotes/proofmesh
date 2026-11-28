@@ -10,8 +10,11 @@
     "Q5": {"site": "src/error/AlreadyHasActiveConnectionError.ts:1", "source": "import { TypeORMError } from \"./TypeORMError\"", "item": "src/error/AlreadyHasActiveConnectionError.ts"},
     "Q6": {"site": "src/naming-strategy/DefaultNamingStrategy.ts:3", "source": "import { camelCase, snakeCase, titleCase } from \"../util/StringUtils\"", "item": "src/naming-strategy/DefaultNamingStrategy.ts"},
     "Q7": {"site": "src/naming-strategy/DefaultNamingStrategy.ts:159", "source": "return camelCase(relationName + \"_\" + referencedColumnName)", "item": "src/naming-strategy/DefaultNamingStrategy.ts::joinColumnName"},
+    "Q8": {"site": "src/data-source/DataSource.ts:263", "source": "await this.buildMetadatas()", "path": [{"file": "src/data-source/DataSource.ts", "qname": "DataSource.initialize"}, {"file": "src/data-source/DataSource.ts", "qname": "DataSource.buildMetadatas"}, {"file": "src/connection/ConnectionMetadataBuilder.ts", "qname": "ConnectionMetadataBuilder.buildSubscribers"}, {"file": "src/globals.ts", "qname": "getMetadataArgsStorage"}], "remaining_sites": [{"site": "src/data-source/DataSource.ts:700", "source": "const subscribers = await connectionMetadataBuilder.buildSubscribers("}, {"site": "src/connection/ConnectionMetadataBuilder.ts:63", "source": "return getMetadataArgsStorage()"}]},
     "Q9": {"site": "src/cache/DbQueryResultCache.ts:224", "source": "let insertedValues: ObjectLiteral = options", "item": "src/cache/DbQueryResultCache.ts"},
+    "Q10": {"site": "src/container.ts:63", "source": "export function useContainer(", "item": "src/container.ts::useContainer"},
     "Q11": {"site": "src/cache/QueryResultCacheFactory.ts:4", "source": "import { DataSource } from \"../data-source/DataSource\"", "item": "src/cache/QueryResultCacheFactory.ts", "return_site": "src/data-source/DataSource.ts:33", "return_source": "import { QueryResultCacheFactory } from \"../cache/QueryResultCacheFactory\""},
-    "Q12": {"site": "src/cli-ts-node-commonjs.ts:3", "source": "import \"./cli\"", "item": "src/cli-ts-node-commonjs.ts"}
+    "Q12": {"site": "src/cli-ts-node-commonjs.ts:3", "source": "import \"./cli\"", "item": "src/cli-ts-node-commonjs.ts"},
+    "Q13": {"site": "src/schema-builder/table/Table.ts:166", "source": "return new Table({", "item": "src/schema-builder/table/Table.ts::Table"}
   }
 }

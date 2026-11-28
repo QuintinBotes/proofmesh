@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process'
 import { bfs, tarjan } from '../../graph-bench/lib.mjs'
 import { graphQuery } from './callers.mjs'
 
-async function queryPages(query, projection) {
+export async function queryPages(query, projection) {
   const rows = []
   const pageSize = 500
   // The result-byte budget may return fewer rows than LIMIT. Resume after the actual rows received.
@@ -38,10 +38,15 @@ export function moduleItems(q, files, imports) {
   return { status: 'answered', items: [...items], truncated: false, method: 'derived from native file and import graph' }
 }
 
+export async function exportedGraph(call, kind) {
+  const options = kind === 'modules' ? { kinds: 'file' } : {}
+  const xml = await call('edit', { operation: 'export_graph', options, output: { format: 'graphml' } })
+  return JSON.parse(execFileSync('python3', [path.join(import.meta.dirname, 'read-graph.py'), kind], { input: xml, encoding: 'utf8', maxBuffer: 16 << 20 }))
+}
+
 export async function moduleGraph(tool, q, call, project) {
   if (tool === 'gortex') {
-    const xml = await call('edit', { operation: 'export_graph', options: { kinds: 'file' }, output: { format: 'graphml' } })
-    const data = JSON.parse(execFileSync('python3', [path.join(import.meta.dirname, 'module-graph.py')], { input: xml, encoding: 'utf8', maxBuffer: 16 << 20 }))
+    const data = await exportedGraph(call, 'modules')
     return moduleItems(q, data.files, data.imports)
   }
   const cbm = tool === 'codebase-memory-mcp'
