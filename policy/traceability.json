@@ -2348,6 +2348,27 @@
     ],
     "FR1905": [
       "packages/proofmesh/test/sarif.test.ts"
+    ],
+    "FR2020": [
+      "packages/proofmesh/test/cochanges.test.ts"
+    ],
+    "FR2021": [
+      "packages/proofmesh/test/cochanges.test.ts"
+    ],
+    "FR2022": [
+      "packages/proofmesh/test/cochanges.test.ts"
+    ],
+    "FR2023": [
+      "packages/proofmesh/test/cochanges.test.ts"
+    ],
+    "FR2024": [
+      "packages/proofmesh/test/cochanges.test.ts"
+    ],
+    "FR2025": [
+      "packages/proofmesh/test/cochanges.test.ts"
+    ],
+    "FR2026": [
+      "packages/proofmesh/test/cochanges.test.ts"
     ]
   },
   "manual": {

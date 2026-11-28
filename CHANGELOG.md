@@ -4,6 +4,12 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 ## Unreleased
 
+Change coupling: the files that change together though no relationship links them (#239; FR2020 to FR2026):
+
+- New tool `get_cochanges` (profile `extra`, lean by default): for each subject file, the files that changed in the same commits of the local git history, with `shared`, `subject_commits`, `partner_commits` and `degree = shared / min(subject_commits, partner_commits)`, ordered by degree. Each row says whether a relationship also links the two files (`linked`, with its types) and whether the partner is test code. Defaults: `min_shared` 3, `min_degree` 0.3, `max_files_per_commit` 50, a window of 365 days back from the snapshot's commit, at most 10,000 commits read. History ends at the snapshot's commit, so one snapshot always gives one answer; renames are followed, nothing is fetched. No history says `no_history` or `history_shallow`.
+- `impact_completeness` takes `include_cochanges`: a separate `cochange` list of the partners of changed files that the diff does not change (`not_changed`). Without it the answer is unchanged.
+- A shared git history reader (`packages/proofmesh/src/indexer/history.ts`) with a per-snapshot cache, for hotspots (#238) and symbol history (#240) to reuse. New fixture `fixtures/history`, a scripted git repository.
+
 Time: scrub snapshots on the same map (part of #48; FR1760 to FR1765):
 
 - The header's snapshot picker is now Time, in the left panel: a scrubber and a strip of every published snapshot, newest first, each with its symbols and unresolved share, which `list_snapshots` now gives (`symbols`, `relationships`, `unresolved`). `[` and `]` step one snapshot, and every view is pinned to the snapshot shown.
