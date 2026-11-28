@@ -4,6 +4,8 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 ## Unreleased
 
+A TypeScript property's declared type and decorators are used by its class again, not by the property (#182; FR1860). Since #196 made each property a symbol, a field typed `Document` counted as one user of `Document`, so an interface of twenty such fields was twenty users. Now the class or interface that declares the property is the user, as it was before the property was a symbol; a constructor parameter property's type is the class's, as any constructor parameter's; the property's initializer stays the property's, as a method's body is the method's; and its reads and writes are unchanged (FR1021). On the parity fixture `find_hubs` ranks 9 of the truth's top 10 hubs (Q13 90 / 90, was 80 / 80): `QueryBuilder.expressionMap` and `BaseQueryRunner.executeQueries` are in, `EntityMetadata` is out, and `Document` drops from 252 users to 200. Upgrade note: the TypeScript adapter is 0.2.7, so the next index of a TypeScript repository reanalyses every file once.
+
 The Terrain replaces the Galaxy and Map views: semantic zoom from areas to symbols, with bundles that open their evidence (part of #46; closes #42; FR1400 to FR1409):
 
 - The first view draws the snapshot's own layout as nested cells: areas, a file's first two directories such as `src/driver`, each named with its symbol count, then directories and files, then symbols. A label shows once its cell is 40 px on screen, never over another label; an area too small is named in its tooltip and the table. Symbols are drawn per area once the zoom reaches them, so a large snapshot's overview draws areas and bundles only. Nothing moves as you zoom.

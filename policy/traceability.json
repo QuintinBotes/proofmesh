@@ -2033,6 +2033,9 @@
     "FR1021": [
       "packages/proofmesh/test/typescript-property-references.test.ts"
     ],
+    "FR1860": [
+      "packages/proofmesh/test/typescript-property-references.test.ts"
+    ],
     "FR1060": [
       "packages/proofmesh/test/search-structure.test.ts"
     ],
