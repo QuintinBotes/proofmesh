@@ -668,6 +668,8 @@ From #159: the impact pane parsed `analyze_impact`'s lean text, because no JSON 
 
 From #38. Read-only: the plan lists sites and changes no file; applying it is the agent's or the editor's job. The tests are in `packages/proofmesh/test/rename-plan.test.ts` over `fixtures/rename-parity` and `fixtures/rename-seams`.
 
+Note: #38's scenario 2 said `Driver.escape` has 12 implementing members; on the parity fixture (TypeORM at `3d55188`) it has 11, as the language service also renames, because 12 classes implement `Driver` but `AuroraPostgresDriver` declares no `escape` and inherits `PostgresDriver`'s, and a class that only inherits the member is not listed (FR982); the owner confirmed 11 on 27 Nov 2026.
+
 - FR980: MUST provide `plan_rename(subject_id | key, new_name)`, in the `extra` tool profile, answering the subject, `sites` (one row per file and line, each with `kind`, `basis` and the `key` of the symbol named there), `must_rename_together`, `possibly_affected` and `counts`.
 - FR981: MUST list as `observed` code sites: the declaration's name line; each call and reference the snapshot resolved to the symbol, at the line that writes its name (a call that does not write it, such as `super(...)` or a call through an import alias, is no site); each import and export specifier that names a top-level symbol, following re-exports (`export { x } from`, `export * from`, a local `export { x }`) and an export under another name (`export { x as y }`), whose name it then follows too; and its own name inside its own body after `this.`, its container's name or, for a top-level symbol, no dot (a recursive call).
 - FR982: MUST list, for a method, property or field, every member that implements or overrides it, or that it implements or overrides, at any distance, as `must_rename_together` with file and line and `implements` or `overrides`, each with its own code sites; a class that only inherits the member is not listed.
@@ -726,6 +728,18 @@ From #30 (owner decision, option A): no native data-flow analysis. Proofmesh imp
 - FR1903: MUST leave unattached, and list with its reason at import and as a count in `get_findings`' limitations, a result outside the repository (`outside_repository`), in a file the current snapshot does not index (`not_in_snapshot`), or with no location (`no_location`).
 - FR1904: MUST mark a finding `stale: sarif_stale:<name>` while its file's content in the asked snapshot differs from the hash recorded at import, and say so in the limitations, until a new SARIF file is imported.
 - FR1905: MUST run no analyser and bundle none: importing a SARIF file reads it and nothing else.
+
+### Change coupling: files that change together
+
+From #239. Files that change together though no relationship links them, from the repository's local git history; co-change is never a relationship (FR023). The tests are in `packages/proofmesh/test/cochanges.test.ts`, on `fixtures/history`.
+
+- FR2020: MUST provide `get_cochanges(paths | subject_ids, window, min_shared, min_degree, max_files_per_commit, only_unlinked, limits)`, in the `extra` profile with capability `read`, answering per subject file its partners that share at least `min_shared` commits (default 3) with a degree of at least `min_degree` (default 0.3), ordered by `degree`, then `shared`, then path, each with `shared`, `subject_commits`, `partner_commits` and `test`; a commit touching more than `max_files_per_commit` files (default 50) forms no pairs and is counted in the limitations, which also state the thresholds and the commits read; with no usable history it answers no rows and says `no_history` or `history_shallow`.
+- FR2021: MUST compute `degree` as `shared / min(subject_commits, partner_commits)` over the window and state the formula in the tool description.
+- FR2022: MUST give every row `linked`, whether any resolved or candidate relationship joins the two files in the snapshot, either direction, at depth 1, with its types, and never a `basis`: no traversal tool follows co-change.
+- FR2023: MUST give `impact_completeness` an `include_cochanges` flag (default false) that adds a `cochange` list of the partners of the changed files that the diff does not change, each `not_changed`, leaving every other field as it is without the flag.
+- FR2024: MUST read history with `git log` on the registered root, from the snapshot's commit backwards over `window` (a number of commits, or of days before that commit's date, default 365 days), at most 10,000 commits, following renames, with discovery's environment allowlist and a timeout, fetching nothing, through one reader with a per-snapshot cache shared with the other history tools; so one snapshot always gives one answer.
+- FR2025: MUST answer lean rows `<path> shared=<n> degree=<d> [linked]`.
+- FR2026: MUST trace each of FR2020 to FR2025 in `policy/traceability.json` and state it here (CONTRIBUTING.md).
 
 ### Impact completeness
 

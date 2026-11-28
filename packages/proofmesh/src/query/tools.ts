@@ -41,6 +41,8 @@ import { leanQueryRows, parseGraphQuery, runGraphQuery, type Param, type QueryRo
 import { generatedLeftOut, generatedPaths, markGenerated, withGeneratedPaths } from './generated-policy.js'
 import { innermost } from './symbol-at.js'
 import { attachFindings, findingCounts } from './findings.js'
+import { DEFAULT_THRESHOLDS, historyHeader, historyNotes, leanPartner, partners, type Partner, type Thresholds } from './cochanges.js'
+import { readHistory, type Window } from '../indexer/history.js'
 import { findCycles, findEntryPoints, findHubs, findUnused, type CycleEdge, type EntryPoint, type Hub, type UnusedRow } from './structure.js'
 import { contextMap } from './context-map.js'
 import { stepKind, subjectsOf } from './subjects.js'
@@ -55,10 +57,10 @@ import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 
-export const TOOLS = ['workspace_status', 'list_repositories', 'list_snapshots', 'list_workspaces', 'find_symbols', 'get_symbol', 'get_relationships', 'trace_paths', 'read_evidence', 'get_overview', 'analyze_impact', 'find_tests', 'search_sources', 'get_memory', 'verify_claim', 'request_index', 'get_job', 'get_claims', 'save_memory', 'get_table_reach', 'get_property_reads', 'get_external_usage', 'find_query_source', 'compare_snapshots', 'list_queries', 'get_ecosystem', 'prepare_verification', 'get_verification', 'impact_completeness', 'get_symbols_at', 'get_session_trail', 'find_stale_mentions', 'find_unused', 'find_cycles', 'find_entry_points', 'find_hubs', 'get_context_map', 'plan_rename', 'plan_move', 'search_structure', 'search_concepts', 'get_symbol_card', 'query_graph', 'get_findings'] as const
+export const TOOLS = ['workspace_status', 'list_repositories', 'list_snapshots', 'list_workspaces', 'find_symbols', 'get_symbol', 'get_relationships', 'trace_paths', 'read_evidence', 'get_overview', 'analyze_impact', 'find_tests', 'search_sources', 'get_memory', 'verify_claim', 'request_index', 'get_job', 'get_claims', 'save_memory', 'get_table_reach', 'get_property_reads', 'get_external_usage', 'find_query_source', 'compare_snapshots', 'list_queries', 'get_ecosystem', 'prepare_verification', 'get_verification', 'impact_completeness', 'get_symbols_at', 'get_session_trail', 'find_stale_mentions', 'find_unused', 'find_cycles', 'find_entry_points', 'find_hubs', 'get_context_map', 'plan_rename', 'plan_move', 'search_structure', 'search_concepts', 'get_symbol_card', 'query_graph', 'get_findings', 'get_cochanges'] as const
 export type ToolName = (typeof TOOLS)[number]
 /** The query tools whose results are code locations: they answer in the lean envelope on request, and by default over MCP (FR099). */
-export const LEAN = new Set<string>(['find_symbols', 'search_concepts', 'get_symbol', 'get_symbols_at', 'get_relationships', 'trace_paths', 'analyze_impact', 'find_tests', 'get_session_trail', 'find_unused', 'find_cycles', 'find_entry_points', 'find_hubs', 'get_context_map', 'search_structure', 'query_graph'])
+export const LEAN = new Set<string>(['find_symbols', 'search_concepts', 'get_symbol', 'get_symbols_at', 'get_relationships', 'trace_paths', 'analyze_impact', 'find_tests', 'get_session_trail', 'find_unused', 'find_cycles', 'find_entry_points', 'find_hubs', 'get_context_map', 'search_structure', 'query_graph', 'get_cochanges'])
 /** A lean answer is its text; the envelope beside it is what the text was rendered from, for in-process callers. */
 export type Answer = Envelope & { text?: string }
 
@@ -73,7 +75,7 @@ export const CAPABILITY: Record<ToolName, ListQueriesData['tools'][number]['capa
   verify_claim: 'read', request_index: 'management', get_job: 'read', get_claims: 'read', save_memory: 'management', get_table_reach: 'read',
   get_property_reads: 'read', get_external_usage: 'read', find_query_source: 'read', compare_snapshots: 'read', list_queries: 'read',
   get_ecosystem: 'read', prepare_verification: 'management', get_verification: 'read', impact_completeness: 'management', get_symbols_at: 'read', get_session_trail: 'read', find_stale_mentions: 'read',
-  find_unused: 'read', find_cycles: 'read', find_entry_points: 'read', find_hubs: 'read', get_context_map: 'read', plan_rename: 'read', plan_move: 'read', search_structure: 'read', search_concepts: 'read', get_symbol_card: 'read', query_graph: 'read', get_findings: 'read',
+  find_unused: 'read', find_cycles: 'read', find_entry_points: 'read', find_hubs: 'read', get_context_map: 'read', plan_rename: 'read', plan_move: 'read', search_structure: 'read', search_concepts: 'read', get_symbol_card: 'read', query_graph: 'read', get_findings: 'read', get_cochanges: 'read',
 }
 
 /**
@@ -99,6 +101,8 @@ export const PROFILE: Record<ToolName, ListQueriesData['tools'][number]['profile
   query_graph: 'extra',
   // Imported analyser findings (#30); analyze_impact and find_tests rows in core already carry their count.
   get_findings: 'extra',
+  // Files that change together from git history (#239): asked before finishing a change, like impact_completeness.
+  get_cochanges: 'extra',
 }
 /** How a client loads the tools of another profile, said by list_queries, which lists them all (FR422). */
 const PROFILES_NOTE = 'Over MCP, proofmesh mcp lists the core profile; start it with --tools <profile[,profile]> (core, data, claims, extra) or --tools all to list the others. A tool outside the profiles it was started with answers INVALID_ARGUMENT naming its profile.'
@@ -697,11 +701,17 @@ function boundariesFrom(db: Database.Database, types: string[], where: string, l
   }
 }
 
+/** The commit a snapshot was built from, as discovery recorded it; none outside git. */
+const snapshotCommit = (db: Database.Database) => (JSON.parse((db.prepare("select value from meta where key = 'git'").get() as { value: string } | undefined)?.value ?? '{}') as { commit?: string }).commit
+/** Whether a file of the snapshot is test code, by its path and project naming. */
+const isTestFile = (db: Database.Database, p: string) => { const f = db.prepare('select id from file where path = ?').get(p) as { id: string } | undefined; return f ? inTestCode(db, { path: p, file_id: f.id }, isTestCode) : isTestPath(p) }
+
 /**
  * A file named by its repository-relative path (FR089, FR094). `..`, an absolute path inside the repository and backslashes are
  * normalised; a path outside the repository, or one the snapshot does not index, is refused naming its disposition, never answered empty.
+ * With anyDisposition, a file no adapter analyses is a file too: a .sql file has history but no symbols (get_cochanges).
  */
-function fileAt(ctx: Ctx, raw: string): { id: string; path: string } {
+function fileAt(ctx: Ctx, raw: string, anyDisposition = false): { id: string; path: string } {
   const abs = path.resolve(ctx.repo.root, raw.replaceAll('\\', '/'))
   const inside = (p: string) => { const r = path.relative(ctx.repo.root, p).split(path.sep).join('/'); return r && r !== '..' && !r.startsWith('../') && !path.isAbsolute(r) ? r : null }
   // The registered root is a real path, so an absolute path through a symlink to it is read as its real path.
@@ -709,7 +719,7 @@ function fileAt(ctx: Ctx, raw: string): { id: string; path: string } {
   if (!rel) try { rel = inside(fs.realpathSync(abs)) } catch { /* not on disk: outside */ }
   if (!rel) throw new ProofmeshError('INVALID_ARGUMENT', `path ${raw} is outside the repository ${ctx.repo.name} (${ctx.repo.root})`, { detail: 'path_outside_repository', path: raw })
   const f = ctx.db.prepare('select id, disposition from file where path = ?').get(rel) as { id: string; disposition: string } | undefined
-  if (!f || f.disposition !== 'indexed') {
+  if (!f || (!anyDisposition && f.disposition !== 'indexed')) {
     const disposition = !f ? 'not found' : f.disposition === 'excluded_by_rule' ? 'excluded' : f.disposition
     throw new ProofmeshError('INVALID_ARGUMENT', `path ${rel} is ${disposition} in snapshot ${ctx.snapshot.id}, so no tool can answer for it; workspace_status lists the files with their dispositions`, { detail: 'path_not_indexed', path: rel, disposition })
   }
@@ -1047,8 +1057,9 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
       // Files the diff touches that a side's snapshot does not analyse are named, never dropped.
       const unanalysed = [...new Set([...[...diff.head.keys()].filter((p) => !indexed(headDb, p)), ...[...diff.base.keys()].filter((p) => !indexed(baseDb, p) && !diff.head.has(p))])].sort()
       const end = ctx.page.offset + ctx.limits.max_rows
+      const co = input.include_cochanges === true ? cochangesOf(root, base, baseDb, diff) : null
       return {
-        data: { ...sides, pending: [], changed: all.slice(ctx.page.offset, end), totals },
+        data: { ...sides, pending: [], changed: all.slice(ctx.page.offset, end), totals, ...(co ? { cochange: co.rows.slice(0, ctx.limits.max_rows) } : {}) },
         stop_reasons: all.length > end ? ['max_rows'] : [], more: all.length > end, shrink: 'changed',
         limitations: [
           ...(ctx.lean ? [summaryLine(totals)] : []),
@@ -1062,8 +1073,9 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
             'Symbols are matched by kind and qualified name, so a rename is one deleted symbol and one added; an edit of only whitespace or comments inside a symbol counts as modified.',
             'Tested means a test executes it by a call, a chain of calls or dispatch, as find_tests finds it; test code is recognised by file convention, project naming and symbol roles.',
           ]),
+          ...(co?.notes ?? []),
         ],
-        lean: (data) => completenessRows(data.changed as Changed[]),
+        lean: (data) => [...completenessRows(data.changed as Changed[]), ...((data.cochange as CochangeRow[] | undefined) ?? []).map((c) => `cochange ${leanPartner(c)} ${c.status} (with ${quote(c.of)})`)],
       }
     } finally {
       for (const db of new Set([baseDb, headDb])) if (db !== ctx.db) db.close()
@@ -1307,6 +1319,28 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
           return `${i.unattached.length} result${i.unattached.length === 1 ? '' : 's'} of SARIF file ${i.name} ${i.unattached.length === 1 ? 'was' : 'were'} not attached: ${[...by].map(([r, n]) => `${n} ${r}`).join(', ')}; proofmesh sarif add printed each.`
         }),
       ],
+    }
+  },
+
+  get_cochanges(ctx, input) {
+    const subjects = new Map<string, { id: string; path: string }>()
+    for (const raw of (input.paths as string[] | undefined) ?? []) { const f = fileAt(ctx, raw, true); subjects.set(f.path, f) }
+    for (const id of (input.subject_ids as string[] | undefined) ?? []) {
+      const f = ctx.db.prepare('select f.id, f.path from symbol s join file f on f.id = s.file_id where s.id = ? union all select id, path from file where id = ?').get(id, id) as { id: string; path: string } | undefined
+      if (!f) throw new ProofmeshError('NOT_FOUND', `symbol ${id} is not in snapshot ${ctx.snapshot.id}`)
+      subjects.set(f.path, f)
+    }
+    if (!subjects.size) throw new ProofmeshError('INVALID_ARGUMENT', 'get_cochanges needs paths or subject_ids')
+    const t: Thresholds = { min_shared: Number(input.min_shared ?? DEFAULT_THRESHOLDS.min_shared), min_degree: Number(input.min_degree ?? DEFAULT_THRESHOLDS.min_degree), max_files_per_commit: Number(input.max_files_per_commit ?? DEFAULT_THRESHOLDS.max_files_per_commit) }
+    const history = readHistory(ctx.repo.root, snapshotCommit(ctx.db), input.window as Window | undefined)
+    const r = partners(ctx.db, history, [...subjects.values()], t, (p) => isTestFile(ctx.db, p))
+    const rows = r.rows.map((s) => ({ ...s, partners: input.only_unlinked === true ? s.partners.filter((p) => !p.linked) : s.partners }))
+    const cut = rows.some((s) => s.partners.length > ctx.limits.max_rows)
+    return {
+      data: { subjects: rows.map((s) => ({ ...s, partners: s.partners.slice(0, ctx.limits.max_rows) })), history: historyHeader(history, r.bulk), thresholds: t },
+      stop_reasons: cut ? ['max_rows'] : [], limitations: historyNotes(history, t, r.bulk), shrink: 'subjects',
+      // One subject's rows are its partners; with more, each row says whose partner it is.
+      lean: (data) => (data.subjects as typeof rows).flatMap((s, _, all) => s.partners.map((p) => `${leanPartner(p)}${all.length > 1 ? ` of=${quote(s.path)}` : ''}`)),
     }
   },
 
@@ -2029,6 +2063,25 @@ const inferredNotesFor = (done: Array<{ follow: { on: boolean; asked: boolean };
   const sum = (list: typeof done) => ({ followable: list.reduce((n, d) => n + d.sites.followable, 0), capped: list.reduce((n, d) => n + d.sites.capped, 0) })
   const followed = group(true)
   return [...(followed.length ? inferredNotes({ on: true, asked: followed.some((d) => d.follow.asked) }, sum(followed), followed.length) : []), ...inferredNotes({ on: false, asked: group(false).some((d) => d.follow.asked) }, sum(group(false)), 0)]
+}
+
+type CochangeRow = Partner & { of: string; status: 'not_changed' }
+/**
+ * FR2023: the partners of the files a diff touches that it does not change, from the history up to base, so the change under review
+ * does not vote on what usually changes with it.
+ */
+function cochangesOf(root: string, base: string, baseDb: Database.Database, diff: ReturnType<typeof diffLines>): { rows: CochangeRow[]; notes: string[] } {
+  const touched = new Set([...diff.head.keys(), ...diff.base.keys(), ...diff.renamed.keys(), ...diff.renamed.values()])
+  const subjects = new Map<string, { id: string; path: string }>()
+  for (const p of touched) {
+    const f = baseDb.prepare('select id, path from file where path = ?').get(diff.renamed.get(p) ?? p) as { id: string; path: string } | undefined
+    if (f) subjects.set(f.path, f)
+  }
+  const history = readHistory(root, base)
+  const r = partners(baseDb, history, [...subjects.values()], DEFAULT_THRESHOLDS, (p) => isTestFile(baseDb, p))
+  const rows = r.rows.flatMap((s) => s.partners.filter((p) => !touched.has(p.path)).map((p): CochangeRow => ({ ...p, of: s.path, status: 'not_changed' })))
+    .sort((a, b) => b.degree - a.degree || b.shared - a.shared || (a.path < b.path ? -1 : a.path > b.path ? 1 : a.of < b.of ? -1 : 1))
+  return { rows, notes: historyNotes(history, DEFAULT_THRESHOLDS, r.bulk) }
 }
 
 /** Whether a snapshot analyses a path. */
