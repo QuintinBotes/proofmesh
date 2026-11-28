@@ -1,0 +1,252 @@
+{
+  "data": {
+    "base": {
+      "commit": "38ee72e9fc13c1b61b93bc4c3fab67141b1fdb20",
+      "snapshot_id": "snap_ce036014260dc736e7a61531"
+    },
+    "head": {
+      "commit": "57bd87264d2340f445d290e166dc527ca80b722d",
+      "snapshot_id": "snap_ea0654bbd4a8e3df73d22c8d"
+    },
+    "pending": [],
+    "changed": [
+      {
+        "id": "sym_17d707607f4089c7b740ebde",
+        "key": "src/roles/manager.ts#src/roles/manager:managerScore#function",
+        "name": "managerScore",
+        "path": "src/roles/manager.ts",
+        "line": 2,
+        "change": "modified",
+        "status": "neither",
+        "test": null,
+        "dependents": []
+      },
+      {
+        "id": "sym_fd5c6addc40124d0c250a20e",
+        "key": "src/stats.ts#src/stats:mean#function",
+        "name": "mean",
+        "path": "src/stats.ts",
+        "line": 1,
+        "change": "modified",
+        "status": "tested",
+        "test": {
+          "key": "test/analyst.test.ts#test/analyst.test:analystScoreDoubles#function",
+          "name": "analystScoreDoubles",
+          "path": "test/analyst.test.ts",
+          "line": 2,
+          "evidence": "transitive_call",
+          "depth": 2,
+          "basis": "observed",
+          "changed": false
+        },
+        "dependents": [
+          {
+            "id": "sym_7dd9dab6dddd6333317dd344",
+            "key": "src/report.ts#src/report:report#function",
+            "name": "report",
+            "path": "src/report.ts",
+            "line": 3,
+            "relation": "calls",
+            "via": "analystScore",
+            "basis": "observed",
+            "status": "neither",
+            "test": null,
+            "chain": [
+              {
+                "name": "report",
+                "key": "src/report.ts#src/report:report#function",
+                "path": "src/report.ts",
+                "line": 3,
+                "assertion_id": "as_ad7d548f1f1d71b9f0ff20b6"
+              },
+              {
+                "name": "analystScore",
+                "key": "src/roles/analyst.ts#src/roles/analyst:analystScore#function",
+                "path": "src/roles/analyst.ts",
+                "line": 3,
+                "assertion_id": "as_3f3fa1c88a627554dc1ca3c0"
+              },
+              {
+                "name": "mean",
+                "key": "src/stats.ts#src/stats:mean#function",
+                "path": "src/stats.ts",
+                "line": 1
+              }
+            ]
+          },
+          {
+            "id": "sym_01a13facaa4b80ba241f8297",
+            "key": "src/roles/analyst.ts#src/roles/analyst:analystScore#function",
+            "name": "analystScore",
+            "path": "src/roles/analyst.ts",
+            "line": 3,
+            "relation": "calls",
+            "via": null,
+            "basis": "observed",
+            "status": "tested",
+            "test": {
+              "key": "test/analyst.test.ts#test/analyst.test:analystScoreDoubles#function",
+              "name": "analystScoreDoubles",
+              "path": "test/analyst.test.ts",
+              "line": 2,
+              "evidence": "call",
+              "depth": 1,
+              "basis": "observed",
+              "changed": false
+            },
+            "chain": [
+              {
+                "name": "analystScore",
+                "key": "src/roles/analyst.ts#src/roles/analyst:analystScore#function",
+                "path": "src/roles/analyst.ts",
+                "line": 3,
+                "assertion_id": "as_3f3fa1c88a627554dc1ca3c0"
+              },
+              {
+                "name": "mean",
+                "key": "src/stats.ts#src/stats:mean#function",
+                "path": "src/stats.ts",
+                "line": 1
+              }
+            ]
+          },
+          {
+            "id": "sym_fae48e287e8f97fa9297bf81",
+            "key": "src/roles/auditor.ts#src/roles/auditor:auditorScore#function",
+            "name": "auditorScore",
+            "path": "src/roles/auditor.ts",
+            "line": 3,
+            "relation": "calls",
+            "via": null,
+            "basis": "observed",
+            "status": "neither",
+            "test": null,
+            "chain": [
+              {
+                "name": "auditorScore",
+                "key": "src/roles/auditor.ts#src/roles/auditor:auditorScore#function",
+                "path": "src/roles/auditor.ts",
+                "line": 3,
+                "assertion_id": "as_3740843da2e8593793a80531"
+              },
+              {
+                "name": "mean",
+                "key": "src/stats.ts#src/stats:mean#function",
+                "path": "src/stats.ts",
+                "line": 1
+              }
+            ]
+          },
+          {
+            "id": "sym_17d707607f4089c7b740ebde",
+            "key": "src/roles/manager.ts#src/roles/manager:managerScore#function",
+            "name": "managerScore",
+            "path": "src/roles/manager.ts",
+            "line": 3,
+            "relation": "calls",
+            "via": null,
+            "basis": "observed",
+            "status": "changed",
+            "test": null,
+            "chain": [
+              {
+                "name": "managerScore",
+                "key": "src/roles/manager.ts#src/roles/manager:managerScore#function",
+                "path": "src/roles/manager.ts",
+                "line": 3,
+                "assertion_id": "as_96db716f9c70ed698339b8c6"
+              },
+              {
+                "name": "mean",
+                "key": "src/stats.ts#src/stats:mean#function",
+                "path": "src/stats.ts",
+                "line": 1
+              }
+            ]
+          },
+          {
+            "id": "file_a6bbe80d157853e2e5d72787",
+            "name": "index.ts",
+            "path": "src/index.ts",
+            "line": 1,
+            "relation": "imports",
+            "via": null,
+            "basis": "observed",
+            "status": "neither",
+            "test": null,
+            "chain": [
+              {
+                "name": "index.ts",
+                "path": "src/index.ts",
+                "line": 1,
+                "assertion_id": "as_37391c95a2ac00756c33eb70"
+              },
+              {
+                "name": "mean",
+                "key": "src/stats.ts#src/stats:mean#function",
+                "path": "src/stats.ts",
+                "line": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sym_ddf45f7bb9bc45b9700acb9f",
+        "key": "src/stats.ts#src/stats:spread#function",
+        "name": "spread",
+        "path": "src/stats.ts",
+        "line": 4,
+        "change": "deleted",
+        "status": "neither",
+        "test": null,
+        "dependents": [
+          {
+            "id": "sym_90e6cc5ea841554c22c3d770",
+            "key": "src/range.ts#src/range:range#function",
+            "name": "range",
+            "path": "src/range.ts",
+            "line": 3,
+            "relation": "calls",
+            "via": null,
+            "basis": "observed",
+            "status": "neither",
+            "test": null,
+            "chain": [
+              {
+                "name": "range",
+                "key": "src/range.ts#src/range:range#function",
+                "path": "src/range.ts",
+                "line": 3,
+                "assertion_id": "as_45d35bab05255e740ffdeba5"
+              },
+              {
+                "name": "spread",
+                "key": "src/stats.ts#src/stats:spread#function",
+                "path": "src/stats.ts",
+                "line": 4
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "totals": {
+      "changed_symbols": 3,
+      "dependents": 6,
+      "changed": 1,
+      "tested": 1,
+      "neither": 4,
+      "by_basis": {
+        "observed": 6,
+        "inferred": 0
+      }
+    }
+  },
+  "limitations": [
+    "Symbols are matched by kind and qualified name, so a rename is one deleted symbol and one added; an edit of only whitespace or comments inside a symbol counts as modified.",
+    "Tested means a test executes it by a call, a chain of calls or dispatch, as find_tests finds it; test code is recognised by file convention, project naming and symbol roles.",
+    "References other than calls and imports are recorded only where an adapter supports them (C# uses of repository declarations, TypeScript uses of repository types, Python uses of repository classes and functions); elsewhere a missing reference is not evidence of no use.",
+    "The snapshot is of a detached head; behind_remote counts the commits of no remote branch it lacks, as of the last fetch, without fetching, so it can understate how stale it is."
+  ]
+}

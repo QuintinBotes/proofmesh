@@ -2336,6 +2336,33 @@
     "FR966": [
       "packages/proofmesh/test/parity-bench.test.ts"
     ],
+    "FR1810": [
+      "apps/observatory/test/changeModel.test.ts",
+      "e2e/change-review.spec.ts"
+    ],
+    "FR1811": [
+      "packages/proofmesh/test/impact-completeness.test.ts",
+      "apps/observatory/test/changeModel.test.ts",
+      "e2e/change-review.spec.ts"
+    ],
+    "FR1812": [
+      "apps/observatory/test/changeModel.test.ts",
+      "e2e/change-review.spec.ts"
+    ],
+    "FR1813": [
+      "packages/proofmesh/test/observatory-parity.test.ts"
+    ],
+    "FR1814": [
+      "apps/observatory/test/changeModel.test.ts",
+      "e2e/change-review.spec.ts"
+    ],
+    "FR1815": [
+      "e2e/change-review.spec.ts"
+    ],
+    "FR1816": [
+      "apps/observatory/test/changeModel.test.ts",
+      "e2e/change-review.spec.ts"
+    ],
     "FR1940": [
       "packages/proofmesh/test/query-subjects.test.ts"
     ],

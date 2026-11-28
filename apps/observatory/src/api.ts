@@ -77,6 +77,14 @@ export async function galaxySymbol(index: number, card?: Record<string, unknown>
   return body
 }
 
+/** The Galaxy point of each stable key in a snapshot, -1 where it has none (FR1813). */
+export async function galaxyPoints(keys: string[], snapshotId: string): Promise<number[]> {
+  const r = await fetch('/api/v1/galaxy/points', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(scoped({ keys, snapshot_id: snapshotId })) })
+  const body = await r.json().catch(() => ({}))
+  if (!r.ok) throw new ToolError(body?.error?.code ?? 'INTERNAL_ERROR', body?.error?.message ?? `HTTP ${r.status}`, r.status)
+  return body.indices as number[]
+}
+
 export type BundleEnd = { id: string; qualified_name: string; path: string; start_line: number }
 export type Bundle = {
   from: string; to: string; total: number; by_basis: { observed: number; inferred: number }; next_offset: number | null

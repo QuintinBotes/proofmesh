@@ -272,3 +272,23 @@ kbd { font: 11px ui-monospace, Menlo, monospace; padding: 0 5px; border: 1px sol
 /* The path sits above the rows, so a long horizon scrolls in its own box (focusable, so the keyboard can scroll it too). */
 .lens-path .horizon { max-height: 24vh; overflow-y: auto; margin: 0 0 6px; }
 .source mark { background: rgba(242, 184, 75, 0.35); color: inherit; outline: 1px solid var(--amber); border-radius: 2px; }
+/* Change review (FR1814): marks over the Terrain, the form, the legend and the rows. */
+.change-marks { position: absolute; inset: 0; pointer-events: none; z-index: 3; }
+.change-mark { pointer-events: auto; cursor: pointer; }
+.change-mark.open { filter: drop-shadow(0 0 4px #fff); }
+.change-form { display: grid; gap: 4px; }
+.change-form input, .change-form select { font: inherit; }
+.gate.failing { color: var(--bad); font-weight: 600; }
+.gate.passing { color: var(--ok); font-weight: 600; }
+.change-legend { list-style: none; padding: 0; margin: 4px 0; display: grid; gap: 2px; font-size: 12px; }
+.change-legend li { display: flex; align-items: center; gap: 6px; }
+.change-legend svg { background: #04060d; border-radius: 4px; flex: none; }
+.change-legend .count { margin-left: auto; opacity: 0.8; }
+.change-rows { list-style: none; padding: 0; margin: 4px 0; max-height: 46vh; overflow-y: auto; display: block; }
+.change-rows li.dependent { padding-left: 14px; }
+.change-rows button { display: block; width: 100%; text-align: left; background: none; border: 0; color: inherit; font: inherit; font-size: 12px; padding: 3px 4px; border-radius: 4px; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.change-rows button[aria-pressed="true"] { background: rgba(127, 212, 255, 0.14); }
+.change-rows li[data-status="neither"] .words { color: var(--bad); }
+.change-rows .words { opacity: 0.85; }
+.change-chain { margin: 4px 0 8px; padding-left: 20px; font-size: 12px; }
+.change-tests { padding-left: 16px; font-size: 12px; }
