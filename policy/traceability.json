@@ -2307,6 +2307,30 @@
     "FR966": [
       "packages/proofmesh/test/parity-bench.test.ts"
     ],
+    "FR1760": [
+      "packages/proofmesh/test/observatory-parity.test.ts",
+      "e2e/time.spec.ts"
+    ],
+    "FR1761": [
+      "apps/observatory/test/time.test.ts",
+      "e2e/time.spec.ts",
+      "e2e/replay.spec.ts"
+    ],
+    "FR1762": [
+      "apps/observatory/test/time.test.ts",
+      "e2e/time.spec.ts"
+    ],
+    "FR1763": [
+      "e2e/time.spec.ts",
+      "packages/proofmesh/test/observatory-bench.test.ts"
+    ],
+    "FR1764": [
+      "e2e/time.spec.ts"
+    ],
+    "FR1765": [
+      "apps/observatory/test/time.test.ts",
+      "e2e/time.spec.ts"
+    ],
     "FR1900": [
       "packages/proofmesh/test/sarif.test.ts"
     ],

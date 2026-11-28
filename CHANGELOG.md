@@ -4,6 +4,13 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 ## Unreleased
 
+Time: scrub snapshots on the same map (part of #48; FR1760 to FR1765):
+
+- The header's snapshot picker is now Time, in the left panel: a scrubber and a strip of every published snapshot, newest first, each with its symbols and unresolved share, which `list_snapshots` now gives (`symbols`, `relationships`, `unresolved`). `[` and `]` step one snapshot, and every view is pinned to the snapshot shown.
+- A step draws its change on the Terrain, from `compare_snapshots` of the shown snapshot and the one just older. An added symbol is a dot, a removed one a ghost cross where it was, a changed declaration a ring, and a moved symbol slides in from where it was. Moved lines and changes through a member are listed, not ringed, and every change is listed in words.
+- Statuses, galaxies and comparisons are kept once loaded: on the TypeORM sample a step between two loaded snapshots takes 87 ms with no request. Reduced motion switches the marks without animation. `?snapshot=<id>` links to a pinned snapshot, and a link to a retired one offers the oldest listed instead.
+- The Observatory benchmark's snapshot B is now a realistic commit (`bench/observatory/snapshot-b.mjs`), and the benchmark budgets the share of shared symbols moving more than 2% of the width (1%) and the Time step (300 ms).
+
 The Terrain's Export image and Export page draw the Terrain as it is shown, not a grid of areas: each area's cells at their places in the snapshot's layout with their hatching and ghost cells, the bundles drawn on screen, every symbol (while searching, every match) as a point at its place, the overview's labels, and the areas with no symbols as ghost cells in the row below. Two exports of one snapshot are the same bytes, and the limit no longer says symbols are summarised by area (#218; FR1580).
 
 Findings of data-flow and other analysers, imported as SARIF and shown on symbols (#30; FR1900 to FR1905). Owner decision: option A, no native data-flow analysis:

@@ -62,8 +62,11 @@ missing pinned build stops the run with the install command above.
   the time. Edge to evidence, from a callee (or caller) row of the lens to its call site shown. `evidence.mjs` times the
   same open over more runs against #45's budgets.
 - **Stability**, for symbols present in both layouts, as shares of the map's width after fitting each to view: one snapshot
-  in two fresh profiles, and snapshot A followed by B, where B is A plus a commit that adds a function to each of the first
-  four `.ts` files under `src/`. The layouts are the positions in the Galaxy payload each page receives.
+  in two fresh profiles, and snapshot A followed by B, where B is A plus the commit [`snapshot-b.mjs`](snapshot-b.mjs) writes
+  (#48): a new file `src/util/Retry.ts` with `withRetry`, `backoffDelay` and `isRetryable`, `QueryBuilder.clearParameters`
+  added, `titleCase` removed and the body of `DataSource.initialize` changed. The layouts are the positions in the Galaxy
+  payload each page receives. With both loaded, Time's step from A to B is timed in the page, from `]` to B's Terrain drawn
+  with its marks (#48).
 - **Software renderer:** when the WebGL renderer is SwiftShader, llvmpipe or another software rasteriser, the result says
   so and budgets are read from the software column. Such a run measures the CPU, not a GPU; do not compare it with a GPU run.
 
@@ -99,6 +102,8 @@ a task that long delays the answer to a click visibly. It is what makes `--check
 | Transferred on a cold load, before data | `cold.transferred_kb` | - | - | ≤ 250 KB before data (#47 SC-001) |
 | Browser memory, all processes | `cold.browser_rss_mb` | - | - | ≤ 300 MB at 50,000, ≤ 600 MB at 250,000 (#47 SC-005) |
 | First drawn map, warm | `warm.first_draw_ms` | - | - | ≤ 300 ms at 50,000 symbols (#47 SC-003) |
+| Time, a step between two loaded snapshots | `warm.time_step_ms` | 300 ms (#48) | 300 ms | ≤ 300 ms (#48 SC-002) |
+| Shared symbols moved more than 2% of the map's width, A then B (share) | `stability.a_to_b.moved_2pct` | 0.01 (#48) | 0.01 | ≤ 1% (#48 SC-001) |
 
 ## Latest results
 
@@ -128,6 +133,21 @@ What the tables say against the targets of the Observatory specs:
   sheets transferred on a cold load, before data (#47 asks 150 KB and 250 KB); browser memory 558 MB at 50,000 and 819 MB
   at 250,000 (#47 asks 300 and 600 MB); the A-to-B commit moves 62% of the TypeORM sample's shared symbols more than 2% of
   the map's width, and one snapshot in two fresh profiles is not identical (#44).
+
+### After Time (#48)
+
+Measured on 2026-11-27 on the same machine and browser (ANGLE on Metal, Apple M5 Max), 3 cold runs on the TypeORM sample,
+the Time branch uncommitted on d372748. Other jobs shared the machine: the one-minute load average was 68 at the start and
+130 at the end, so the cold load times spread widely. Snapshot B is now the commit in `snapshot-b.mjs`.
+
+| Fixture | First drawn map, cold | Pan and zoom p95 | Time step, loaded | Moved > 2%, A then B (max) | Longest task, cold |
+|---|---|---|---|---|---|
+| TypeORM sample (7,033 symbols) | 758 ms | 16.8 ms | 75 ms | 0.59% (16.24%) | 83 ms |
+
+`--check` exits 0, so every budget is met, the two new ones included: the Time step at most 300 ms (#48 SC-002), and at most
+1% of shared symbols moving more than 2% of the width (#48 SC-001). The new file `src/util/Retry.ts` re-packs the strips of
+`src/util`, so a few of that directory's symbols move further, up to 16%. #48 scenario 1 asks that none moves more than 2%,
+and meeting that is the layout's to fix (#44).
 
 ### After the Terrain (#46)
 
