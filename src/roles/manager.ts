@@ -1,4 +1,4 @@
 import { mean } from '../stats'
 export function managerScore(xs: number[]): number {
-  return Math.round(mean(xs))
+  return xs.length === 0 ? 0 : Math.round(mean(xs))
 }
