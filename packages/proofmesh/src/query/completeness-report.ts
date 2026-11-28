@@ -73,7 +73,7 @@ const message = (c: Changed, d: Dependent) => `${d.relation === 'imports' ? d.pa
 /** SARIF 2.1.0 (FR2142): one result per dependent that is neither, at its site, `warning`, or `note` when inferred. */
 export function sarifReport(r: Report): object {
   return {
-    $schema: 'https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json',
+    $schema: 'https://docs.oasis-open.org/sarif/sarif/v2.1.0/errata01/os/schemas/sarif-schema-2.1.0.json',
     version: '2.1.0',
     runs: [{
       tool: { driver: { name: 'ProofMesh', rules: [{ id: RULE_ID, name: 'UntestedDependent', shortDescription: { text: 'A dependent of a changed symbol that the change neither updates nor tests' }, defaultConfiguration: { level: 'warning' } }] } },

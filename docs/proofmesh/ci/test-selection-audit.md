@@ -46,3 +46,18 @@ In CI, add the following reporting job to the example impact workflow alongside 
 ```
 
 The JSON includes changed-source links at their exact commits, the selection reasons, observed omissions and unmapped outcomes. Review misses across changes before enabling any pruning.
+
+### Warm-cache timing on TypeORM
+
+On 28 November 2026 the report step ran against the 504-file TypeORM parity fixture at upstream commit `3d55188c0dd1256f520143379ecf97f45e71acba`. In a private copy of that fixture, the benchmark inserted `void "impact benchmark"` before the first `super(` in each of the first ten files in `src/error` (sorted by filename) that contained both `constructor(` and `super(`. It committed the change and ran the sample's five local commands in order, with the same data directory across runs. Timing includes process startup, repository registration, both report formats and JSON test selection.
+
+| Cache state | Elapsed |
+| --- | ---: |
+| First run, including indexing both commits | 9.97 s |
+| Warm run 1 | 1.44 s |
+| Warm run 2 | 1.35 s |
+| Warm run 3 | 1.30 s |
+
+Each report found ten changed symbols and 40 dependent rows. Both report commands exited 1. Test selection exited 3 and reported the depth limit, so a CI job would run the full suite. The local timings cover the ProofMesh commands. Hosted checkout, cache transfer, artifact upload and comment posting have separate costs.
+
+The offline SARIF report test reads the OASIS 2.1.0 Errata 01 schema from a pinned development dependency. Its draft-07 adaptation changes only the schema dialect and identifier keys. The release source export includes the test and lockfile, and the published package contains the report writer. The canonical schema and terms are available in the [OASIS publication](https://docs.oasis-open.org/sarif/sarif/v2.1.0/errata01/os/sarif-v2.1.0-errata01-os-complete.html).
