@@ -1,22 +1,26 @@
 import fs from 'node:fs'
 import http from 'node:http'
+import os from 'node:os'
 import path from 'node:path'
+import zlib from 'node:zlib'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { CSP, startViewServer, type ViewServer } from '../src/http/server.js'
-import { indexedDataDir, ROOT, symbolId } from './helpers.js'
+import { GALAXY_FORMAT } from '../src/query/galaxy.js'
+import { cli, copyFixture, indexedDataDir, ROOT, symbolId } from './helpers.js'
 import { mcpClient } from './mcp-client.js'
 
 let d: string
+let snapshotId: string
 let s: ViewServer
 let client: Client
 
 function request(method: string, p: string, { headers = {}, body }: { headers?: Record<string, string>; body?: unknown } = {}) {
-  return new Promise<{ status: number; headers: http.IncomingHttpHeaders; body: string }>((resolve, reject) => {
+  return new Promise<{ status: number; headers: http.IncomingHttpHeaders; body: string; raw: Buffer }>((resolve, reject) => {
     const req = http.request({ host: '127.0.0.1', port: s.port, method, path: p, headers: { host: `127.0.0.1:${s.port}`, origin: s.url, 'content-type': 'application/json', ...headers } }, (res) => {
-      let data = ''
-      res.on('data', (c) => (data += c))
-      res.on('end', () => resolve({ status: res.statusCode!, headers: res.headers, body: data }))
+      const chunks: Buffer[] = []
+      res.on('data', (c: Buffer) => chunks.push(c))
+      res.on('end', () => { const raw = Buffer.concat(chunks); resolve({ status: res.statusCode!, headers: res.headers, body: raw.toString('utf8'), raw }) })
     })
     req.on('error', reject)
     if (body !== undefined) req.write(JSON.stringify(body))
@@ -31,7 +35,7 @@ async function session(): Promise<string> {
 }
 
 beforeAll(async () => {
-  ;({ dataDir: d } = await indexedDataDir())
+  ;({ dataDir: d, snapshotId } = await indexedDataDir())
   s = await startViewServer(d, 0)
   client = await mcpClient(d)
 })
@@ -144,5 +148,85 @@ describe('FR068 layout is derived in the browser, never answered: no tool envelo
       expect(env, name).toMatchObject({ tool: name })
       expect(named(keys(env)), name).toEqual([])
     }
+  })
+})
+
+describe('FR1450 static assets go compressed, and only what a content hash names is cached', () => {
+  it('FR1450 negotiates Brotli, then gzip, from the copies the build wrote; hashed assets are immutable and the page is revalidated', async () => {
+    const assets = fs.mkdtempSync(path.join(os.tmpdir(), 'pm-assets-'))
+    const js = 'export const x = 1\n'.repeat(200)
+    fs.mkdirSync(path.join(assets, 'assets'))
+    fs.writeFileSync(path.join(assets, 'index.html'), '<!doctype html><script type="module" src="/assets/index-AbCd1234.js"></script>')
+    fs.writeFileSync(path.join(assets, 'assets', 'index-AbCd1234.js'), js)
+    fs.writeFileSync(path.join(assets, 'assets', 'index-AbCd1234.js.br'), zlib.brotliCompressSync(js))
+    fs.writeFileSync(path.join(assets, 'assets', 'index-AbCd1234.js.gz'), zlib.gzipSync(js))
+    const own = await startViewServer(d, 0, assets)
+    const get = (p: string, accept?: string) => new Promise<{ headers: http.IncomingHttpHeaders; raw: Buffer }>((resolve, reject) => {
+      http.get({ host: '127.0.0.1', port: own.port, path: p, headers: { host: `127.0.0.1:${own.port}`, ...(accept ? { 'accept-encoding': accept } : {}) } }, (res) => {
+        const chunks: Buffer[] = []
+        res.on('data', (c: Buffer) => chunks.push(c)).on('end', () => resolve({ headers: res.headers, raw: Buffer.concat(chunks) }))
+      }).on('error', reject)
+    })
+    try {
+      const br = await get('/assets/index-AbCd1234.js', 'br, gzip')
+      expect([br.headers['content-encoding'], br.headers.vary]).toEqual(['br', 'Accept-Encoding'])
+      expect(zlib.brotliDecompressSync(br.raw).toString()).toBe(js)
+      expect(br.headers['cache-control']).toBe('public, max-age=31536000, immutable')
+      const gz = await get('/assets/index-AbCd1234.js', 'gzip, br;q=0')
+      expect(gz.headers['content-encoding']).toBe('gzip')
+      expect(zlib.gunzipSync(gz.raw).toString()).toBe(js)
+      const plain = await get('/assets/index-AbCd1234.js')
+      expect(plain.headers['content-encoding']).toBeUndefined()
+      expect(plain.raw.toString()).toBe(js)
+      const page = await get('/', 'br, gzip')
+      expect(page.headers['cache-control']).toBe('no-cache')
+      expect(page.headers['content-security-policy']).toBe(CSP)
+    } finally { await own.close() }
+  })
+})
+
+describe('FR1453 a snapshot\'s Galaxy has an address of its own that a browser may cache; API answers are never stored', () => {
+  it('FR1453 API answers and refusals carry no-store', async () => {
+    const cookie = await session()
+    for (const r of [await request('POST', '/api/v1/tools/workspace_status', { headers: { cookie }, body: {} }), await request('POST', '/api/v1/galaxy', { headers: { cookie }, body: {} }), await request('POST', '/api/v1/tools/workspace_status', { body: {} })]) expect(r.headers['cache-control']).toBe('no-store')
+  })
+
+  it('FR1453 serves the Galaxy by snapshot id and format version, private and immutable, behind the session; another version or snapshot is 404', async () => {
+    const cookie = await session()
+    const at = `/api/v1/galaxy/v${GALAXY_FORMAT}/${snapshotId}`
+    expect((await request('GET', at)).status).toBe(401)
+    const r = await request('GET', at, { headers: { cookie } })
+    expect(r.status).toBe(200)
+    expect(r.headers['cache-control']).toBe('private, max-age=31536000, immutable')
+    expect(r.headers['content-encoding']).toBe('gzip')
+    expect(r.headers['content-security-policy']).toBe(CSP)
+    expect(r.raw.equals((await request('POST', '/api/v1/galaxy', { headers: { cookie }, body: {} })).raw)).toBe(true)
+    // A snapshot gc removed, or a payload of another format, is not there: the view asks again for the current snapshot.
+    for (const gone of [`/api/v1/galaxy/v${GALAXY_FORMAT - 1}/${snapshotId}`, `/api/v1/galaxy/v${GALAXY_FORMAT}/snap_000000000000`]) {
+      const g = await request('GET', gone, { headers: { cookie } })
+      expect(g.status, gone).toBe(404)
+      expect(g.headers['cache-control']).toBe('no-store')
+    }
+  })
+
+  it('FR1453 a snapshot gc retires is 404 at its address, though its Galaxy was built and cached before', async () => {
+    const repo = copyFixture()
+    const { dataDir, snapshotId: old } = await indexedDataDir(repo)
+    fs.appendFileSync(path.join(repo, 'packages/format/src/currency.ts'), '\n// edit\n')
+    expect(cli(['--data-dir', dataDir, 'index', repo]).status).toBe(0)
+    const own = await startViewServer(dataDir, 0)
+    const at = (p: string, cookie: string) => new Promise<number>((resolve, reject) => {
+      http.get({ host: '127.0.0.1', port: own.port, path: p, headers: { host: `127.0.0.1:${own.port}`, cookie } }, (res) => { res.resume(); resolve(res.statusCode!) }).on('error', reject)
+    })
+    try {
+      const cookie = await new Promise<string>((resolve, reject) => {
+        const req = http.request({ host: '127.0.0.1', port: own.port, method: 'POST', path: '/session', headers: { host: `127.0.0.1:${own.port}`, origin: own.url, 'content-type': 'application/json' } }, (res) => { res.resume(); resolve(String(res.headers['set-cookie']).split(';')[0]!) })
+        req.on('error', reject)
+        req.end(JSON.stringify({ token: own.issueToken() }))
+      })
+      expect(await at(`/api/v1/galaxy/v${GALAXY_FORMAT}/${old}`, cookie)).toBe(200)
+      expect(cli(['--data-dir', dataDir, 'gc', '--keep', '1']).status).toBe(0)
+      expect(await at(`/api/v1/galaxy/v${GALAXY_FORMAT}/${old}`, cookie)).toBe(404)
+    } finally { await own.close() }
   })
 })

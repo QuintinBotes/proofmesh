@@ -41,6 +41,11 @@ h2 { font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: 
 table { border-collapse: collapse; width: 100%; font-size: 13px; }
 th, td { border-bottom: 1px solid var(--line); padding: 5px 8px; text-align: left; word-break: break-all; }
 caption { text-align: left; color: var(--dim); padding-bottom: 6px; }
+/* A virtual table scrolls in its own box, and every row is one line of ROW_PX (virtual.tsx), so spacer rows stand in exactly for the rows not drawn (FR1454). */
+.virtual { max-height: 70vh; overflow-y: auto; }
+.virtual tbody tr { height: 28px; }
+.virtual td { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 32em; word-break: normal; padding-block: 0; }
+.virtual tr.spacer td { border: 0; padding: 0; }
 .right { grid-row: 2 / 4; grid-column: 3; width: 380px; padding: 14px; border-left: 1px solid var(--line); overflow-y: auto; position: relative; }
 .close { position: absolute; top: 8px; right: 10px; }
 .ev-title { text-transform: none; letter-spacing: 0; font-size: 15px; color: var(--text); word-break: break-all; padding-right: 30px; }
