@@ -2612,6 +2612,9 @@
     "FR3000": [
       "packages/proofmesh/test/producer.test.ts"
     ],
+    "FR3004": [
+      "packages/proofmesh/test/http-editor.test.ts"
+    ],
     "FR3003": [
       "packages/proofmesh/test/session-edit.test.ts"
     ],

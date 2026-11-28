@@ -122,25 +122,79 @@ export async function serveStdio(dataDir: string, version: string, profiles = ['
   log('info', 'mcp server ready', { dataDir })
 }
 
-/**
- * MCP over Streamable HTTP on loopback only. Every request needs the bearer token printed at start, and the Host and
- * Origin must be this server's, so a web page cannot reach it through DNS rebinding. Stateless: a fresh transport per request.
- */
-export async function serveHttp(dataDir: string, version: string, port: number, profiles = ['core']): Promise<{ url: string; token: string; close: () => Promise<void> }> {
-  // Stateless HTTP opens a server per request; the process is the session, as one bearer token is one client.
+/** One transport lives for the whole HTTP editor session. Idle GET event streams do not keep abandoned edits alive. */
+function httpEditor(dataDir: string, version: string, profiles: string[], options: { allowedHosts: string[]; allowedOrigins: string[] }, idleMs: number, forget: () => void) {
+  const editor = new EditorSession(dataDir)
+  const id = randomToken()
+  const transport = new StreamableHTTPServerTransport({ ...options, enableJsonResponse: true, enableDnsRebindingProtection: true, sessionIdGenerator: () => id })
+  const server = createServer(dataDir, version, profiles, mcpSessionId(), editor)
+  let timer: NodeJS.Timeout | undefined, pending = 0, closed = false
+  server.onclose = () => {
+    closed = true
+    clearTimeout(timer)
+    forget()
+    editor.close()
+  }
+  const ready = server.connect(transport)
+  return {
+    id,
+    close: () => server.close(),
+    async handle(req: http.IncomingMessage, res: http.ServerResponse) {
+      clearTimeout(timer)
+      // POST may still be building an edit. Count overlapping requests until their responses have ended.
+      const waitsForResponse = req.method !== 'GET'
+      const idle = () => {
+        if (!closed && !pending) timer = setTimeout(() => { void server.close() }, idleMs).unref()
+      }
+      if (waitsForResponse) {
+        pending++
+        res.once('close', () => {
+          pending--
+          if (!transport.sessionId) void server.close()
+          else idle()
+        })
+      } else idle()
+      await ready
+      await transport.handleRequest(req, res)
+    },
+  }
+}
+
+export async function serveHttp(dataDir: string, version: string, port: number, profiles = ['core'], editor?: { idleMs?: number }): Promise<{ url: string; token: string; close: () => Promise<void> }> {
   const token = randomToken(), sessionId = mcpSessionId()
+  const sessions = new Map<string, ReturnType<typeof httpEditor>>()
   let actual = port
   const httpServer = http.createServer(async (req, res) => {
     const deny = (status: number, message: string) => { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: { message } })) }
     if (new URL(req.url ?? '/', 'http://127.0.0.1').pathname !== '/mcp') return deny(404, 'not found')
     if (req.headers.authorization !== `Bearer ${token}`) return deny(401, 'missing or wrong bearer token')
-    const hosts = [`127.0.0.1:${actual}`, `localhost:${actual}`]
-    const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true, enableDnsRebindingProtection: true, allowedHosts: hosts, allowedOrigins: hosts.map((h) => `http://${h}`) })
-    const server = createServer(dataDir, version, profiles, sessionId)
-    res.on('close', () => { transport.close(); server.close() })
+    const allowedHosts = [`127.0.0.1:${actual}`, `localhost:${actual}`]
+    const allowedOrigins = allowedHosts.map(h => `http://${h}`)
     try {
-      await server.connect(transport)
-      await transport.handleRequest(req, res)
+      if (editor) {
+        // Authenticate the request and validate its origin before selecting a session or refreshing its lifetime.
+        if (!allowedHosts.includes(req.headers.host ?? '') || (req.headers.origin !== undefined && !allowedOrigins.includes(req.headers.origin))) return deny(403, 'invalid Host or Origin')
+        const id = req.headers['mcp-session-id']
+        let session = typeof id === 'string' ? sessions.get(id) : undefined
+        if (id !== undefined && !session) {
+          res.writeHead(404, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32001, message: 'Unknown or expired MCP session. Initialize a new session and reapply your buffer.' } }))
+          return
+        }
+        if (!session) {
+          if (req.method !== 'POST') return deny(400, 'initialize an MCP session first')
+          const created = httpEditor(dataDir, version, profiles, { allowedHosts, allowedOrigins }, editor.idleMs ?? 30 * 60_000, () => sessions.delete(created.id))
+          sessions.set(created.id, created)
+          session = created
+        }
+        await session.handle(req, res)
+      } else {
+        const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true, enableDnsRebindingProtection: true, allowedHosts, allowedOrigins })
+        const server = createServer(dataDir, version, profiles, sessionId)
+        res.on('close', () => { void server.close() })
+        await server.connect(transport)
+        await transport.handleRequest(req, res)
+      }
     } catch (e) {
       if (!res.headersSent) deny(500, asProofmeshError(e).message)
     }
@@ -148,5 +202,10 @@ export async function serveHttp(dataDir: string, version: string, port: number, 
   await new Promise<void>((resolve, reject) => { httpServer.once('error', reject); httpServer.listen(port, '127.0.0.1', () => resolve()) })
   actual = (httpServer.address() as { port: number }).port
   log('info', 'mcp http server ready', { dataDir, port: actual })
-  return { url: `http://127.0.0.1:${actual}/mcp`, token, close: () => new Promise((r) => httpServer.close(() => r())) }
+  return { url: `http://127.0.0.1:${actual}/mcp`, token, close: async () => {
+    const stopped = new Promise<void>(resolve => httpServer.close(() => resolve()))
+    await Promise.all([...sessions.values()].map(s => s.close()))
+    httpServer.closeAllConnections()
+    await stopped
+  } }
 }

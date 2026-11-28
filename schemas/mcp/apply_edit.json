@@ -1,6 +1,6 @@
 {
   "type": "object",
-  "description": "Index one unsaved TypeScript buffer for this stdio session. Copy the snapshot ID and the object hash of the file from its sealed evidence. Call discard_edit to restore ordinary queries.",
+  "description": "Index one unsaved TypeScript buffer for this MCP session. Copy the snapshot ID and the object hash of the file from its sealed evidence. Call discard_edit to restore ordinary queries.",
   "additionalProperties": false,
   "required": [
     "snapshot_id",

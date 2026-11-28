@@ -5,7 +5,7 @@ import { expect, it } from 'vitest'
 import { sha256File } from '../src/core/hash.js'
 import { Catalog } from '../src/meshstore/catalog.js'
 import { sealedPath } from '../src/meshstore/snapshot.js'
-import { cli, fixtureRepo, indexedDataDir, tmpDir } from './helpers.js'
+import { fixtureRepo, indexedDataDir, tmpDir } from './helpers.js'
 import { mcpClient } from './mcp-client.js'
 
 it('FR3003 isolates an unsaved edit, its callers, test reach and evidence across real MCP connections', async () => {
@@ -73,5 +73,4 @@ it('FR3003 isolates an unsaved edit, its callers, test reach and evidence across
   try { expect(await outbound(reopened)).toMatchObject({ callee: 'A', edit: undefined, snapshot: snapshotId }) }
   finally { await reopened.close() }
   expect(digest()).toEqual(before)
-  expect(cli(['--data-dir', dataDir, 'mcp', '--editor', '--http']).stderr).toContain('dedicated stdio')
 })
