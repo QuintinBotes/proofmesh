@@ -2584,6 +2584,27 @@
     "FR2185": [
       "packages/proofmesh/test/duplicates.test.ts"
     ],
+    "FR2220": [
+      "packages/proofmesh/test/clusters.test.ts"
+    ],
+    "FR2221": [
+      "packages/proofmesh/test/clusters.test.ts"
+    ],
+    "FR2222": [
+      "packages/proofmesh/test/clusters.test.ts"
+    ],
+    "FR2223": [
+      "packages/proofmesh/test/clusters.test.ts"
+    ],
+    "FR2224": [
+      "packages/proofmesh/test/clusters.test.ts"
+    ],
+    "FR2225": [
+      "packages/proofmesh/test/clusters.test.ts"
+    ],
+    "FR2226": [
+      "packages/proofmesh/test/clusters.test.ts"
+    ],
     "FR2980": [
       "packages/proofmesh/test/producer.test.ts"
     ],

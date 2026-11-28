@@ -12,7 +12,7 @@ A client that does not defer tool loading puts every listed tool's name, descrip
 | `evidence` | `find_symbols`, `get_symbol`, `get_relationships`, `read_evidence` on published snapshots |
 | `data` | `get_table_reach`, `get_property_reads`, `find_query_source`, `get_external_usage`, `get_session_trail`, `get_context_map` |
 | `claims` | `verify_claim`, `get_claims`, `prepare_verification`, `get_verification` |
-| `extra` | `list_snapshots`, `list_workspaces`, `get_ecosystem`, `compare_snapshots`, `impact_completeness`, `request_index`, `get_job`, `get_memory`, `save_memory`, `find_stale_mentions`, `find_unused`, `find_cycles`, `find_entry_points`, `find_hubs`, `plan_rename`, `plan_move`, `search_structure`, `get_symbol_card`, `query_graph`, `get_findings`, `get_cochanges`, `find_duplicates` |
+| `extra` | `list_snapshots`, `list_workspaces`, `get_ecosystem`, `compare_snapshots`, `impact_completeness`, `request_index`, `get_job`, `get_memory`, `save_memory`, `find_stale_mentions`, `find_unused`, `find_cycles`, `find_entry_points`, `find_hubs`, `plan_rename`, `plan_move`, `search_structure`, `get_symbol_card`, `query_graph`, `get_findings`, `get_cochanges`, `find_duplicates`, `find_clusters` |
 
 - `proofmesh mcp --tools core,data` (or any comma-separated list) lists those profiles; `--tools all` lists every tool exactly as its schema file declares it. Both transports take it. In a client configuration, put the option after `mcp` in the arguments, for example `"args": ["mcp", "--tools", "all"]` in `.mcp.json`. A client restarts the server to change profile.
 - Outside `all`, a listed tool keeps its description and every field of its input schema, with types, enums, patterns, defaults and required fields, but not the per-field descriptions; `envelope` keeps its first sentence. The full schemas are `schemas/tools/<tool>.input.schema.json`, and the server validates every call against them whatever the profile.
@@ -265,3 +265,9 @@ To inspect a finding from `proofmesh sarif add`, call `get_findings` with its `p
 ### Duplicate declarations
 
 In the extra tool profile, `find_duplicates` lists groups with the same sealed, normalised declaration hash. The default minimum is 30 tokens. Pass `subject_id` or `key` for the other members of a symbol's group, or `path` for all groups represented in a file. Results carry stable keys, declaration lines, a test marker, group size and caller overlap. `include_generated`, `include_tests`, `kinds` and `path_prefix` control membership. `proofmesh duplicates <repository> [--min-tokens N] [--json]` lists these groups from the CLI. In `impact_completeness`, request `include_duplicates: true` to see unchanged twins from the base snapshot alongside the affected dependents.
+
+### File communities
+
+Use `find_clusters` in the extra profile to find files connected by imports, calls, references, inheritance and implementation. Each cluster summary gives a representative path. Pass it back as `path` to see the members in internal-degree order and boundary edge counts grouped by the neighboring cluster ID. You can also start from a symbol's `key` or `subject_id`. Cohesion is the internal edge count divided by internal plus external edges.
+
+Observed links carry twice the weight of inferred links during clustering. Set `observed_only` to drop inferred links, `include_tests: false` to omit test files, or raise `resolution` above its default of 1 to favor smaller groups. Shared hubs appear under `shared`. Singleton groups are counted and can be listed with `include_singletons`. Repositories with fewer than 20 indexed files in scope form one group. With `include_clusters: true`, each `get_overview` child lists its default cluster IDs and labels. A directory can span several clusters.

@@ -73,7 +73,8 @@
         "query_graph",
         "get_findings",
         "get_cochanges",
-        "find_duplicates"
+        "find_duplicates",
+        "find_clusters"
       ]
     },
     "snapshot": {

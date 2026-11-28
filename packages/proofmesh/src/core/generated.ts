@@ -4,7 +4,7 @@
 export interface Envelope {
 schema_version: "0.1"
 query_id: string
-tool: ("workspace_status" | "list_repositories" | "list_snapshots" | "list_workspaces" | "find_symbols" | "get_symbol" | "get_relationships" | "trace_paths" | "read_evidence" | "get_overview" | "analyze_impact" | "find_tests" | "search_sources" | "get_memory" | "verify_claim" | "request_index" | "get_job" | "get_claims" | "save_memory" | "get_table_reach" | "get_property_reads" | "get_external_usage" | "find_query_source" | "compare_snapshots" | "list_queries" | "get_ecosystem" | "prepare_verification" | "get_verification" | "impact_completeness" | "get_symbols_at" | "get_session_trail" | "find_stale_mentions" | "find_unused" | "find_cycles" | "find_entry_points" | "find_hubs" | "get_context_map" | "plan_rename" | "plan_move" | "search_structure" | "search_concepts" | "get_symbol_card" | "query_graph" | "get_findings" | "get_cochanges" | "find_duplicates")
+tool: ("workspace_status" | "list_repositories" | "list_snapshots" | "list_workspaces" | "find_symbols" | "get_symbol" | "get_relationships" | "trace_paths" | "read_evidence" | "get_overview" | "analyze_impact" | "find_tests" | "search_sources" | "get_memory" | "verify_claim" | "request_index" | "get_job" | "get_claims" | "save_memory" | "get_table_reach" | "get_property_reads" | "get_external_usage" | "find_query_source" | "compare_snapshots" | "list_queries" | "get_ecosystem" | "prepare_verification" | "get_verification" | "impact_completeness" | "get_symbols_at" | "get_session_trail" | "find_stale_mentions" | "find_unused" | "find_cycles" | "find_entry_points" | "find_hubs" | "get_context_map" | "plan_rename" | "plan_move" | "search_structure" | "search_concepts" | "get_symbol_card" | "query_graph" | "get_findings" | "get_cochanges" | "find_duplicates" | "find_clusters")
 /**
  * The sealed snapshot or link file that answered; null for a catalog tool, which answers from the list of registered repositories.
  */
@@ -464,6 +464,101 @@ max_depth?: number
  * compact leaves out the snapshot-wide parts of the envelope (unresolved reasons, standing limitations) that an earlier answer from the same snapshot already gave; query-specific limits stay. Over MCP, answers after the first full one per snapshot are compact unless full is asked for.
  */
 envelope?: ("full" | "compact")
+}
+
+export interface FindClustersData {
+clusters: {
+id: string
+label: string
+representative: string
+files: number
+symbols: number
+internal_edges: number
+external_edges: number
+cohesion: number
+}[]
+members: {
+path: string
+internal_degree: number
+generated?: boolean
+}[]
+boundaries: {
+target: string
+edges: number
+}[]
+total_boundaries: number
+shared: {
+path: string
+degree: number
+generated?: boolean
+}[]
+total_shared: number
+singletons: number
+tiny: boolean
+}
+
+/**
+ * Group indexed files by their code relationships. Give a file or symbol for ordered members and boundary counts. Each summary names a representative path for drill-down.
+ */
+export interface FindClustersInput {
+/**
+ * Optional when exactly one repository is registered.
+ */
+repository_id?: string
+/**
+ * Null pins the current published snapshot.
+ */
+snapshot_id?: (string | null)
+limits?: {
+timeout_ms?: number
+max_rows?: number
+max_bytes?: number
+max_depth?: number
+}
+/**
+ * snapshot (default) answers from the published snapshot. strict first checks that the working tree is exactly what the snapshot was built from; if not, it starts an index and refuses with STALE_INPUT naming the changed files.
+ */
+freshness?: ("snapshot" | "strict")
+/**
+ * lean, the default over MCP: plain text with no JSON and no structuredContent. A header `# <tool> · <n> rows · <snapshot> current` (stale when the snapshot is older than the repository's current one), one `<name> <path>:<line>` row per result, then `# ` lines for the limitations of this answer and `# more: cursor <c>` when a next page exists. The line is the call, import or reference site for relationship, impact and path rows and the declaration for symbol rows; tags follow: in or out when both directions are asked, depth=<n>, dispatch, external, candidate, ambiguous, unresolved:<reason>, and the relationship type when the query mixes types. A name or path with a space, quote or # is quoted as JSON. compact: the JSON envelope without the snapshot-wide parts an earlier answer gave (coverage, unresolved reasons, standing limitations). full: the whole JSON envelope. Ask for compact or full for ids, evidence and totals.
+ */
+envelope?: ("full" | "compact" | "lean")
+/**
+ * The next_cursor of the previous page. It continues the same query on the same snapshot; it expires after an hour.
+ */
+cursor?: string
+/**
+ * Default true. False leaves test code out of the graph: neither ranked nor counted as a user.
+ */
+include_tests?: boolean
+/**
+ * A symbol by its stable_key (FR149): the key get_symbol and every other row names it with, unique in a snapshot and the same in every tier. An unknown key is NOT_FOUND. In place of the id.
+ */
+key?: string
+/**
+ * A file by its repository-relative path, meaning the file itself and its module symbol; .., an absolute path inside the repository and backslashes are normalised. A path the snapshot does not index is INVALID_ARGUMENT naming its disposition. Give subject_id or path.
+ */
+path?: string
+/**
+ * An ext_ id names an external symbol; then only inbound calls are known. A file_ id, or the id of a file's module symbol, answers for the file. Or { name, path }: the symbol of that name in that file; an ambiguous name is refused with the candidates.
+ */
+subject_id?: (string | {
+/**
+ * The name a lean row shows (BudgetLedger.consume), or the plain name (consume); it must name one symbol in the file.
+ */
+name: string
+/**
+ * The repository-relative path of the file that declares the symbol.
+ */
+path: string
+})
+level?: "file"
+/**
+ * Louvain resolution, default 1.
+ */
+resolution?: number
+observed_only?: boolean
+include_singletons?: boolean
 }
 
 export interface FindCyclesData {
@@ -2132,6 +2227,10 @@ symbol_kind: (string | null)
  * The stable_key of a symbol child (key is its id) (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file.
  */
 symbol_key?: string
+clusters?: {
+id: string
+label: string
+}[]
 }[]
 links: {
 from: string
@@ -2190,6 +2289,7 @@ freshness?: ("snapshot" | "strict")
  * compact leaves out the snapshot-wide parts of the envelope (unresolved reasons, standing limitations) that an earlier answer from the same snapshot already gave; query-specific limits stay. Over MCP, answers after the first full one per snapshot are compact unless full is asked for.
  */
 envelope?: ("full" | "compact")
+include_clusters?: boolean
 }
 
 export interface GetPropertyReadsData {
