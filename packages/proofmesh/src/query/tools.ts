@@ -40,6 +40,7 @@ import { leanName, leanRow, leanText, quote } from './lean.js'
 import { leanQueryRows, parseGraphQuery, runGraphQuery, type Param, type QueryRow } from './graph-query.js'
 import { generatedLeftOut, generatedPaths, markGenerated, withGeneratedPaths } from './generated-policy.js'
 import { innermost } from './symbol-at.js'
+import { attachFindings, findingCounts } from './findings.js'
 import { findCycles, findEntryPoints, findHubs, findUnused, type CycleEdge, type EntryPoint, type Hub, type UnusedRow } from './structure.js'
 import { contextMap } from './context-map.js'
 import { compare, hasBodyHash, unreadableFiles } from './compare.js'
@@ -53,7 +54,7 @@ import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 
-export const TOOLS = ['workspace_status', 'list_repositories', 'list_snapshots', 'list_workspaces', 'find_symbols', 'get_symbol', 'get_relationships', 'trace_paths', 'read_evidence', 'get_overview', 'analyze_impact', 'find_tests', 'search_sources', 'get_memory', 'verify_claim', 'request_index', 'get_job', 'get_claims', 'save_memory', 'get_table_reach', 'get_property_reads', 'get_external_usage', 'find_query_source', 'compare_snapshots', 'list_queries', 'get_ecosystem', 'prepare_verification', 'get_verification', 'impact_completeness', 'get_symbols_at', 'get_session_trail', 'find_stale_mentions', 'find_unused', 'find_cycles', 'find_entry_points', 'find_hubs', 'get_context_map', 'plan_rename', 'plan_move', 'search_structure', 'search_concepts', 'get_symbol_card', 'query_graph'] as const
+export const TOOLS = ['workspace_status', 'list_repositories', 'list_snapshots', 'list_workspaces', 'find_symbols', 'get_symbol', 'get_relationships', 'trace_paths', 'read_evidence', 'get_overview', 'analyze_impact', 'find_tests', 'search_sources', 'get_memory', 'verify_claim', 'request_index', 'get_job', 'get_claims', 'save_memory', 'get_table_reach', 'get_property_reads', 'get_external_usage', 'find_query_source', 'compare_snapshots', 'list_queries', 'get_ecosystem', 'prepare_verification', 'get_verification', 'impact_completeness', 'get_symbols_at', 'get_session_trail', 'find_stale_mentions', 'find_unused', 'find_cycles', 'find_entry_points', 'find_hubs', 'get_context_map', 'plan_rename', 'plan_move', 'search_structure', 'search_concepts', 'get_symbol_card', 'query_graph', 'get_findings'] as const
 export type ToolName = (typeof TOOLS)[number]
 /** The query tools whose results are code locations: they answer in the lean envelope on request, and by default over MCP (FR099). */
 export const LEAN = new Set<string>(['find_symbols', 'search_concepts', 'get_symbol', 'get_symbols_at', 'get_relationships', 'trace_paths', 'analyze_impact', 'find_tests', 'get_session_trail', 'find_unused', 'find_cycles', 'find_entry_points', 'find_hubs', 'get_context_map', 'search_structure', 'query_graph'])
@@ -71,7 +72,7 @@ export const CAPABILITY: Record<ToolName, ListQueriesData['tools'][number]['capa
   verify_claim: 'read', request_index: 'management', get_job: 'read', get_claims: 'read', save_memory: 'management', get_table_reach: 'read',
   get_property_reads: 'read', get_external_usage: 'read', find_query_source: 'read', compare_snapshots: 'read', list_queries: 'read',
   get_ecosystem: 'read', prepare_verification: 'management', get_verification: 'read', impact_completeness: 'management', get_symbols_at: 'read', get_session_trail: 'read', find_stale_mentions: 'read',
-  find_unused: 'read', find_cycles: 'read', find_entry_points: 'read', find_hubs: 'read', get_context_map: 'read', plan_rename: 'read', plan_move: 'read', search_structure: 'read', search_concepts: 'read', get_symbol_card: 'read', query_graph: 'read',
+  find_unused: 'read', find_cycles: 'read', find_entry_points: 'read', find_hubs: 'read', get_context_map: 'read', plan_rename: 'read', plan_move: 'read', search_structure: 'read', search_concepts: 'read', get_symbol_card: 'read', query_graph: 'read', get_findings: 'read',
 }
 
 /**
@@ -95,6 +96,8 @@ export const PROFILE: Record<ToolName, ListQueriesData['tools'][number]['profile
   get_symbol_card: 'extra',
   // A composed question no typed tool answers in one call: an escape hatch, not for most questions (#36).
   query_graph: 'extra',
+  // Imported analyser findings (#30); analyze_impact and find_tests rows in core already carry their count.
+  get_findings: 'extra',
 }
 /** How a client loads the tools of another profile, said by list_queries, which lists them all (FR422). */
 const PROFILES_NOTE = 'Over MCP, proofmesh mcp lists the core profile; start it with --tools <profile[,profile]> (core, data, claims, extra) or --tools all to list the others. A tool outside the profiles it was started with answers INVALID_ARGUMENT naming its profile.'
@@ -945,10 +948,12 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
       ...(ws ? [...ws.limitations, ...mismatchNotes(ws.notes), ...(ws.dependents.length ? ['Dependents in other repositories carry their repository; by_project, by_area and by_team count this repository\'s dependents only.'] : [])] : []),
     ]
     const stop: Array<'max_depth' | 'max_rows'> = [...(r.stopped_by === 'max_depth' ? ['max_depth' as const] : []), ...(r.stopped_by === 'node_budget' || r.totals.dependents > ctx.limits.max_rows ? ['max_rows' as const] : [])]
-    const rows = impactRows(ctx, r.dependents, reached_by)
+    const counts = findingCounts(ctx.db, ctx.catalog.sarifImports(ctx.repo.id))
+    // A dependent in another repository is from its own snapshot, whose findings are not asked here.
+    const rows = impactRows(ctx, r.dependents, reached_by).map((x) => !('repository' in x && x.repository) && counts.get(x.id) ? { ...x, findings: counts.get(x.id)! } : x)
     return {
       data: { subjects, types, ...r, dependents: rows, ...(ws ? { workspace: ws.header } : {}) }, stop_reasons: stop, limitations, shrink: 'dependents', total: r.totals.dependents,
-      lean: (data) => (data.dependents as typeof rows).map((x) => leanRow(leanName(x), x.site?.path ?? x.path, x.site?.start_line ?? x.line, [`depth=${x.depth}`, ...(x.relationship === 'dispatch' ? ['dispatch'] : types.length > 1 ? [x.relationship] : []), ...('repository' in x && x.repository ? [repoTag(x.repository)] : []), ...(x.basis === 'inferred' ? ['inferred'] : [])])),
+      lean: (data) => (data.dependents as typeof rows).map((x) => leanRow(leanName(x), x.site?.path ?? x.path, x.site?.start_line ?? x.line, [`depth=${x.depth}`, ...(x.relationship === 'dispatch' ? ['dispatch'] : types.length > 1 ? [x.relationship] : []), ...('repository' in x && x.repository ? [repoTag(x.repository)] : []), ...(x.basis === 'inferred' ? ['inferred'] : []), ...('findings' in x && x.findings ? [`findings=${x.findings}`] : [])])),
     }
   },
 
@@ -1243,6 +1248,28 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     }
   },
 
+  get_findings(ctx, input) {
+    const ids = new Set((input.subject_ids as string[] | undefined) ?? [])
+    for (const id of ids) if (!ctx.db.prepare('select 1 from symbol where id = ?').get(id)) throw new ProofmeshError('NOT_FOUND', `symbol ${id} is not in snapshot ${ctx.snapshot.id}`)
+    const paths = new Set(((input.paths as string[] | undefined) ?? []).map((p) => fileAt(ctx, p).path))
+    const imports = ctx.catalog.sarifImports(ctx.repo.id)
+    const all = attachFindings(ctx.db, imports).filter((f) => (!ids.size && !paths.size) || paths.has(f.path) || (f.symbol !== null && ids.has(f.symbol.id)))
+    const stale = all.filter((f) => f.stale).length
+    return {
+      data: { findings: all.slice(0, ctx.limits.max_rows), imports: imports.map((i) => ({ name: i.name, tools: i.tools, findings: i.findings.length, unattached: i.unattached.length, added_at: i.added_at })), total: all.length },
+      stop_reasons: all.length > ctx.limits.max_rows ? ['max_rows'] : [], shrink: 'findings',
+      limitations: [
+        imports.length ? 'Findings are what the analysers named in each SARIF file reported when it was produced; Proofmesh runs no analyser and checks none of them.' : 'No SARIF file is imported for this repository; proofmesh sarif add <repository> <file.sarif> imports one.',
+        ...(stale ? [`${stale} finding${stale === 1 ? ' is' : 's are'} in a file changed since its SARIF file was imported, so ${stale === 1 ? 'its line' : 'their lines'} may have moved (stale: sarif_stale:<name>); import a new SARIF file to refresh ${stale === 1 ? 'it' : 'them'}.`] : []),
+        ...imports.filter((i) => i.unattached.length).map((i) => {
+          const by = new Map<string, number>()
+          for (const u of i.unattached) by.set(u.reason, (by.get(u.reason) ?? 0) + 1)
+          return `${i.unattached.length} result${i.unattached.length === 1 ? '' : 's'} of SARIF file ${i.name} ${i.unattached.length === 1 ? 'was' : 'were'} not attached: ${[...by].map(([r, n]) => `${n} ${r}`).join(', ')}; proofmesh sarif add printed each.`
+        }),
+      ],
+    }
+  },
+
   get_session_trail(ctx, input) {
     const { entries, cut } = ctx.catalog.trail(String(input.session_id), ctx.repo.id)
     const recording = ctx.catalog.trailRecording(ctx.repo.id)
@@ -1427,7 +1454,7 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     // FR1260: with include_workspace, the tests in the other members of this repository's workspaces that reach the subjects through the
     // packages this repository builds, or through a member that reaches them (FR1262): each member's tests of the sites linked to what reaches
     // the subjects, one deeper than that site. Its chain runs in its own repository and ends at the call that crosses out of it.
-    type Row = TestRow & { chain: ReturnType<typeof local.chain>; repository?: Inbound['repository'] }
+    type Row = TestRow & { chain: ReturnType<typeof local.chain>; repository?: Inbound['repository']; findings?: number }
     const ws = input.include_workspace === true ? withWorkspace(ctx.catalog, ctx.repo, ctx.snapshot, ctx.db, (w) => {
       const types = ['calls', ...DISPATCH_TYPES]
       const walk = analyzeImpact(ctx.db, ctx.snapshot.id, ids, types, ctx.limits.max_depth, Number.MAX_SAFE_INTEGER)
@@ -1474,10 +1501,10 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
         : ctx.catalog.workspaces().some((w) => w.members.includes(ctx.repo.id)) ? ['Tests in the other repositories of this workspace are not searched.'] : []),
       ...(r.stopped_by || ws?.stopped ? [`The search stopped at the ${r.stopped_by === 'node_budget' ? 'node budget' : 'depth limit'}; more tests may reach this code.`] : []),
     ]
-    const stopped = r.stopped_by ?? (ws?.stopped ? 'max_depth' : null)
+    const stopped = r.stopped_by ?? (ws?.stopped ? 'max_depth' : null), counts = findingCounts(ctx.db, ctx.catalog.sarifImports(ctx.repo.id))
     return {
       data: {
-        tests: r.rows.slice(ctx.page.offset, end),
+        tests: r.rows.slice(ctx.page.offset, end).map((t): Row => !t.repository && counts.get(t.id) ? { ...t, findings: counts.get(t.id)! } : t),
         totals: { tests: r.rows.length, executing, not_executing: r.rows.length - executing, by_basis: byBasis(r.rows), by_project: [...byProject].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)).map(([name, count]) => ({ name, count })) },
         observed: { available: false, reason: 'No coverage data has been imported for this snapshot.' }, stopped_by: stopped, ...(ws ? { workspace: ws.header } : {}),
       },
@@ -1485,7 +1512,7 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
       // A lean row is the test at its first call toward the subject, as an impact row is; a call is depth=1, a transitive call deeper (FR097, FR101).
       lean: (data) => (data.tests as Row[]).map((t) => t.evidence === 'import_only'
         ? leanRow(null, t.path, t.line, ['import_only', ...(t.basis === 'inferred' ? ['inferred'] : []), ...(t.repository ? [repoTag(t.repository)] : [])])
-        : leanRow(leanName(t), t.chain[0]!.path, t.chain[0]!.line, [`depth=${t.depth}`, ...(t.evidence === 'dispatch' || t.evidence === 'reference' ? [t.evidence] : []), ...(t.basis === 'inferred' ? ['inferred'] : []), ...(t.repository ? [repoTag(t.repository)] : [])])),
+        : leanRow(leanName(t), t.chain[0]!.path, t.chain[0]!.line, [`depth=${t.depth}`, ...(t.evidence === 'dispatch' || t.evidence === 'reference' ? [t.evidence] : []), ...(t.basis === 'inferred' ? ['inferred'] : []), ...(t.repository ? [repoTag(t.repository)] : []), ...(t.findings ? [`findings=${t.findings}`] : [])])),
     }
   },
 

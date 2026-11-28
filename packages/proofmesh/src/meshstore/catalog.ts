@@ -8,6 +8,7 @@ import { hardenDatabase } from '../core/busy.js'
 import { liveLocks, lockHolder, ownerOf } from './index-lock.js'
 import { schemasDir } from '../core/paths.js'
 import { readSql } from '../core/schemas.js'
+import type { Finding, Unattached } from '../sarif/read.js'
 
 export type RepositoryRow = { id: string; root: string; name: string; created_at: string }
 export type SnapshotRow = {
@@ -25,6 +26,8 @@ export const CATALOG_VERSION = CATALOG_MIGRATIONS[CATALOG_MIGRATIONS.length - 1]
 /** How an index came to be when Proofmesh ran the indexer itself (A38): what ran, under which grant, and how isolated. */
 export type ScipRun = { indexer: string; version: string; digest: string; grant_id: string; isolation: 'container' | 'process'; module_cache: string }
 export type ScipIndexRecord = { name: string; path: string; sha256: string; tool: string; files: Record<string, { hash: string; language: string }>; added_by: string; added_at: string; run: ScipRun | null }
+/** A SARIF file a person imported (#30): its findings and the results left unattached, and the hash of each file a finding is in, as the tree stood then. */
+export type SarifImportRecord = { name: string; path: string; sha256: string; tools: string[]; findings: Finding[]; unattached: Unattached[]; files: Record<string, string>; added_by: string; added_at: string }
 export type LinkFileRecord = { id: string; workspace: string; digest: string; members: Array<{ repository_id: string; snapshot_id: string }>; sealed_at: string }
 export type Observation = { source: string; window_from: string; window_to: string; subject_kind: 'endpoint' | 'table' | 'channel'; subject_name: string; metric: string; value: number; imported_by: string; imported_at: string }
 export type PropertyRead = { source: string; window_from: string; window_to: string; endpoint: string; entity: string; property: string; reads: number; read_kind: 'orm' | 'application'; declaring_type: string | null; calls: number | null; callers: string | null; imported_by: string; imported_at: string }
@@ -515,6 +518,24 @@ export class Catalog {
   scipIndexes(repositoryId: string): ScipIndexRecord[] {
     return (this.db.prepare('select * from scip_index where repository_id = ? order by name').all(repositoryId) as Array<Record<string, string>>).map((r) => ({
       name: r.name!, path: r.path!, sha256: r.sha256!, tool: r.tool!, files: JSON.parse(r.files!), added_by: r.added_by!, added_at: r.added_at!, run: r.run ? JSON.parse(r.run) : null,
+    }))
+  }
+
+  /** Importing a SARIF file for a repository; only the CLI calls this, for a person. Importing one of the same name again replaces it. */
+  addSarif(repositoryId: string, s: Omit<SarifImportRecord, 'added_by' | 'added_at'>, addedBy: string): SarifImportRecord {
+    this.db.prepare(`insert into sarif_import (repository_id, name, path, sha256, tools, findings, unattached, files, added_by, added_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      on conflict(repository_id, name) do update set path = excluded.path, sha256 = excluded.sha256, tools = excluded.tools, findings = excluded.findings, unattached = excluded.unattached, files = excluded.files, added_by = excluded.added_by, added_at = excluded.added_at`)
+      .run(repositoryId, s.name, s.path, s.sha256, JSON.stringify(s.tools), JSON.stringify(s.findings), JSON.stringify(s.unattached), JSON.stringify(s.files), addedBy, now())
+    return this.sarifImports(repositoryId).find((x) => x.name === s.name)!
+  }
+
+  removeSarif(repositoryId: string, name: string): number {
+    return this.db.prepare('delete from sarif_import where repository_id = ? and name = ?').run(repositoryId, name).changes
+  }
+
+  sarifImports(repositoryId: string): SarifImportRecord[] {
+    return (this.db.prepare('select * from sarif_import where repository_id = ? order by name').all(repositoryId) as Array<Record<string, string>>).map((r) => ({
+      name: r.name!, path: r.path!, sha256: r.sha256!, tools: JSON.parse(r.tools!), findings: JSON.parse(r.findings!), unattached: JSON.parse(r.unattached!), files: JSON.parse(r.files!), added_by: r.added_by!, added_at: r.added_at!,
     }))
   }
 
