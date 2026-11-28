@@ -246,6 +246,10 @@
       "apps/observatory/test/exporting.test.ts",
       "e2e/export.spec.ts"
     ],
+    "FR1580": [
+      "apps/observatory/test/exporting.test.ts",
+      "e2e/export.spec.ts"
+    ],
     "FR052": [
       "apps/observatory/test/exporting.test.ts",
       "e2e/export.spec.ts",

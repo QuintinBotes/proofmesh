@@ -960,6 +960,7 @@ From #39: a fresh clone starts from the snapshot a teammate or CI built for the 
 - FR062: SHOULD replay a recorded agent session's queries against its claims' declared scope (P2).
 - FR063: SHOULD compare two snapshots visually (P2).
 - FR064: MUST label every exported image or HTML page with snapshot, scope, limits, analysis mode, and legend; source-containing exports require consent (FR052).
+- FR1580: MUST draw the Terrain's exported image and page from the snapshot's layout (FR1220, FR1401): each area's cells nested by depth with their coverage (FR1405), the bundles drawn on screen, each symbol, or while searching each match, as a point at its place in the layout's square frame with y downward as on screen, the overview's labels, and the areas with no symbols as ghost cells in the row below, so two exports of one snapshot are byte-identical and show the map a person sees; the export keeps its caveats and its accessible title (#218).
 - FR065: MUST treat repository content as untrusted in the browser: text-only rendering, strict Content Security Policy, no remote assets, visible escaping of bidirectional and invisible characters.
 - FR066: MUST authenticate the browser session to the local installation and reject cross-origin and DNS-rebinding requests.
 - FR067: MUST offer a non-visual equivalent for every view and honor reduced-motion, color-scheme, and contrast preferences.

@@ -4,6 +4,8 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 ## Unreleased
 
+The Terrain's Export image and Export page draw the Terrain as it is shown, not a grid of areas: each area's cells at their places in the snapshot's layout with their hatching and ghost cells, the bundles drawn on screen, every symbol (while searching, every match) as a point at its place, the overview's labels, and the areas with no symbols as ghost cells in the row below. Two exports of one snapshot are the same bytes, and the limit no longer says symbols are summarised by area (#218; FR1580).
+
 Findings of data-flow and other analysers, imported as SARIF and shown on symbols (#30; FR1900 to FR1905). Owner decision: option A, no native data-flow analysis:
 
 - `proofmesh sarif add <repository> <file.sarif> [--name N]` imports the results CodeQL, Opengrep or another analyser wrote as SARIF 2.1.0, with `sarif list` and `sarif remove`. Proofmesh runs no analyser. Results are deduplicated by tool, rule and location. A result outside the repository or in a file the snapshot does not index is listed with its reason and not attached.
