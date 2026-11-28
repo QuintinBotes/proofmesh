@@ -4,7 +4,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js'
 import { asProofmeshError, ProofmeshError } from '../core/errors.js'
-import { randomToken } from '../core/hash.js'
+import { queryId, randomToken } from '../core/hash.js'
 import { log } from '../core/log.js'
 import { loadSchema } from '../core/schemas.js'
 import { LEAN, PROFILE, runTool, TOOLS, type ToolName } from '../query/tools.js'
@@ -52,11 +52,12 @@ function listing(name: ToolName, full: boolean) {
 }
 
 /** One tool surface for every transport, so stdio and HTTP clients see the same tools and envelopes. */
-function createServer(dataDir: string, version: string, profiles: string[]): Server {
+function createServer(dataDir: string, version: string, profiles: string[], sessionId: string): Server {
   const full = profiles.includes('all'), loaded = (name: ToolName) => full || profiles.includes(PROFILE[name])
   const server = new Server({ name: 'proofmesh', version }, { capabilities: { tools: {} }, instructions: INSTRUCTIONS })
   // One connection, one agent context: the snapshot-wide parts of an envelope are sent once per snapshot, then left out.
-  const session = { fullSent: new Set<string>() }
+  // Its id groups the subjects of its queries, where a person turned recording on (#50).
+  const session = { fullSent: new Set<string>(), id: sessionId }
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
     tools: TOOLS.filter(loaded).map((name) => listing(name, full)),
   }))
@@ -80,9 +81,12 @@ function createServer(dataDir: string, version: string, profiles: string[]): Ser
   return server
 }
 
+/** The session id an MCP server holds for as long as it runs: one stdio connection, or one HTTP server and its token. */
+const mcpSessionId = () => `mcp_${queryId().slice(2)}`
+
 /** MCP over stdio. stdout carries protocol frames only; logs go to stderr. */
 export async function serveStdio(dataDir: string, version: string, profiles = ['core']): Promise<void> {
-  await createServer(dataDir, version, profiles).connect(new StdioServerTransport())
+  await createServer(dataDir, version, profiles, mcpSessionId()).connect(new StdioServerTransport())
   log('info', 'mcp server ready', { dataDir })
 }
 
@@ -91,7 +95,8 @@ export async function serveStdio(dataDir: string, version: string, profiles = ['
  * Origin must be this server's, so a web page cannot reach it through DNS rebinding. Stateless: a fresh transport per request.
  */
 export async function serveHttp(dataDir: string, version: string, port: number, profiles = ['core']): Promise<{ url: string; token: string; close: () => Promise<void> }> {
-  const token = randomToken()
+  // Stateless HTTP opens a server per request; the process is the session, as one bearer token is one client.
+  const token = randomToken(), sessionId = mcpSessionId()
   let actual = port
   const httpServer = http.createServer(async (req, res) => {
     const deny = (status: number, message: string) => { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: { message } })) }
@@ -99,7 +104,7 @@ export async function serveHttp(dataDir: string, version: string, port: number, 
     if (req.headers.authorization !== `Bearer ${token}`) return deny(401, 'missing or wrong bearer token')
     const hosts = [`127.0.0.1:${actual}`, `localhost:${actual}`]
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true, enableDnsRebindingProtection: true, allowedHosts: hosts, allowedOrigins: hosts.map((h) => `http://${h}`) })
-    const server = createServer(dataDir, version, profiles)
+    const server = createServer(dataDir, version, profiles, sessionId)
     res.on('close', () => { transport.close(); server.close() })
     try {
       await server.connect(transport)
