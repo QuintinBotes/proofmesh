@@ -496,6 +496,9 @@
       "packages/proofmesh/test/observatory-parity.test.ts",
       "apps/observatory/test/api.test.ts"
     ],
+    "FR1740": [
+      "packages/proofmesh/test/catalog-tools.test.ts"
+    ],
     "FR057": [
       "apps/observatory/test/encoding.test.ts",
       "e2e/legend.spec.ts"

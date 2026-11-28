@@ -22,6 +22,7 @@
           "published_at",
           "analysis_mode",
           "current",
+          "matches_head",
           "git",
           "symbols",
           "relationships",
@@ -42,6 +43,13 @@
           },
           "current": {
             "type": "boolean"
+          },
+          "matches_head": {
+            "description": "Whether the snapshot's commit is the commit the repository root's HEAD names now: false when it is another commit, null when either commit is unknown (no git, or the root is missing). Uncommitted changes are not compared.",
+            "type": [
+              "boolean",
+              "null"
+            ]
           },
           "git": {
             "description": "The git facts recorded with the snapshot, or null.",

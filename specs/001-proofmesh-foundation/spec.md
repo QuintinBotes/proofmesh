@@ -1000,6 +1000,7 @@ From #39: a fresh clone starts from the snapshot a teammate or CI built for the 
 ### Observatory
 
 - FR055: MUST provide Observatory, a local web interface served by the Proofmesh process on its loopback endpoint, built only on the capabilities available to other clients.
+- FR1740: MUST give every `list_snapshots` row `matches_head`: true when the snapshot's commit is the commit the repository root's HEAD names when the tool answers, false when it is another commit, and null when either commit is unknown (no git, or the root is missing), so a caller picks the snapshot of the code in front of it without running git; uncommitted changes are not compared (#234).
 - FR056: MUST render a whole-snapshot overview with hierarchical aggregation (repository, package or directory, file, symbol) whose aggregates show contained counts and coverage.
 - FR057: MUST render neighborhoods and traced paths with encodings that distinguish origin, resolution status, and analysis mode without relying on color alone.
 - FR058: MUST draw truncation, budget limits, timeouts, and unresolved boundaries in every view; no setting hides them.

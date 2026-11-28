@@ -3671,6 +3671,10 @@ published_at: (string | null)
 analysis_mode: string
 current: boolean
 /**
+ * Whether the snapshot's commit is the commit the repository root's HEAD names now: false when it is another commit, null when either commit is unknown (no git, or the root is missing). Uncommitted changes are not compared.
+ */
+matches_head: (boolean | null)
+/**
  * The git facts recorded with the snapshot, or null.
  */
 git: (null | {
@@ -3692,7 +3696,7 @@ unresolved: (number | null)
 }
 
 /**
- * The published snapshots of a repository, newest first, each with its analysis mode, publication time, git commit and ref, and which one is current: the snapshots a query can pin with snapshot_id. Answers from the catalog.
+ * The published snapshots of a repository, newest first, each with its analysis mode, publication time, git commit and ref, which one is current, and whether it is of the commit the root has checked out (matches_head): the snapshots a query can pin with snapshot_id. Answers from the catalog.
  */
 export interface ListSnapshotsInput {
 /**
