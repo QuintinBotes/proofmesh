@@ -254,8 +254,8 @@ export function queryGraphQuery(q) {
     case 'dead_code': return ["MATCH (f:function) WHERE f.path STARTS WITH $scope AND f.qualified_name ENDS WITH ':' + f.name AND NOT EXISTS { (x)-->(f) WHERE x <> f } RETURN f", scope]
     case 'cycles': return ['MATCH (a:file)-[:imports*1..12]->(a) WHERE a.path STARTS WITH $scope RETURN a', scope]
     case 'roots': return ["MATCH (f:file) WHERE f.path STARTS WITH $scope AND f.disposition = 'indexed' AND NOT EXISTS { (g:file)-[:imports]->(f) WHERE g.path STARTS WITH $scope } RETURN f", scope]
-    // Distinct users by calls and references, as the truth counts them. Every use is held before count, so max_rows bounds what it ranks.
-    case 'hubs': return [`MATCH (u)-[:calls|references]->(s) WHERE u <> s WITH s, count(DISTINCT u) AS users RETURN s, users ORDER BY users DESC, s LIMIT ${q.top}`, {}]
+    // The compiler ranks repository symbols. Files, module aliases and externals have no symbol key.
+    case 'hubs': return [`MATCH (u)-[:calls|references]->(s) WHERE u <> s AND s.key IS NOT NULL WITH s, count(DISTINCT u) AS users RETURN s, users ORDER BY users DESC, s LIMIT ${q.top}`, {}]
   }
 }
 export function queryGraphAdapter(pm, { callKeys }, raw, runs = 1) {

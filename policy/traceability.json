@@ -2612,6 +2612,9 @@
     "FR3000": [
       "packages/proofmesh/test/producer.test.ts"
     ],
+    "FR3006": [
+      "packages/proofmesh/test/graph-query.test.ts"
+    ],
     "FR3005": [
       "packages/proofmesh/test/agent-parity.test.ts"
     ],

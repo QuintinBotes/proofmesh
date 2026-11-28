@@ -2,7 +2,9 @@
 import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
-import { beforeAll, describe, expect, it } from 'vitest'
+import { beforeAll, describe, expect, it, vi } from 'vitest'
+import Database from 'better-sqlite3'
+import { parseGraphQuery, runGraphQuery } from '../src/query/graph-query.js'
 import type { ProofmeshError } from '../src/core/errors.js'
 import { indexRepository } from '../src/indexer/coordinator.js'
 import { Registry } from '../src/indexer/languages.js'
@@ -294,6 +296,75 @@ describe('FR963 scenario 5: a query that would pass the row, time or byte limit 
     const text = lean('query_graph', { query: 'MATCH (a) RETURN a', limits: { max_bytes: 700 } })
     expect(Buffer.byteLength(text)).toBeLessThanOrEqual(700)
     expect(runTool(d, 'query_graph', { query: 'MATCH (a) RETURN a', envelope: 'lean', limits: { max_bytes: 700 } }).completion.stop_reasons).toEqual(['max_bytes'])
+  })
+})
+
+describe('FR3006 whole-snapshot distinct users', () => {
+  const ranking = (internal: boolean) => `MATCH (u)-[:calls|references]->(s) WHERE u <> s ${internal ? 'AND s.key IS NOT NULL' : ''}
+    WITH s, count(DISTINCT u) AS users RETURN s, users ORDER BY users DESC, s LIMIT $k`
+
+  it('matches a full grouping with a late winner, duplicate sites, file aliases, externals and ties', () => {
+    const db = new Database(':memory:')
+    try {
+      db.exec(fs.readFileSync(path.join(ROOT, 'schemas/snapshot-format/0.13.sql'), 'utf8'))
+      db.exec(`insert into file(id,path,size,disposition,capabilities) values ('file_a','a.ts',0,'pending','[]');
+        insert into evidence values ('ev','file_a','hash',0,1,1,1,'declaration','test','1','no_execution');
+        insert into external_symbol values ('ext_a','lib','external')`)
+      const symbol = db.prepare(`insert into symbol(id,file_id,kind,name,qualified_name,start_byte,end_byte,start_line,end_line,stable_key,evidence_id)
+        values (@id,'file_a',@kind,@id,@id,0,1,@line,@line,@id,'ev')`)
+      const assertion = db.prepare(`insert into assertion(id,type,origin,resolution,source_kind,source_id,target_kind,target_id,adapter,adapter_version,analysis_mode)
+        values (@id,@type,@origin,@resolution,@srcKind,@src,@dstKind,@dst,'test','1','no_execution')`)
+      let serial = 0
+      const add = (src: string, dst: string, type = 'calls', origin = 'syntax') => assertion.run({
+        id: String(++serial), src, dst, type, origin, resolution: dst.startsWith('ext_') ? 'resolved_external' : 'resolved',
+        srcKind: src.startsWith('file_') ? 'file' : 'symbol', dstKind: dst.startsWith('ext_') ? 'external' : dst.startsWith('file_') ? 'file' : 'symbol',
+      })
+      for (let i = 0; i < 12; i++) symbol.run({ id: 'hub' + i, kind: 'function', line: i + 1 })
+      symbol.run({ id: 'mod', kind: 'module', line: 1 })
+      for (let i = 0; i < 1500; i++) {
+        const src = 'user' + i
+        symbol.run({ id: src, kind: 'function', line: 20 + i })
+        add(src, 'hub' + (i % 11))
+        add(src, 'hub11')
+        add(src, 'hub11', 'references')
+        add(src, 'ext_a')
+        add(src, 'mod')
+        add(src, 'file_a')
+      }
+      add('hub11', 'hub11', 'references', 'contract_match')
+      add('mod', 'hub11')
+      add('file_a', 'hub11', 'references', 'contract_match')
+      add('mod', 'file_a')
+      add('hub1', 'hub2', 'imports')
+      // Independent, unbounded SQL oracle for all internal groups, including the equal-count cutoff.
+      const expected = db.prepare(`select d.id, count(distinct case when s.kind = 'module' then s.file_id else a.source_id end) as n
+        from assertion a join symbol d on d.id = a.target_id left join symbol s on s.id = a.source_id
+        where d.kind <> 'module' and a.source_id <> d.id and a.type in ('calls','references')
+        group by d.id order by n desc, d.start_line limit 10`).all() as { id: string; n: number }[]
+      const run = (internal: boolean, k: number, maxRows: number, deadline = Date.now() + 10000) =>
+        runGraphQuery(db, parseGraphQuery(ranking(internal), { k }, 1), { maxRows, deadline })
+      const internal = run(true, 10, 10)
+      const pairs = (answer: typeof internal) => answer.rows.map(({ values }) => [((values[0]) as { id: string }).id, values[1]])
+      expect(internal.stop).toBeNull()
+      expect(pairs(internal)).toEqual(expected.map(({ id, n }) => [id, n]))
+      expect(internal.rows[0]).toMatchObject({ values: [{ id: 'hub11' }, 1501], inferred: true })
+      expect(internal.evidence).toEqual(['ev'])
+      const all = run(false, 10, 3)
+      expect(pairs(all)).toEqual([['hub11', 1501], ['ext_a', 1500], ['file_a', 1500]])
+      expect(all).toMatchObject({ stop: 'max_rows', aggregateCut: false })
+      let ticks = 0
+      const clock = vi.spyOn(Date, 'now').mockImplementation(() => ++ticks)
+      try {
+        expect(run(true, 10, 10, 500)).toMatchObject({ rows: [], stop: 'timeout', aggregateCut: false })
+      } finally { clock.mockRestore() }
+    } finally { db.close() }
+  })
+
+  it('uses the existing byte budget for ranked rows', () => {
+    const args = { query: ranking(true), params: { k: 10 }, envelope: 'lean', limits: { max_bytes: 450 } }
+    const env = runTool(d, 'query_graph', args)
+    expect(Buffer.byteLength(env.text!)).toBeLessThanOrEqual(450)
+    expect(env.completion.stop_reasons).toContain('max_bytes')
   })
 })
 

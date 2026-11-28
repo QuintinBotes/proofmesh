@@ -301,3 +301,34 @@ Bold cells differ by more than one point; the scorer was not changed to close th
 ## Gortex, GitNexus and Codebase-Memory
 
 Run `node bench/parity/agents/run.mjs` to measure Gortex, GitNexus and Codebase-Memory on all thirteen questions above. It builds the pinned fixture if needed and prints the report path. The new measurements include source audits, independently verified path hops, every missing and extra item, hub counts, per-question latency and complete retrieval bytes and tokens. [Method and tool versions](agents/README.md) · [Measured results](agents/measured.md)
+
+### Whole-snapshot Q13
+
+On TypeORM `3d55188c0dd1256f520143379ecf97f45e71acba`, the composed query examined the full population of 26,280 resolved call/reference assertions targeting internal symbols. With `max_rows=10`, all ten returned identities, counts and positions matched an independent SQL grouping of the sealed snapshot. The earlier Q13 result above used the generic 1,000-input cap.
+
+| Snapshot rank | Symbol | Snapshot distinct users | Compiler distinct users |
+| ---: | --- | ---: | ---: |
+| 1 | Table | 579 | 579 |
+| 2 | TypeORMError | 386 | 450 |
+| 3 | ObjectLiteral | 321 | 373 |
+| 4 | InstanceChecker | 244 | 244 |
+| 5 | Query | 235 | 236 |
+| 6 | Document | 200 | 140 |
+| 7 | TableColumn | 183 | 184 |
+| 8 | QueryBuilder.expressionMap | 158 | 158 |
+| 9 | BaseQueryRunner.connection | 158 | 158 |
+| 10 | BaseQueryRunner.executeQueries | 155 | 155 |
+
+Nine symbols appeared in both top tens. The compiler ranked ColumnMetadata seventh with 159 users. It had 144 in the snapshot. Five consecutive full-envelope MCP calls took 170, 118, 118, 117 and 118 ms (median 118 ms). The server process peaked at 130.4 MiB RSS across all five calls, including startup and SQLite. Measurements used an Apple M5 Max, arm64 macOS and Node 26.13.1, with a 30-second query timeout.
+
+To reproduce from the repository root after `pnpm build`, use an isolated data directory and the pinned parity fixture. The harness checks the ordered result against SQL and scores membership against the compiler independently.
+
+```sh
+fixture=$(sh bench/parity/fixture.sh)
+measure=$(mktemp -d)
+node packages/proofmesh/bin/proofmesh.mjs --data-dir "$measure/data" init
+node packages/proofmesh/bin/proofmesh.mjs --data-dir "$measure/data" repo add "$fixture"
+node packages/proofmesh/bin/proofmesh.mjs --data-dir "$measure/data" index "$fixture"
+node bench/graph-bench/truth.mjs "$fixture" "$measure/truth.json"
+node bench/parity/hubs.mjs "$fixture" "$measure/data" "$measure/truth.json"
+```
