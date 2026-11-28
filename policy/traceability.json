@@ -246,6 +246,10 @@
       "apps/observatory/test/exporting.test.ts",
       "e2e/export.spec.ts"
     ],
+    "FR1580": [
+      "apps/observatory/test/exporting.test.ts",
+      "e2e/export.spec.ts"
+    ],
     "FR052": [
       "apps/observatory/test/exporting.test.ts",
       "e2e/export.spec.ts",
@@ -1545,6 +1549,9 @@
     "FR392": [
       "packages/proofmesh/test/property-reads.static.test.ts"
     ],
+    "FR1700": [
+      "packages/proofmesh/test/property-reads.static.test.ts"
+    ],
     "FR420": [
       "packages/proofmesh/test/tool-profiles.test.ts"
     ],
@@ -2030,6 +2037,9 @@
     "FR1021": [
       "packages/proofmesh/test/typescript-property-references.test.ts"
     ],
+    "FR1860": [
+      "packages/proofmesh/test/typescript-property-references.test.ts"
+    ],
     "FR1060": [
       "packages/proofmesh/test/search-structure.test.ts"
     ],
@@ -2054,6 +2064,9 @@
     ],
     "FR1067": [
       "packages/proofmesh/test/search-structure.test.ts"
+    ],
+    "FR1880": [
+      "bench/structure/run.mjs"
     ],
     "FR1140": [
       "e2e/palette.spec.ts",
@@ -2150,6 +2163,9 @@
       "packages/proofmesh/test/fast-rebuild.test.ts"
     ],
     "FR1126": [
+      "packages/proofmesh/test/fast-rebuild.test.ts"
+    ],
+    "FR1680": [
       "packages/proofmesh/test/fast-rebuild.test.ts"
     ],
     "FR1180": [
@@ -2310,6 +2326,48 @@
     ],
     "FR966": [
       "packages/proofmesh/test/parity-bench.test.ts"
+    ],
+    "FR1760": [
+      "packages/proofmesh/test/observatory-parity.test.ts",
+      "e2e/time.spec.ts"
+    ],
+    "FR1761": [
+      "apps/observatory/test/time.test.ts",
+      "e2e/time.spec.ts",
+      "e2e/replay.spec.ts"
+    ],
+    "FR1762": [
+      "apps/observatory/test/time.test.ts",
+      "e2e/time.spec.ts"
+    ],
+    "FR1763": [
+      "e2e/time.spec.ts",
+      "packages/proofmesh/test/observatory-bench.test.ts"
+    ],
+    "FR1764": [
+      "e2e/time.spec.ts"
+    ],
+    "FR1765": [
+      "apps/observatory/test/time.test.ts",
+      "e2e/time.spec.ts"
+    ],
+    "FR1900": [
+      "packages/proofmesh/test/sarif.test.ts"
+    ],
+    "FR1901": [
+      "packages/proofmesh/test/sarif.test.ts"
+    ],
+    "FR1902": [
+      "packages/proofmesh/test/sarif.test.ts"
+    ],
+    "FR1903": [
+      "packages/proofmesh/test/sarif.test.ts"
+    ],
+    "FR1904": [
+      "packages/proofmesh/test/sarif.test.ts"
+    ],
+    "FR1905": [
+      "packages/proofmesh/test/sarif.test.ts"
     ]
   },
   "manual": {

@@ -126,10 +126,19 @@ describe('#31 the core and the seal', () => {
     const piece = fc.constantFrom('a', 'b', 'ab', '.', ' ', '\n', '$', '_', '1', 'é', '\u{1D400}', '\uD835', '\uDC00', '(', '名', '\t', '٣', '*')
     const text = fc.array(piece, { maxLength: 16 }).map((p) => p.join(''))
     const name = fc.array(piece, { minLength: 1, maxLength: 3 }).map((p) => p.join(''))
+    // FR1680: the scan alone first, so a regular expression per name it built is compiled here and not cached by the oracle's.
+    const cpu = () => { const c = process.cpuUsage(); return c.user + c.system }
+    const pairs = fc.sample(fc.tuple(text, name), 20000)
+    let start = cpu()
+    for (const [t, n] of pairs) { normaliseDeclaration(t, n, 'module'); normaliseDeclaration(t, n, 'method') }
+    const scan = cpu() - start
+    start = cpu()
     fc.assert(fc.property(text, name, (t, n) => {
       // A module's text is normalised alike but keeps every name.
       const kept = normaliseDeclaration(t, n, 'module')
       expect(normaliseDeclaration(t, n, 'method')).toBe(kept === null || kept.trim() === n ? null : byExpression(kept, n))
     }), { numRuns: 20000 })
-  })
+    const oracle = cpu() - start
+    expect(scan, `the scan took ${scan / 1000} ms of CPU, the expression per name ${oracle / 1000} ms`).toBeLessThan(oracle / 10)
+  }, 300000)
 })

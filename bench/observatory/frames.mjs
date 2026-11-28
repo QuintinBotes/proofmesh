@@ -16,6 +16,7 @@ import { chromium } from '@playwright/test'
 import { generateGalaxy } from './gen-galaxy.mjs'
 import { checkBudgets, isSoftwareRenderer, mainThread, markdown, pct, summarize, summarizeRuns } from './lib.mjs'
 import { displacement } from './stability.mjs'
+import { SNAPSHOT_B, writeSnapshotB } from './snapshot-b.mjs'
 
 const HERE = import.meta.dirname, ROOT = path.resolve(HERE, '../..')
 const CLI = path.join(ROOT, 'packages', 'proofmesh', 'bin', 'proofmesh.mjs')
@@ -360,20 +361,33 @@ const runs = []
 for (let i = 0; i <= RUNS; i++) runs.push(await coldRun(i, { keepFor: i === RUNS && fix && fixtureName !== 'synthetic' ? 'stability' : undefined }))
 const measured = runs.slice(1)
 
-// Stability: the same snapshot in two fresh profiles, then snapshot A followed by B (A plus a commit touching four files) in one profile.
+// Stability: the same snapshot in two fresh profiles, then snapshot A followed by B (A plus the commit snapshot-b.mjs writes) in one profile.
+let timeStep = null
 const stability = { same_snapshot: displacement(measured.length > 1 ? measured[0].layout : runs[0].layout, measured.at(-1).layout) }
 const last = runs.at(-1)
 if (last.keep) {
-  const files = git(fix, 'ls-files', '--', '*.ts').split('\n').filter((f) => f.startsWith('src/')).sort().slice(0, 4)
-  files.forEach((f, k) => fs.appendFileSync(path.join(fix, f), `\nexport function observatoryBenchStability${k}(): number { return ${k} }\n`))
-  git(fix, 'commit', '-q', '-am', 'observatory benchmark: snapshot B')
+  writeSnapshotB(fix)
+  git(fix, 'add', '-A')
+  git(fix, 'commit', '-q', '-m', 'observatory benchmark: snapshot B')
+  const files = git(fix, 'show', '--name-only', '--format=', 'HEAD').trim().split('\n')
   log('stability: indexing snapshot B')
   pm(dataDir, 'index', fix)
   const page = last.keep.page
   await page.goto(last.galaxyUrl)
   await page.waitForFunction(() => window.__obs?.marks.settled, null, { timeout: 900000, polling: 100 })
   const b = await shownLayout(page, last.layout.key)
-  stability.a_to_b = { ...displacement(last.layout, b), files }
+  stability.a_to_b = { ...displacement(last.layout, b), files, added: SNAPSHOT_B.added, removed: SNAPSHOT_B.removed, changed: SNAPSHOT_B.changed }
+  // Time (#48 SC-002): from B, step to A and back once, so both are loaded and compared; then time ] from A to B drawn with its marks.
+  const step = (key, id) => page.evaluate(({ key, id }) => new Promise((resolve) => {
+    const t0 = performance.now()
+    window.dispatchEvent(new KeyboardEvent('keydown', { key }))
+    const done = () => document.querySelector(`.terrain[data-ready][data-snapshot="${id}"]`) && (key === '[' || document.querySelector('.terrain .time-mark'))
+    const poll = () => (done() ? requestAnimationFrame(() => resolve(Math.round(performance.now() - t0))) : requestAnimationFrame(poll))
+    poll()
+  }), { key, id })
+  await step('[', last.layout.key); await step(']', b.key); await step('[', last.layout.key)
+  timeStep = await step(']', b.key)
+  log(`time: ] from A to B, loaded, ${timeStep} ms`)
   await last.keep.close()
 } else stability.a_to_b = { reason: fixtureName === 'synthetic' ? 'a synthetic galaxy has no commit to change' : 'needs a fixture (--fixture typeorm)' }
 
@@ -392,7 +406,7 @@ const result = {
   browser: { name: 'Chromium', version: runs[0].browserVersion, build: browserBuild, headless },
   viewport: { ...VIEWPORT, device_scale_factor: 1 }, webgl_renderer: runs[0].renderer, software_renderer: isSoftwareRenderer(runs[0].renderer),
   galaxy: runs[0].summary, query, evidence_symbol: runs[0].symbol, runs: RUNS, ...(INJECT ? { injected_task_ms: INJECT } : {}),
-  cold, warm, first_run: { ...runs[0].run, ...Object.fromEntries(Object.entries(runs[0].warm).map(([k, v]) => [`warm_${k}`, v])) },
+  cold, warm: { ...warm, ...(timeStep != null ? { time_step_ms: summarize([timeStep]) } : {}) }, first_run: { ...runs[0].run, ...Object.fromEntries(Object.entries(runs[0].warm).map(([k, v]) => [`warm_${k}`, v])) },
   bytes: measured[0].bytes, bytes_total: bytesTotal,
   calls: [...callTimes].map(([call, ms]) => ({ call, count: ms.length / measured.length, ms: summarize(ms) })).sort((a, b) => (a.call < b.call ? -1 : 1)),
   stability, agreement: measured.length > 1 ? { ok: !outliers.length, outliers } : null,

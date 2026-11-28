@@ -4,7 +4,35 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 ## Unreleased
 
-A Python file the Python adapter analysed reports `references: partial` even when it records no use, as it was read for them (#224; FR1640). A snapshot of Python alone now gives the partial references note instead of `References other than calls and imports are not analysed for this snapshot.`, and the language census counts those files as partial.
+The Observatory is sent compressed and cached, its payload parsed off the main thread, and the Terrain's first load kept within the main thread's budget (part of #47, closes #208; FR1450 to FR1455):
+
+- `proofmesh view` sends each asset Brotli- or gzip-compressed from copies the build writes beside it (`.br`, `.gz`), as `Accept-Encoding` allows. Hashed assets carry `Cache-Control: public, max-age=31536000, immutable` and the page `no-cache`; every API answer and refusal now carries `no-store`.
+- A snapshot's Galaxy payload has an address of its own, `GET /api/v1/galaxy/v5/<snapshot id>`, behind the session and cached `private, max-age=31536000, immutable`, so a reload takes it from the HTTP cache. A snapshot gc retired, or another format, is 404, and the page asks again for the current snapshot. `POST /api/v1/galaxy` is unchanged.
+- The Terrain view and the graph view of the other views are chunks of their own, loaded when first shown; the Terrain's comes while its data does.
+- The payload is parsed in a Web Worker that hands the page its typed arrays by transfer, then sends the names lowered for search. Without Web Workers it is parsed on the page in slices of at most 16 ms.
+- The Terrain's first load is cut into tasks: its renderer's shaders are compiled while the payload loads, the renderer is built on the area anchors and bundles, the points layer follows, then the cells in two batches. At 250,000 symbols the longest main-thread task of a cold load was 168 ms and is now 54 ms; `pnpm bench:observatory --fixture synthetic --nodes 250000 --check` exits 0 (#208).
+- The Terrain table's symbol matches and the Diff table are virtual: every row is reachable by scrolling, a few hundred are in the page, and the 200-row cut is gone. The caption keeps the full count.
+- Not done yet (#47): the Terrain's progressive loading by area (scenario 4); 150 KB of initial JavaScript (210 KB gzip, of which sigma is 107 KB; 183 KB transferred, within the 250 KB target); a payload within 1.0 MB and 5 MB gzip (SC-004, front-coded names); browser memory (SC-005).
+
+Time: scrub snapshots on the same map (part of #48; FR1760 to FR1765):
+
+- The header's snapshot picker is now Time, in the left panel: a scrubber and a strip of every published snapshot, newest first, each with its symbols and unresolved share, which `list_snapshots` now gives (`symbols`, `relationships`, `unresolved`). `[` and `]` step one snapshot, and every view is pinned to the snapshot shown.
+- A step draws its change on the Terrain, from `compare_snapshots` of the shown snapshot and the one just older. An added symbol is a dot, a removed one a ghost cross where it was, a changed declaration a ring, and a moved symbol slides in from where it was. Moved lines and changes through a member are listed, not ringed, and every change is listed in words.
+- Statuses, galaxies and comparisons are kept once loaded: on the TypeORM sample a step between two loaded snapshots takes 87 ms with no request. Reduced motion switches the marks without animation. `?snapshot=<id>` links to a pinned snapshot, and a link to a retired one offers the oldest listed instead.
+- The Observatory benchmark's snapshot B is now a realistic commit (`bench/observatory/snapshot-b.mjs`), and the benchmark budgets the share of shared symbols moving more than 2% of the width (1%) and the Time step (300 ms).
+
+The Terrain's Export image and Export page draw the Terrain as it is shown, not a grid of areas: each area's cells at their places in the snapshot's layout with their hatching and ghost cells, the bundles drawn on screen, every symbol (while searching, every match) as a point at its place, the overview's labels, and the areas with no symbols as ghost cells in the row below. Two exports of one snapshot are the same bytes, and the limit no longer says symbols are summarised by area (#218; FR1580).
+
+Findings of data-flow and other analysers, imported as SARIF and shown on symbols (#30; FR1900 to FR1905). Owner decision: option A, no native data-flow analysis:
+
+- `proofmesh sarif add <repository> <file.sarif> [--name N]` imports the results CodeQL, Opengrep or another analyser wrote as SARIF 2.1.0, with `sarif list` and `sarif remove`. Proofmesh runs no analyser. Results are deduplicated by tool, rule and location. A result outside the repository or in a file the snapshot does not index is listed with its reason and not attached.
+- New tool `get_findings` (profile `extra`) lists findings by symbol or path, each on the innermost symbol at its line with its tool, rule, level, message, `path:line`, rank and precision. A finding whose file changed since import is `sarif_stale:<name>` until a new file is imported.
+- `analyze_impact` and `find_tests` rows that hold findings carry `findings` (lean `findings=<n>`). Answers for a repository with no import are unchanged.
+- Upgrade note: catalog migration 0023 (`sarif_import`). Back up the data directory before upgrading.
+
+`search_structure`'s latency target is restated (closes #37; FR1880). SC-003 asked for a p95 per TypeScript pattern no slower than the ast-grep CLI. That CLI is native and spreads a search over every core; one Node process parsing with WebAssembly grammars on one thread cannot match it. `bench/structure` now checks each pattern's p95 CPU time on the parity fixture against a 2,000 ms budget (1,370 ms was the most measured) (`p95_cpu_budget_ms` in `patterns.json`). The time covers a whole MCP session: the server's startup, the call and the matcher. It still prints both tools' wall-clock and CPU times beside each other. CPU time, as for FR1620, because a busy machine stretched the same search from 0.4 s to 12 s of wall-clock time.
+
+A TypeScript property's declared type and decorators are used by its class again, not by the property (#182; FR1860). Since #196 made each property a symbol, a field typed `Document` counted as one user of `Document`, so an interface of twenty such fields was twenty users. Now the class or interface that declares the property is the user, as it was before the property was a symbol; a constructor parameter property's type is the class's, as any constructor parameter's; the property's initializer stays the property's, as a method's body is the method's; and its reads and writes are unchanged (FR1021). On the parity fixture `find_hubs` ranks 9 of the truth's top 10 hubs (Q13 90 / 90, was 80 / 80): `QueryBuilder.expressionMap` and `BaseQueryRunner.executeQueries` are in, `EntityMetadata` is out, and `Document` drops from 252 users to 200. Upgrade note: the TypeScript adapter is 0.2.7, so the next index of a TypeScript repository reanalyses every file once.
 
 The Terrain replaces the Galaxy and Map views: semantic zoom from areas to symbols, with bundles that open their evidence (part of #46; closes #42; FR1400 to FR1409):
 
@@ -16,15 +44,7 @@ The Terrain replaces the Galaxy and Map views: semantic zoom from areas to symbo
 - Observatory keeps one WebGL renderer, sigma (#42, option b): `@cosmos.gl/graph` and luma.gl are removed, 32 packages fewer in THIRD_PARTY_NOTICES.md, and the initial JavaScript is 213 KB gzipped (418 KB before).
 - The Galaxy payload is format 5 (`galaxy-v5`): two-directory areas, the layout's cells and the bundles. The Observatory benchmark writes synthetic galaxies in format 5 and times the Terrain switch (from Diff back to the Terrain) where it timed the Map switch. Playwright runs Chromium with the GPU, as the benchmark does.
 
-The Observatory is sent compressed and cached, its payload parsed off the main thread, and the Terrain's first load kept within the main thread's budget (part of #47, closes #208; FR1450 to FR1455):
-
-- `proofmesh view` sends each asset Brotli- or gzip-compressed from copies the build writes beside it (`.br`, `.gz`), as `Accept-Encoding` allows. Hashed assets carry `Cache-Control: public, max-age=31536000, immutable` and the page `no-cache`; every API answer and refusal now carries `no-store`.
-- A snapshot's Galaxy payload has an address of its own, `GET /api/v1/galaxy/v5/<snapshot id>`, behind the session and cached `private, max-age=31536000, immutable`, so a reload takes it from the HTTP cache. A snapshot gc retired, or another format, is 404, and the page asks again for the current snapshot. `POST /api/v1/galaxy` is unchanged.
-- The Terrain view and the graph view of the other views are chunks of their own, loaded when first shown; the Terrain's comes while its data does.
-- The payload is parsed in a Web Worker that hands the page its typed arrays by transfer, then sends the names lowered for search. Without Web Workers it is parsed on the page in slices of at most 16 ms.
-- The Terrain's first load is cut into tasks: its renderer's shaders are compiled while the payload loads, the renderer is built on the area anchors and bundles, the points layer follows, then the cells in two batches. At 250,000 symbols the longest main-thread task of a cold load was 168 ms and is now 54 ms; `pnpm bench:observatory --fixture synthetic --nodes 250000 --check` exits 0 (#208).
-- The Terrain table's symbol matches and the Diff table are virtual: every row is reachable by scrolling, a few hundred are in the page, and the 200-row cut is gone. The caption keeps the full count.
-- Not done yet (#47): the Terrain's progressive loading by area (scenario 4); 150 KB of initial JavaScript (210 KB gzip, of which sigma is 107 KB; 183 KB transferred, within the 250 KB target); a payload within 1.0 MB and 5 MB gzip (SC-004, front-coded names); browser memory (SC-005).
+A Python file the Python adapter analysed reports `references: partial` even when it records no use, as it was read for them (#224; FR1640). A snapshot of Python alone now gives the partial references note instead of `References other than calls and imports are not analysed for this snapshot.`, and the language census counts those files as partial.
 
 A bounded, read-only graph query for composed questions (#36; FR960 to FR966):
 

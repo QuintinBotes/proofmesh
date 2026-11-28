@@ -91,7 +91,7 @@ export async function fetchBundle(from: string, to: string, offset: number): Pro
   return body as Bundle
 }
 
-export type SnapshotInfo = { id: string; published_at: string | null; analysis_mode: string; current: boolean; git: { available: boolean; reason?: string } | null }
+export type SnapshotInfo = { id: string; published_at: string | null; analysis_mode: string; current: boolean; git: { available: boolean; reason?: string } | null; symbols: number | null; relationships: number | null; unresolved: number | null }
 
 /** The repository's published snapshots, newest first, for Replay and Diff. */
 export async function listSnapshots(): Promise<SnapshotInfo[]> {

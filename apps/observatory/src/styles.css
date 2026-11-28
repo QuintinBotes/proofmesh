@@ -113,6 +113,23 @@ body[data-motion=reduced] * { transition: none !important; animation: none !impo
 .terrain-label.area span + span { font-weight: 400; opacity: 0.85; }
 /* A symbol's name is centred under its point. */
 .terrain-label.symbol { color: #aab4c8; transform: translateX(-50%); }
+/* Time (FR1762): a shape per change, so colour is never the only cue (FR057). Reduced motion stops every animation (FR1764). */
+.time-mark { position: absolute; width: 10px; height: 10px; margin: -5px 0 0 -5px; border-radius: 50%; box-sizing: border-box; pointer-events: none; z-index: 2; }
+.time-mark.added { background: #6ee8a8; box-shadow: 0 0 0 1px #04060d; animation: time-in 0.5s ease-out; }
+.time-mark.changed { width: 16px; height: 16px; margin: -8px 0 0 -8px; border: 2px solid #f2b84a; }
+.time-mark.moved { background: #7fd4ff; border: 2px solid #04060d; animation: time-slide 0.7s ease-in-out; }
+.time-mark.removed { border-radius: 0; opacity: 0.6; animation: time-out 0.7s ease-out; }
+.time-mark.removed::before, .time-mark.removed::after { content: ''; position: absolute; left: -1px; top: 4px; width: 12px; height: 2px; background: #ff8a8a; transform: rotate(45deg); }
+.time-mark.removed::after { transform: rotate(-45deg); }
+@keyframes time-in { from { opacity: 0; transform: scale(0.3); } }
+@keyframes time-out { from { opacity: 1; } }
+@keyframes time-slide { from { translate: var(--dx, 0) var(--dy, 0); } }
+.time-strip { list-style: none; padding: 0; margin: 4px 0; display: grid; gap: 2px; max-height: 180px; overflow: auto; }
+.time-strip button { display: grid; width: 100%; background: none; border: 0; color: inherit; cursor: pointer; text-align: left; padding: 3px 4px; border-radius: 4px; font: inherit; font-size: 12px; }
+.time-strip button[aria-current] { background: rgba(127, 212, 255, 0.14); outline: 1px solid rgba(127, 212, 255, 0.5); }
+.time input[type=range] { width: 100%; }
+.time-key { display: grid; gap: 2px; font-size: 12px; }
+.time-key .time-mark { position: relative; display: inline-block; margin: 0 6px 0 0; vertical-align: middle; animation: none; }
 .legend-bundles { list-style: none; padding: 0; margin: 6px 0 8px; display: grid; gap: 2px; max-height: 260px; overflow: auto; }
 .legend-bundles button { display: grid; gap: 1px; width: 100%; background: none; border: 0; color: inherit; cursor: pointer; text-align: left; padding: 3px 4px; border-radius: 4px; font: inherit; font-size: 12px; }
 .legend-bundles button[aria-pressed="true"] { background: rgba(127, 212, 255, 0.14); }

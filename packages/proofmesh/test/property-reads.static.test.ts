@@ -25,7 +25,10 @@ describe('A9 static entity property reads per endpoint, compared with imported r
 
   it('compares static reads with the application reads an import observed', () => {
     execFileSync(process.execPath, [CLI, '--data-dir', dataDir, 'observe', 'import', repoId, path.join(ROOT, 'fixtures', 'cs-reads', 'property-reads.json')], { encoding: 'utf8' })
-    const data = tool(dataDir, 'get_property_reads', { endpoint: EXPECTED.endpoint }).data as Data
+    const r = tool(dataDir, 'get_property_reads', { endpoint: EXPECTED.endpoint })
+    const data = r.data as Data
+    // FR1700 an answer with observed reads keeps the window note and the read_kind note (#235).
+    expect(r.limitations.join(' ')).toMatch(/was not seen read in that window.*ORM reads are the properties/)
     const c = data.comparison!
     expect({ both: [...c.both].sort(byKey), static_only: [...c.static_only].sort(byKey), observed_only: [...c.observed_only].sort(byKey) }).toEqual(EXPECTED.comparison)
   })
@@ -57,6 +60,15 @@ describe('FR390 FR391 FR392 an empty get_property_reads answer says why it is em
     expect(data.static_bound!.not_visited).toBe(0)
     expect(data.reads).toEqual([])
     expect(r.limitations[0]).toMatch(/^No imported run observed property reads for GET api\/orders\/\{id\}\/summary/)
+  })
+
+  it('FR1700 with nothing imported, the first limitation is the only one about observed reads (#235)', () => {
+    for (const input of [{ endpoint: EXPECTED.endpoint }, { entity: 'Shop.Data.Order' }]) {
+      const notes = tool(dataDir, 'get_property_reads', { ...input, envelope: 'compact' }).limitations.join(' ')
+      expect(notes).toMatch(/^No imported run observed property reads/)
+      expect(notes).not.toMatch(/was not seen read in that window/)
+      expect(notes).not.toMatch(/read_kind/)
+    }
   })
 
   it('FR390 FR391 a traversal cut by max_depth keeps the reads found so far and counts the methods one hop past the cut', () => {

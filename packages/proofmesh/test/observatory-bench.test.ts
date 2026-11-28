@@ -22,6 +22,10 @@ function fixture(): string {
   write('src/pricing/tax.ts', 'export function tax(n: number): number { return n * 1.2 }\n')
   write('src/order/OrderService.ts', 'import { Order } from "./Order"\nexport class OrderService {\n  open(): number { return new Order().total() }\n  close(): number { return this.open() }\n}\n')
   write('src/index.ts', 'import { OrderService } from "./order/OrderService"\nexport function main(): number { return new OrderService().close() }\n')
+  // What snapshot B's commit edits (bench/observatory/snapshot-b.mjs), in small, so the stability step can write it here too.
+  write('src/query-builder/QueryBuilder.ts', 'export class QueryBuilder {\n    expressionMap = { parameters: {} as Record<string, unknown> }\n    protected createParameter(value: any): string {\n        return String(value)\n    }\n}\n')
+  write('src/util/StringUtils.ts', `export function camelCase(str: string): string {\n    return str\n}\n\n/**\n * Converts string into Title Case.\n */\nexport function titleCase(str: string): string {\n    return str.replace(\n        /\\w\\S*/g,\n        (txt) => txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase(),\n    )\n}\n\nexport function abbreviate(str: string): string {\n    return str.slice(0, 1)\n}\n`)
+  write('src/data-source/DataSource.ts', 'import { ObjectLiteral } from "../common/ObjectLiteral"\nexport class DataSource {\n    driver = { connect: async () => {} }\n    async initialize(): Promise<this> {\n        await this.driver.connect()\n        return this\n    }\n}\n')
   execFileSync('git', ['-C', dir, 'init', '-q'])
   execFileSync('git', ['-C', dir, 'add', '-A'])
   execFileSync('git', ['-C', dir, '-c', 'user.name=t', '-c', 'user.email=t@localhost', 'commit', '-q', '-m', 'fixture'])
@@ -65,9 +69,11 @@ describe('FR1160 to FR1169 the Observatory benchmark measures what a reader wait
     expect(res.bytes.some((b: { url: string }) => b.url === '/api/v1/galaxy/v5/:snapshot')).toBe(true)
     expect(JSON.stringify(res)).not.toMatch(/#t=|pm_session/)
     expect(res.calls.map((c: { call: string }) => c.call)).toEqual(expect.arrayContaining(['/api/v1/galaxy/v5/:snapshot', '/api/v1/galaxy/symbol']))
-    // FR1163: same snapshot in two fresh profiles, and A followed by B, a commit touching four files.
+    // FR1163: same snapshot in two fresh profiles, and A followed by B, snapshot-b.mjs's commit touching four files (one of them new).
     for (const s of [res.stability.same_snapshot, res.stability.a_to_b]) expect(s).toMatchObject({ shared: expect.any(Number), median: expect.any(Number), p90: expect.any(Number), max: expect.any(Number), moved_2pct: expect.any(Number), moved_5pct: expect.any(Number) })
     expect(res.stability.a_to_b.files).toHaveLength(4)
+    // FR1763: from A, ] to B once both are loaded, timed in the page.
+    expect(res.warm.time_step_ms).toMatchObject({ median: expect.any(Number) })
     // FR1166: one first run apart, the medians over the measured cold runs, each in a fresh profile, and the spread across them.
     expect(res.runs).toBe(1)
     expect(md).toMatch(/^\| Measure \| Median \| Spread \| First run \| Budget \| Target \| Status \|$/m)
@@ -121,6 +127,19 @@ describe('FR1160 to FR1169 the Observatory benchmark measures what a reader wait
     const { markdown } = await lib()
     const md = markdown({ ...result(false), measured_at: '2026-11-27T00:00:00Z', fixture: { name: 'f' }, machine: { hardware: 'h', load_avg_start: [1, 2, 3], load_avg_end: [1, 2, 3] }, browser: { version: '1', build: 'b' }, webgl_renderer: 'w', runs: 3, first_run: {} }, checkBudgets(result(false), budgets))
     expect(md).toMatch(/^\| Pan and zoom frame, p95 \|.*\| 33 ms \(gpu\) \| ≤ 16\.7 ms \(#46\) \| over budget \|$/m)
+  })
+
+  it('FR1763 the A-to-B stability share and the Time step are budgeted: a share over 1% fails the check, and the row says so', async () => {
+    const { checkBudgets, markdown } = await lib()
+    const budgets = JSON.parse(fs.readFileSync(path.join(ROOT, 'bench', 'observatory', 'budgets.json'), 'utf8')).budgets
+    expect([budgets['stability.a_to_b.moved_2pct'].gpu, budgets['warm.time_step_ms'].gpu]).toEqual([0.01, 300])
+    const result = (share: number) => ({ software_renderer: false, warm: { time_step_ms: { median: 87 } }, stability: { a_to_b: { moved_2pct: share } } })
+    const pick = (share: number) => checkBudgets(result(share), budgets).filter((b: { key: string }) => b.key === 'stability.a_to_b.moved_2pct' || b.key === 'warm.time_step_ms').map((b: { key: string; median: number; over: boolean }) => [b.key, b.median, b.over])
+    expect(pick(0.0059)).toEqual([['warm.time_step_ms', 87, false], ['stability.a_to_b.moved_2pct', 0.0059, false]])
+    expect(pick(0.02)).toEqual([['warm.time_step_ms', 87, false], ['stability.a_to_b.moved_2pct', 0.02, true]])
+    const md = markdown({ ...result(0.02), measured_at: '2026-11-27T00:00:00Z', fixture: { name: 'f' }, machine: { hardware: 'h', load_avg_start: [1, 2, 3], load_avg_end: [1, 2, 3] }, browser: { version: '1', build: 'b' }, webgl_renderer: 'w', runs: 3, first_run: {} }, checkBudgets(result(0.02), budgets))
+    expect(md).toMatch(/^\| Shared symbols moved more than 2% of the map's width, A then B \(share\) \| 0\.02 \|.*\| 0\.01 \(gpu\) \| ≤ 1% \(#48 SC-001\) \| over budget \|$/m)
+    expect(md).toMatch(/^\| Time, a step between two loaded snapshots \| 87 ms \|.*\| 300 ms \(gpu\) \| ≤ 300 ms \(#48 SC-002\) \| within \|$/m)
   })
 
   it('FR1166 the main thread is read from long tasks: blocking time and the quiet window that ends it', async () => {
