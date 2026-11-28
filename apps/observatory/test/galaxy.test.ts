@@ -15,7 +15,7 @@ const load = () => { const gz = galaxyFor(d).gz; const raw = zlib.gunzipSync(gz)
 describe('A11 the Galaxy payload: every symbol of the snapshot in one compact binary', () => {
   it('FR1453 the Terrain projection carries the same positions, names, degrees and bundles', async () => {
     const full = load()
-    const raw = zlib.gunzipSync(await terrainPayload(galaxyFor(d).gz))
+    const raw = zlib.gunzipSync(await terrainPayload(d, galaxyFor(d).gz))
     const terrain = parseGalaxy(raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength))
     expect(terrain.links.length).toBe(0)
     expect({ ...terrain, links: full.links }).toEqual(full)

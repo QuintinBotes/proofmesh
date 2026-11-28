@@ -1,3 +1,5 @@
+import Database from 'better-sqlite3'
+import { duplicateGroups } from '../src/query/duplicates.js'
 import fs from 'node:fs'
 import path from 'node:path'
 import { execFileSync } from 'node:child_process'
@@ -24,8 +26,11 @@ describe('FR2180 FR2181 FR2182 FR2183 FR2184 FR2185 duplicate declarations', () 
     const result = duplicates()
     const ts = result.groups.find((g) => g.symbols.some((s) => s.path === 'first.ts'))!
     expect(ts).toMatchObject({ members: 3, hash: expect.stringMatching(/^[0-9a-f]{12}$/), callers_overlap: true })
-    expect(ts.symbols.map((s) => s.path)).toEqual(['first.ts', 'second.ts', 'third.ts'])
-    expect(duplicates({ key: ts.symbols[0]!.key }).groups[0]!.symbols.map((s) => s.path)).toEqual(['second.ts', 'third.ts'])
+    expect(ts.symbols.map((s) => s.path)).toEqual(['first.ts', 'second.ts', 'tests/third.ts'])
+    expect(ts.symbols[2]!.test).toBe(true)
+    expect(duplicates({ include_tests: false, path: 'first.ts' }).groups[0]!.members).toBe(2)
+    expect(duplicates({ include_generated: true, path: 'first.ts' }).groups[0]!.members).toBe(4)
+    expect(duplicates({ key: ts.symbols[0]!.key }).groups[0]!.symbols.map((s) => s.path)).toEqual(['second.ts', 'tests/third.ts'])
     expect(duplicates({ path: 'different.ts' })).toMatchObject({ status: 'unique', groups: [] })
     expect(duplicates({ min_tokens: 1000 }).too_small).toBeGreaterThanOrEqual(3)
     const multilingual = duplicates({ min_tokens: 10 }).groups.map((g) => g.symbols.map((s) => s.path))
@@ -41,6 +46,14 @@ describe('FR2180 FR2181 FR2182 FR2183 FR2184 FR2185 duplicate declarations', () 
     expect(JSON.parse(output.stdout)).toEqual(result)
   })
 
+  it('reports a legacy snapshot with no body hash', () => {
+    const legacy = new Database(':memory:')
+    try {
+      legacy.exec('create table symbol(id text)')
+      expect(duplicateGroups(legacy, {}, 0, 10)).toMatchObject({ status: 'no_body_hash', total_groups: 0, groups: [] })
+    } finally { legacy.close() }
+  })
+
   it('lists both unchanged twins against the base and leaves default counts and rows alone', async () => {
     const file = path.join(repo, 'first.ts')
     fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace('+ 1', '+ 4'))
@@ -54,6 +67,6 @@ describe('FR2180 FR2181 FR2182 FR2183 FR2184 FR2185 duplicate declarations', () 
     const normal = tool(dataDir, 'impact_completeness', { base, head }).data
     const { duplicates: twins, ...rest } = tool(dataDir, 'impact_completeness', { base, head, include_duplicates: true }).data
     expect(rest).toEqual(normal)
-    expect(twins).toEqual([expect.objectContaining({ symbols: [expect.objectContaining({ path: 'second.ts' }), expect.objectContaining({ path: 'third.ts' })] })])
+    expect(twins).toEqual([expect.objectContaining({ symbols: [expect.objectContaining({ path: 'second.ts' }), expect.objectContaining({ path: 'tests/third.ts' })] })])
   }, 180000)
 })

@@ -201,6 +201,12 @@ describe('FR1453 a snapshot\'s Galaxy has an address of its own that a browser m
     expect(r.headers['content-encoding']).toBe('gzip')
     expect(r.headers['content-security-policy']).toBe(CSP)
     expect(r.raw.equals((await request('POST', '/api/v1/galaxy', { headers: { cookie }, body: {} })).raw)).toBe(true)
+    const terrain = await request('GET', at, { headers: { cookie, accept: 'application/vnd.proofmesh.terrain' } })
+    expect(terrain.status).toBe(200)
+    expect(terrain.headers.vary).toBe('Accept')
+    expect(r.headers.vary).toBe('Accept')
+    expect(terrain.headers['content-type']).toBe('application/vnd.proofmesh.terrain')
+    expect(terrain.raw.equals(r.raw)).toBe(false)
     // A snapshot gc removed, or a payload of another format, is not there: the view asks again for the current snapshot.
     for (const gone of [`/api/v1/galaxy/v${GALAXY_FORMAT - 1}/${snapshotId}`, `/api/v1/galaxy/v${GALAXY_FORMAT}/snap_000000000000`]) {
       const g = await request('GET', gone, { headers: { cookie } })

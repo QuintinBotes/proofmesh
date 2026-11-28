@@ -413,7 +413,7 @@ proofmesh cquery add my-repo linux.dot bazel-cquery-dot/v1 'Bazel 6.5.0' "$BUILD
 proofmesh cquery deps my-repo linux //:service
 ```
 
-The import takes the full Git revision from the producer. Index that revision first. The unfactored DOT format preserves the configuration on each target instance, including transitions. Omit the label on `deps` to see the entire exported target set. Each edge has a BUILD witness or a missing-location reason. The totals include unknown labels and unsupported edges, with up to 20 example diagnostics. `proofmesh cquery status my-repo` lists imports and marks snapshots that are no longer current. The static graph remains available through the existing relationship queries. [Bazel cquery reference](https://bazel.build/query/cquery#graph-output) · [Linux and macOS exports](../../fixtures/configured-bazel/exports)
+The import takes the full Git revision from the producer. Index that revision first. The unfactored DOT format preserves the configuration on each target instance, including transitions. Omit the label on `deps` to see the entire exported target set. Each edge has a BUILD witness or a missing-location reason. The totals include unknown labels and unsupported edges, with up to 20 example diagnostics. `proofmesh cquery status my-repo` lists imports and marks snapshots that are no longer current. The static graph remains available through the existing relationship queries. [Bazel cquery reference](https://github.com/bazelbuild/bazel/blob/6.5.0/site/en/query/cquery.md) · [Linux and macOS exports](../../fixtures/configured-bazel/exports)
 
 ### Navigation between generated code and its source
 

@@ -757,6 +757,11 @@ From #241. Static test reach says which tests could reach a symbol; a coverage r
 - FR2066: MUST list, in `workspace_status`, each coverage import with its source, format, import time, window, files matched and stale files. With no import, `workspace_status`, `find_tests`, `get_symbol` and `impact_completeness` MUST answer as they did before coverage could be imported.
 - FR2067: MUST trace each of FR2060 to FR2066 in `policy/traceability.json` and state it here (CONTRIBUTING.md).
 
+### Producer evidence
+
+- FR2980: MUST import a revision-bound, versioned Bazel configured graph and report the producer, target configurations, BUILD witnesses and any unsupported edges.
+- FR3000: MUST import explicit generation mappings against sealed declaration spans and file hashes, support navigation in both directions, and report stale or unplaced evidence.
+
 ### Exact duplicate declarations
 
 - FR2180: MUST list paged exact normalised duplicate groups with subject, kind, path and token filters and exact totals.

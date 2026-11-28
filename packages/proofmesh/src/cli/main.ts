@@ -18,6 +18,7 @@ import { indexRepository, testMs } from '../indexer/coordinator.js'
 import { watch } from '../indexer/watch.js'
 import { BUILT_IN, Registry, registryFor } from '../indexer/languages.js'
 import { runKit } from '../conformance/kit.js'
+import { terrainPayload } from '../query/terrain-payload.js'
 import { duplicateGroups } from '../query/duplicates.js'
 import { registerTestFilter } from '../query/tests.js'
 import { producerCommand } from './producer.js'
@@ -589,7 +590,7 @@ export async function main(argv: string[]): Promise<number> {
         if (r.reuse?.reused) console.log(`reused the facts of ${r.reuse.reused} of ${r.reuse.reused + r.reuse.analysed} files whose inputs did not change`)
         console.log(`snapshot ${r.snapshotId} ${r.status}${r.commit ? ` from commit ${r.commit} (${rev}); the working tree was not read` : ''}${r.analysisMode === 'trusted_build' ? ' (analysed with build execution)' : ''}`)
         // Observatory's Galaxy reads this; building it now keeps opening the view instant. It is a cache, so failure only costs time later.
-        try { galaxyFor(dataDir) } catch { /* rebuilt on first view */ }
+        try { await terrainPayload(dataDir, galaxyFor(dataDir, { repositoryId: repoId, snapshotId: r.snapshotId }).gz) } catch { /* rebuilt on first view */ }
         console.log(`discovered ${r.counts.discovered}, indexed ${r.counts.indexed}, excluded ${r.counts.excluded_by_rule}, unsupported ${r.counts.unsupported}, failed ${r.counts.failed}`)
         console.log(`index host heap ${heapLimitMb()} MB`)
         const budgets = Object.entries(r.adapterBudgets)

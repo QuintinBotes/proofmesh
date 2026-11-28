@@ -41,6 +41,7 @@ function legacy(): { dir: string; tree: string; baseId: string } {
   const file = path.join(dir, 'snapshots', `${baseId}.db`)
   fs.chmodSync(file, 0o644)
   const sealed = new Database(file)
+  sealed.exec('drop index symbol_by_body_hash')
   sealed.exec('alter table symbol drop column body_hash')
   sealed.exec('alter table symbol drop column body_tokens')
   sealed.prepare("update meta set value = '0.6' where key = 'format_version'").run()

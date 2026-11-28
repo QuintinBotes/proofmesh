@@ -2,7 +2,7 @@
   "format": "proofmesh-generates/v1",
   "producer": "fixture-gen 1.0",
   "name": "account-accessors",
-  "revision": "3a3d6223b5f363bde6a5842cccae25d51dfe6248",
+  "revision": "a4af404cc6db454f6757ddea0dc952ecac8e555f",
   "links": [
     {
       "source": {

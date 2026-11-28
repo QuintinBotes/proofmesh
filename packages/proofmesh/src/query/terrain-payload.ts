@@ -1,3 +1,7 @@
+import fs from 'node:fs/promises'
+import { randomUUID } from 'node:crypto'
+import path from 'node:path'
+import { sha256 } from '../core/hash.js'
 import { promisify } from 'node:util'
 import { gunzip, gzip } from 'node:zlib'
 import type { GalaxyHeader } from './galaxy.js'
@@ -24,10 +28,25 @@ async function project(full: Buffer): Promise<Buffer> {
   return deflate(Buffer.concat([prefix, raw.subarray(base + removed)]))
 }
 
-export function terrainPayload(full: Buffer): Promise<Buffer> {
+async function cachedProjection(dataDir: string, full: Buffer) {
+  const dir = path.join(dataDir, 'cache')
+  const file = path.join(dir, `terrain-v1-${sha256(full)}.bin.gz`)
+  try { return await fs.readFile(file) } catch (e) {
+    if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e
+  }
+  const bytes = await project(full)
+  const tmp = file + '.' + randomUUID() + '.tmp'
+  try {
+    await fs.writeFile(tmp, bytes, { flag: 'wx', mode: 0o600 })
+    await fs.rename(tmp, file)
+  } finally { await fs.rm(tmp, { force: true }) }
+  return bytes
+}
+
+export function terrainPayload(dataDir: string, full: Buffer): Promise<Buffer> {
   let pending = projected.get(full)
   if (!pending) {
-    pending = project(full).catch((error) => { projected.delete(full); throw error })
+    pending = cachedProjection(dataDir, full).catch((error) => { projected.delete(full); throw error })
     projected.set(full, pending)
   }
   return pending

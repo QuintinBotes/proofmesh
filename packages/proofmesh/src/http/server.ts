@@ -111,7 +111,7 @@ export async function startViewServer(dataDir: string, port = 7317, assets = obs
         if (snapshot?.state !== 'published') return fail(new ProofmeshError('NOT_FOUND', `no Galaxy v${artefact[1]} for snapshot ${artefact[2]}`))
         const full = galaxyFor(dataDir, { snapshotId: snapshot.id, repositoryId: snapshot.repository_id }).gz
         const terrain = req.headers.accept === 'application/vnd.proofmesh.terrain'
-        return send(200, terrain ? await terrainPayload(full) : full, terrain ? 'application/vnd.proofmesh.terrain' : 'application/octet-stream', { 'Content-Encoding': 'gzip', 'Cache-Control': `private, ${IMMUTABLE}`, Vary: 'Accept' })
+        return send(200, terrain ? await terrainPayload(dataDir, full) : full, terrain ? 'application/vnd.proofmesh.terrain' : 'application/octet-stream', { 'Content-Encoding': 'gzip', 'Cache-Control': `private, ${IMMUTABLE}`, Vary: 'Accept' })
       }
       if (!assets) return send(404, 'Observatory assets are not built; run pnpm build', 'text/plain; charset=utf-8')
       const rel = url.pathname === '/' ? 'index.html' : decodeURIComponent(url.pathname).replace(/^\/+/, '')

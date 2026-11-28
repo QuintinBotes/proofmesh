@@ -9,17 +9,17 @@ function fixture(name: string) {
   fs.cpSync(fixtureRepo(name), root, { recursive: true })
   for (const role of ['AUTHOR', 'COMMITTER']) {
     env['GIT_' + role + '_NAME'] = 'Proofmesh fixture'
-    env['GIT_' + role + '_EMAIL'] = 'fixture@example.test'
+    env['GIT_' + role + '_EMAIL'] = 'fixture@example.com'
     env['GIT_' + role + '_DATE'] = '2000-01-01T00:00:00Z'
   }
   const git = (...args: string[]) => execFileSync('git', ['-C', root, '-c', 'core.autocrlf=false', '-c', 'commit.gpgsign=false', ...args], { env, encoding: 'utf8' }).trim()
   git('init', '-q', '--object-format=sha1'); git('add', '.'); git('commit', '-qm', 'fixture')
   return { root, revision: git('rev-parse', 'HEAD'), files: path.dirname(fixtureRepo(name)) }
 }
-describe('explicit producer evidence', () => {
+describe('FR2980 FR3000 explicit producer evidence', () => {
   it('imports the Linux and macOS Bazel exports and retains each configured instance and dependency witness', async () => {
     const f = fixture('configured-bazel'), { dataDir, repoId } = await indexedDataDir(f.root)
-    const call = (...args: string[]) => cli(['--data-dir', dataDir, 'cquery', ...args.slice(0, 1), repoId, ...args.slice(1)])
+    const call = (...args: string[]) => cli(['--data-dir', dataDir, 'cquery', args[0]!, repoId, ...args.slice(1)])
     expect(f.revision).toBe(fs.readFileSync(path.join(f.files, 'exports/revision'), 'utf8').trim())
     for (const os of ['linux', 'macos']) {
       const file = path.join(f.files, 'exports', os + '.dot')

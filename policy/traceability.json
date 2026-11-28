@@ -2583,6 +2583,12 @@
     ],
     "FR2185": [
       "packages/proofmesh/test/duplicates.test.ts"
+    ],
+    "FR2980": [
+      "packages/proofmesh/test/producer.test.ts"
+    ],
+    "FR3000": [
+      "packages/proofmesh/test/producer.test.ts"
     ]
   },
   "manual": {
