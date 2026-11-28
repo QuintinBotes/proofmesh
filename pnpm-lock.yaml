@@ -161,6 +161,9 @@ importers:
       '@types/better-sqlite3':
         specifier: ^9.6.0
         version: 9.6.0
+      github-sarif-validator-jest:
+        specifier: 0.0.3
+        version: 0.0.3
 
 packages:
 
@@ -758,6 +761,9 @@ packages:
   get-proto@1.0.1:
     resolution: {integrity: sha512-sTSfBjoXBp89JvIKIefqw7U2CCebsc74kiY6awiGogKtoSGbgjYE/G/+l9sF3MWFPNc9IcoOC4ODfKHfxFmp0g==}
     engines: {node: '>= 0.4'}
+
+  github-sarif-validator-jest@0.0.3:
+    resolution: {integrity: sha512-NDX7ZHWKdw6Ht4n8Cpze02fbKQR03Ra6UphN25nXNSt5h1QLNMfPaCXeBWd8PiH5MOJ+0MD/O1ITxYNen/0Ztg==}
 
   gopd@1.2.0:
     resolution: {integrity: sha512-ZUKRh6/kUFoAiTAtTYPZJ3hw9wNxx+BIBOijnlG9PnrJsCcSjs1wyyD6vJpaYtgnzDrKYRSqf3OO6Rfa93xsRg==}
@@ -1888,6 +1894,11 @@ snapshots:
     dependencies:
       dunder-proto: 1.0.1
       es-object-atoms: 1.1.2
+
+  github-sarif-validator-jest@0.0.3:
+    dependencies:
+      ajv: 8.20.0
+      ajv-formats: 3.0.1(ajv@8.20.0)
 
   gopd@1.2.0: {}
 

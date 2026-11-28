@@ -40,7 +40,9 @@ function normalise(text: string, sides: Report['base'][]): string {
 }
 const expected = (name: string) => fs.readFileSync(path.join(EXPECTED, name), 'utf8')
 
-const sarifSchema = JSON.parse(fs.readFileSync(path.join(ROOT, 'fixtures', 'sarif-schema', 'sarif-2.1.0.json'), 'utf8'))
+// The pinned test package carries the OASIS Errata 01 schema with draft-07 schema identifiers.
+const schemaFile = new URL('../schemas/sarif-schema-2.1.0.json', import.meta.resolve('github-sarif-validator-jest'))
+const sarifSchema = JSON.parse(fs.readFileSync(schemaFile, 'utf8'))
 const validSarif = new Ajv({ strict: false, allErrors: true, validateFormats: false }).compile(sarifSchema)
 
 /** A preload that records every TCP connection a process (and its children, which inherit NODE_OPTIONS) opens. */
