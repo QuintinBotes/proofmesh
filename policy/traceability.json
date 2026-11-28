@@ -125,6 +125,9 @@
     "FR081": [
       "packages/proofmesh/test/cli.e2e.test.ts"
     ],
+    "FR1720": [
+      "packages/proofmesh/test/cli.e2e.test.ts"
+    ],
     "FR016": [
       "apps/observatory/test/scene.test.ts",
       "packages/proofmesh/test/csharp.dotnet-frameworks.test.ts",
@@ -492,6 +495,9 @@
     "FR055": [
       "packages/proofmesh/test/observatory-parity.test.ts",
       "apps/observatory/test/api.test.ts"
+    ],
+    "FR1740": [
+      "packages/proofmesh/test/catalog-tools.test.ts"
     ],
     "FR057": [
       "apps/observatory/test/encoding.test.ts",
@@ -2198,6 +2204,9 @@
     "FR1186": [
       "e2e/lens.spec.ts"
     ],
+    "FR2650": [
+      "e2e/lens.spec.ts"
+    ],
     "FR1260": [
       "packages/proofmesh/test/xrepo-symbols.test.ts"
     ],
@@ -2289,6 +2298,26 @@
     "FR1408": [
       "apps/observatory/test/bundle.test.ts"
     ],
+    "FR1450": [
+      "packages/proofmesh/test/http.test.ts",
+      "e2e/security.spec.ts",
+      "e2e/build.spec.ts"
+    ],
+    "FR1451": [
+      "e2e/budgets.spec.ts"
+    ],
+    "FR1452": [
+      "apps/observatory/test/galaxy.test.ts",
+      "e2e/budgets.spec.ts"
+    ],
+    "FR1453": [
+      "packages/proofmesh/test/http.test.ts",
+      "apps/observatory/test/api.test.ts",
+      "e2e/security.spec.ts"
+    ],
+    "FR1454": [
+      "e2e/budgets.spec.ts"
+    ],
     "FR960": [
       "packages/proofmesh/test/graph-query.test.ts"
     ],
@@ -2315,6 +2344,33 @@
     ],
     "FR2401": [
       "packages/proofmesh/test/graph-query.test.ts"
+    ],
+    "FR1810": [
+      "apps/observatory/test/changeModel.test.ts",
+      "e2e/change-review.spec.ts"
+    ],
+    "FR1811": [
+      "packages/proofmesh/test/impact-completeness.test.ts",
+      "apps/observatory/test/changeModel.test.ts",
+      "e2e/change-review.spec.ts"
+    ],
+    "FR1812": [
+      "apps/observatory/test/changeModel.test.ts",
+      "e2e/change-review.spec.ts"
+    ],
+    "FR1813": [
+      "packages/proofmesh/test/observatory-parity.test.ts"
+    ],
+    "FR1814": [
+      "apps/observatory/test/changeModel.test.ts",
+      "e2e/change-review.spec.ts"
+    ],
+    "FR1815": [
+      "e2e/change-review.spec.ts"
+    ],
+    "FR1816": [
+      "apps/observatory/test/changeModel.test.ts",
+      "e2e/change-review.spec.ts"
     ],
     "FR1940": [
       "packages/proofmesh/test/query-subjects.test.ts"
@@ -2403,6 +2459,75 @@
     ],
     "FR1905": [
       "packages/proofmesh/test/sarif.test.ts"
+    ],
+    "FR2060": [
+      "packages/proofmesh/test/coverage-import.test.ts"
+    ],
+    "FR2061": [
+      "packages/proofmesh/test/coverage-import.test.ts"
+    ],
+    "FR2062": [
+      "packages/proofmesh/test/coverage-import.test.ts"
+    ],
+    "FR2063": [
+      "packages/proofmesh/test/coverage-import.test.ts"
+    ],
+    "FR2064": [
+      "packages/proofmesh/test/coverage-import.test.ts"
+    ],
+    "FR2065": [
+      "packages/proofmesh/test/coverage-import.test.ts"
+    ],
+    "FR2066": [
+      "packages/proofmesh/test/coverage-import.test.ts"
+    ],
+    "FR2067": [
+      "policy/check-traceability.mjs"
+    ],
+    "FR2140": [
+      "packages/proofmesh/test/completeness-report.test.ts"
+    ],
+    "FR2141": [
+      "packages/proofmesh/test/completeness-report.test.ts"
+    ],
+    "FR2142": [
+      "packages/proofmesh/test/completeness-report.test.ts"
+    ],
+    "FR2143": [
+      "packages/proofmesh/test/completeness-report.test.ts"
+    ],
+    "FR2144": [
+      "packages/proofmesh/test/completeness-report.test.ts"
+    ],
+    "FR2145": [
+      "packages/proofmesh/test/completeness-report.test.ts"
+    ],
+    "FR2146": [
+      "packages/proofmesh/test/completeness-report.test.ts"
+    ],
+    "FR2147": [
+      "policy/check-traceability.mjs"
+    ],
+    "FR2020": [
+      "packages/proofmesh/test/cochanges.test.ts"
+    ],
+    "FR2021": [
+      "packages/proofmesh/test/cochanges.test.ts"
+    ],
+    "FR2022": [
+      "packages/proofmesh/test/cochanges.test.ts"
+    ],
+    "FR2023": [
+      "packages/proofmesh/test/cochanges.test.ts"
+    ],
+    "FR2024": [
+      "packages/proofmesh/test/cochanges.test.ts"
+    ],
+    "FR2025": [
+      "packages/proofmesh/test/cochanges.test.ts"
+    ],
+    "FR2026": [
+      "packages/proofmesh/test/cochanges.test.ts"
     ]
   },
   "manual": {
@@ -2413,6 +2538,7 @@
     "FR049.publication": "A maintainer publishes the signed npm packages and the OCI image, with checksums, SBOM, signatures, provenance and release notes, to the registries; publication is never automated.",
     "SC016.tag": "A maintainer tags the release commit of the public fresh-history repository; CI builds, signs (keyless) and attests the artifacts from that tag, including the C# adapter.",
     "FR1187": "A maintainer indexes the TypeORM parity fixture (bench/parity/run.sh builds it at commit 3d55188c) into a fresh data directory and runs node bench/observatory/evidence.mjs --data-dir <dir> --symbol src/data-source/DataSource:DataSource.initialize --runs 10 --check, which exits 0 when the warm and first-open p95 and the requests per open are within SC-001 and SC-002 of #45, and records the machine and its load beside the times.",
-    "FR1409": "pnpm bench:observatory --fixture synthetic --nodes 250000 --check on a machine with a GPU: the pan and zoom p95 is within its 33 ms budget (bench/observatory/README.md records the run)"
+    "FR1409": "pnpm bench:observatory --fixture synthetic --nodes 250000 --check on a machine with a GPU: the pan and zoom p95 is within its 33 ms budget (bench/observatory/README.md records the run)",
+    "FR1455": "A maintainer runs pnpm bench:observatory --fixture synthetic --nodes 50000 --check and pnpm bench:observatory --fixture synthetic --nodes 250000 --check (bench/observatory/README.md); both exit 0 and both tables show Longest main-thread task, cold within its 100 ms budget. The results for #208 are in bench/observatory/README.md."
   }
 }

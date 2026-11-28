@@ -29,9 +29,10 @@ test('FR640 the conclusion stays busy until every query in flight has answered, 
   // Hold the first load (the Terrain's payload, since #46) and the clicked starting point's card, then let the first load finish alone.
   let releaseOverview!: () => void, releaseFocus!: () => void, focusAsked!: () => void
   const overviewHeld = new Promise<void>((r) => { releaseOverview = r }), focusHeld = new Promise<void>((r) => { releaseFocus = r }), asked = new Promise<void>((r) => { focusAsked = r })
-  await page.route('**/api/v1/galaxy', async (route) => { await overviewHeld; await route.continue() })
+  // The payload is read from its snapshot's address (FR1453).
+  await page.route(/\/api\/v1\/galaxy\/v\d+\/[\w-]+$/, async (route) => { await overviewHeld; await route.continue() })
   await page.route('**/api/v1/tools/get_symbol_card', async (route) => { focusAsked(); await focusHeld; await route.continue() })
-  const firstLoad = page.waitForRequest((r) => new URL(r.url()).pathname === '/api/v1/galaxy')
+  const firstLoad = page.waitForRequest((r) => /^\/api\/v1\/galaxy\/v\d+\/[\w-]+$/.test(new URL(r.url()).pathname))
   await page.goto(view.launchUrl)
   await firstLoad
   await page.getByRole('tab', { name: 'Explore' }).click()

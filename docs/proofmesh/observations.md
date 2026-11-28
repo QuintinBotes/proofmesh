@@ -20,6 +20,26 @@ Proofmesh never connects to a metrics system or a running service (A30). A perso
 
 A property absent from the imports was not seen read in that window. That is not evidence that nothing reads it, and every answer says so.
 
+## Coverage reports (#241, FR2060 to FR2067)
+
+`find_tests` and `impact_completeness` find tests by static reach through the call graph, which misses a test that runs code through reflection, dependency injection, a framework or an HTTP call, and lists tests that could reach code but never do. A coverage report a test run wrote settles it, and Proofmesh imports one beside the static facts. It runs no test; a person or CI produces the report.
+
+`proofmesh observe import <repository> <report> --format lcov|cobertura|jacoco|go-cover [--source NAME] [--test NAME] [--strip-prefix P]`:
+
+- Formats: LCOV (istanbul, c8, gcov and lcov for JavaScript and C/C++), Cobertura XML (coverage.py, coverlet for Python and .NET), JaCoCo XML (JVM) and the Go coverprofile (`go test -coverprofile`). Others convert to one of them. Line coverage only: a line is executed when it has a hit.
+- Paths: a report path is matched to the snapshot path it equals, else, after `--strip-prefix` is stripped, to the one indexed path it ends with or that ends with it, the longest shared suffix winning. A path two indexed paths match equally (`util.ts` with `src/a/util.ts` and `src/b/util.ts`) is `ambiguous`, and one no indexed path matches `not_in_snapshot`; the command lists both and attaches neither. It prints the files matched and the lines covered.
+- Each matched file is stored with its content hash in the current snapshot. Coverage of a file whose content in the asked snapshot differs is `stale`: it is shown, and sets no status, until a new report is imported.
+- `--source` labels the import (default: the file name without its extension); a report of the same source replaces the earlier one. Tests: LCOV `TN:` records name the test of each record; with `--test NAME` the whole report is that test's, and it replaces only that test's lines in the source, so one report per test builds a per-test map.
+- `proofmesh observe validate <report> --format F` reads a report and prints its files, lines covered and tests without importing it. `observe list` lists coverage imports beside observations.
+
+What the answers say:
+
+- Each executable line belongs to the innermost symbol holding it, as `get_symbols_at` picks it, or to the file's module; a file asked for by path holds every line. A symbol is executed when at least one of its lines has a hit; `lines_covered` and `lines_total` let a caller ask for more. A declaration line that runs at import, such as a Python `def`, counts for its function.
+- `find_tests` and `get_symbol` (full envelope) carry `coverage: { executed, lines_covered, lines_total, source, format, window, stale, at }` when an import covers the subject's file, from the newest import of that file that is not stale; `at` is the first executed line. `window` is the report file's modification time. The lean header of `find_tests` says `executed by coverage <source>`, `not executed by coverage <source>` or `coverage stale <source>`. Every test a report names as running the subject, that is one test symbol of the snapshot and that no static chain lists, is a row with `evidence: coverage`, depth 1 and no chain; static rows are never removed.
+- `impact_completeness` marks a dependent that no test reaches statically and whose lines the report shows executed `covered`, with the report's source, and counts `covered` apart in `totals` and the summary; `neither` is then neither changed, statically tested nor covered. `proofmesh completeness` treats covered as tested for its exit code unless `--static-only` is given.
+- `workspace_status` lists each import with its source, format, time, window, files matched and stale files.
+- Coverage adds no relationship and changes no basis (FR189). With no import, every answer is as it was.
+
 ## Recording property reads in a .NET test run
 
 A recipe that produced valid files for an ASP.NET application with an EF6 model, in an integration-test project. It is a capture helper a person adds to their own test project; Proofmesh ships no agent and runs nothing.

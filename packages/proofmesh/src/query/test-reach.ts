@@ -5,10 +5,10 @@ import { structure, TYPE_KINDS } from './impact.js'
 import { candidatesTo, sitesNaming } from './inferred.js'
 import { hasRoles, isTestEntry, parseRoles, rolesSql, type Roles } from './tests.js'
 
-/** How a test is known to reach its subject, strongest first (FR101, FR104). */
-export const EVIDENCE = ['call', 'transitive_call', 'dispatch', 'reference', 'import_only'] as const
-/** Evidence that a test runs the subject's code (FR105); observed coverage would count too, once coverage can be imported. */
-export const EXECUTING = new Set<string>(['call', 'transitive_call', 'dispatch', 'observed'])
+/** How a test is known to reach its subject, strongest first (FR101, FR104); coverage is an imported report's test that ran it, with no chain (FR2063). */
+export const EVIDENCE = ['call', 'transitive_call', 'dispatch', 'reference', 'import_only', 'coverage'] as const
+/** Evidence that a test runs the subject's code (FR105). */
+export const EXECUTING = new Set<string>(['call', 'transitive_call', 'dispatch', 'coverage'])
 
 type Evidence = (typeof EVIDENCE)[number]
 type Hop = { name: string; key: string; path: string; line: number }

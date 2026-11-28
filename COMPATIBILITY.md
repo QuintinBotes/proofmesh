@@ -8,7 +8,7 @@
 | Link file format | 0.3 | `schemas/link-format/`. As the snapshot format. |
 | Bundle format | 0.1 | `schemas/bundle-format/`. A bundle names its format in `manifest.json`. `proofmesh bundle check` verifies bundles of this format and refuses another format rather than guessing; a format change is announced one minor release ahead, so a bundle kept as a record can still be checked with the release that wrote it. |
 | Snapshot export format | 0.1 | `schemas/snapshot-export/`. A file `proofmesh snapshot export` writes starts with the line `proofmesh-snapshot 0.1` and carries a snapshot of the snapshot file format above. `proofmesh snapshot import` reads this format only and refuses another rather than guessing, and also refuses a snapshot of another snapshot file format; carry snapshots between data directories of the same release. |
-| Catalog | 0024 | `schemas/catalog/`. Forward-only migrations, 0001 to the version shown, applied on open; a catalog newer than the CLI refuses to open. Back it up before upgrading (`proofmesh backup`). |
+| Catalog | 0025 | `schemas/catalog/`. Forward-only migrations, 0001 to the version shown, applied on open; a catalog newer than the CLI refuses to open. Back it up before upgrading (`proofmesh backup`). |
 | Node.js | 22.13 or later | The active LTS line. |
 | .NET | 10 | Only the C# adapter needs it. |
 
@@ -31,5 +31,7 @@ Added to the MCP envelope (#39): `snapshot.imported` (`origin`, `imported_at`, `
 Changed between `proofmesh view` and its browser (#44): the Galaxy payload (`/api/v1/galaxy`) is format 4, which adds a positions section and names `format` in its header. It is not a public contract: the server and the Observatory it serves ship together. The snapshot file format does not change, because positions are derived from the snapshot's paths and names and are not stored in it; a data directory keeps its snapshots, rebuilds each Galaxy payload once as `cache/galaxy-v4-<snapshot>`, and no longer reads the `galaxy-v3` files, which can be deleted. A browser's old `proofmesh-galaxy` IndexedDB database is no longer read or written.
 
 Changed between `proofmesh view` and its browser (#46): the Galaxy payload is format 5. Its areas are a file's first two directories (they were its first three), and it adds the layout's cells (four sections and `cells`, `cell_names_bytes` in the header) and the bundles between areas (`bundles`, `relationship_types` in the header). A new route, `/api/v1/galaxy/bundle`, lists the relationships of one bundle. Neither is a public contract; a data directory rebuilds each payload once as `cache/galaxy-v5-<snapshot>`, and the `galaxy-v4` files can be deleted. The snapshot file format and every MCP answer, `analyze_impact`'s `by_area` included, do not change.
+
+Changed between `proofmesh view` and its browser (#47): the Observatory reads a snapshot's Galaxy payload from `GET /api/v1/galaxy/v5/<snapshot id>` (format 5, #46), behind the session, cached by the browser as `private, max-age=31536000, immutable`, and a snapshot that is not published there answers 404. `POST /api/v1/galaxy` is unchanged. Every other API answer now carries `Cache-Control: no-store` instead of `no-cache`; hashed assets are cached for good and the page is revalidated. No data directory changes.
 
 Deprecations are listed in CHANGELOG.md under the release that announces them.

@@ -1,4 +1,6 @@
+import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
+import path from 'node:path'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { Catalog } from '../src/meshstore/catalog.js'
 import { indexRepository } from '../src/indexer/coordinator.js'
@@ -108,5 +110,27 @@ describe('the standing references limitation follows the snapshot\'s capability'
     expect(limitations).toContain('References other than calls and imports are recorded only where an adapter supports them (C# uses of repository declarations, TypeScript uses of repository types, Python uses of repository classes and functions); elsewhere a missing reference is not evidence of no use.')
     expect(limitations).not.toContain('References other than calls and imports are not analysed for this snapshot.')
     expect((tool(dataDir, 'workspace_status', {}).data.languages as Array<{ language: string; capabilities: Record<string, unknown> }>).find((l) => l.language === 'Python')!.capabilities.references).toMatchObject({ partial: 2, unsupported: 0 })
+  })
+})
+
+describe('FR1740 list_snapshots says which snapshot is of the commit the root has checked out (#234)', () => {
+  type Row = { matches_head: boolean | null; git: { commit?: string } | null }
+  const rows = (d: string) => tool(d, 'list_snapshots', {}).data.snapshots as Row[]
+
+  it('true on the snapshot of HEAD only, false on every row once HEAD moves, null without git', async () => {
+    const repo = copyFixture()
+    const git = (...args: string[]) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', '-c', 'commit.gpgsign=false', ...args], { cwd: repo, encoding: 'utf8' }).trim()
+    git('init', '-q'); git('add', '-A'); git('commit', '-q', '-m', 'one')
+    const { dataDir: d, repoId } = await indexedDataDir(repo)
+    fs.appendFileSync(path.join(repo, 'packages', 'format', 'src', 'currency.ts'), '\nexport const two = 2\n')
+    git('commit', '-q', '-am', 'two')
+    const head = git('rev-parse', 'HEAD')
+    await indexRepository(d, repoId)
+    expect(rows(d)).toHaveLength(2)
+    expect(rows(d).map((r) => [r.git?.commit === head, r.matches_head])).toEqual(expect.arrayContaining([[true, true], [false, false]]))
+    git('commit', '-q', '--allow-empty', '-m', 'three')
+    expect(rows(d).map((r) => r.matches_head)).toEqual([false, false])
+    const { dataDir: plain } = await indexedDataDir(copyFixture())
+    expect(rows(plain).map((r) => r.matches_head)).toEqual([null])
   })
 })

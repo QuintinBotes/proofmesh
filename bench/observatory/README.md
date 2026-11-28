@@ -123,8 +123,9 @@ bytes in every run of one build.
 
 What the tables say against the targets of the Observatory specs:
 
-- **Over budget:** the longest main-thread task at 50,000 symbols (116 ms) and at 250,000 (280 ms), against 100 ms
-  (#208). On the TypeORM sample it is 81 ms, within budget; `--check` exits 0 there and 1 on the slowed build.
+- **Over budget then, within it now:** the longest main-thread task at 50,000 symbols (116 ms) and at 250,000 (280 ms),
+  against 100 ms (#208); on the Terrain after #47 and #208 it is 73 ms and 70 ms (the second section below). On the
+  TypeORM sample it is 81 ms, within budget; `--check` exits 0 there and 1 on the slowed build.
 - **Within budget, new since the merge:** symbol to evidence in 1 request, 62 ms warm and 53 ms on a page's first open
   (#45 asks ≤ 150 ms and ≤ 400 ms); edge to evidence in 0 requests; the palette's query to matches 17.9 ms at p95 and no
   long task while typing (budgets 50 ms).
@@ -165,6 +166,36 @@ the Terrain, drawn again from the payload it holds.
 and zoom p95 at most 16.7 ms). At 250,000 the pan and zoom p95 is 16.8 ms against #46's and #42's 33 ms, and `--check`
 exits 1 on the longest task alone, as it did before. Initial JavaScript is 208 KB gzip (409 KB with cosmos.gl). On the
 TypeORM sample the A-to-B commit moves no shared symbol more than 2% of the map's width (max 1.93%).
+
+### After compression, caching, the parsing worker and the Terrain's first load in tasks (#47, #208)
+
+Measured on 2026-11-28 on the same machine and browser (ANGLE on Metal), 3 cold runs each, branch
+`goal/47-observatory-budgets` at 5abe07b (the Terrain, #46, and Time, #48, merged in), under a one-minute load average of
+76 to 137 (each run's table names its own). The Galaxy payload now loads from `GET /api/v1/galaxy/v5/<snapshot>`, which
+the tables list as `/api/v1/galaxy/v5/:snapshot`.
+
+| Fixture | First drawn map, cold | Final positions, cold | First drawn map, warm | Longest task, cold | Total blocking time | Memory, all processes | `--check` |
+|---|---|---|---|---|---|---|---|
+| TypeORM sample (7,033 symbols) | 705 ms | 788 ms | 181 ms | 70 ms | 26 ms | 392 MB | exits 0 |
+| Synthetic, 50,000 symbols | 944 ms | 1,069 ms | 194 ms | 73 ms | 29 ms | 453 MB | exits 0 |
+| Synthetic, 250,000 symbols | 834 ms | 1,187 ms | 214 ms | 70 ms, within the 100 ms budget (was 168 ms) | 45 ms | 648 MB | exits 0 |
+
+On 2026-11-27, at 4bf0a03 before Time was merged and at a load average of 11 to 57, the same benchmark gave a longest
+task of 54 ms at 250,000, 57 ms at 50,000 and 53 ms on TypeORM, with first draws of 957, 272 and 210 ms.
+
+At 250,000 symbols the longest task was the Terrain building its renderer: sigma processes every one of the 32,000
+cells in one go, and compiles its shaders, in the task that constructs it. The renderer is now built on the area anchors
+and bundles alone, after its shaders were compiled on a throwaway canvas while the payload loaded; the points layer
+follows in a task of its own, then the cells in two batches. The first draws above were taken at a load average up to 57
+and do not compare with the Terrain's table above (load about 5). Back to back at one load (about 45) on the same
+250,000 symbols, main and this branch draw within about 20 ms of each other once the payload has arrived, and main's
+230 ms task is gone.
+
+Initial JavaScript for the Terrain is 210 KB gzip: the app (97 KB), sigma (107 KB, which the Terrain needs) and the
+Terrain view (10 KB). It is sent as Brotli, 183 KB transferred before data (main sends 213 KB gzip of it uncompressed),
+within #47's 250 KB; its 150 KB target is out of reach while sigma alone is 107 KB. With Time merged the bench reads
+213 KB gzip and 186 KB transferred. Browser memory is still over #47's
+300 MB and 600 MB.
 
 ### After the path-tree layout (#44)
 

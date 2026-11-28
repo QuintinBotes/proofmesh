@@ -25,7 +25,8 @@ import { CANDIDATE_TYPES, candidatesFrom, inferredNotes, resolveFollow, sitesNam
 import { ADAPTER_LANGUAGE_NAMES } from '../indexer/language-detect.js'
 import { hasRoles, isTestCode, isTestPath, parseRoles, roleTest, rolesSql } from './tests.js'
 import { EXECUTING, testReach, type TestRow } from './test-reach.js'
-import { changedSymbols, complete, touched, completenessRows, diffLines, inTestCode, summaryLine, type Changed } from './completeness.js'
+import { changedSymbols, complete, touched, completenessRows, diffLines, inTestCode, projectOf, summaryLine, type Changed } from './completeness.js'
+import { coverageOf, type Coverage } from './coverage.js'
 import { gitInfo } from '../indexer/discovery.js'
 import { findTables, tableReach } from './table-reach.js'
 import { searchSources } from './sources.js'
@@ -41,6 +42,8 @@ import { leanQueryRows, parseGraphQuery, runGraphQuery, type Param, type QueryRo
 import { generatedLeftOut, generatedPaths, markGenerated, withGeneratedPaths } from './generated-policy.js'
 import { innermost } from './symbol-at.js'
 import { attachFindings, findingCounts } from './findings.js'
+import { DEFAULT_THRESHOLDS, historyHeader, historyNotes, leanPartner, partners, type Partner, type Thresholds } from './cochanges.js'
+import { readHistory, type Window } from '../indexer/history.js'
 import { findCycles, findEntryPoints, findHubs, findUnused, type CycleEdge, type EntryPoint, type Hub, type UnusedRow } from './structure.js'
 import { contextMap } from './context-map.js'
 import { stepKind, subjectsOf } from './subjects.js'
@@ -55,10 +58,10 @@ import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 
-export const TOOLS = ['workspace_status', 'list_repositories', 'list_snapshots', 'list_workspaces', 'find_symbols', 'get_symbol', 'get_relationships', 'trace_paths', 'read_evidence', 'get_overview', 'analyze_impact', 'find_tests', 'search_sources', 'get_memory', 'verify_claim', 'request_index', 'get_job', 'get_claims', 'save_memory', 'get_table_reach', 'get_property_reads', 'get_external_usage', 'find_query_source', 'compare_snapshots', 'list_queries', 'get_ecosystem', 'prepare_verification', 'get_verification', 'impact_completeness', 'get_symbols_at', 'get_session_trail', 'find_stale_mentions', 'find_unused', 'find_cycles', 'find_entry_points', 'find_hubs', 'get_context_map', 'plan_rename', 'plan_move', 'search_structure', 'search_concepts', 'get_symbol_card', 'query_graph', 'get_findings'] as const
+export const TOOLS = ['workspace_status', 'list_repositories', 'list_snapshots', 'list_workspaces', 'find_symbols', 'get_symbol', 'get_relationships', 'trace_paths', 'read_evidence', 'get_overview', 'analyze_impact', 'find_tests', 'search_sources', 'get_memory', 'verify_claim', 'request_index', 'get_job', 'get_claims', 'save_memory', 'get_table_reach', 'get_property_reads', 'get_external_usage', 'find_query_source', 'compare_snapshots', 'list_queries', 'get_ecosystem', 'prepare_verification', 'get_verification', 'impact_completeness', 'get_symbols_at', 'get_session_trail', 'find_stale_mentions', 'find_unused', 'find_cycles', 'find_entry_points', 'find_hubs', 'get_context_map', 'plan_rename', 'plan_move', 'search_structure', 'search_concepts', 'get_symbol_card', 'query_graph', 'get_findings', 'get_cochanges'] as const
 export type ToolName = (typeof TOOLS)[number]
 /** The query tools whose results are code locations: they answer in the lean envelope on request, and by default over MCP (FR099). */
-export const LEAN = new Set<string>(['find_symbols', 'search_concepts', 'get_symbol', 'get_symbols_at', 'get_relationships', 'trace_paths', 'analyze_impact', 'find_tests', 'get_session_trail', 'find_unused', 'find_cycles', 'find_entry_points', 'find_hubs', 'get_context_map', 'search_structure', 'query_graph'])
+export const LEAN = new Set<string>(['find_symbols', 'search_concepts', 'get_symbol', 'get_symbols_at', 'get_relationships', 'trace_paths', 'analyze_impact', 'find_tests', 'get_session_trail', 'find_unused', 'find_cycles', 'find_entry_points', 'find_hubs', 'get_context_map', 'search_structure', 'query_graph', 'get_cochanges'])
 /** A lean answer is its text; the envelope beside it is what the text was rendered from, for in-process callers. */
 export type Answer = Envelope & { text?: string }
 
@@ -73,7 +76,7 @@ export const CAPABILITY: Record<ToolName, ListQueriesData['tools'][number]['capa
   verify_claim: 'read', request_index: 'management', get_job: 'read', get_claims: 'read', save_memory: 'management', get_table_reach: 'read',
   get_property_reads: 'read', get_external_usage: 'read', find_query_source: 'read', compare_snapshots: 'read', list_queries: 'read',
   get_ecosystem: 'read', prepare_verification: 'management', get_verification: 'read', impact_completeness: 'management', get_symbols_at: 'read', get_session_trail: 'read', find_stale_mentions: 'read',
-  find_unused: 'read', find_cycles: 'read', find_entry_points: 'read', find_hubs: 'read', get_context_map: 'read', plan_rename: 'read', plan_move: 'read', search_structure: 'read', search_concepts: 'read', get_symbol_card: 'read', query_graph: 'read', get_findings: 'read',
+  find_unused: 'read', find_cycles: 'read', find_entry_points: 'read', find_hubs: 'read', get_context_map: 'read', plan_rename: 'read', plan_move: 'read', search_structure: 'read', search_concepts: 'read', get_symbol_card: 'read', query_graph: 'read', get_findings: 'read', get_cochanges: 'read',
 }
 
 /**
@@ -99,6 +102,8 @@ export const PROFILE: Record<ToolName, ListQueriesData['tools'][number]['profile
   query_graph: 'extra',
   // Imported analyser findings (#30); analyze_impact and find_tests rows in core already carry their count.
   get_findings: 'extra',
+  // Files that change together from git history (#239): asked before finishing a change, like impact_completeness.
+  get_cochanges: 'extra',
 }
 /** How a client loads the tools of another profile, said by list_queries, which lists them all (FR422). */
 const PROFILES_NOTE = 'Over MCP, proofmesh mcp lists the core profile; start it with --tools <profile[,profile]> (core, data, claims, extra) or --tools all to list the others. A tool outside the profiles it was started with answers INVALID_ARGUMENT naming its profile.'
@@ -207,7 +212,15 @@ function catalogTool(catalog: Catalog, tool: ToolName, input: Record<string, unk
   } else if (tool === 'list_snapshots') {
     // The snapshots a query can pin: what the Observatory's snapshot picker shows, for any client (FR055).
     const repo = catalog.resolveRepository(input.repository_id as string | undefined), current = catalog.currentSnapshot(repo.id)?.id
-    data = { repository_id: repo.id, snapshots: catalog.publishedSnapshots(repo.id).map((s) => ({ id: s.id, published_at: s.published_at, analysis_mode: s.analysis_mode, current: s.id === current, git: gitOfSnapshot(catalog, s), ...countsOfSnapshot(catalog, s) })) }
+    // The commit the root has checked out now, so a caller can pick the snapshot of the code in front of it (FR1740).
+    const head = fs.existsSync(repo.root) ? gitInfo(repo.root).commit : undefined
+    data = {
+      repository_id: repo.id,
+      snapshots: catalog.publishedSnapshots(repo.id).map((s) => {
+        const git = gitOfSnapshot(catalog, s)
+        return { id: s.id, published_at: s.published_at, analysis_mode: s.analysis_mode, current: s.id === current, matches_head: head && git?.commit ? git.commit === head : null, git, ...countsOfSnapshot(catalog, s) }
+      }),
+    }
     limitations = ['Pass a snapshot id as snapshot_id to answer from that snapshot; retired snapshots are not listed.']
   } else if (tool === 'list_workspaces') {
     data = { workspaces: catalog.workspaces().map((w) => ({ name: w.name, members: w.members.map((id) => ({ repository_id: id, name: catalog.repository(id).name })) })) }
@@ -697,11 +710,17 @@ function boundariesFrom(db: Database.Database, types: string[], where: string, l
   }
 }
 
+/** The commit a snapshot was built from, as discovery recorded it; none outside git. */
+const snapshotCommit = (db: Database.Database) => (JSON.parse((db.prepare("select value from meta where key = 'git'").get() as { value: string } | undefined)?.value ?? '{}') as { commit?: string }).commit
+/** Whether a file of the snapshot is test code, by its path and project naming. */
+const isTestFile = (db: Database.Database, p: string) => { const f = db.prepare('select id from file where path = ?').get(p) as { id: string } | undefined; return f ? inTestCode(db, { path: p, file_id: f.id }, isTestCode) : isTestPath(p) }
+
 /**
  * A file named by its repository-relative path (FR089, FR094). `..`, an absolute path inside the repository and backslashes are
  * normalised; a path outside the repository, or one the snapshot does not index, is refused naming its disposition, never answered empty.
+ * With anyDisposition, a file no adapter analyses is a file too: a .sql file has history but no symbols (get_cochanges).
  */
-function fileAt(ctx: Ctx, raw: string): { id: string; path: string } {
+function fileAt(ctx: Ctx, raw: string, anyDisposition = false): { id: string; path: string } {
   const abs = path.resolve(ctx.repo.root, raw.replaceAll('\\', '/'))
   const inside = (p: string) => { const r = path.relative(ctx.repo.root, p).split(path.sep).join('/'); return r && r !== '..' && !r.startsWith('../') && !path.isAbsolute(r) ? r : null }
   // The registered root is a real path, so an absolute path through a symlink to it is read as its real path.
@@ -709,7 +728,7 @@ function fileAt(ctx: Ctx, raw: string): { id: string; path: string } {
   if (!rel) try { rel = inside(fs.realpathSync(abs)) } catch { /* not on disk: outside */ }
   if (!rel) throw new ProofmeshError('INVALID_ARGUMENT', `path ${raw} is outside the repository ${ctx.repo.name} (${ctx.repo.root})`, { detail: 'path_outside_repository', path: raw })
   const f = ctx.db.prepare('select id, disposition from file where path = ?').get(rel) as { id: string; disposition: string } | undefined
-  if (!f || f.disposition !== 'indexed') {
+  if (!f || (!anyDisposition && f.disposition !== 'indexed')) {
     const disposition = !f ? 'not found' : f.disposition === 'excluded_by_rule' ? 'excluded' : f.disposition
     throw new ProofmeshError('INVALID_ARGUMENT', `path ${rel} is ${disposition} in snapshot ${ctx.snapshot.id}, so no tool can answer for it; workspace_status lists the files with their dispositions`, { detail: 'path_not_indexed', path: rel, disposition })
   }
@@ -860,6 +879,14 @@ function tracePaths(ctx: Ctx, input: Record<string, unknown>, ws: Workspace | nu
   }
 }
 
+/** A subject's coverage as answers carry it, without the test names find_tests lists as rows. */
+const coverageData = ({ tests: _, ...c }: Coverage & { tests: string[] }): Coverage => c
+/** find_tests' observed: unchanged while nothing is imported, so such an answer is as before (FR2063, SC-003). */
+const observedOf = (cov: Coverage | null, imported: boolean) => !imported ? { available: false, reason: 'No coverage data has been imported for this snapshot.' }
+  : !cov ? { available: false, reason: 'No imported coverage report covers these files.' }
+  : cov.stale ? { available: false, reason: `The coverage report ${cov.source} is stale for these files: they changed since it was imported.` }
+  : { available: true, reason: `The coverage report ${cov.source} (${cov.format}) covers these files.` }
+
 const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Partial> = {
   workspace_status(ctx, input) {
     const meta = Object.fromEntries((ctx.db.prepare('select key, value from meta').all() as Array<{ key: string; value: string }>).map((m) => [m.key, m.value]))
@@ -885,7 +912,7 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     const cycles = (meta.module_cycles ? JSON.parse(meta.module_cycles) : []) as ModuleCycle[]
     const docMentions = { ...mentionCounts(ctx.db), stale: meta.doc_links ? (JSON.parse(meta.doc_links) as { stale: unknown[] }).stale.length : 0 }
     const fileSummary = [...groups.values()].sort((a, b) => b.files - a.files || (a.extension < b.extension ? -1 : 1)).slice(0, 50)
-    const failed = lastIndexFailure(ctx.catalog, ctx.repo.id)
+    const failed = lastIndexFailure(ctx.catalog, ctx.repo.id), coverage = ctx.catalog.coverageImports(ctx.repo.id)
     return {
       data: {
         repository: { id: ctx.repo.id, name: ctx.repo.name, git: JSON.parse(meta.git ?? '{"available":false}') },
@@ -913,6 +940,8 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
         module_cycles: cycles,
         jobs: ctx.catalog.openJobs(ctx.repo.id),
         calls: { sites: snapshotSummary(ctx.db, ctx.snapshot.id).call_sites, unresolved: snapshotSummary(ctx.db, ctx.snapshot.id).unresolved_calls.count, by_reason: snapshotSummary(ctx.db, ctx.snapshot.id).unresolved_calls.by_reason, dependency_missing_by_package: snapshotSummary(ctx.db, ctx.snapshot.id).unresolved_calls.dependency_missing_by_package },
+        // Coverage imports, only when there are any (FR2066): a file is stale when its content in this snapshot differs from the one at import.
+        ...(coverage.length ? { coverage: coverage.map((c) => ({ source: c.source, format: c.format, imported_at: c.imported_at, window: c.window, files_matched: Object.keys(c.files).length, stale_files: Object.entries(c.files).filter(([p, f]) => (ctx.db.prepare('select content_hash from file where path = ?').get(p) as { content_hash: string | null } | undefined)?.content_hash !== f.hash).length })) } : {}),
       },
       stop_reasons: all.length > ctx.limits.max_rows ? ['max_rows'] : [],
       shrink: ['files', 'hubs'],
@@ -1036,19 +1065,21 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
       }
       const headSnap = { db: headDb, id: headRow!.id, ranges: diff.head }, baseSnap = { db: baseDb, id: baseRow!.id, ranges: diff.base }
       const depth = Number(input.depth ?? 1)
-      const includeTests = input.include_tests === true
+      const includeTests = input.include_tests === true, coverage = ctx.catalog.coverageImports(ctx.repo.id)
       // Test code changed by the diff is evidence for the rest, not a changed symbol of its own, unless asked for.
       const done = changedSymbols(headSnap, baseSnap, diff, read).filter((c) => includeTests || !inTestCode(c.snap.db, c.sym, isTestCode))
-        .map((c) => complete(c, { head: headSnap, base: baseSnap, depth, includeTests, isTest: isTestCode, read, readHash: (h) => ctx.store.read(h), maxDepth: ctx.limits.max_depth, include: input.include_inferred }))
+        .map((c) => complete(c, { head: headSnap, base: baseSnap, depth, includeTests, isTest: isTestCode, read, readHash: (h) => ctx.store.read(h), maxDepth: ctx.limits.max_depth, include: input.include_inferred, coverage }))
       const all = done.map((d) => d.changed), stopped = done.reduce((n, d) => n + d.stopped, 0), unfollowed = [...new Set(done.flatMap((d) => d.unfollowed))].sort()
       const deps = all.flatMap((c) => c.dependents)
       const count = (s: string) => deps.filter((x) => x.status === s).length
-      const totals = { changed_symbols: all.length, dependents: deps.length, changed: count('changed'), tested: count('tested'), neither: count('neither'), by_basis: byBasis(deps) }
+      // covered is counted apart only when a coverage report is imported, so an answer without one is as before (FR2064).
+      const totals = { changed_symbols: all.length, dependents: deps.length, changed: count('changed'), tested: count('tested'), ...(coverage.length ? { covered: count('covered') } : {}), neither: count('neither'), by_basis: byBasis(deps) }
       // Files the diff touches that a side's snapshot does not analyse are named, never dropped.
       const unanalysed = [...new Set([...[...diff.head.keys()].filter((p) => !indexed(headDb, p)), ...[...diff.base.keys()].filter((p) => !indexed(baseDb, p) && !diff.head.has(p))])].sort()
       const end = ctx.page.offset + ctx.limits.max_rows
+      const co = input.include_cochanges === true ? cochangesOf(root, base, baseDb, diff) : null
       return {
-        data: { ...sides, pending: [], changed: all.slice(ctx.page.offset, end), totals },
+        data: { ...sides, pending: [], changed: all.slice(ctx.page.offset, end), totals, ...(co ? { cochange: co.rows.slice(0, ctx.limits.max_rows) } : {}) },
         stop_reasons: all.length > end ? ['max_rows'] : [], more: all.length > end, shrink: 'changed',
         limitations: [
           ...(ctx.lean ? [summaryLine(totals)] : []),
@@ -1058,12 +1089,14 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
           ...(unfollowed.length ? [`Calls through interfaces and base classes are not followed for ${unfollowed.join(', ')} code, so a row marked neither may have a test that reaches it by dispatch.`] : []),
           ...(unanalysed.length ? [`The diff touches ${unanalysed.length} file${unanalysed.length === 1 ? '' : 's'} no snapshot analyses, so their changes are not listed: ${unanalysed.slice(0, 20).join(', ')}${unanalysed.length > 20 ? ', ...' : ''}.`] : []),
           ...(ctx.catalog.workspaces().some((w) => w.members.includes(ctx.repo.id)) ? ['Dependents in the other repositories of this workspace are not searched.'] : []),
+          ...(coverage.length ? ['Covered means no test reaches the dependent statically and the newest imported coverage report of its file that is not stale shows one of its lines executed; neither means not changed, not tested and not covered. proofmesh completeness --static-only counts covered as neither.'] : []),
           ...(ctx.lean ? [] : [
             'Symbols are matched by kind and qualified name, so a rename is one deleted symbol and one added; an edit of only whitespace or comments inside a symbol counts as modified.',
             'Tested means a test executes it by a call, a chain of calls or dispatch, as find_tests finds it; test code is recognised by file convention, project naming and symbol roles.',
           ]),
+          ...(co?.notes ?? []),
         ],
-        lean: (data) => completenessRows(data.changed as Changed[]),
+        lean: (data) => [...completenessRows(data.changed as Changed[]), ...((data.cochange as CochangeRow[] | undefined) ?? []).map((c) => `cochange ${leanPartner(c)} ${c.status} (with ${quote(c.of)})`)],
       }
     } finally {
       for (const db of new Set([baseDb, headDb])) if (db !== ctx.db) db.close()
@@ -1310,6 +1343,28 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     }
   },
 
+  get_cochanges(ctx, input) {
+    const subjects = new Map<string, { id: string; path: string }>()
+    for (const raw of (input.paths as string[] | undefined) ?? []) { const f = fileAt(ctx, raw, true); subjects.set(f.path, f) }
+    for (const id of (input.subject_ids as string[] | undefined) ?? []) {
+      const f = ctx.db.prepare('select f.id, f.path from symbol s join file f on f.id = s.file_id where s.id = ? union all select id, path from file where id = ?').get(id, id) as { id: string; path: string } | undefined
+      if (!f) throw new ProofmeshError('NOT_FOUND', `symbol ${id} is not in snapshot ${ctx.snapshot.id}`)
+      subjects.set(f.path, f)
+    }
+    if (!subjects.size) throw new ProofmeshError('INVALID_ARGUMENT', 'get_cochanges needs paths or subject_ids')
+    const t: Thresholds = { min_shared: Number(input.min_shared ?? DEFAULT_THRESHOLDS.min_shared), min_degree: Number(input.min_degree ?? DEFAULT_THRESHOLDS.min_degree), max_files_per_commit: Number(input.max_files_per_commit ?? DEFAULT_THRESHOLDS.max_files_per_commit) }
+    const history = readHistory(ctx.repo.root, snapshotCommit(ctx.db), input.window as Window | undefined)
+    const r = partners(ctx.db, history, [...subjects.values()], t, (p) => isTestFile(ctx.db, p))
+    const rows = r.rows.map((s) => ({ ...s, partners: input.only_unlinked === true ? s.partners.filter((p) => !p.linked) : s.partners }))
+    const cut = rows.some((s) => s.partners.length > ctx.limits.max_rows)
+    return {
+      data: { subjects: rows.map((s) => ({ ...s, partners: s.partners.slice(0, ctx.limits.max_rows) })), history: historyHeader(history, r.bulk), thresholds: t },
+      stop_reasons: cut ? ['max_rows'] : [], limitations: historyNotes(history, t, r.bulk), shrink: 'subjects',
+      // One subject's rows are its partners; with more, each row says whose partner it is.
+      lean: (data) => (data.subjects as typeof rows).flatMap((s, _, all) => s.partners.map((p) => `${leanPartner(p)}${all.length > 1 ? ` of=${quote(s.path)}` : ''}`)),
+    }
+  },
+
   get_session_trail(ctx, input) {
     const sessionId = String(input.session_id)
     const { entries: logged, cut } = ctx.catalog.trail(sessionId, ctx.repo.id)
@@ -1537,7 +1592,19 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
       const rows = [...found.values()].sort((a, b) => a.depth - b.depth || cmp(a.repository!.name, b.repository!.name) || cmp(a.path, b.path) || a.line - b.line || cmp(a.id, b.id))
       return { header: w.header, limitations: [...w.limitations, ...mismatchNotes(across.notes)], rows, stopped: across.stopped }
     }) : null
-    const r = { ...local, rows: [...local.rows.map((t): Row => ({ ...t, chain: local.chain(t) })), ...(ws?.rows ?? [])] }
+    // FR2063: an imported report's coverage of the subjects, and each test it names as running them that no chain above lists (scenario 5).
+    const coverage = ctx.catalog.coverageImports(ctx.repo.id), cov = coverageOf(ctx.db, coverage, ids)
+    const listed = new Set(local.rows.map((t) => t.id)), unnamed: string[] = []
+    const byCoverage = (cov?.tests ?? []).flatMap((name): Row[] => {
+      // shortcut: a report's test name is matched to a test symbol by its whole name or the part after its last ::, # or dot; map names a runner writes otherwise when one turns up.
+      const tail = name.split(/::|#|\./).pop()!
+      const hits = (ctx.db.prepare("select s.id, s.kind, s.name, s.qualified_name, s.start_line, s.file_id, f.path from symbol s join file f on f.id = s.file_id where s.kind != 'module' and (s.name in (?, ?) or s.qualified_name = ?)").all(name, tail, name) as Array<{ id: string; kind: string; name: string; qualified_name: string; start_line: number; file_id: string; path: string }>)
+        .filter((h) => inTestCode(ctx.db, h, isTestCode))
+      if (hits.length !== 1) { unnamed.push(name); return [] }
+      const h = hits[0]!
+      return listed.has(h.id) ? [] : [{ id: h.id, kind: h.kind, name: h.name, qualified_name: h.qualified_name, path: h.path, project: projectOf(ctx.db, h.file_id), line: h.start_line, depth: 1, evidence: 'coverage', basis: 'observed', chain: [] }]
+    })
+    const r = { ...local, rows: [...local.rows.map((t): Row => ({ ...t, chain: local.chain(t) })), ...(ws?.rows ?? []), ...byCoverage] }
     const end = ctx.page.offset + ctx.limits.max_rows, executing = r.rows.filter((t) => EXECUTING.has(t.evidence)).length
     // A subject whose file's calls are not resolved has no call to find a test through: say so, since no row would not mean no test.
     // Not for a subject whose candidate calls were followed: it has candidate sites of its own, so some of its calls are read, as inferred (FR205).
@@ -1562,18 +1629,24 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
       ...(ws ? [...ws.limitations, ...(ws.rows.length ? ['Tests in other repositories carry their repository; by_project counts this repository\'s tests only.'] : [])]
         : ctx.catalog.workspaces().some((w) => w.members.includes(ctx.repo.id)) ? ['Tests in the other repositories of this workspace are not searched.'] : []),
       ...(r.stopped_by || ws?.stopped ? [`The search stopped at the ${r.stopped_by === 'node_budget' ? 'node budget' : 'depth limit'}; more tests may reach this code.`] : []),
+      ...(cov ? [cov.stale
+        ? `The coverage report ${cov.source} was imported before these files last changed, so its coverage is stale and says nothing here; import a new report to refresh it.`
+        : `coverage is what the report ${cov.source} (${cov.format}) says its test run executed; Proofmesh ran no test. A line counts for the innermost symbol that holds it, so a declaration line that runs at import, such as a Python def, counts as executed.`] : []),
+      ...(unnamed.length ? [`${unnamed.length} test${unnamed.length === 1 ? '' : 's'} the coverage report names as running this code ${unnamed.length === 1 ? 'is' : 'are'} not one test symbol of this snapshot, so not listed: ${unnamed.slice(0, 10).join(', ')}${unnamed.length > 10 ? ', ...' : ''}.`] : []),
     ]
     const stopped = r.stopped_by ?? (ws?.stopped ? 'max_depth' : null), counts = findingCounts(ctx.db, ctx.catalog.sarifImports(ctx.repo.id))
     return {
       data: {
         tests: r.rows.slice(ctx.page.offset, end).map((t): Row => !t.repository && counts.get(t.id) ? { ...t, findings: counts.get(t.id)! } : t),
         totals: { tests: r.rows.length, executing, not_executing: r.rows.length - executing, by_basis: byBasis(r.rows), by_project: [...byProject].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)).map(([name, count]) => ({ name, count })) },
-        observed: { available: false, reason: 'No coverage data has been imported for this snapshot.' }, stopped_by: stopped, ...(ws ? { workspace: ws.header } : {}),
+        observed: observedOf(cov, coverage.length > 0), ...(cov ? { coverage: coverageData(cov) } : {}), stopped_by: stopped, ...(ws ? { workspace: ws.header } : {}),
       },
+      ...(cov ? { header: cov.stale ? `coverage stale ${cov.source}` : `${cov.executed ? '' : 'not '}executed by coverage ${cov.source}` } : {}),
       stop_reasons: [...(stopped === 'max_depth' ? ['max_depth' as const] : []), ...(r.rows.length > end ? ['max_rows' as const] : [])], more: r.rows.length > end, limitations, shrink: 'tests', total: r.rows.length,
       // A lean row is the test at its first call toward the subject, as an impact row is; a call is depth=1, a transitive call deeper (FR097, FR101).
       lean: (data) => (data.tests as Row[]).map((t) => t.evidence === 'import_only'
         ? leanRow(null, t.path, t.line, ['import_only', ...(t.basis === 'inferred' ? ['inferred'] : []), ...(t.repository ? [repoTag(t.repository)] : [])])
+        : t.evidence === 'coverage' ? leanRow(leanName(t), t.path, t.line, ['coverage', ...(t.findings ? [`findings=${t.findings}`] : [])])
         : leanRow(leanName(t), t.chain[0]!.path, t.chain[0]!.line, [`depth=${t.depth}`, ...(t.evidence === 'dispatch' || t.evidence === 'reference' ? [t.evidence] : []), ...(t.basis === 'inferred' ? ['inferred'] : []), ...(t.repository ? [repoTag(t.repository)] : []), ...(t.findings ? [`findings=${t.findings}`] : [])])),
     }
   },
@@ -1801,8 +1874,10 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     const identity = ctx.db.prepare(`select stable_key, ${sealed ? 'body_hash' : 'null as body_hash'} from symbol where id = ?`).get(id) as { stable_key: string; body_hash: string | null }
     // What the adapter kept beside the name, such as the SCIP index's own symbol (FR441); a snapshot before format 0.11 has none.
     const detail = ctx.db.prepare("select 1 from pragma_table_info('symbol') where name = 'detail'").get() ?(ctx.db.prepare('select detail from symbol where id = ?').get(id) as { detail: string | null }).detail : null
+    // Coverage in the full envelope only, and only when an imported report covers the file (FR2063).
+    const cov = ctx.compact ? null : coverageOf(ctx.db, ctx.catalog.coverageImports(ctx.repo.id), [s.id])
     return {
-      data: { symbol: { ...withRoles(ctx.db, [s])[0]!, ...identity, ...(detail ? { detail: JSON.parse(detail) as Record<string, string> } : {}) } }, evidence_ids: [s.evidence_id],
+      data: { symbol: { ...withRoles(ctx.db, [s])[0]!, ...identity, ...(detail ? { detail: JSON.parse(detail) as Record<string, string> } : {}) }, ...(cov ? { coverage: coverageData(cov) } : {}) }, evidence_ids: [s.evidence_id],
       limitations: !sealed ? ['This snapshot was sealed before body hashes existed, so body_hash is null; index again to compute it.']
         : identity.body_hash ? []
         : unreadableFiles(ctx.db).paths.includes(s.path) ? [`The content of ${s.path} was unavailable when the snapshot was sealed, so body_hash is null.`]
@@ -2029,6 +2104,25 @@ const inferredNotesFor = (done: Array<{ follow: { on: boolean; asked: boolean };
   const sum = (list: typeof done) => ({ followable: list.reduce((n, d) => n + d.sites.followable, 0), capped: list.reduce((n, d) => n + d.sites.capped, 0) })
   const followed = group(true)
   return [...(followed.length ? inferredNotes({ on: true, asked: followed.some((d) => d.follow.asked) }, sum(followed), followed.length) : []), ...inferredNotes({ on: false, asked: group(false).some((d) => d.follow.asked) }, sum(group(false)), 0)]
+}
+
+type CochangeRow = Partner & { of: string; status: 'not_changed' }
+/**
+ * FR2023: the partners of the files a diff touches that it does not change, from the history up to base, so the change under review
+ * does not vote on what usually changes with it.
+ */
+function cochangesOf(root: string, base: string, baseDb: Database.Database, diff: ReturnType<typeof diffLines>): { rows: CochangeRow[]; notes: string[] } {
+  const touched = new Set([...diff.head.keys(), ...diff.base.keys(), ...diff.renamed.keys(), ...diff.renamed.values()])
+  const subjects = new Map<string, { id: string; path: string }>()
+  for (const p of touched) {
+    const f = baseDb.prepare('select id, path from file where path = ?').get(diff.renamed.get(p) ?? p) as { id: string; path: string } | undefined
+    if (f) subjects.set(f.path, f)
+  }
+  const history = readHistory(root, base)
+  const r = partners(baseDb, history, [...subjects.values()], DEFAULT_THRESHOLDS, (p) => isTestFile(baseDb, p))
+  const rows = r.rows.flatMap((s) => s.partners.filter((p) => !touched.has(p.path)).map((p): CochangeRow => ({ ...p, of: s.path, status: 'not_changed' })))
+    .sort((a, b) => b.degree - a.degree || b.shared - a.shared || (a.path < b.path ? -1 : a.path > b.path ? 1 : a.of < b.of ? -1 : 1))
+  return { rows, notes: historyNotes(history, DEFAULT_THRESHOLDS, r.bulk) }
 }
 
 /** Whether a snapshot analyses a path. */

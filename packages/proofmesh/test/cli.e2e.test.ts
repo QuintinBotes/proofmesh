@@ -57,6 +57,28 @@ describe('FR081 build-evaluation trust is granted and revoked only through the C
     expect(cli(['--data-dir', d, 'repo', 'untrust', repo]).stdout).toContain('repo had no trust grant')
   })
 
+  it('FR1720 an index of C# without the grant says so with the command that grants it; a trusted or C#-free index does not (#236)', () => {
+    const reminder = /^analysed without build evaluation: /m
+    const d = tmpDir()
+    cli(['--data-dir', d, 'init'])
+    const repo = cli(['--data-dir', d, 'repo', 'add', fixtureRepo('cs-reads')]).stdout.trim()
+    const untrusted = cli(['--data-dir', d, 'index', repo])
+    expect(untrusted.status, untrusted.stderr).toBe(0)
+    expect(untrusted.stdout).toMatch(reminder)
+    expect(untrusted.stdout).toMatch(/C# resolution may be partial/)
+    expect(untrusted.stdout).toContain(`proofmesh repo trust ${repo} --build-evaluation`)
+    expect(cli(['--data-dir', d, 'repo', 'trust', repo, '--build-evaluation']).status).toBe(0)
+    const trusted = cli(['--data-dir', d, 'index', repo])
+    expect(trusted.stdout).toContain('(analysed with build execution)')
+    expect(trusted.stdout).not.toMatch(reminder)
+    const t = tmpDir()
+    cli(['--data-dir', t, 'init'])
+    cli(['--data-dir', t, 'repo', 'add', FIXTURE])
+    const typescript = cli(['--data-dir', t, 'index', FIXTURE])
+    expect(typescript.status, typescript.stderr).toBe(0)
+    expect(typescript.stdout).not.toMatch(reminder)
+  }, 180000)
+
   it('no MCP or HTTP tool can grant trust', () => {
     expect(TOOLS.filter((t) => /trust|grant/.test(t))).toEqual([])
   })
