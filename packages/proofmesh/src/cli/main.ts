@@ -19,6 +19,7 @@ import { watch } from '../indexer/watch.js'
 import { BUILT_IN, Registry, registryFor } from '../indexer/languages.js'
 import { runKit } from '../conformance/kit.js'
 import { terrainPayload } from '../query/terrain-payload.js'
+import { EvidenceStore } from '../evidence/store.js'
 import { duplicateGroups } from '../query/duplicates.js'
 import { registerTestFilter } from '../query/tests.js'
 import { producerCommand } from './producer.js'
@@ -369,7 +370,7 @@ export async function main(argv: string[]): Promise<number> {
           const db = openSnapshot(catalog, snapshot)
           try {
             registerTestFilter(db)
-            const result = duplicateGroups(db, { min_tokens: minimum }, 0, Infinity)
+            const result = duplicateGroups(db, new EvidenceStore(dataDir), { min_tokens: minimum }, 0, Infinity)
             if (json) console.log(JSON.stringify(result))
             else if (result.status === 'no_body_hash') console.log('Index the repository again to compute body hashes.')
             else for (const group of result.groups) {

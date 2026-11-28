@@ -1119,7 +1119,7 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
       const unanalysed = [...new Set([...[...diff.head.keys()].filter((p) => !indexed(headDb, p)), ...[...diff.base.keys()].filter((p) => !indexed(baseDb, p) && !diff.head.has(p))])].sort()
       const end = ctx.page.offset + ctx.limits.max_rows
       const page = all.slice(ctx.page.offset, end)
-      const duplicates = input.include_duplicates === true ? unchangedTwins(baseDb, new Set(touched.map((c) => c.sym.stable_key)), page) : undefined
+      const duplicates = input.include_duplicates === true ? unchangedTwins(baseDb, ctx.store, new Set(touched.map((c) => c.sym.stable_key)), page) : undefined
       const co = input.include_cochanges === true ? cochangesOf(root, base, baseDb, diff) : null
       return {
         data: { ...sides, pending: [], changed: page, totals, ...(duplicates ? { duplicates } : {}), ...(co ? { cochange: co.rows.slice(0, ctx.limits.max_rows) } : {}) },
@@ -1398,7 +1398,7 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     if (input.subject_id && input.path) throw new ProofmeshError('INVALID_ARGUMENT', 'give subject_id or path')
     if (input.subject_id && !ctx.db.prepare('select 1 from symbol where id = ?').get(input.subject_id)) throw new ProofmeshError('NOT_FOUND', 'subject symbol is absent from the snapshot')
     const path = input.path === undefined ? undefined : fileAt(ctx, String(input.path)).path
-    const data = duplicateGroups(ctx.db, { ...input, path }, ctx.page.offset, ctx.limits.max_rows)
+    const data = duplicateGroups(ctx.db, ctx.store, { ...input, path }, ctx.page.offset, ctx.limits.max_rows)
     const more = ctx.page.offset + data.groups.length < data.total_groups
     return { data, total: data.total_groups, shrink: 'groups', more, stop_reasons: more ? ['max_rows'] : [],
       limitations: [data.status === 'no_body_hash' ? 'Snapshot has no body hashes. Index the repository again.' : 'Exact normalised declarations only.', ...(data.status === 'unique' ? ['unique: no qualifying twins.'] : [])],

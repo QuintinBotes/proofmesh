@@ -108,6 +108,28 @@ a task that long delays the answer to a click visibly. It is what makes `--check
 
 ## Latest results
 
+### Terrain transfer and cold-run repeatability (2026-11-28)
+
+Apple M5 Max, 18 cores, 64 GB, Darwin 27.2.0 arm64. Chromium 158.0.8127.18 used Playwright build 1254 and ANGLE on Metal. The benchmark ran the Terrain implementation from `5a0fbd0` in three fresh browser profiles per fixture, with a separate first run. First draw, RSS and script size below refer to the cold load. The gzip column measures the Terrain response body.
+
+| Fixture | First draw (median) | Terrain (gzip bytes) | Initial scripts (gzip KiB) | Browser RSS (MiB) | 1-minute load, start → end | Budget misses |
+|---|---:|---:|---:|---:|---:|---:|
+| TypeORM (7,033 symbols) | 230 ms | 125,133 | 221 | 388 | 17.4296875 → 7.32275390625 | 0 |
+| 50,000 symbols | 250 ms | 736,433 | 221 | 452 | 6.896484375 → 3.62353515625 | 0 |
+| 250,000 symbols | 372 ms | 3,756,989 | 221 | 662 | 3.5732421875 → 2.54345703125 | 0 |
+
+The baseline v6 responses were 1,484,004 bytes gzip at 50,000 symbols and 7,991,286 bytes at 250,000. Terrain requests the area bundles and degrees it renders. The full response still supplies the individual symbol links. The Terrain response meets the 1 MB and 5 MB payload targets. Initial scripts, browser RSS and progressive area loading remain open in #47.
+
+Cold timings above 100 ms with a spread greater than 10% (#41):
+
+- TypeORM (7,033 symbols) — `first_draw_ms`, `settled_ms`, `tti_ms`, `terrain_switch_cold_ms`.
+- 50,000 symbols — `terrain_switch_ms`.
+- 250,000 symbols — all timings within 10%.
+
+The 200 ms injected-task control recorded a 200 ms longest task and exceeded the 100 ms budget. The three normal runs for each fixture used the production build without the injected task.
+
+### Earlier measurements
+
 Measured on 2026-11-27 on an Apple M5 Max (18 cores, 64 GB, macOS Darwin 25.6.0) shared with other jobs: its one-minute
 load average was between about 10 and 30 at the start and end of the runs, and each table names the load at its own start
 and end. The browser drew through the GPU (ANGLE on Metal) in every run, so no run used the software column. Under that

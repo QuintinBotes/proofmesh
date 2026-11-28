@@ -1,4 +1,5 @@
 import Database from 'better-sqlite3'
+import { EvidenceStore } from '../src/evidence/store.js'
 import { duplicateGroups } from '../src/query/duplicates.js'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -50,7 +51,7 @@ describe('FR2180 FR2181 FR2182 FR2183 FR2184 FR2185 duplicate declarations', () 
     const legacy = new Database(':memory:')
     try {
       legacy.exec('create table symbol(id text)')
-      expect(duplicateGroups(legacy, {}, 0, 10)).toMatchObject({ status: 'no_body_hash', total_groups: 0, groups: [] })
+      expect(duplicateGroups(legacy, new EvidenceStore(dataDir), {}, 0, 10)).toMatchObject({ status: 'no_body_hash', total_groups: 0, groups: [] })
     } finally { legacy.close() }
   })
 
