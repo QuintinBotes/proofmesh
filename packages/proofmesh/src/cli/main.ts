@@ -325,7 +325,9 @@ export async function main(argv: string[]): Promise<number> {
               const file = path.join(repo.root, p)
               if (!fs.existsSync(file)) return [p, '']
               const real = fs.realpathSync(file)
-              return [p, !path.relative(repo.root, real).split(path.sep).includes('..') && fs.statSync(real).isFile() ? sha256File(real) : '']
+              const rel = path.relative(repo.root, real)
+              const inside = rel !== '..' && !rel.startsWith('..' + path.sep) && !path.isAbsolute(rel)
+              return [p, inside && fs.statSync(real).isFile() ? sha256File(real) : '']
             }))
             const s = catalog.addSarif(repo.id, { name, path: file, sha256: sha256File(file), ...read, files }, os.userInfo().username)
             console.log(`SARIF file ${s.name} imported for ${repo.name}: ${s.findings.length} finding${s.findings.length === 1 ? '' : 's'} attached from ${s.tools.join(', ') || 'no run'}; by ${s.added_by} at ${s.added_at}`)

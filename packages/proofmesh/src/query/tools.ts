@@ -1366,9 +1366,13 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     const imports = ctx.catalog.sarifImports(ctx.repo.id)
     const all = attachFindings(ctx.db, imports).filter((f) => (!ids.size && !paths.size) || paths.has(f.path) || (f.symbol !== null && ids.has(f.symbol.id)))
     const stale = all.filter((f) => f.stale).length
+    const findings = findingDetails(ctx.db, ctx.store, imports, all.slice(0, ctx.limits.max_rows), input.flow_steps as number | undefined)
     return {
-      data: { findings: findingDetails(ctx.db, ctx.store, imports, all.slice(0, ctx.limits.max_rows), input.flow_steps as number | undefined), imports: imports.map((i) => ({ name: i.name, tools: i.tools, findings: i.findings.length, unattached: i.unattached.length, added_at: i.added_at })), total: all.length },
-      stop_reasons: all.length > ctx.limits.max_rows ? ['max_rows'] : [], shrink: 'findings',
+      data: { findings, imports: imports.map((i) => ({ name: i.name, tools: i.tools, findings: i.findings.length, unattached: i.unattached.length, added_at: i.added_at })), total: all.length },
+      stop_reasons: all.length > ctx.limits.max_rows ? ['max_rows'] : [], shrink: ['findings[].code_flow.steps', 'findings'],
+      prune: (data) => {
+        for (const row of data.findings as typeof findings) if ('code_flow' in row) row.code_flow.truncated = row.code_flow.steps.length < row.code_flow.total_steps
+      },
       limitations: [
         imports.length ? 'Findings are what the analysers named in each SARIF file reported when it was produced; Proofmesh runs no analyser and checks none of them.' : 'No SARIF file is imported for this repository; proofmesh sarif add <repository> <file.sarif> imports one.',
         ...(stale ? [`${stale} finding${stale === 1 ? ' is' : 's are'} in a file changed since its SARIF file was imported, so ${stale === 1 ? 'its line' : 'their lines'} may have moved (stale: sarif_stale:<name>); import a new SARIF file to refresh ${stale === 1 ? 'it' : 'them'}.`] : []),
@@ -1738,9 +1742,12 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
       ...generatedNote(ctx, 'entry points', input),
     ]
     if (search) limitations.push('Static reachability on this snapshot through resolved calls, registered handlers, jobs and possible dispatch. Unresolved sites and search limits can hide other roots. Each witness lists its call sites in order.')
+    const entries = rows.slice(ctx.page.offset, end)
+    const witnesses = (entries: typeof rows) => search ? [...new Set((entries as typeof search.hits).flatMap((r) => r.witnesses.flat().flatMap((h) => h.evidence_ids)))] : []
+    const evidence = witnesses(entries)
     return {
-      ...(search ? { unresolved: search.unresolved, evidence_ids: [...new Set(search.hits.slice(ctx.page.offset, end).flatMap((r) => r.witnesses.flat().flatMap((h) => h.evidence_ids)))] } : {}),
-      data: { entries: rows.slice(ctx.page.offset, end), totals }, more: rows.length > end, stop_reasons: [...(search?.stops ?? []), ...(rows.length > end ? ['max_rows' as const] : [])], limitations, shrink: 'entries',
+      ...(search ? { unresolved: search.unresolved, evidence_ids: evidence, prune: (data) => { evidence.splice(0, evidence.length, ...witnesses(data.entries as EntryPoint[])) } } : {}),
+      data: { entries, totals }, more: rows.length > end, stop_reasons: [...(search?.stops ?? []), ...(rows.length > end ? ['max_rows' as const] : [])], limitations, shrink: 'entries',
       lean: (data) => search ? (data.entries as typeof search.hits).flatMap((entry) => [
         leanRow(entry.name, entry.path, entry.line, [entry.reason, 'static']),
         ...entry.witnesses.flatMap((path, i) => path.map((hop) => leanRow(hop.type, hop.path, hop.line, [`path=${i + 1}`, hop.basis]))),
