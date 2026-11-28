@@ -1,0 +1,89 @@
+# ProofMesh impact completeness on a pull request (FR2144). An example, not enabled here: copy it to
+# .github/workflows/proofmesh.yml in the repository it should run in. It comments with the workflow's own token
+# and names no secret. ProofMesh opens no network connection (FR2145); only the gh step below posts.
+#
+# What it does: restores the ProofMesh data directory from the cache, indexes the base and head commits that have no
+# snapshot yet, annotates each dependent the change neither updates nor tests, writes the report to the job summary,
+# and posts the same report as one pull request comment, edited in place on later pushes.
+#
+# Forks: it runs on pull_request, never pull_request_target, so a fork's code never runs with a write token. On a
+# fork the token is read-only; the comment step then fails, says so, and the report stays in the job summary.
+# Trust: CI never grants build evaluation. Without the .NET SDK, C# is read by the syntax tier, and the report's
+# limitations say which rows that makes inferred.
+# Pin each action to a full commit sha in your copy; the tags below are for reading.
+name: ProofMesh impact completeness
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  impact:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the pull request with its history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check out ProofMesh
+        uses: actions/checkout@v4
+        with:
+          repository: QuintinBotes/proofmesh
+          ref: main # pin a release tag or commit
+          path: .proofmesh-tool
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Build ProofMesh
+        working-directory: .proofmesh-tool
+        run: |
+          corepack enable
+          pnpm install --frozen-lockfile
+          pnpm build
+
+      - name: Restore the ProofMesh data directory
+        uses: actions/cache@v4
+        with:
+          path: ~/.proofmesh-ci
+          key: proofmesh-${{ runner.os }}-${{ github.event.pull_request.base.sha }}-${{ github.event.pull_request.head.sha }}
+          restore-keys: |
+            proofmesh-${{ runner.os }}-${{ github.event.pull_request.base.sha }}-
+            proofmesh-${{ runner.os }}-
+
+      - name: Report impact completeness
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          pm() { node .proofmesh-tool/packages/proofmesh/dist/cli.mjs --data-dir "$HOME/.proofmesh-ci" "$@"; }
+          pm init
+          pm repo add "$GITHUB_WORKSPACE"
+          # Exit 1 means a dependent is neither changed nor tested: reported, not a failure of this step.
+          # --format github annotates each such dependent and appends the report to $GITHUB_STEP_SUMMARY.
+          pm completeness "$GITHUB_WORKSPACE" "$BASE..$HEAD" --format github || [ $? -eq 1 ]
+          pm completeness "$GITHUB_WORKSPACE" "$BASE..$HEAD" --format markdown > "$RUNNER_TEMP/proofmesh-report.md" || [ $? -eq 1 ]
+          # See test-selection-audit.md to join this artifact with the full-suite JUnit job.
+          # Keep the full-suite job running. Exit 3 is an answered selection with incomplete coverage.
+          rc=0
+          pm tests "$GITHUB_WORKSPACE" --changed "$BASE..$HEAD" --json > "$RUNNER_TEMP/proofmesh-selection.json" || rc=$?
+          case "$rc" in 0|3) ;; *) exit "$rc" ;; esac
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: proofmesh-selection
+          path: ${{ runner.temp }}/proofmesh-selection.json
+          if-no-files-found: error
+
+      - name: Post or update the pull request comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          gh pr comment "$PR" --edit-last --create-if-none --body-file "$RUNNER_TEMP/proofmesh-report.md" \
+            || echo "::notice::could not comment on this pull request (a fork's token is read-only); the report is in the job summary"

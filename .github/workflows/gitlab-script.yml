@@ -1,0 +1,33 @@
+name: GitLab sample on change-reach
+on: pull_request
+permissions:
+  contents: read
+jobs:
+  fixture:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Run the sample job's script in its declared image
+        env:
+          CI_MERGE_REQUEST_DIFF_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          CI_COMMIT_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          ruby -ryaml -e 'puts YAML.load_file(".gitlab-ci.yml").fetch("proofmesh-impact").fetch("script")' > "$RUNNER_TEMP/job.sh"
+          image=$(ruby -ryaml -e 'puts YAML.load_file(".gitlab-ci.yml").fetch("proofmesh-impact").fetch("image")')
+          ref=$(ruby -ryaml -e 'puts YAML.load_file(".gitlab-ci.yml").fetch("proofmesh-impact").fetch("variables").fetch("PROOFMESH_REF")')
+          docker run --rm -v "$GITHUB_WORKSPACE:/fixture" -w /fixture -v "$RUNNER_TEMP/job.sh:/job.sh:ro" \
+            -e CI_MERGE_REQUEST_DIFF_BASE_SHA -e CI_COMMIT_SHA -e CI_PROJECT_DIR=/fixture -e CI_BUILDS_DIR=/builds \
+            -e CI_PIPELINE_SOURCE=merge_request_event -e PROOFMESH_REF="$ref" "$image" \
+            bash -ec 'git config --global --add safe.directory /fixture; mkdir -p /builds; bash -eo pipefail /job.sh'
+          grep -F '2 dependents are neither changed nor tested.' proofmesh-report.md
+          grep -F 'analystScoreDoubles' proofmesh-tests.txt
+          test ! -e proofmesh-note.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gitlab-fixture-outputs
+          path: |
+            proofmesh-report.md
+            proofmesh-tests.txt
+          if-no-files-found: error
