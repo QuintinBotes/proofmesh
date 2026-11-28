@@ -37,7 +37,7 @@ describe('FR151 FR152 FR153 FR158 the Maven module graph, read from pom.xml as t
     const d = await fixtureIndex()
     withSnapshot(d, (db) => {
       expect(rows(db, 'depends_on_package').filter((r) => !/^(:|\/\/)/.test(r.from)).map((r) => [r.from, r.to, r.resolution, r.detail, r.path, r.line])).toEqual([
-        ['com.acme:web', 'maven:com.google.guava:guava', 'resolved_external', { version: '33.0.0-jre' }, 'maven/web/pom.xml', 16],
+        ['com.acme:web', 'maven:com.google.guava:guava', 'resolved_external', { version: '33.7.2-jre' }, 'maven/web/pom.xml', 16],
       ])
     })
   }, 240000)
