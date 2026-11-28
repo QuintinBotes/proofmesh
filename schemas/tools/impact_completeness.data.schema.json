@@ -542,6 +542,60 @@
         }
       },
       "description": "With include_cochanges: the partners of the changed files that the diff does not change, by degree, then shared, then path. Co-change is not a relationship, so these are not dependents and no total counts them."
+    },
+    "duplicates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "changed_key",
+          "symbols"
+        ],
+        "properties": {
+          "changed_key": {
+            "type": "string"
+          },
+          "symbols": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "id",
+                "key",
+                "name",
+                "path",
+                "line",
+                "kind"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "key": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "path": {
+                  "type": "string"
+                },
+                "line": {
+                  "type": "integer"
+                },
+                "kind": {
+                  "type": "string"
+                },
+                "generated": {
+                  "type": "boolean"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   }
 }

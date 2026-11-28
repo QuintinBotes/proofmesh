@@ -1,0 +1,44 @@
+{
+  "format": "proofmesh-generates/v1",
+  "producer": "fixture-gen 1.0",
+  "name": "account-accessors",
+  "revision": "a4af404cc6db454f6757ddea0dc952ecac8e555f",
+  "links": [
+    {
+      "source": {
+        "path": "account.graphql",
+        "name": "Query.displayName",
+        "kind": "endpoint",
+        "start_line": 2,
+        "end_line": 2,
+        "sha256": "b3f6497fa46918361c0dd60481e289fad036e92a2375d0cfdc889117a7fe4c55"
+      },
+      "target": {
+        "path": "accessors.ts",
+        "name": "readDisplayName",
+        "kind": "function",
+        "start_line": 2,
+        "end_line": 2,
+        "sha256": "81f8f30d676e65e881e30da883b6a01cb2dd783d1ef396097578cf3bcf3691de"
+      }
+    },
+    {
+      "source": {
+        "path": "account.graphql",
+        "name": "Query.displayName",
+        "kind": "endpoint",
+        "start_line": 2,
+        "end_line": 2,
+        "sha256": "b3f6497fa46918361c0dd60481e289fad036e92a2375d0cfdc889117a7fe4c55"
+      },
+      "target": {
+        "path": "accessors.ts",
+        "name": "writeDisplayName",
+        "kind": "function",
+        "start_line": 3,
+        "end_line": 3,
+        "sha256": "81f8f30d676e65e881e30da883b6a01cb2dd783d1ef396097578cf3bcf3691de"
+      }
+    }
+  ]
+}

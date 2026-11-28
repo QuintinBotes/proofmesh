@@ -62,6 +62,7 @@ CREATE INDEX candidate_by_site ON assertion_candidate (symbol_id, site_path, sit
 CREATE INDEX assertion_by_source_site ON assertion (source_id, site_path, site_byte, type, id);
 CREATE INDEX assertion_by_target_site ON assertion (target_id, site_path, site_byte, type, id);
 CREATE INDEX symbol_by_file ON symbol (file_id, start_line);
+CREATE INDEX symbol_by_body_hash ON symbol (body_hash) WHERE body_hash IS NOT NULL;
 CREATE UNIQUE INDEX symbol_by_key ON symbol (stable_key);
 CREATE VIRTUAL TABLE symbol_fts USING fts5(symbol_id UNINDEXED, name, qualified_name, tokenize = 'trigram');
 -- Aggregates for the overview, filled at index time: resolved relationships between files by type, and symbols per file.

@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "find_duplicates.data.schema.json",
+  "title": "find_duplicates data",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "status",
+    "groups",
+    "total_groups",
+    "too_small"
+  ],
+  "properties": {
+    "status": {
+      "enum": [
+        "ok",
+        "unique",
+        "no_body_hash"
+      ]
+    },
+    "groups": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "hash",
+          "tokens",
+          "members",
+          "callers_overlap",
+          "symbols"
+        ],
+        "properties": {
+          "hash": {
+            "type": "string"
+          },
+          "tokens": {
+            "type": "integer"
+          },
+          "members": {
+            "type": "integer"
+          },
+          "callers_overlap": {
+            "type": "boolean"
+          },
+          "symbols": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "id",
+                "key",
+                "name",
+                "path",
+                "line",
+                "kind",
+                "test"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "key": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "path": {
+                  "type": "string"
+                },
+                "line": {
+                  "type": "integer"
+                },
+                "kind": {
+                  "type": "string"
+                },
+                "test": {
+                  "type": "boolean"
+                },
+                "generated": {
+                  "type": "boolean"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "total_groups": {
+      "type": "integer"
+    },
+    "too_small": {
+      "type": "integer"
+    }
+  }
+}

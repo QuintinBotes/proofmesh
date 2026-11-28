@@ -1,0 +1,12 @@
+digraph mygraph {
+  node [shape=box];
+  "//:second_test (6486418)"
+  "//:second_test (6486418)" -> "//:service (ac8f6dc)"
+  "//:first_test (6486418)"
+  "//:first_test (6486418)" -> "//:service (ac8f6dc)"
+  "//:service (ac8f6dc)"
+  "//:service (ac8f6dc)" -> "//:common (ac8f6dc)"
+  "//:service (ac8f6dc)" -> "//:linux_impl (ac8f6dc)"
+  "//:linux_impl (ac8f6dc)"
+  "//:common (ac8f6dc)"
+}

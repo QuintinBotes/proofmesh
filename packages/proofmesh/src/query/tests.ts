@@ -40,3 +40,10 @@ export function hasRoles(db: Database.Database): boolean {
 }
 /** The symbol's roles column as SQL, or null where the snapshot has none. */
 export const rolesSql = (db: Database.Database, alias = 's') => (hasRoles(db) ? `${alias}.roles` : 'null')
+
+
+/** Register the SQL filter shared by query tools and the duplicate listing CLI. */
+export function registerTestFilter(db: Database.Database) {
+  db.function('pm_is_test', { deterministic: true, varargs: true }, (path: unknown, roles?: unknown) =>
+    typeof path === 'string' && (isTestPath(path) || (typeof roles === 'string' && roleTest(parseRoles(roles)))) ? 1 : 0)
+}

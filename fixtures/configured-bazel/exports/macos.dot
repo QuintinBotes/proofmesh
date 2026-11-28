@@ -1,0 +1,12 @@
+digraph mygraph {
+  node [shape=box];
+  "//:second_test (fed5392)"
+  "//:second_test (fed5392)" -> "//:service (fa39157)"
+  "//:first_test (fed5392)"
+  "//:first_test (fed5392)" -> "//:service (fa39157)"
+  "//:service (fa39157)"
+  "//:service (fa39157)" -> "//:common (fa39157)"
+  "//:service (fa39157)" -> "//:macos_impl (fa39157)"
+  "//:macos_impl (fa39157)"
+  "//:common (fa39157)"
+}

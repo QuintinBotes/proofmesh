@@ -401,3 +401,22 @@ Every remedy comes from this one table of language to precise route:
 | `TypeScript` | typescript | none | `scip-typescript index` |
 
 A language not in the table that a grammar reads gets `proofmesh adapter add`; one with no grammar gets the same, and until a person adds an adapter it stays at tier `none` or `syntax`.
+
+### Configured Bazel dependencies
+
+Use the export from the build whose options you want to inspect. For example, the Linux fixture was produced with Bazel 6.5.0:
+
+```sh
+bazel cquery 'kind("sh_.* rule", deps(//:first_test + //:second_test))' \
+  --noimplicit_deps --define os=linux --output=graph --nograph:factored > linux.dot
+proofmesh cquery add my-repo linux.dot bazel-cquery-dot/v1 'Bazel 6.5.0' "$BUILD_REVISION" linux
+proofmesh cquery deps my-repo linux //:service
+```
+
+The import takes the full Git revision from the producer. Index that revision first. The unfactored DOT format preserves the configuration on each target instance, including transitions. Omit the label on `deps` to see the entire exported target set. Each edge has a BUILD witness or a missing-location reason. The totals include unknown labels and unsupported edges, with up to 20 example diagnostics. `proofmesh cquery status my-repo` lists imports and marks snapshots that are no longer current. The static graph remains available through the existing relationship queries. [Bazel cquery reference](https://github.com/bazelbuild/bazel/blob/6.5.0/site/en/query/cquery.md) · [Linux and macOS exports](../../fixtures/configured-bazel/exports)
+
+### Navigation between generated code and its source
+
+`proofmesh generates add my-repo mapping.json` imports a `proofmesh-generates/v1` JSON map. Give it a name, producer version, full Git revision, and a list of links. Each source and target specifies its repository-relative path, SHA-256 of the entire file, symbol name and kind, and one-based inclusive declaration lines. Each endpoint must resolve to exactly one declaration in the indexed snapshot. The fixture maps a GraphQL field to two TypeScript accessors. [Complete example map](../../fixtures/generator-map/mapping.json)
+
+Look up either endpoint with `get_symbol`. Each navigation result contains its direction, producer, revision, stable key, evidence ID and exact byte span. `proofmesh generates status my-repo` reports mapped, repeated and unplaced links, reasons for unplaced links, and stale imports. Importing the same name again on the same snapshot atomically replaces the prior map. A revision mismatch rejects the import. A different file hash, missing file or ambiguous span leaves that link unplaced. Both import commands read supplied artifacts without starting a build or generator.

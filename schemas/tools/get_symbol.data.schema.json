@@ -207,6 +207,88 @@
           }
         }
       }
+    },
+    "generation": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "direction": {
+            "enum": [
+              "generates",
+              "generated_from"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "producer": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "string"
+          },
+          "endpoint": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "start_line": {
+                "type": "integer"
+              },
+              "end_line": {
+                "type": "integer"
+              },
+              "start_byte": {
+                "type": "integer"
+              },
+              "end_byte": {
+                "type": "integer"
+              },
+              "id": {
+                "type": "string"
+              },
+              "key": {
+                "type": "string"
+              },
+              "evidence_id": {
+                "type": "string"
+              },
+              "generated": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "path",
+              "name",
+              "kind",
+              "start_line",
+              "end_line",
+              "start_byte",
+              "end_byte",
+              "id",
+              "key",
+              "evidence_id"
+            ]
+          }
+        },
+        "required": [
+          "direction",
+          "name",
+          "producer",
+          "revision",
+          "endpoint"
+        ]
+      }
     }
   }
 }

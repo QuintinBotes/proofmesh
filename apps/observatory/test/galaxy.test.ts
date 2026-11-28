@@ -4,6 +4,7 @@ import fc from 'fast-check'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { buildIndex, LIMIT, searchIndex } from '../src/paletteIndex'
 import { areaFog, areaLabel, ghostAreas, legendAreas, matchIndices, parseGalaxy, parseGalaxySliced, rankMatches, shortName, type GalaxyData } from '../src/galaxyData'
+import { terrainPayload } from '../../../packages/proofmesh/src/query/terrain-payload.js'
 import { galaxyFor } from '../../../packages/proofmesh/src/query/galaxy.js'
 import { indexedDataDir } from '../../../packages/proofmesh/test/helpers.js'
 
@@ -12,6 +13,13 @@ beforeAll(async () => { ({ dataDir: d } = await indexedDataDir()) })
 const load = () => { const gz = galaxyFor(d).gz; const raw = zlib.gunzipSync(gz); return parseGalaxy(raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength)) }
 
 describe('A11 the Galaxy payload: every symbol of the snapshot in one compact binary', () => {
+  it('FR1453 the Terrain projection carries the same positions, names, degrees and bundles', async () => {
+    const full = load()
+    const raw = zlib.gunzipSync(await terrainPayload(d, galaxyFor(d).gz))
+    const terrain = parseGalaxy(raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength))
+    expect(terrain.links.length).toBe(0)
+    expect({ ...terrain, links: full.links }).toEqual(full)
+  })
   it('holds every non-module symbol with its area, and the distinct resolved links between them', () => {
     const g = load()
     expect(g.names.slice().sort()).toEqual([

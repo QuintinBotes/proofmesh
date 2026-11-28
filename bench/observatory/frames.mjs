@@ -163,7 +163,7 @@ async function shownLayout(page, notKey) {
   for (let i = 0; i < 100; i++) {
     const l = await page.evaluate(async () => {
       const at = performance.getEntriesByType('resource').map((e) => e.name).filter((n) => /\/api\/v1\/galaxy\/v\d+\/[\w-]+$/.test(n)).at(-1)
-      const r = at && await fetch(at, { credentials: 'same-origin' })
+      const r = at && await fetch(at, { credentials: 'same-origin', headers: { Accept: 'application/vnd.proofmesh.terrain' } })
       if (!r?.ok) return null
       const buf = await r.arrayBuffer(), hl = new DataView(buf).getUint32(0, true), h = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, 4, hl)))
       const base = 4 + hl + ((4 - ((4 + hl) % 4)) % 4)
@@ -186,6 +186,8 @@ const frames = (page, ms) => page.evaluate((ms) => new Promise((resolve) => {
 const timedClick = (page, find, ready, arg) => page.evaluate(async ({ find, ready, arg }) => {
   const el = new Function('arg', `return (${find})(arg)`)(arg), isReady = new Function('arg', `return (${ready})(arg)`)
   if (!el) return null
+  // Dispatch at the same phase of a frame in every profile. The measurement starts at the click.
+  await new Promise(requestAnimationFrame)
   const t0 = performance.now()
   const requestsBefore = window.__obs.apiRequests
   el.click()

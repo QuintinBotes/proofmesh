@@ -757,6 +757,21 @@ From #241. Static test reach says which tests could reach a symbol; a coverage r
 - FR2066: MUST list, in `workspace_status`, each coverage import with its source, format, import time, window, files matched and stale files. With no import, `workspace_status`, `find_tests`, `get_symbol` and `impact_completeness` MUST answer as they did before coverage could be imported.
 - FR2067: MUST trace each of FR2060 to FR2066 in `policy/traceability.json` and state it here (CONTRIBUTING.md).
 
+### Producer evidence
+
+- FR2980: MUST import a revision-bound, versioned Bazel configured graph and report the producer, target configurations, BUILD witnesses and any unsupported edges.
+- FR3000: MUST import explicit generation mappings against sealed declaration spans and file hashes, support navigation in both directions, and report stale or unplaced evidence.
+
+### Exact duplicate declarations
+
+- FR2180: MUST list paged exact normalised duplicate groups with subject, kind, path and token filters and exact totals.
+- FR2181: MUST show each group’s hash prefix, token and member counts, caller overlap and keyed member locations.
+- FR2182: MUST optionally list unchanged base-snapshot twins alongside impact completeness counts.
+- FR2183: MUST use an index on the sealed body hash without adding symbol fields.
+- FR2184: MUST list duplicate declarations with the duplicates CLI and support JSON output.
+- FR2185: MUST trace the duplicate-query requirements to an automated fixture.
+
+
 ### Change coupling: files that change together
 
 From #239. Files that change together though no relationship links them, from the repository's local git history; co-change is never a relationship (FR023). The tests are in `packages/proofmesh/test/cochanges.test.ts`, on `fixtures/history`.

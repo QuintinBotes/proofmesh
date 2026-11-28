@@ -2565,6 +2565,30 @@
     ],
     "FR2026": [
       "packages/proofmesh/test/cochanges.test.ts"
+    ],
+    "FR2180": [
+      "packages/proofmesh/test/duplicates.test.ts"
+    ],
+    "FR2181": [
+      "packages/proofmesh/test/duplicates.test.ts"
+    ],
+    "FR2182": [
+      "packages/proofmesh/test/duplicates.test.ts"
+    ],
+    "FR2183": [
+      "packages/proofmesh/test/duplicates.test.ts"
+    ],
+    "FR2184": [
+      "packages/proofmesh/test/duplicates.test.ts"
+    ],
+    "FR2185": [
+      "packages/proofmesh/test/duplicates.test.ts"
+    ],
+    "FR2980": [
+      "packages/proofmesh/test/producer.test.ts"
+    ],
+    "FR3000": [
+      "packages/proofmesh/test/producer.test.ts"
     ]
   },
   "manual": {

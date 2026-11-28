@@ -12,7 +12,7 @@ A client that does not defer tool loading puts every listed tool's name, descrip
 | `evidence` | `find_symbols`, `get_symbol`, `get_relationships`, `read_evidence` on published snapshots |
 | `data` | `get_table_reach`, `get_property_reads`, `find_query_source`, `get_external_usage`, `get_session_trail`, `get_context_map` |
 | `claims` | `verify_claim`, `get_claims`, `prepare_verification`, `get_verification` |
-| `extra` | `list_snapshots`, `list_workspaces`, `get_ecosystem`, `compare_snapshots`, `impact_completeness`, `request_index`, `get_job`, `get_memory`, `save_memory`, `find_stale_mentions`, `find_unused`, `find_cycles`, `find_entry_points`, `find_hubs`, `plan_rename`, `plan_move`, `search_structure`, `get_symbol_card`, `query_graph`, `get_findings`, `get_cochanges` |
+| `extra` | `list_snapshots`, `list_workspaces`, `get_ecosystem`, `compare_snapshots`, `impact_completeness`, `request_index`, `get_job`, `get_memory`, `save_memory`, `find_stale_mentions`, `find_unused`, `find_cycles`, `find_entry_points`, `find_hubs`, `plan_rename`, `plan_move`, `search_structure`, `get_symbol_card`, `query_graph`, `get_findings`, `get_cochanges`, `find_duplicates` |
 
 - `proofmesh mcp --tools core,data` (or any comma-separated list) lists those profiles; `--tools all` lists every tool exactly as its schema file declares it. Both transports take it. In a client configuration, put the option after `mcp` in the arguments, for example `"args": ["mcp", "--tools", "all"]` in `.mcp.json`. A client restarts the server to change profile.
 - Outside `all`, a listed tool keeps its description and every field of its input schema, with types, enums, patterns, defaults and required fields, but not the per-field descriptions; `envelope` keeps its first sentence. The full schemas are `schemas/tools/<tool>.input.schema.json`, and the server validates every call against them whatever the profile.
@@ -261,3 +261,7 @@ Pass a symbol id as `target_id` to `find_entry_points` to find static witnesses 
 ### Imported analyzer paths
 
 To inspect a finding from `proofmesh sarif add`, call `get_findings` with its `paths` or `subject_ids` and `flow_steps` from 1 through 256. `code_flow.steps` carries the analyzer's 1-based flow, thread and step numbers in producer order, including repeated sites. `total_steps` includes steps beyond the retained prefix. An attached step gives its file, reported region, sealed object hash and separately verified first source line (up to 2,048 characters). Unavailable, stale and unplaced steps keep their positions. Verification establishes the cited bytes. The producer supplies the claimed relationship between steps.
+
+### Duplicate declarations
+
+In the extra tool profile, `find_duplicates` lists groups with the same sealed, normalised declaration hash. The default minimum is 30 tokens. Pass `subject_id` or `key` for the other members of a symbol's group, or `path` for all groups represented in a file. Results carry stable keys, declaration lines, a test marker, group size and caller overlap. `include_generated`, `include_tests`, `kinds` and `path_prefix` control membership. `proofmesh duplicates <repository> [--min-tokens N] [--json]` lists these groups from the CLI. In `impact_completeness`, request `include_duplicates: true` to see unchanged twins from the base snapshot alongside the affected dependents.
