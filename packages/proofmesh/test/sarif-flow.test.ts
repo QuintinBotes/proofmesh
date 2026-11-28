@@ -53,6 +53,8 @@ it('FR1901 SARIF paths retain repeated, external, stale and unplaced steps besid
   expect(read(16).code_flow.steps[0]).toMatchObject({ path: 'input.ts', status: 'verified' })
   expect(read(16).code_flow.steps[3]).toMatchObject({ path: null, status: 'unresolved_location' })
   const hash = first.code_flow.steps[0].object_hash
-  fs.writeFileSync(new EvidenceStore(dataDir).objectPath(hash), 'wrong bytes')
+  const object = new EvidenceStore(dataDir).objectPath(hash)
+  fs.writeFileSync(object + '.replacement', 'wrong bytes')
+  fs.renameSync(object + '.replacement', object)
   expect(read(16).code_flow.steps[0]).toMatchObject({ status: 'failed', source_line: null })
 })
