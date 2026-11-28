@@ -954,9 +954,9 @@ project: (string | null)
  */
 line: number
 /**
- * How the graph knows the test reaches the subject, strongest first: call (the test calls or constructs it), transitive_call (through two or more resolved calls), dispatch (a call resolved to an interface or base member the subject implements or overrides), reference (the test reads or passes it without calling it), import_only (the test file imports it and nothing in the file calls or references it). A test is listed once, at its strongest evidence.
+ * How the graph knows the test reaches the subject, strongest first: call (the test calls or constructs it), transitive_call (through two or more resolved calls), dispatch (a call resolved to an interface or base member the subject implements or overrides), reference (the test reads or passes it without calling it), import_only (the test file imports it and nothing in the file calls or references it). coverage (an imported coverage report names the test as running the subject, and no chain above reaches it; depth 1 and an empty chain). A test is listed once, at its strongest evidence.
  */
-evidence: ("call" | "transitive_call" | "dispatch" | "reference" | "import_only")
+evidence: ("call" | "transitive_call" | "dispatch" | "reference" | "import_only" | "coverage")
 /**
  * inferred when the chain that reaches the test has an inferred hop; a test an all-observed chain also reaches is observed, with that chain.
  */
@@ -970,7 +970,7 @@ findings?: number
  */
 via?: string
 /**
- * The shortest chain of this evidence, from the test's call site to the subject at its declaration; empty for import_only.
+ * The shortest chain of this evidence, from the test's call site to the subject at its declaration; empty for import_only and coverage.
  */
 chain: {
 name: string
@@ -1012,7 +1012,7 @@ name: string
 count: number
 }[]
 /**
- * Rows whose evidence runs the subject: call, transitive_call, dispatch, or observed.
+ * Rows whose evidence runs the subject: call, transitive_call, dispatch, or coverage.
  */
 executing: number
 /**
@@ -1030,6 +1030,40 @@ inferred: number
 observed: {
 available: boolean
 reason: string
+}
+/**
+ * Present only when an imported coverage report covers the subject's file (#241): what the newest import of that file that is not stale says of the lines whose innermost symbol is the subject, or the newest stale one when every import is stale.
+ */
+coverage?: {
+/**
+ * true when at least one of the subject's executable lines has a hit; null when the coverage is stale.
+ */
+executed: (boolean | null)
+lines_covered: number
+/**
+ * The subject's executable lines in the report.
+ */
+lines_total: number
+/**
+ * The import's --source label.
+ */
+source: string
+format: ("lcov" | "cobertura" | "jacoco" | "go-cover")
+window: {
+from: string
+to: string
+}
+/**
+ * true when the file's content in this snapshot differs from the content at import; stale coverage sets no status.
+ */
+stale: boolean
+/**
+ * The first executed line of the subject; null when none is or the coverage is stale.
+ */
+at: ({
+path: string
+line: number
+} | null)
 }
 stopped_by: ("max_depth" | "node_budget" | null)
 /**
@@ -2526,6 +2560,40 @@ detail?: {
 scip?: string
 }
 }
+/**
+ * Present only in the full envelope and only when an imported coverage report covers the subject's file (#241): what the newest import of that file that is not stale says of the lines whose innermost symbol is the subject, or the newest stale one when every import is stale.
+ */
+coverage?: {
+/**
+ * true when at least one of the subject's executable lines has a hit; null when the coverage is stale.
+ */
+executed: (boolean | null)
+lines_covered: number
+/**
+ * The subject's executable lines in the report.
+ */
+lines_total: number
+/**
+ * The import's --source label.
+ */
+source: string
+format: ("lcov" | "cobertura" | "jacoco" | "go-cover")
+window: {
+from: string
+to: string
+}
+/**
+ * true when the file's content in this snapshot differs from the content at import; stale coverage sets no status.
+ */
+stale: boolean
+/**
+ * The first executed line of the subject; null when none is or the coverage is stale.
+ */
+at: ({
+path: string
+line: number
+} | null)
+}
 }
 
 /**
@@ -3279,7 +3347,10 @@ via: (string | null)
  * inferred when the chain that reaches the dependent has an inferred hop; a dependent an all-observed chain also reaches is observed.
  */
 basis: ("observed" | "inferred")
-status: ("changed" | "tested" | "neither")
+/**
+ * covered: no test reaches the dependent statically and an imported coverage report that is not stale shows one of its lines executed (#241); neither: not changed, tested or covered.
+ */
+status: ("changed" | "tested" | "covered" | "neither")
 /**
  * The nearest test that executes it, as find_tests lists it; null unless the status is tested.
  */
@@ -3306,6 +3377,21 @@ key?: string
  */
 generated?: boolean
 } | null)
+/**
+ * Present when the status is covered: the report and the dependent's lines it shows executed.
+ */
+coverage?: {
+source: string
+lines_covered: number
+lines_total: number
+/**
+ * The first executed line of the subject; null when none is or the coverage is stale.
+ */
+at: ({
+path: string
+line: number
+} | null)
+}
 /**
  * The stable_key of the dependent; absent for an importing file (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file.
  */
@@ -3348,13 +3434,17 @@ key?: string
 generated?: boolean
 }[]
 /**
- * Over every changed symbol, on this page or not; changed, tested and neither count the dependents.
+ * Over every changed symbol, on this page or not; changed, tested, covered and neither count the dependents.
  */
 totals: {
 changed_symbols: number
 dependents: number
 changed: number
 tested: number
+/**
+ * Present only when a coverage report is imported: dependents covered by it and by no static test.
+ */
+covered?: number
 neither: number
 /**
  * The dependents by basis; unresolved boundaries have none.
@@ -5195,6 +5285,23 @@ resolved: number
 ambiguous: number
 stale: number
 }
+/**
+ * Present only when a coverage report is imported for the repository (#241): each import by source.
+ */
+coverage?: {
+source: string
+format: ("lcov" | "cobertura" | "jacoco" | "go-cover")
+imported_at: string
+window: {
+from: string
+to: string
+}
+files_matched: number
+/**
+ * Matched files whose content in this snapshot differs from the content at import.
+ */
+stale_files: number
+}[]
 }
 
 /**

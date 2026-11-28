@@ -9,6 +9,8 @@ import { leanName, leanRow, quote } from './lean.js'
 import { innermost } from './symbol-at.js'
 import { hasRoles, parseRoles, type Roles } from './tests.js'
 import { EXECUTING, importedNames, testReach } from './test-reach.js'
+import { coverageOf, type Coverage } from './coverage.js'
+import type { CoverageImportRecord } from '../meshstore/catalog.js'
 
 /** Changed line ranges by path, on one side of a diff. */
 type Ranges = Map<string, Array<[number, number]>>
@@ -24,7 +26,7 @@ type Test = { key?: string; name: string; path: string; line: number; evidence: 
 /** One hop of a dependent's chain: a symbol or file at its site of the next hop, by that relationship's assertion; the last hop is the changed symbol at its declaration. */
 export type Hop = { name: string; key?: string; path: string; line: number; assertion_id?: string }
 /** A caller, implementer, overrider, subclass, reference or importer of a changed symbol, with its status and the chain that reaches it (FR1811). */
-export type Dependent = { id: string; key?: string; name: string; path: string; line: number; relation: string; via: string | null; basis: Basis; status: 'changed' | 'tested' | 'neither'; test: Test | null; chain: Hop[] }
+export type Dependent = { id: string; key?: string; name: string; path: string; line: number; relation: string; via: string | null; basis: Basis; status: 'changed' | 'tested' | 'covered' | 'neither'; test: Test | null; chain: Hop[]; coverage?: Pick<Coverage, 'source' | 'lines_covered' | 'lines_total' | 'at'> }
 /** A symbol the diff changed, with its status and dependents. */
 export type Changed = { id: string; key: string; name: string; path: string; line: number; change: 'added' | 'modified' | 'deleted'; status: 'tested' | 'neither'; test: Test | null; dependents: Dependent[] }
 
@@ -133,14 +135,14 @@ export function changedSymbols(head: Snap, base: Snap, diff: Diff, read: (db: Da
 }
 
 /** The project that contains a file, by its module symbol, for recognising test code by project naming. */
-const projectOf = (db: Database.Database, fileId: string) => (db.prepare("select p.qualified_name as q from assertion a join symbol p on p.id = a.source_id join symbol m on m.id = a.target_id where a.type = 'contains' and p.kind = 'project' and m.file_id = ? limit 1").get(fileId) as { q: string } | undefined)?.q ?? null
+export const projectOf = (db: Database.Database, fileId: string) => (db.prepare("select p.qualified_name as q from assertion a join symbol p on p.id = a.source_id join symbol m on m.id = a.target_id where a.type = 'contains' and p.kind = 'project' and m.file_id = ? limit 1").get(fileId) as { q: string } | undefined)?.q ?? null
 /** Whether a symbol is in test code, by its path and project naming. */
 /** A symbol's roles, where the snapshot holds them. */
 const rolesOf = (db: Database.Database, id: string): string[] | null => (hasRoles(db) ? parseRoles((db.prepare('select roles from symbol where id = ?').get(id) as { roles: string | null } | undefined)?.roles) : null)
 export const inTestCode = (db: Database.Database, s: { id?: string; path: string; file_id: string }, isTest: (path: string, project: string | null, roles?: Roles) => boolean) => isTest(s.path, projectOf(db, s.file_id), s.id ? rolesOf(db, s.id) : null)
 
-/** What `complete` needs: both sides, the depth, whether test code counts, and readers for file and object text. */
-export type Options = { head: Snap; base: Snap; depth: number; includeTests: boolean; isTest: (path: string, project: string | null, roles?: Roles) => boolean; read: (db: Database.Database, path: string) => string | undefined; readHash: (hash: string) => Buffer | undefined; maxDepth: number; include?: unknown }
+/** What `complete` needs: both sides, the depth, whether test code counts, readers for file and object text, and the coverage imports. */
+export type Options = { head: Snap; base: Snap; depth: number; includeTests: boolean; isTest: (path: string, project: string | null, roles?: Roles) => boolean; read: (db: Database.Database, path: string) => string | undefined; readHash: (hash: string) => Buffer | undefined; maxDepth: number; include?: unknown; coverage?: CoverageImportRecord[] }
 
 /**
  * One changed symbol with its dependents (FR111) and every status (FR112): callers (dispatch included, via the member called), implementers,
@@ -178,10 +180,13 @@ export function complete(c: { sym: Sym; change: Changed['change']; snap: Snap },
     const own = symbol.get(t.id) as Sym | undefined
     return { ...(own ? { key: own.stable_key } : {}), name: leanName(t), path: t.path, line: t.line, evidence: t.evidence, depth: t.depth, basis: t.basis, changed: !!own && changedIn(own) }
   }
-  const statusOf = (changed: boolean, ids: string[], files: string[]): Pick<Dependent, 'status' | 'test'> => {
+  const statusOf = (changed: boolean, ids: string[], files: string[]): Pick<Dependent, 'status' | 'test' | 'coverage'> => {
     if (changed) return { status: 'changed', test: null }
     const test = nearest(ids, files)
-    return { status: test ? 'tested' : 'neither', test }
+    if (test) return { status: 'tested', test }
+    // Covered only where no test reaches it statically, by a report that is not stale (FR2064).
+    const cov = o.coverage?.length ? coverageOf(db, o.coverage, ids) : null
+    return cov?.executed ? { status: 'covered', test: null, coverage: { source: cov.source, lines_covered: cov.lines_covered, lines_total: cov.lines_total, at: cov.at } } : { status: 'neither', test: null }
   }
 
   // One row per dependent and relation, at its first site.
@@ -265,9 +270,9 @@ export function complete(c: { sym: Sym; change: Changed['change']; snap: Snap },
   return { changed: { id: c.sym.id, key: c.sym.stable_key, name: leanName(c.sym), path: c.sym.path, line: c.sym.start_line, change: c.change, status: test ? 'tested' : 'neither', test, dependents }, stopped, unfollowed: [...unfollowed], follow, sites }
 }
 
-const statusText = (s: { status: string; test: Test | null }) => s.test
+const statusText = (s: { status: string; test: Test | null; coverage?: { source: string } }) => s.test
   ? `tested: ${quote(s.test.name)} ${quote(s.test.path)}:${s.test.line} ${s.test.evidence} depth=${s.test.depth}${s.test.changed ? ' (test changed)' : ''}`
-  : s.status
+  : s.coverage ? `${s.status} coverage=${quote(s.coverage.source)}` : s.status
 
 /** The text form of scenario 1: each changed symbol, then its dependents indented (FR113). */
 export function completenessRows(changed: Changed[]): string[] {
@@ -278,5 +283,5 @@ export function completenessRows(changed: Changed[]): string[] {
 }
 
 /** The `summary:` line of the lean answer (FR113). */
-export const summaryLine = (t: { changed_symbols: number; dependents: number; changed: number; tested: number; neither: number; by_basis: { inferred: number } }) =>
-  `summary: ${t.changed_symbols} changed symbol${t.changed_symbols === 1 ? '' : 's'}; ${t.dependents} dependent${t.dependents === 1 ? '' : 's'}: ${t.changed} changed, ${t.tested} tested, ${t.neither} neither${t.by_basis.inferred ? `; ${t.by_basis.inferred} inferred` : ''}`
+export const summaryLine = (t: { changed_symbols: number; dependents: number; changed: number; tested: number; covered?: number; neither: number; by_basis: { inferred: number } }) =>
+  `summary: ${t.changed_symbols} changed symbol${t.changed_symbols === 1 ? '' : 's'}; ${t.dependents} dependent${t.dependents === 1 ? '' : 's'}: ${t.changed} changed, ${t.tested} tested, ${t.covered === undefined ? '' : `${t.covered} covered, `}${t.neither} neither${t.by_basis.inferred ? `; ${t.by_basis.inferred} inferred` : ''}`

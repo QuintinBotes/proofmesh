@@ -64,7 +64,7 @@ describe('FR1810 Change review reads impact_completeness and decides no status o
     ])
     // range has no point in this map, so it is counted, and the list still holds it.
     expect(unplaced).toBe(1)
-    expect(markCounts(rows)).toEqual({ modified: 2, added: 0, deleted: 1, changed: 1, tested: 1, neither: 4 })
+    expect(markCounts(rows)).toEqual({ modified: 2, added: 0, deleted: 1, changed: 1, tested: 1, covered: 0, neither: 4 })
   })
 
   it('FR1816 an export of Change review says, as the Terrain\'s does, that position shows containment, with its range, gate and limits in the caption', () => {

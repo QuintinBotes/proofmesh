@@ -51,7 +51,7 @@ export async function loadReview(range: Range, depth: number, onPending: (text: 
   return { range, depth, data, limitations, head, base, terrain, rows, ...placed }
 }
 
-const COLOUR: Record<MarkKind, string> = { modified: '#f2b84b', added: '#6ee8a8', deleted: '#ff7b7b', changed: '#f2b84b', tested: '#6ee8a8', neither: '#ff7b7b' }
+const COLOUR: Record<MarkKind, string> = { modified: '#f2b84b', added: '#6ee8a8', deleted: '#ff7b7b', changed: '#f2b84b', tested: '#6ee8a8', covered: '#80d8ff', neither: '#ff7b7b' }
 /** One mark's shape at the origin (FR1814): dots and a cross for changed symbols, rings for dependents, each told apart by shape, not colour alone. */
 function Shape({ kind }: { kind: MarkKind }) {
   const c = COLOUR[kind]
@@ -59,7 +59,7 @@ function Shape({ kind }: { kind: MarkKind }) {
   if (kind === 'added') return <circle r={5} fill={c} />
   if (kind === 'deleted') return <path d="M-5,-5L5,5M5,-5L-5,5" stroke={c} strokeWidth={2.5} />
   if (kind === 'tested') return <><circle r={11} fill="none" stroke={c} strokeWidth={1.5} /><circle r={14.5} fill="none" stroke={c} strokeWidth={1.5} /></>
-  return <circle r={12} fill="none" stroke={c} strokeWidth={2} strokeDasharray={kind === 'neither' ? '4 3' : undefined} />
+  return <circle r={12} fill="none" stroke={c} strokeWidth={2} strokeDasharray={kind === 'neither' ? '4 3' : kind === 'covered' ? '1 2' : undefined} />
 }
 
 /** The marks over the Terrain, placed for the view; a click on one opens its row. */
@@ -114,7 +114,7 @@ export function ChangeControls({ review, range, depth, pending, open, onReview, 
           <p data-testid="change-summary">{summaryText(review.data.totals)}</p>
           <p className={`gate ${g.passing ? 'passing' : 'failing'}`} data-testid="change-gate">Gate {g.text}</p>
           <ul className="change-legend" aria-label="Change legend">
-            {(Object.keys(MARK_WORDS) as MarkKind[]).map((k) => (
+            {(Object.keys(MARK_WORDS) as MarkKind[]).filter((k) => k !== 'covered' || review.data.totals.covered !== undefined).map((k) => (
               <li key={k}><svg width="32" height="32" viewBox="-16 -16 32 32" aria-hidden="true"><Shape kind={k} /></svg> {MARK_WORDS[k]} <span className="count">{counts[k]}</span></li>
             ))}
           </ul>
@@ -171,13 +171,13 @@ export function ChangePanel({ row, tests, onClose }: { row: Row; tests: Reach[] 
         {d?.status === 'changed' && <p className="dim">Changed in this diff, so the gate needs no test of it.</p>}
         {tests instanceof Error ? <p className="error" role="alert">{visible(tests.message)}</p>
           : tests === null ? <p className="dim" role="status">Asking find_tests…</p>
-          : tests.length === 0 ? <p className="dim">No test reaches it.</p>
+          : tests.length === 0 ? <p className="dim">{d?.status === 'covered' ? 'The coverage report records execution without naming a test.' : 'No test reaches it.'}</p>
           : (
             <ul className="change-tests">
               {tests.map((t, i) => (
                 <li key={i} data-executing={executing(t)}>
                   <b>{visible(`${t.name} ${t.path}:${t.line}`)}</b> <span className="evidence">{t.evidence} depth={t.depth}</span>
-                  {!executing(t) && <span className="dim"> runs none of it, so it stays neither</span>}
+                  {!executing(t) && x.status === 'neither' && <span className="dim"> runs none of it, so it stays neither</span>}
                   {t.chain.length > 0 && <ol className="change-chain">{t.chain.map((h, j) => <li key={j}>{visible(`${h.name} ${h.path}:${h.line}`)}</li>)}</ol>}
                 </li>
               ))}

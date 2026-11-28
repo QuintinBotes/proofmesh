@@ -4,6 +4,14 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 ## Unreleased
 
+Coverage reports, imported beside static test reach (#241; FR2060 to FR2067):
+
+- `proofmesh observe import <repository> <report> --format lcov|cobertura|jacoco|go-cover [--source NAME] [--test NAME] [--strip-prefix P]` imports a coverage report a test run wrote; `observe validate` reads the same formats. Proofmesh runs no test. Report paths are matched to snapshot paths by suffix; an ambiguous one and one not in the snapshot are listed and not attached. Each file's content hash in the snapshot is stored, and its coverage is stale once the file changes.
+- `find_tests` and `get_symbol` (full envelope) carry `coverage` (`executed`, `lines_covered`, `lines_total`, `source`, `window`), the lean header says `executed by coverage`, and each test the report names as running the subject that no static chain reaches is a row with `evidence: coverage`.
+- `impact_completeness` has the status `covered` for a dependent no test reaches statically that the report shows executed, counted apart; `proofmesh completeness --static-only` counts it as neither. `workspace_status` lists the imports.
+- Answers for a repository with no coverage import are unchanged.
+- Upgrade note: catalog migration 0025 (`coverage_import`). Back up the data directory before upgrading.
+
 Change review: a diff's blast radius and test reach on the Terrain (#49; FR1810 to FR1816):
 
 - The Diff view gains Change review, beside the comparison of snapshots. For a base and a head commit, or the working tree, it lists every row `impact_completeness` returns, each changed symbol then its dependents with their statuses in the tool's words, the summary, and the gate, which fails while any dependent is neither changed nor tested. It has no status logic of its own, and waits for the index job the tool starts when a side has no snapshot yet.

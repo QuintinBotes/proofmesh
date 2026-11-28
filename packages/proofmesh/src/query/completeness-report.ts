@@ -5,7 +5,7 @@ import type { Changed, Dependent } from './completeness.js'
 /** One side of the comparison as the answer names it. */
 type Side = { commit: string | null; snapshot_id: string | null }
 /** The impact_completeness data the renderers read, every page of `changed` joined. */
-export type Report = { base: Side; head: Side; changed: Changed[]; totals: { changed_symbols: number; dependents: number; changed: number; tested: number; neither: number } }
+export type Report = { base: Side; head: Side; changed: Changed[]; totals: { changed_symbols: number; dependents: number; changed: number; tested: number; covered?: number; neither: number } }
 /** A side the command indexed before it could answer, and how long that took. */
 export type Indexed = { side: 'base' | 'head'; rev: string; seconds: number }
 
@@ -52,7 +52,7 @@ export function markdownReport(r: Report, limitations: string[], indexed: Indexe
   const render = (kept: number[]) => [
     MARKER,
     '## ProofMesh impact completeness',
-    `**${verdict(r)}.** ${plural(t.changed_symbols, 'changed symbol')}; ${plural(t.dependents, 'dependent')}: ${t.changed} changed, ${t.tested} tested, ${t.neither} neither.`,
+    `**${verdict(r)}.** ${plural(t.changed_symbols, 'changed symbol')}; ${plural(t.dependents, 'dependent')}: ${t.changed} changed, ${t.tested} tested, ${t.covered === undefined ? '' : `${t.covered} covered, `}${t.neither} neither.`,
     ...sections.flatMap((s, i) => (s.rows.length ? [`${s.open}${[row(s.head), row(s.head.map(() => '---')), ...s.rows.slice(0, kept[i])].join('\n')}${kept[i]! < s.rows.length ? `\n\n_${plural(s.rows.length - kept[i]!, 'more row')} not shown: the report is cut to ${maxBytes} bytes._` : ''}${s.close}`] : [])),
     `${sideText('Base', r.base)} · ${sideText('head', r.head)}`,
     ...(indexed.length ? [`Indexed ${indexed.map((x) => `${x.side} ${x.rev === 'the working tree' ? x.rev : code(x.rev.slice(0, 12))} in ${x.seconds.toFixed(1)} s`).join(', ')}.`] : []),

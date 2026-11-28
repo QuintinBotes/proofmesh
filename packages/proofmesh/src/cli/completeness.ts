@@ -8,7 +8,7 @@ import { openSnapshot } from '../meshstore/snapshot.js'
 import { DEFAULT_MAX_BYTES, githubCommands, type Indexed, markdownReport, type Report, sarifReport } from '../query/completeness-report.js'
 import { cliPath, runTool, treeFreshness } from '../query/tools.js'
 
-const USAGE = 'usage: proofmesh completeness <repository> <base>[..<head>] [--depth N] [--format lean|json|markdown|sarif|github] [--max-bytes N] | proofmesh completeness <repository> --branches [--depth N] [--json]'
+const USAGE = 'usage: proofmesh completeness <repository> <base>[..<head>] [--depth N] [--static-only] [--format lean|json|markdown|sarif|github] [--max-bytes N] | proofmesh completeness <repository> --branches [--depth N] [--json]'
 const FORMATS = ['lean', 'json', 'markdown', 'sarif', 'github']
 const LIMITS = { max_rows: MAX_LIMITS.max_rows, max_bytes: MAX_LIMITS.max_bytes, timeout_ms: MAX_LIMITS.timeout_ms }
 
@@ -64,10 +64,10 @@ export function completenessAnswer(dataDir: string, input: Record<string, unknow
 /**
  * proofmesh completeness (FR114, FR2140): impact_completeness from base to head, or to the working tree, as lean text, the JSON answer, a
  * Markdown report, SARIF or GitHub workflow commands. It indexes a side with no snapshot first and waits. Exits 0 when no dependent is
- * neither, 1 when one is, and 2 on a usage error, an unknown commit or a failed index. With --branches, the open local branches by blast radius.
+ * neither, 1 when one is (or, with --static-only, one is covered only by an imported coverage report: FR2064), and 2 on a usage error, an unknown commit or a failed index. With --branches, the open local branches by blast radius.
  */
 export function runCompleteness(dataDir: string, rest: string[], take: (args: string[], flag: string) => string | undefined, has: (args: string[], flag: string) => boolean): number {
-  const opts = [...rest], json = has(opts, '--json'), branches = has(opts, '--branches'), depthFlag = take(opts, '--depth'), formatFlag = take(opts, '--format'), bytesFlag = take(opts, '--max-bytes')
+  const opts = [...rest], json = has(opts, '--json'), branches = has(opts, '--branches'), staticOnly = has(opts, '--static-only'), depthFlag = take(opts, '--depth'), formatFlag = take(opts, '--format'), bytesFlag = take(opts, '--max-bytes')
   const format = formatFlag ?? (json ? 'json' : 'lean')
   try {
     const depth = parseDepth(depthFlag, USAGE), maxBytes = bytesFlag === undefined ? DEFAULT_MAX_BYTES : Number(bytesFlag)
@@ -110,7 +110,7 @@ export function runCompleteness(dataDir: string, rest: string[], take: (args: st
         }
       }
     }
-    return data.pending.length ? 2 : data.totals.neither > 0 ? 1 : 0
+    return data.pending.length ? 2 : data.totals.neither + (staticOnly ? data.totals.covered ?? 0 : 0) > 0 ? 1 : 0
   } catch (e) {
     const err = asProofmeshError(e)
     process.stderr.write(`proofmesh: ${err.code}: ${err.message}\n`)
