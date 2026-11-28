@@ -44,7 +44,7 @@ export function caveatLines(c: Caveats, source: Source): string[] {
     ...c.coverage.map((l) => `coverage: ${l}`),
     source ? `source included with consent: ${source.path} from line ${source.startLine}` : 'no source code included',
     // The Terrain's positions are its layout's containment (SC-003); every other view's carry no meaning.
-    c.view === 'Terrain' ? CONTAINMENT : NO_MEANING,
+    c.view === 'Terrain' || c.view === 'Change review' ? CONTAINMENT : NO_MEANING,
   ]
 }
 
