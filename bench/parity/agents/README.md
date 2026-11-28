@@ -28,4 +28,13 @@ Cold time runs from launching the indexer through graph readiness and MCP initia
 
 The published measurements use macOS arm64. Cost comparisons require an exact, untruncated answer to the same question. For Q1–Q3 this includes every caller/site pair. [Per-question results and source audit](measured.md) · [Missing and extra results](measured.json) · [Reviewed sites](reviewed.json)
 
-The existing ProofMesh run at `fc33d43` used the same 13 questions and TypeORM commit. ProofMesh recovered all 18 callers and all 19 sites for interface dispatch in Q3. GitNexus recovered six of those callers and returned three extra. Gortex and Codebase-Memory could not resolve that target in these profiles. On Q7, ProofMesh found all 11 expected callers at 50% precision. Codebase-Memory found all 11 with no extras. On Q13, ProofMesh's top ten included seven of the compiler's ten hubs, compared with six for Gortex, five for GitNexus and four for Codebase-Memory. These comparisons use semantic scores from the same fixture. Performance measurements have their own run dates and profiles. [ProofMesh baseline and caller-site results](../README.md#quality-recall--precision-)
+On November 28, 2026 the existing ProofMesh typed-tool adapter was rerun at `75f8fc2` against a fresh index of the same fixture. ProofMesh recovered all 18 callers and all 19 sites for interface dispatch in Q3. GitNexus recovered six of those callers and returned three extra. Gortex and Codebase-Memory could not resolve the target in these profiles.
+
+| Question | ProofMesh on the same fixture |
+|---|---|
+| Q7 transitive callers | Typed impact returned 11 correct out of 22. The explicit calls-only graph query and Codebase-Memory both returned exactly 11. |
+| Q8 call path | ProofMesh, Gortex and GitNexus each returned a valid three-hop path. |
+| Q10 unused functions | ProofMesh's typed tool returned 79 of 80 with no extra. Its graph query returned all 80. GitNexus found all 80 with four extra. |
+| Q13 hubs | ProofMesh's typed top ten includes nine compiler-ranked hubs. Gortex matches six, GitNexus five and Codebase-Memory four. ProofMesh's composed query matched one and disclosed that it aggregated only its first 1,000 input rows. |
+
+These comparisons use semantic scores. Each tool's performance measurements have their own run date and profile. The parent parity suite contains the ProofMesh typed and composed query recipes and the earlier results at `fc33d43`. [Existing parity suite](../README.md)
