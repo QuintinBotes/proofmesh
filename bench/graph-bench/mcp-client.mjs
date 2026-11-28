@@ -15,7 +15,10 @@ export class McpClient {
     }
     this.proc.once('error', failed)
     this.proc.stdin.on('error', failed)
-    this.proc.once('close', (code, signal) => failed(new Error(`MCP process closed (${signal ?? code})`)))
+    this.closed = new Promise(resolve => this.proc.once('close', (code, signal) => {
+      failed(new Error(`MCP process closed (${signal ?? code})`))
+      resolve()
+    }))
     this.proc.stdout.setEncoding('utf8').on('data', (d) => {
       this.buf += d
       let i
@@ -63,5 +66,13 @@ export class McpClient {
     if (!json) { try { json = JSON.parse(text) } catch { json = null } }
     return { ms, text, bytes: Buffer.byteLength(text), json, isError: !!r.result?.isError, error: r.error }
   }
-  close() { try { this.proc.stdin.end(); this.proc.kill() } catch {} }
+  close() {
+    if (this.closing) return this.closing
+    this.proc.stdin.end()
+    this.proc.kill()
+    const force = setTimeout(() => this.proc.kill('SIGKILL'), 3000)
+    force.unref()
+    this.closing = this.closed.finally(() => clearTimeout(force))
+    return this.closing
+  }
 }

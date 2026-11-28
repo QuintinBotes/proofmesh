@@ -38,3 +38,83 @@ it('FR3005 distinguishes a missing declaration from a returned empty caller set'
   let n = 0
   expect(await callers('codebase-memory-mcp', q, async () => ++n === 1 ? { rows: [['method']] } : { rows: [] })).toMatchObject({ status: 'answered', facts: [] })
 })
+
+const relationships = async () => (await import(pathToFileURL(path.join(ROOT, 'bench/parity/agents/relations.mjs')).href)).relatedItems
+
+it('FR3005 counts files that use a type outside its own declaration and an import clause', async () => {
+  const query = { kind: 'type_users', target: { file: 'src/T.ts', qname: 'T' } }
+  const call = async (tool: string) => tool === 'search' ? { results: [{ id: 'src/T.ts::T', name: 'T', file_path: 'src/T.ts' }] } : {
+    groups: [
+      { file: 'src/T.ts', uses: [{ context: 'field' }] },
+      { file: 'src/barrel.ts', uses: [{ context: 'import' }] },
+      { file: 'src/use.ts', uses: [{ context: 'import' }, { context: 'parameter_type' }] },
+    ], file_count: 3, _truncated_by_budget: true,
+  }
+  expect(await (await relationships())('gortex', query, call)).toEqual({ status: 'answered', items: ['src/use.ts'], truncated: true })
+})
+
+it('FR3005 walks native caller identities to the requested depth and excludes a cycle back to the target', async () => {
+  const responses = [
+    [['target']],
+    [['src/a.ts', 'get', 'a'], ['src/b.ts', 'get', 'b']],
+    [['src/c.ts', 'outer', 'c'], ['src/t.ts', 'start', 'target']],
+  ]
+  const statements: string[] = []
+  const call = async (_tool: string, args: { query: string }) => {
+    statements.push(args.query)
+    return { rows: responses.shift() }
+  }
+  const query = { kind: 'transitive_callers', depth: 2, target: { file: 'src/t.ts', qname: 'start' } }
+  expect(await (await relationships())('codebase-memory-mcp', query, call, 'repo')).toEqual({
+    status: 'answered', items: ['src/a.ts::get', 'src/b.ts::get', 'src/c.ts::outer'], truncated: false,
+  })
+  expect(statements).toHaveLength(3)
+  expect(statements[2]).toContain("b.qualified_name = 'a' OR b.qualified_name = 'b'")
+})
+
+it('FR3005 includes a re-export, follows indirect imports, and distinguishes cycles from isolated roots', async () => {
+  const target = 'src/T.ts', barrel = 'src/index.ts', app = 'src/app.ts', root = 'src/entry.ts'
+  const ns = 'http://graphml.graphdrawing.org/xmlns'
+  const files = [target, barrel, app, root]
+  const nodes = files.map(f => `<node id="${f}"><data key="file_path">${f}</data></node>`)
+  const edge = (a: string, b: string, kind: string) => `<edge source="${a}" target="${b}"><data key="edge_kind">${kind}</data></edge>`
+  const xml = `<graphml xmlns="${ns}"><graph>${nodes.join('')}${edge(barrel, target, 're_exports')}${edge(app, barrel, 'imports')}${edge(target, app, 'imports')}${edge(root, target, 'calls')}</graph></graphml>`
+  const query = await relationships()
+  const ask = async (kind: string) => {
+    const answer = await query('gortex', { kind, target: ['roots', 'cycles'].includes(kind) ? undefined : { file: target } }, async () => xml)
+    return answer.items.sort()
+  }
+  expect(await ask('importers')).toEqual([barrel])
+  expect(await ask('dependents')).toEqual([barrel, app].sort())
+  expect(await ask('cycles')).toEqual([target, barrel, app].sort())
+  expect(await ask('roots')).toEqual([root])
+})
+
+it('FR3005 waits for MCP process shutdown before the benchmark removes its private cache', async () => {
+  const { McpClient } = await import(pathToFileURL(path.join(ROOT, 'bench/graph-bench/mcp-client.mjs')).href)
+  const script = `process.stdin.resume()
+    process.on('SIGTERM', () => setTimeout(() => process.exit(0), 50))
+    process.stdout.write('ready\\n')`
+  const client = new McpClient(process.execPath, ['-e', script])
+  await new Promise(resolve => client.proc.stdout.once('data', resolve))
+  await Promise.all([client.close(), client.close()])
+  expect(client.proc.exitCode).toBe(0)
+})
+
+it('FR3005 resumes a byte-limited native graph page at its returned row count', async () => {
+  const a = 'src/a.ts', b = 'src/b.ts', c = 'src/c.ts'
+  const call = async (_: string, { query }: { query: string }) => {
+    const offset = Number(/SKIP (\d+)/.exec(query)?.[1])
+    if (query.includes('MATCH (a:File)')) {
+      if (offset === 0) return { rows: [[a], [b]], truncated: true }
+      expect(offset).toBe(2)
+      return { rows: [[c]] }
+    }
+    if (offset === 0) return { rows: [[b, a]], has_more: true }
+    expect(offset).toBe(1)
+    return { rows: [[c, b]] }
+  }
+  const answer = await (await relationships())('codebase-memory-mcp', { kind: 'dependents', target: { file: a } }, call, 'repo')
+  expect(answer.items).toEqual([b, c])
+  expect(answer.truncated).toBe(false)
+})
