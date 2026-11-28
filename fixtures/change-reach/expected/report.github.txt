@@ -1,0 +1,3 @@
+::warning file=src/roles/auditor.ts,line=3,title=Untested dependent::auditorScore calls mean (src/stats.ts:1, modified); the change neither updates nor tests it.
+::warning file=src/index.ts,line=1,title=Untested dependent::src/index.ts imports mean (src/stats.ts:1, modified); the change neither updates nor tests it.
+ProofMesh: 2 dependents are neither changed nor tested.

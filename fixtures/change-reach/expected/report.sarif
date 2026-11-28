@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "ProofMesh",
+          "rules": [
+            {
+              "id": "proofmesh/untested-dependent",
+              "name": "UntestedDependent",
+              "shortDescription": {
+                "text": "A dependent of a changed symbol that the change neither updates nor tests"
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              }
+            }
+          ]
+        }
+      },
+      "results": [
+        {
+          "ruleId": "proofmesh/untested-dependent",
+          "ruleIndex": 0,
+          "level": "warning",
+          "message": {
+            "text": "auditorScore calls mean (src/stats.ts:1, modified); the change neither updates nor tests it."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/roles/auditor.ts",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "startLine": 3
+                }
+              }
+            }
+          ],
+          "properties": {
+            "relation": "calls",
+            "basis": "observed",
+            "changed": {
+              "name": "mean",
+              "path": "src/stats.ts",
+              "line": 1,
+              "change": "modified"
+            }
+          }
+        },
+        {
+          "ruleId": "proofmesh/untested-dependent",
+          "ruleIndex": 0,
+          "level": "warning",
+          "message": {
+            "text": "src/index.ts imports mean (src/stats.ts:1, modified); the change neither updates nor tests it."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/index.ts",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              }
+            }
+          ],
+          "properties": {
+            "relation": "imports",
+            "basis": "observed",
+            "changed": {
+              "name": "mean",
+              "path": "src/stats.ts",
+              "line": 1,
+              "change": "modified"
+            }
+          }
+        }
+      ],
+      "properties": {
+        "base": {
+          "commit": "<base-commit>",
+          "snapshot_id": "<base-snapshot>"
+        },
+        "head": {
+          "commit": "<head-commit>",
+          "snapshot_id": "<head-snapshot>"
+        },
+        "totals": {
+          "changed_symbols": 2,
+          "dependents": 4,
+          "changed": 1,
+          "tested": 1,
+          "neither": 2,
+          "by_basis": {
+            "observed": 4,
+            "inferred": 0
+          }
+        }
+      }
+    }
+  ]
+}

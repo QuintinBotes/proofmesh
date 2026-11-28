@@ -1,0 +1,38 @@
+# ProofMesh impact completeness on a merge request (FR2144). An example, not enabled here: add this job to the
+# .gitlab-ci.yml of the project it should run in. ProofMesh opens no network connection (FR2145).
+#
+# The job writes the Markdown report and the test list as artifacts. It posts the report as a merge request note only
+# when you opt in: create a project access token with the api scope, store it as a masked, protected CI/CD variable
+# named PROOFMESH_NOTE_TOKEN, and the job posts with it. GitLab's CI_JOB_TOKEN cannot write notes, so without that
+# variable nothing is posted. CI never grants build evaluation; without the .NET SDK, C# is read by the syntax tier.
+proofmesh-impact:
+  image: node:22
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  variables:
+    GIT_DEPTH: 0
+    PROOFMESH_REF: main # pin a release tag or commit
+  cache:
+    key: proofmesh-$CI_MERGE_REQUEST_DIFF_BASE_SHA
+    paths:
+      - .proofmesh-ci/
+  script:
+    - git clone --depth 1 --branch "$PROOFMESH_REF" https://github.com/QuintinBotes/proofmesh.git "$CI_BUILDS_DIR/proofmesh-tool"
+    - (cd "$CI_BUILDS_DIR/proofmesh-tool" && corepack enable && pnpm install --frozen-lockfile && pnpm build)
+    - pm() { node "$CI_BUILDS_DIR/proofmesh-tool/packages/proofmesh/dist/cli.mjs" --data-dir "$CI_PROJECT_DIR/.proofmesh-ci" "$@"; }
+    - pm init && pm repo add "$CI_PROJECT_DIR"
+    # Exit 1 means a dependent is neither changed nor tested: reported, not a failure of the job.
+    - pm completeness "$CI_PROJECT_DIR" "$CI_MERGE_REQUEST_DIFF_BASE_SHA..$CI_COMMIT_SHA" --format markdown > proofmesh-report.md || [ $? -eq 1 ]
+    # Exit 3 means the list may miss tests; run the full suite then.
+    - pm tests "$CI_PROJECT_DIR" --changed "$CI_MERGE_REQUEST_DIFF_BASE_SHA..$CI_COMMIT_SHA" > proofmesh-tests.txt || echo "the test list may be incomplete; run the full suite"
+    - |
+      if [ -n "$PROOFMESH_NOTE_TOKEN" ]; then
+        node -e 'process.stdout.write(JSON.stringify({ body: require("fs").readFileSync("proofmesh-report.md", "utf8") }))' > proofmesh-note.json
+        curl --fail --silent --show-error --request POST --header "PRIVATE-TOKEN: $PROOFMESH_NOTE_TOKEN" --header "Content-Type: application/json" \
+          --data @proofmesh-note.json "$CI_API_V4_URL/projects/$CI_PROJECT_ID/merge_requests/$CI_MERGE_REQUEST_IID/notes"
+      fi
+  artifacts:
+    when: always
+    paths:
+      - proofmesh-report.md
+      - proofmesh-tests.txt

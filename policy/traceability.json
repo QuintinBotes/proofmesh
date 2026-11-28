@@ -2348,6 +2348,30 @@
     ],
     "FR1905": [
       "packages/proofmesh/test/sarif.test.ts"
+    ],
+    "FR2140": [
+      "packages/proofmesh/test/completeness-report.test.ts"
+    ],
+    "FR2141": [
+      "packages/proofmesh/test/completeness-report.test.ts"
+    ],
+    "FR2142": [
+      "packages/proofmesh/test/completeness-report.test.ts"
+    ],
+    "FR2143": [
+      "packages/proofmesh/test/completeness-report.test.ts"
+    ],
+    "FR2144": [
+      "packages/proofmesh/test/completeness-report.test.ts"
+    ],
+    "FR2145": [
+      "packages/proofmesh/test/completeness-report.test.ts"
+    ],
+    "FR2146": [
+      "packages/proofmesh/test/completeness-report.test.ts"
+    ],
+    "FR2147": [
+      "policy/check-traceability.mjs"
     ]
   },
   "manual": {
