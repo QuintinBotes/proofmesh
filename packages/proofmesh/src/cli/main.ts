@@ -537,10 +537,13 @@ export async function main(argv: string[]): Promise<number> {
           throw e
         }
         const phases = report.stop()
+        const repoId = jobs.repository(opts[0]).id, trusted = !!jobs.activeTrust(repoId)
         jobs.close()
         for (const f of r.fallbacks ?? []) console.log(`adapter ${f.adapter} could not analyse ${f.files} file${f.files === 1 ? '' : 's'}, so the syntax tier read them: ${f.reason}`)
         if (r.partial) console.log(`partial snapshot: adapter ${r.partial.adapters.join(', ')} failed, ${r.partial.missing} of ${r.partial.files} files are missing; they are failed with adapter_died, and indexing again asks the adapter again`)
         if (r.resumed) console.log(`resumed from checkpoint: ${r.resumed.done} of ${r.resumed.total} batches were already done`)
+        // repo move and repo untrust drop the grant without an index, so the index that runs without it says so (FR1720).
+        if (r.analysisMode === 'no_execution' && r.adapterBudgets.csharp && !trusted) console.log(`analysed without build evaluation: C# projects were read without running MSBuild, so C# resolution may be partial; a person grants it with: proofmesh repo trust ${repoId} --build-evaluation`)
         if (r.reuse?.reused) console.log(`reused the facts of ${r.reuse.reused} of ${r.reuse.reused + r.reuse.analysed} files whose inputs did not change`)
         console.log(`snapshot ${r.snapshotId} ${r.status}${r.commit ? ` from commit ${r.commit} (${rev}); the working tree was not read` : ''}${r.analysisMode === 'trusted_build' ? ' (analysed with build execution)' : ''}`)
         // Observatory's Galaxy reads this; building it now keeps opening the view instant. It is a cache, so failure only costs time later.

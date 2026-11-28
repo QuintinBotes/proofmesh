@@ -125,6 +125,9 @@
     "FR081": [
       "packages/proofmesh/test/cli.e2e.test.ts"
     ],
+    "FR1720": [
+      "packages/proofmesh/test/cli.e2e.test.ts"
+    ],
     "FR016": [
       "apps/observatory/test/scene.test.ts",
       "packages/proofmesh/test/csharp.dotnet-frameworks.test.ts",
