@@ -55,6 +55,35 @@ test('FR059 FR1405 FR1407 SC011 files the graph cannot see are drawn as ghost ce
   await expect(bundles.locator('td:nth-child(-n+5)')).toHaveText(['packages/billing', 'packages/format', '1', '0', 'calls 1', 'packages/api', 'packages/billing', '1', '0', 'calls 1'])
 })
 
+test('FR1560 every ghost cell and its label lie inside the Terrain and clear of its controls, after the first paint and after Fit everything', async ({ browser }) => {
+  // A screen wide enough for the ghost row's labels to show (a ghost cell 40 pixels across or more), on a second view of the same data.
+  const second = await serveView(view.dataDir)
+  const wide = await browser.newContext({ viewport: { width: 1920, height: 1080 } })
+  const p = await wide.newPage()
+  p.on('pageerror', (e) => errors.push(e.message))
+  await p.goto(second.launchUrl)
+  await p.locator('.terrain[data-ready]').waitFor({ timeout: 60000 })
+  await expect(p.locator('.terrain-fog.empty .fog-label')).toHaveText(['(root)'], { timeout: 30000 })
+  // Each ghost cell's and label's box against the canvas, the zoom toolbar and the Graph/Table switch: an empty list means all are clear.
+  const misplaced = () => p.evaluate(() => {
+    const g = document.querySelector('.terrain')!.getBoundingClientRect()
+    const over = ['[aria-label="Terrain controls"]', '[role="group"][aria-label="View"]'].map((s) => document.querySelector(s)!.getBoundingClientRect())
+    return [...document.querySelectorAll('.terrain-fog.empty, .terrain-fog.empty .fog-label')].flatMap((e) => {
+      const b = e.getBoundingClientRect(), name = e.getAttribute('data-area') ?? e.textContent
+      const outside = b.left < g.left || b.right > g.right || b.top < g.top || b.bottom > g.bottom
+      const under = over.some((c) => b.left < c.right && b.right > c.left && b.top < c.bottom && b.bottom > c.top)
+      return outside || under ? [`${name}${outside ? ' outside' : ''}${under ? ' under a control' : ''}`] : []
+    })
+  })
+  await expect.poll(misplaced).toEqual([])
+  await p.getByRole('button', { name: 'Fit everything' }).click()
+  // Fitting animates for 300 ms; the ghosts must stay inside once it has settled.
+  await p.waitForTimeout(600)
+  await expect.poll(misplaced).toEqual([])
+  await wide.close()
+  second.stop()
+})
+
 test('FR1223 the map paints at its final positions: no simulation, no layout control and no layout cache in the browser', async ({ browser }) => {
   // A fresh context on a second view of the same data, so the first paint is a cold one.
   const second = await serveView(view.dataDir)

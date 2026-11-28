@@ -2126,6 +2126,9 @@
     "FR1225": [
       "packages/proofmesh/test/layout.test.ts"
     ],
+    "FR1560": [
+      "e2e/terrain.spec.ts"
+    ],
     "FR1620": [
       "packages/proofmesh/test/layout.test.ts"
     ],
