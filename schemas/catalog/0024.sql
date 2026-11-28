@@ -1,4 +1,4 @@
--- Proofmesh catalog, migration 0023: the subjects of each MCP query (#50), kept beside its query record only for a repository a
+-- Proofmesh catalog, migration 0024: the subjects of each MCP query (#50), kept beside its query record only for a repository a
 -- person turned recording on for (proofmesh trail on): the symbol ids and repository-relative paths it named or found, never
 -- source text, grouped by the session id the MCP server holds. Deleted with its query record (gc) and by proofmesh trail purge.
 CREATE TABLE query_subject (

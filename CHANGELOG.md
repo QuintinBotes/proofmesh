@@ -6,11 +6,11 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 Claims & trace: what an agent session read, changed and claimed, on the Terrain (#50; FR1940 to FR1945, FR1950 to FR1957):
 
-- While a person has turned recording on (`proofmesh trail on <repo>`, off by default), `proofmesh mcp` keeps the subjects of each query it answers: symbol ids and repository-relative paths the snapshot holds, never source text or the query's words, in the local catalog beside the query record (migration 0023, `query_subject`), grouped by the session id the server holds for the connection. `list_queries` names a recorded query's `session_id`.
+- While a person has turned recording on (`proofmesh trail on <repo>`, off by default), `proofmesh mcp` keeps the subjects of each query it answers: symbol ids and repository-relative paths the snapshot holds, never source text or the query's words, in the local catalog beside the query record (migration 0024, `query_subject`), grouped by the session id the server holds for the connection. `list_queries` names a recorded query's `session_id`.
 - `get_session_trail` lists an MCP session's queries as entries with `query_id` and `snapshot_id`, compares the session's diff (`compare_snapshots`) with what it searched for and opened, matching symbols across snapshots by stable key, and adds `opened` to each changed symbol so the three lists hold every dependent once.
 - `proofmesh gc --records-days D` deletes a query's subjects with its record, and `proofmesh trail purge` with the session's trail; both say how many.
 - Observatory's Claims tab pins each claim on the Terrain at its source symbol (✓, ✗, or `checked at <snapshot>` when its last run was against another snapshot), summarises `1 of 4 claims refuted`, and shows the seven layers as equal cells in pipeline order with a failed layer boldest and `not run` and `unsupported` hatched. Below it, a recorded session's steps are numbered in order and on the map (`+n` for a subject visited again), with the dependents of its change it never looked at.
-- Upgrade note: catalog migration 0023. Back up the data directory before upgrading.
+- Upgrade note: catalog migration 0024. Back up the data directory before upgrading.
 
 The Terrain replaces the Galaxy and Map views: semantic zoom from areas to symbols, with bundles that open their evidence (part of #46; closes #42; FR1400 to FR1409):
 
