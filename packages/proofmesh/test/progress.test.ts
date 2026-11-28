@@ -58,11 +58,11 @@ describe('FR274 get_job returns the figures the index prints, while the adapter 
       }
       expect(job?.state).toBe('running')
       expect(tool(d, 'get_job', { job_id: job!.id }).limitations.join(' ')).toContain('refreshes progress_at every 5 seconds')
-      expect(job!.adapters!.typescript).toMatchObject({ adapter: 'typescript', language: 'typescript+javascript', done: 2, total: 6 })
+      expect(job!.adapters!.typescript).toMatchObject({ adapter: 'typescript', language: 'typescript+javascript+vue+svelte', done: 2, total: 6 })
       expect(job!.adapters!.typescript!.files_per_second).toBeGreaterThan(0)
       expect(job!.adapters!.typescript!.eta_seconds).toBeGreaterThanOrEqual(0)
       for (let i = 0; i < 100 && !/analyze typescript 2\/6 \(/.test(stderr); i++) await sleep(100)
-      expect(stderr).toMatch(/analyze typescript 2\/6 \(typescript\+javascript: [\d.]+ files\/s, about \d+s left\) \(still running\)/)
+      expect(stderr).toMatch(/analyze typescript 2\/6 \(typescript\+javascript\+vue\+svelte: [\d.]+ files\/s, about \d+s left\) \(still running\)/)
     } finally {
       fs.writeFileSync(gate, '')
       await exited

@@ -4,6 +4,8 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 ## Unreleased
 
+Vue and Svelte single-file components are part of the TypeScript graph (#252; FR2280 to FR2287). A `.vue` or `.svelte` file goes to the TypeScript adapter, which reads its `<script>` blocks as one module at the file's own lines and its template with a reader of its own, with no framework compiler installed. Each component is a `class` symbol named by its file that owns its scripts' top-level code; `import Button from './Button.vue'` resolves to the component; a template tag naming a component is a `renders` row and a name a template expression uses is a reference; a test's `mount(App)` or `render(App)` renders it, so `find_tests` on a composable lists the test with the chain through the components. A tag no script binds (a global registration or auto-import) stays unresolved, never matched by name. A component whose script is in another language or does not parse goes to the syntax tier, which reads its scripts. The census lists Vue and Svelte at `precise:typescript`, and the Rosetta suite gains Vue and Svelte. Astro is not read. Upgrade note: the TypeScript adapter is 0.2.8, so the next index of a TypeScript repository reanalyses every file once; its facts are unchanged in a repository with no component.
+
 Time: scrub snapshots on the same map (part of #48; FR1760 to FR1765):
 
 - The header's snapshot picker is now Time, in the left panel: a scrubber and a strip of every published snapshot, newest first, each with its symbols and unresolved share, which `list_snapshots` now gives (`symbols`, `relationships`, `unresolved`). `[` and `]` step one snapshot, and every view is pinned to the snapshot shown.

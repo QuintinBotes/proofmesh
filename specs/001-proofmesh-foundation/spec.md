@@ -716,6 +716,19 @@ From #30 (owner decision, option A): no native data-flow analysis. Proofmesh imp
 - FR1904: MUST mark a finding `stale: sarif_stale:<name>` while its file's content in the asked snapshot differs from the hash recorded at import, and say so in the limitations, until a new SARIF file is imported.
 - FR1905: MUST run no analyser and bundle none: importing a SARIF file reads it and nothing else.
 
+### Vue and Svelte single-file components in the TypeScript graph
+
+From #252: a `.vue` or `.svelte` file is TypeScript in a container, so the TypeScript adapter reads it with no framework compiler. The tests are in `packages/proofmesh/test/single-file-components.test.ts`, on `fixtures/ts-vue` and `fixtures/ts-svelte`, and in the Rosetta suite.
+
+- FR2280: MUST read `.vue` and `.svelte` files in the TypeScript adapter: each `<script>` block is given to the checker as a virtual TypeScript or JavaScript module with a position map back to the file.
+- FR2281: MUST declare for each component file one `component` symbol named by its file (kind `class`, signature `vue component` or `svelte component`, owning its scripts' top-level code) and the symbols of its script blocks, with `stable_key`s that follow the existing TypeScript scheme.
+- FR2282: MUST resolve imports of `.vue` and `.svelte` files from any module to the component's module.
+- FR2283: MUST record template tags that name an imported component as `renders` rows and template expressions that name script bindings as references, at their own lines, read by a purpose-built reader shipped as source with no native module; a Vue tag no script binds is an unresolved `renders` with `detail.why` `global_or_auto_import`, never a name guess.
+- FR2284: MUST fall a component file back to the syntax tier under the existing fallback rules (#18) when the precise read fails.
+- FR2285: MUST report Vue and Svelte in the census with tier `precise:typescript` and their capability counts; `docs/proofmesh/languages.md` states what is and is not read.
+- FR2286: MUST give the Rosetta suite the component cases that apply (import, call, render, test reach).
+- FR2287: MUST give each of FR2280 to FR2286 an entry in `policy/traceability.json` and a line in this specification.
+
 ### Impact completeness
 
 - FR108: MUST provide `impact_completeness` with `base`, a commit-ish, optional `head` (omitted, the working tree), `depth` (default 1, at most 5), `include_tests` and the usual limits, and the CLI `proofmesh completeness <repository> <base>[..<head>] [--depth N] [--json]`.

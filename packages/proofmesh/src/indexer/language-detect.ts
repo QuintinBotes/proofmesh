@@ -13,7 +13,7 @@ export type Detected = {
 
 /** Linguist's names for the languages the built-in adapters analyse, by the language id the adapters are registered under. */
 export const ADAPTER_LANGUAGE_NAMES: Record<string, string> = {
-  typescript: 'TypeScript', javascript: 'JavaScript', csharp: 'C#', python: 'Python', terraform: 'HCL', java: 'Java', go: 'Go', rust: 'Rust',
+  typescript: 'TypeScript', javascript: 'JavaScript', vue: 'Vue', svelte: 'Svelte', csharp: 'C#', python: 'Python', terraform: 'HCL', java: 'Java', go: 'Go', rust: 'Rust',
   ruby: 'Ruby', php: 'PHP', c: 'C', cpp: 'C++', bash: 'Shell', scala: 'Scala', kotlin: 'Kotlin', swift: 'Swift', sql: 'SQL', prisma: 'Prisma',
 }
 const ADAPTER_IDS = new Map(Object.entries(ADAPTER_LANGUAGE_NAMES).map(([id, name]) => [name, id]))

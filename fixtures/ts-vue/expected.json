@@ -1,0 +1,49 @@
+{
+  "census": { "language": "Vue", "tier": "precise:typescript" },
+  "files": {
+    "src/App.vue": "indexed precise:typescript",
+    "src/Badge.vue": "indexed precise:typescript",
+    "src/Button.vue": "indexed precise:typescript",
+    "src/Legacy.vue": "indexed syntax adapter_failed:typescript:unsupported_script_lang:coffee"
+  },
+  "symbols": [
+    ["src/App.vue", "class", "src/App:App", 1, 23],
+    ["src/App.vue", "variable", "src/App:title", 2, 2],
+    ["src/App.vue", "variable", "src/App:added", 9, 9],
+    ["src/App.vue", "function", "src/App:add", 11, 13],
+    ["src/Badge.vue", "class", "src/Badge:Badge", 1, 14],
+    ["src/Badge.vue", "method", "src/Badge:Badge.label", 5, 7],
+    ["src/Button.vue", "class", "src/Button:Button", 1, 14],
+    ["src/Button.vue", "variable", "src/Button:cart", 5, 5],
+    ["src/Button.vue", "function", "src/Button:press", 7, 9]
+  ],
+  "facts": [
+    ["src/App.test.ts", 1, "imports", "src/App.test.ts", null, "unresolved", "import_unresolved", "static"],
+    ["src/App.test.ts", 2, "imports", "src/App.test.ts", "src/App.vue", "resolved", null, "static"],
+    ["src/App.test.ts", 5, "calls", "src/App.test:testAppRenders", null, "unresolved", "dependency_missing", null],
+    ["src/App.test.ts", 5, "renders", "src/App.test:testAppRenders", "src/App:App", "resolved", null, "mount"],
+    ["src/App.vue", 6, "imports", "src/App.vue", "src/Button.vue", "resolved", null, "static"],
+    ["src/App.vue", 7, "imports", "src/App.vue", "src/Badge.vue", "resolved", null, "static"],
+    ["src/App.vue", 12, "references", "src/App:add", "src/App:added", "resolved", null, null],
+    ["src/App.vue", 18, "references", "src/App:App", "src/App:title", "resolved", null, null],
+    ["src/App.vue", 19, "renders", "src/App:App", "src/Button:Button", "resolved", null, "vue_template"],
+    ["src/App.vue", 19, "references", "src/App:App", "src/App:add", "resolved", null, null],
+    ["src/App.vue", 20, "renders", "src/App:App", "src/Badge:Badge", "resolved", null, "vue_template"],
+    ["src/App.vue", 20, "references", "src/App:App", "src/App:added", "resolved", null, null],
+    ["src/App.vue", 21, "renders", "src/App:App", null, "unresolved", "unknown_name", "global_or_auto_import"],
+    ["src/Badge.vue", 13, "references", "src/Badge:Badge", "src/Badge:Badge.label", "resolved", null, null],
+    ["src/Button.vue", 3, "imports", "src/Button.vue", "src/cart.ts", "resolved", null, "static"],
+    ["src/Button.vue", 5, "calls", "src/Button:Button", "src/cart:useCart", "resolved", null, null],
+    ["src/Button.vue", 8, "calls", "src/Button:press", "src/cart:useCart", "resolved", null, null],
+    ["src/Button.vue", 8, "references", "src/Button:press", "src/Button:cart", "resolved", null, null],
+    ["src/Button.vue", 13, "references", "src/Button:Button", "src/Button:press", "resolved", null, null]
+  ],
+  "callers": [
+    "Button src/Button.vue:5",
+    "press src/Button.vue:8",
+    "# 3 unresolved call sites in this snapshot have unknown targets and may call this symbol, 0 by its name; envelope compact lists them."
+  ],
+  "tests": [
+    "testAppRenders transitive_call: testAppRenders src/App.test.ts:5 > App src/App.vue:19 > Button src/Button.vue:5 > useCart src/cart.ts:3"
+  ]
+}

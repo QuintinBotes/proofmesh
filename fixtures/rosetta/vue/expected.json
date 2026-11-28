@@ -1,0 +1,87 @@
+{
+  "language": "vue",
+  "census_language": "Vue",
+  "tiers": {
+    "precise": {
+      "subjects": {
+        "$Shape": {
+          "name": "Shape",
+          "path": "shapes.ts"
+        },
+        "$Shape.area": {
+          "name": "Shape.area",
+          "path": "shapes.ts"
+        },
+        "$Circle.area": {
+          "name": "Circle.area",
+          "path": "shapes.ts"
+        },
+        "$shapes-file": {
+          "name": "shapes.ts",
+          "path": "shapes.ts"
+        },
+        "$total": {
+          "name": "total",
+          "path": "shapes.ts"
+        },
+        "$totalOfTwo": {
+          "name": "totalOfTwo",
+          "path": "shapes.test.ts"
+        }
+      },
+      "calls": {
+        "find_symbols": {
+          "rows": [
+            { "role": "Circle.area", "row": "Circle.area shapes.ts:7 method" },
+            { "role": "Shape.area", "row": "Shape.area shapes.ts:2 method" },
+            { "role": "Square.area", "row": "Square.area shapes.ts:14 method" },
+            { "role": "circleArea", "row": "circleArea shapes.ts:25 function" }
+          ]
+        },
+        "implements": {
+          "rows": [
+            { "role": "Circle", "row": "Circle shapes.ts:5" },
+            { "role": "Square", "row": "Square shapes.ts:12" }
+          ]
+        },
+        "calls_shape_area": {
+          "rows": [
+            { "role": "total", "row": "total shapes.ts:21" }
+          ]
+        },
+        "calls_circle_area": {
+          "rows": [
+            { "role": "total", "row": "total shapes.ts:21 dispatch" },
+            { "role": "circleArea", "row": "circleArea shapes.ts:26" }
+          ]
+        },
+        "imports": {
+          "rows": [
+            { "role": "report", "row": "Report.vue:2" }
+          ]
+        },
+        "impact": {
+          "rows": [
+            { "role": "circleArea", "row": "circleArea shapes.ts:26 depth=1 calls" },
+            { "role": "total", "row": "total shapes.ts:21 depth=1 calls" },
+            { "role": "report", "row": "Report Report.vue:4 depth=2 calls" },
+            { "role": "totalOfTwo", "row": "totalOfTwo shapes.test.ts:6 depth=2 calls" }
+          ]
+        },
+        "find_tests": {
+          "rows": [
+            { "role": "totalOfTwo", "row": "totalOfTwo shapes.test.ts:6 depth=1" },
+            { "extra": "reportRenders renders Report (rule mount), and Report calls total from its script, whose top-level code is the component's (docs/proofmesh/languages.md, Vue and Svelte components)", "row": "reportRenders shapes.test.ts:10 depth=2" }
+          ]
+        },
+        "trace_paths": {
+          "rows": [
+            { "role": "totalOfTwo", "row": "totalOfTwo shapes.test.ts:6" },
+            { "role": "total", "row": "total shapes.ts:21" },
+            { "role": "Shape.area", "row": "Shape.area shapes.ts:2" }
+          ]
+        }
+      }
+    }
+  }
+}

@@ -2348,6 +2348,30 @@
     ],
     "FR1905": [
       "packages/proofmesh/test/sarif.test.ts"
+    ],
+    "FR2280": [
+      "packages/proofmesh/test/single-file-components.test.ts"
+    ],
+    "FR2281": [
+      "packages/proofmesh/test/single-file-components.test.ts"
+    ],
+    "FR2282": [
+      "packages/proofmesh/test/single-file-components.test.ts"
+    ],
+    "FR2283": [
+      "packages/proofmesh/test/single-file-components.test.ts"
+    ],
+    "FR2284": [
+      "packages/proofmesh/test/single-file-components.test.ts"
+    ],
+    "FR2285": [
+      "packages/proofmesh/test/single-file-components.test.ts"
+    ],
+    "FR2286": [
+      "packages/proofmesh/test/rosetta.test.ts"
+    ],
+    "FR2287": [
+      "packages/proofmesh/test/single-file-components.test.ts"
     ]
   },
   "manual": {
