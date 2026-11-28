@@ -492,16 +492,17 @@ export function App() {
         const f = areaFog(a)
         return { name: a.name, count: a.count, ...(searching ? { matches: counts.get(i) ?? 0 } : {}), ...(f.haze || f.excluded || coverageOf(a).hatched ? { fog: coverageOf(a).text } : {}) }
       })
-      return { caveats, source, svg: terrainSvg(galaxy!, terrain!, strokes, searching ? galaxyMatches : null, caveats, source), table: { head: ['area', 'symbols', 'matches', 'coverage'], rows: areas.map((a) => [a.name, String(a.count), a.matches === undefined ? '' : String(a.matches), a.fog ?? 'complete']) } }
+      // The drawing is built when it is exported: at 250,000 symbols building it on every load was a long task of its own (#208).
+      return { caveats, source, svg: () => terrainSvg(galaxy!, terrain!, strokes, searching ? galaxyMatches : null, caveats, source), table: { head: ['area', 'symbols', 'matches', 'coverage'], rows: areas.map((a) => [a.name, String(a.count), a.matches === undefined ? '' : String(a.matches), a.fog ?? 'complete']) } }
     }
-    return { caveats, source, svg: sceneSvg(scene!, caveats, source), table: sceneTable(scene!) }
+    return { caveats, source, svg: () => sceneSvg(scene!, caveats, source), table: sceneTable(scene!) }
   }, [status, mode, galaxy, scene, tracing, evidence, includeSource, query, focus, galaxyMatches, drawnPairs, terrain, strokes])
   const fileStem = exportable ? `proofmesh-${exportable.caveats.view.toLowerCase().replace(/\W+/g, '-')}-${exportable.caveats.snapshotId}` : ''
-  const exportPage = () => { if (exportable) download(`${fileStem}.html`, new Blob([offlineHtml(exportable.svg, exportable.caveats, exportable.table, exportable.source)], { type: 'text/html' })) }
+  const exportPage = () => { if (exportable) download(`${fileStem}.html`, new Blob([offlineHtml(exportable.svg(), exportable.caveats, exportable.table, exportable.source)], { type: 'text/html' })) }
   const exportImage = async () => {
     if (!exportable) return
     try {
-      const png = pngWithText(await svgToPng(exportable.svg), 'proofmesh:caveats', caveatLines(exportable.caveats, exportable.source).join('\n'))
+      const png = pngWithText(await svgToPng(exportable.svg()), 'proofmesh:caveats', caveatLines(exportable.caveats, exportable.source).join('\n'))
       download(`${fileStem}.png`, new Blob([png as BlobPart], { type: 'image/png' }))
     } catch (e) { report(e) }
   }
