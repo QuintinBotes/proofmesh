@@ -1,4 +1,4 @@
--- Proofmesh catalog, migration 0024: coverage reports a person imported for a repository (#241, FR2060 to FR2066). Proofmesh reads them and
+-- Proofmesh catalog, migration 0025: coverage reports a person imported for a repository (#241, FR2060 to FR2066). Proofmesh reads them and
 -- never runs a test. files holds, per matched snapshot path, the file's content hash in the snapshot at import, its executable lines and the
 -- lines each test hit, so a later edit marks it stale. unmatched holds the report paths no indexed file matched, with the reason.
 CREATE TABLE coverage_import (

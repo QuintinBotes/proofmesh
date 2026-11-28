@@ -10,7 +10,7 @@ Coverage reports, imported beside static test reach (#241; FR2060 to FR2067):
 - `find_tests` and `get_symbol` (full envelope) carry `coverage` (`executed`, `lines_covered`, `lines_total`, `source`, `window`), the lean header says `executed by coverage`, and each test the report names as running the subject that no static chain reaches is a row with `evidence: coverage`.
 - `impact_completeness` has the status `covered` for a dependent no test reaches statically that the report shows executed, counted apart; `proofmesh completeness --static-only` counts it as neither. `workspace_status` lists the imports.
 - Answers for a repository with no coverage import are unchanged.
-- Upgrade note: catalog migration 0024 (`coverage_import`). Back up the data directory before upgrading.
+- Upgrade note: catalog migration 0025 (`coverage_import`). Back up the data directory before upgrading.
 
 Time: scrub snapshots on the same map (part of #48; FR1760 to FR1765):
 
