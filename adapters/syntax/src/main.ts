@@ -8,6 +8,7 @@ import readline from 'node:readline'
 import { Parser, Query, type Node } from 'web-tree-sitter'
 import { byteOffsets, grammarsDir, language, lastLine, manifest, parser, send, toolchain, type Range } from './common.js'
 import { prismaFacts } from './prisma.js'
+import { readSfc, virtualText } from './sfc.js'
 import { callFacts } from './scope.js'
 import { gtestName, isRubySpec, rubyBlocks, scanRepository, testRoles, unitDependencies, withoutCycles } from './tests.js'
 
@@ -83,6 +84,12 @@ const queries = new Map<string, Promise<Query>>()
 
 // TypeScript, TSX and JavaScript are read by two grammars: `.ts` by TypeScript's, whose angle-bracket casts a JSX grammar cannot parse, and the rest by TSX's (FR310).
 const grammarOf = (lang: string, file: string) => (lang !== 'typescript' && lang !== 'javascript' ? lang : /\.[mc]?ts$/i.test(file) ? 'typescript' : 'tsx')
+/** A Vue or Svelte component the TypeScript adapter could not read is read as its script blocks, everything else blanked, so offsets stay the file's (FR2284). */
+function sfcSource(lang: string, text: string): { lang: string; source: string } | undefined {
+  if (lang !== 'vue' && lang !== 'svelte') return undefined
+  const { scripts } = readSfc(text, lang)
+  return { lang: scripts.some((s) => s.lang === 'ts' || s.lang === 'typescript') ? 'typescript' : 'javascript', source: virtualText(text, scripts) }
+}
 // Roslyn names a generic type with its parameters, `Box<T, U>`, and a member after it.
 const GENERIC_TYPES = new Set(['class_declaration', 'struct_declaration', 'interface_declaration', 'record_declaration'])
 const typeName = (lang: string, def: Node, name: Node) => {
@@ -106,9 +113,10 @@ function tags(name: string): Promise<Query> {
 async function analyse(file: string, callees = false) {
   const text = fs.readFileSync(path.join(workspace, file), 'utf8')
   const at = byteOffsets(text)
-  const lang = languageOf.get(file)!
+  const sfc = sfcSource(languageOf.get(file)!, text)
+  const lang = sfc?.lang ?? languageOf.get(file)!
   const grammar = grammarOf(lang, file)
-  const tree = (await parser(grammar)).parse(text)!
+  const tree = (await parser(grammar)).parse(sfc?.source ?? text)!
   const range = (start: Node, end: Node = start): Range => ({ start_byte: at[start.startIndex]!, end_byte: Math.max(at[end.endIndex]!, at[start.startIndex]! + 1), start_line: start.startPosition.row + 1, end_line: end.endPosition.row + 1 })
   const module = file.replace(/\.[^./]+$/, '')
   const moduleId = `${file}#module`

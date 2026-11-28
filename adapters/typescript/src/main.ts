@@ -6,9 +6,10 @@ import path from 'node:path'
 import readline from 'node:readline'
 import type * as TS from 'typescript'
 import { graphqlDocument } from '../../syntax/src/contracts.js'
+import { readSfc, templateUses, virtualText, type Framework, type Sfc } from '../../syntax/src/sfc.js'
 
 const ts = createRequire(import.meta.url)('typescript') as typeof TS
-const VERSION = '0.2.7'
+const VERSION = '0.2.8'
 type Range = { start_byte: number; end_byte: number; start_line: number; end_line: number }
 type Ref = { symbol: string } | { file: string } | { external: { module: string; name: string } }
 
@@ -58,6 +59,11 @@ const refNames = new Set<string>()
 const REFERABLE = /^(class|interface|enum|type_alias|variable|function|method|property)$/
 /** Per file, the UTF-8 offset of each UTF-16 position; for a file of ASCII text, whose offsets are its positions, only its byte order mark (#32). */
 const byteMaps = new Map<TS.SourceFile, Int32Array | number>()
+/** Vue and Svelte components by absolute path, with their text as stored (FR2280); empty in a repository without one, which then reads as before. */
+const sfcs = new Map<string, Sfc & { framework: Framework; text: string; unread?: string }>()
+/** The `class` symbol of each component, which owns its scripts' top-level code (FR2281). */
+const components = new Set<string>()
+const SCRIPT_KINDS: Record<string, TS.ScriptKind> = { '': ts.ScriptKind.JS, js: ts.ScriptKind.JS, javascript: ts.ScriptKind.JS, jsx: ts.ScriptKind.JSX, ts: ts.ScriptKind.TS, typescript: ts.ScriptKind.TS, tsx: ts.ScriptKind.TSX }
 
 /** Memoised: it is asked for every declaration and call, and path.relative cost a quarter of a second an index (#31); the workspace is set once. */
 const relOf = new Map<string, string>()
@@ -102,7 +108,7 @@ function bomBytes(file: string): number {
 function bytesAt(sf: TS.SourceFile, pos: number): number {
   let map = byteMaps.get(sf)
   if (map === undefined) {
-    const text = sf.text
+    const text = sfcs.get(sf.fileName)?.text ?? sf.text
     let b = bomBytes(sf.fileName)
     // A map is 4 bytes per character, kept for every file of the program: only text with a non-ASCII character needs one.
     if (!/[^\x00-\x7f]/.test(text)) { byteMaps.set(sf, b); return b + pos }
@@ -144,8 +150,32 @@ function createProject(rootNames: string[], options: TS.CompilerOptions): Projec
     if (!sf) { sf = getSourceFile(fileName, languageVersion, onError, shouldCreate); if (sf) declarationFiles.set(key, sf) }
     return sf
   }
+  if (sfcs.size) {
+    // A component is a root of its project whatever its extension; it parses as its scripts, and imports of it resolve to it.
+    Object.assign(options, { allowNonTsExtensions: true })
+    const getShared = host.getSourceFile
+    host.getSourceFile = (fileName, languageVersion, onError, shouldCreate) => (sfcs.has(fileName) ? componentSource(fileName, languageVersion) : getShared(fileName, languageVersion, onError, shouldCreate))
+    const cache = ts.createModuleResolutionCache(host.getCurrentDirectory(), host.getCanonicalFileName, options)
+    host.resolveModuleNameLiterals = (literals, file, redirected, opts, sf) => literals.map((l) => ({ resolvedModule: resolveModule(l.text, file, opts, host, cache, redirected, ts.getModeForUsageLocation(sf, l, opts)) }))
+  }
   const p = ts.createProgram(rootNames, options, host)
   return { program: p, checker: p.getTypeChecker(), host }
+}
+
+/** A component as the checker reads it: its scripts at their own offsets, with the default export its compiler gives it when no script writes one (FR2280). */
+function componentSource(fileName: string, languageVersion: TS.ScriptTarget | TS.CreateSourceFileOptions): TS.SourceFile {
+  const sfc = sfcs.get(fileName)!, scripts = sfc.unread ? [] : sfc.scripts
+  const text = virtualText(sfc.text, scripts)
+  const exported = scripts.some((s) => /\bexport\s+default\b/.test(sfc.text.slice(s.start, s.end)))
+  return ts.createSourceFile(fileName, exported ? text : `${text}\nexport default {}\n`, languageVersion, false, SCRIPT_KINDS[scripts.find((s) => s.lang)?.lang ?? ''])
+}
+
+/** Module resolution that also finds `.vue` and `.svelte` files, by relative path, alias or package, where TypeScript would find `<name>.vue.ts` (FR2282). */
+function resolveModule(spec: string, file: string, options: TS.CompilerOptions, host: TS.ModuleResolutionHost, cache?: TS.ModuleResolutionCache, redirected?: TS.ResolvedProjectReference, mode?: TS.ResolutionMode): TS.ResolvedModuleFull | undefined {
+  if (!sfcs.size) return ts.resolveModuleName(spec, file, options, host, cache, redirected, mode).resolvedModule
+  const component = (f: string) => f.endsWith('.ts') && sfcs.has(f.slice(0, -3))
+  const r = ts.resolveModuleName(spec, file, options, { ...host, fileExists: (f) => component(f) || host.fileExists(f) }, cache, redirected, mode).resolvedModule
+  return r && component(r.resolvedFileName) ? { ...r, resolvedFileName: r.resolvedFileName.slice(0, -3), extension: ts.Extension.Ts } : r
 }
 
 /**
@@ -158,8 +188,14 @@ function buildProjects(): void {
   const configs = files.map((f) => f.path).filter((p) => /^(tsconfig|jsconfig)\.json$/.test(path.posix.basename(p)))
   const dirOf = (c: string) => path.posix.dirname(c)
   const nearest = (p: string) => configs.filter((c) => dirOf(c) === '.' || p.startsWith(`${dirOf(c)}/`)).sort((a, b) => dirOf(b).length - dirOf(a).length || (a < b ? -1 : 1))[0] ?? ''
+  for (const f of files) {
+    if (f.language !== 'vue' && f.language !== 'svelte') continue
+    const abs = path.join(workspace, f.path), text = ts.sys.readFile(abs) ?? '', sfc = readSfc(text, f.language)
+    const lang = sfc.scripts.map((s) => s.lang ?? '').find((l) => !Object.hasOwn(SCRIPT_KINDS, l))
+    sfcs.set(abs, { ...sfc, framework: f.language, text, unread: sfc.error ?? (lang === undefined ? undefined : `unsupported_script_lang:${lang}`) })
+  }
   const owned = new Map<string, string[]>()
-  for (const f of files) if (f.language === 'typescript' || f.language === 'javascript') owned.set(nearest(f.path), [...(owned.get(nearest(f.path)) ?? []), f.path])
+  for (const f of files) if (f.language === 'typescript' || f.language === 'javascript' || f.language === 'vue' || f.language === 'svelte') owned.set(nearest(f.path), [...(owned.get(nearest(f.path)) ?? []), f.path])
   for (const [config, mine] of [...owned].sort((a, b) => (a[0] < b[0] ? -1 : 1))) {
     let options = { ...DEFAULT_OPTIONS }
     let rootNames = mine.map((p) => path.join(workspace, p))
@@ -312,13 +348,22 @@ function indexDeclarations(sf: TS.SourceFile): void {
       for (const d of decls) declLocal.set(keyOf(d.node), local)
     }
   }
-  if (sf.text.length) {
-    const r = range(sf, 0, sf.text.length)
-    const endLine = sf.text.endsWith('\n') ? r.end_line - 1 : r.end_line
+  const sfc = sfcs.get(sf.fileName), own = sfc?.text ?? sf.text
+  if (own.length) {
+    const r = range(sf, 0, own.length)
+    const endLine = own.endsWith('\n') ? r.end_line - 1 : r.end_line
     const local = `${p}#module#${base}#0`
     declLocal.set(keyOf(sf), local)
     // The module is the whole file, its byte order mark included.
     out.push({ local_id: local, path: p, kind: 'module', name: path.posix.basename(p), qualified_name: base, range: { ...r, start_byte: 0, end_line: Math.max(1, endLine) }, signature: null })
+    if (sfc) {
+      // A component is a class named by its file, spanning it, that owns its scripts' top-level code and its template (FR2281).
+      const name = path.posix.basename(base), component = `${p}#class#${base}:${name}`
+      declLocal.set(keyOf(sf), component)
+      components.add(component)
+      refNames.add(name)
+      out.push({ local_id: component, path: p, kind: 'class', name, qualified_name: `${base}:${name}`, range: { ...r, start_byte: 0, end_line: Math.max(1, endLine) }, signature: `${sfc.framework} component` })
+    }
   }
   const visit = (statements: TS.NodeArray<TS.Statement>, prefix: string) => {
     for (const s of statements) {
@@ -360,6 +405,10 @@ function indexDeclarations(sf: TS.SourceFile): void {
     }
   }
   visit(sf.statements, '')
+  // The Options API: the functions of `export default { methods: { ... } }`, or of defineComponent's object, are the component's methods.
+  const options = sfc && optionsOf(sf)
+  const methods = options && stringProp(options, 'methods')?.value
+  if (methods && ts.isObjectLiteralExpression(methods)) members(methods.properties, `${base}:${path.posix.basename(base)}`)
   const sites: number[] = []
   globalSites.set(p, sites)
   const resources = (n: TS.Node): void => {
@@ -730,6 +779,13 @@ function pathText(e: TS.Expression, depth = 0): { text: string; known: boolean }
   }
   return undefined
 }
+/** A component's options object: what `export default` holds, directly or as defineComponent's argument. */
+function optionsOf(sf: TS.SourceFile): TS.ObjectLiteralExpression | undefined {
+  const e = unwrap(sf.statements.find((s): s is TS.ExportAssignment => ts.isExportAssignment(s) && !s.isExportEquals)?.expression)
+  const o = e && ts.isCallExpression(e) ? unwrap(e.arguments[0]) : e
+  return o && ts.isObjectLiteralExpression(o) ? o : undefined
+}
+
 /** An expression without the wrappers that only change its type: parentheses, `as`, `satisfies`, `!` and `<T>`. */
 function unwrap(e: TS.Expression | undefined): TS.Expression | undefined {
   while (e && (ts.isParenthesizedExpression(e) || ts.isAsExpression(e) || ts.isSatisfiesExpression(e) || ts.isNonNullExpression(e) || ts.isTypeAssertionExpression(e))) e = e.expression
@@ -963,6 +1019,8 @@ function owner(node: TS.Node): string | undefined {
     const local = declLocal.get(keyOf(n))
     // A property's declared type and decorators are its class's, as before it was a symbol (#182); only its initializer is its own.
     if (local?.startsWith(`${rel(n.getSourceFile().fileName)}#property#`) && !(ts.isPropertyDeclaration(n) && n.initializer === c)) continue
+    // A component's top-level variables are locals of the setup its component runs, so what their initializers call the component calls (FR2281).
+    if (local?.startsWith(`${rel(n.getSourceFile().fileName)}#variable#`) && sfcs.has(n.getSourceFile().fileName)) continue
     if (local) return local
   }
   return undefined
@@ -1082,6 +1140,63 @@ function hookFact(call: TS.CallExpression): Record<string, unknown> | undefined 
   return { type: 'uses_hook', ...resolveCall(call.expression), detail: { rule: 'hook' } }
 }
 
+/** A test's `mount(App)` or `render(App)` from a component test library renders the component it is given, so find_tests reaches through it (FR2283). */
+const MOUNTS: Record<string, string[]> = { '@vue/test-utils': ['mount', 'shallowMount'], '@testing-library/vue': ['render'], '@testing-library/svelte': ['render'], svelte: ['mount', 'hydrate'] }
+function mountFact(call: TS.CallExpression): Record<string, unknown> | undefined {
+  const callee = importedCallee(call.expression), arg = call.arguments[0]
+  if (!callee || !Object.hasOwn(MOUNTS, callee.module) || !MOUNTS[callee.module]!.includes(callee.name) || !arg || !ts.isIdentifier(arg)) return undefined
+  const r = resolveCall(arg)
+  return r.target && 'symbol' in r.target && components.has(r.target.symbol) ? { type: 'renders', ...r, detail: { rule: 'mount' } } : undefined
+}
+
+const VUE_BUILT_INS = new Set(['Component', 'Transition', 'TransitionGroup', 'KeepAlive', 'Teleport', 'Suspense', 'Slot', 'Template'])
+/**
+ * A component's template (FR2283): a tag naming a component is a `renders` from the component, resolved through the script binding of its
+ * name (PascalCase, or a Vue kebab-case tag as Vue matches it); a Vue tag no script binds, a global registration or an auto-import, is
+ * unresolved and never matched by name. A name an expression uses that a script binds, or an Options API method, is a reference (`ref`);
+ * a Svelte `$store` is a reference to its store.
+ */
+// shortcut: a Vue kebab-case tag nothing binds is taken for a component, as Vue takes it, not a custom element; read isCustomElement if a repository needs it.
+function templateFacts(sf: TS.SourceFile, sfc: Sfc & { framework: Framework; text: string }, p: string, ref: (target: string, start: number, end: number) => void): Array<Record<string, unknown>> {
+  const component = declLocal.get(keyOf(sf))!, bindings = new Map<string, TS.Identifier>(), methods = new Map<string, string>()
+  const bind = (n: TS.Node | undefined): void => {
+    if (n && ts.isIdentifier(n)) bindings.set(n.text, n)
+    else if (n && (ts.isObjectBindingPattern(n) || ts.isArrayBindingPattern(n))) for (const e of n.elements) if (!ts.isOmittedExpression(e)) bind(e.name)
+  }
+  for (const s of sf.statements) {
+    const named = ts.isImportDeclaration(s) ? s.importClause?.namedBindings : undefined
+    if (ts.isImportDeclaration(s)) { bind(s.importClause?.name); if (named && ts.isNamespaceImport(named)) bind(named.name); else for (const e of named?.elements ?? []) bind(e.name) }
+    else if (ts.isVariableStatement(s)) for (const d of s.declarationList.declarations) bind(d.name)
+    else if (ts.isFunctionDeclaration(s) || ts.isClassDeclaration(s) || ts.isEnumDeclaration(s)) bind(s.name)
+  }
+  const options = optionsOf(sf), m = options && stringProp(options, 'methods')?.value
+  if (m && ts.isObjectLiteralExpression(m)) for (const x of m.properties) { const local = declLocal.get(keyOf(x)); if (local && x.name) methods.set(x.name.getText(sf), local) }
+  const resolve = (name: string): Resolution | undefined => (bindings.has(name) ? resolveCall(bindings.get(name)!) : methods.has(name) ? { resolution: 'resolved', target: { symbol: methods.get(name)! } } : undefined)
+  const out: Array<Record<string, unknown>> = [], rule = `${sfc.framework}_template`
+  for (const u of templateUses(sfc.text, sfc, sfc.framework)) {
+    if ('tag' in u) {
+      const pascal = u.tag.replace(/(?:^|-)(\w)/g, (_, c: string) => c.toUpperCase())
+      if (sfc.framework === 'svelte' ? !/^[A-Z]\w*$/.test(u.tag) : !(/^[A-Z]/.test(u.tag) || u.tag.includes('-')) || VUE_BUILT_INS.has(pascal)) continue
+      const id = bindings.get(u.tag) ?? bindings.get(pascal)
+      const r = id ? resolveCall(id) : { resolution: 'unresolved', reason: 'unknown_name' }
+      out.push({ type: 'renders', origin: 'framework_adapter', source: { symbol: component }, site: { path: p, range: range(sf, u.start, u.end) }, ...r, detail: { rule, ...(id || sfc.framework === 'svelte' ? {} : { why: 'global_or_auto_import' }) } })
+      continue
+    }
+    const expr = ts.createSourceFile('template.ts', u.expr, ts.ScriptTarget.Latest, true)
+    const walk = (n: TS.Node): void => {
+      const at = n.parent as { name?: TS.Node; label?: TS.Node } | undefined
+      if (ts.isIdentifier(n) && at && ((at.name !== n || ts.isShorthandPropertyAssignment(n.parent)) && at.label !== n)) {
+        const name = !bindings.has(n.text) && sfc.framework === 'svelte' && n.text.startsWith('$') ? n.text.slice(1) : n.text
+        const r = resolve(name)
+        if (r?.resolution === 'resolved' && r.target && 'symbol' in r.target && r.target.symbol !== component) ref(r.target.symbol, u.start + n.getStart(expr), u.start + n.getEnd())
+      }
+      ts.forEachChild(n, walk)
+    }
+    walk(expr)
+  }
+  return out
+}
+
 const BUILTINS = new Set(builtinModules)
 
 /** Whether a tsconfig `paths` key, exact or with one `*`, matches a specifier. */
@@ -1092,7 +1207,7 @@ const mapsName = (paths: TS.MapLike<string[]> | undefined, spec: string) => Obje
 
 /** What an import specifier names: a Node.js built-in (FR093), a file this adapter indexes, a package, or why none of them. */
 function importTarget(spec: string, p: string, sf: TS.SourceFile, project: Project): Resolution {
-  const resolve = () => ts.resolveModuleName(spec, sf.fileName, program!.getCompilerOptions(), project.host).resolvedModule
+  const resolve = () => resolveModule(spec, sf.fileName, program!.getCompilerOptions(), project.host)
   // A built-in, unless an explicit tsconfig paths entry maps its name to a repository file, which tsc and editors then read.
   if (spec.startsWith('node:') || BUILTINS.has(spec)) {
     const mapped = mapsName(program!.getCompilerOptions().paths, spec) ? resolve() : undefined
@@ -1131,11 +1246,21 @@ function analyze(paths: string[]) {
       continue
     }
     use(project)
+    // A component whose blocks cannot be read, whose script is in a language the checker does not read, or does not parse, goes to the syntax tier (FR2284).
+    const sfc = sfcs.get(sf.fileName)
+    const unread = sfc && (sfc.unread ?? (project.program.getSyntacticDiagnostics(sf).length ? 'script_syntax_error' : undefined))
+    if (unread) { file_results.push({ path: p, status: 'failed', detail: unread, capabilities: {} }); continue }
     symbols.push(...(symbolsByFile.get(p) ?? []))
     let unresolvedCalls = 0, unresolvedImports = 0, graphqlUnread = 0
     const endpoints = new Set<string>(), clientEndpoints: Array<Record<string, unknown>> = []
     /** One reference per user and target (and access, for a property), cited at its first site, with every way the user uses the target and every further site (protocol 1.3). */
-    const references = new Map<string, { from: string; target: string; site: TS.Node; more: TS.Node[]; uses: Set<string>; access?: string }>()
+    const references = new Map<string, { from: string; target: string; site: [number, number]; more: Array<[number, number]>; uses: Set<string>; access?: string }>()
+    const refer = (from: string, target: string, start: number, end: number, use: string, access?: string) => {
+      // A property's reads and writes are apart, each citing every site of its access.
+      const key = access ? `${from}|${target}|${access}` : `${from}|${target}`
+      const r = references.get(key)
+      if (!r) references.set(key, { from, target, site: [start, end], more: [], uses: new Set([use]), access }); else { r.more.push([start, end]); r.uses.add(use) }
+    }
     const visit = (node: TS.Node) => {
       // Every import carries its kind (FR092): import, import type, export ... from, and import() with a literal specifier.
       const kind = ts.isImportDeclaration(node) ? (node.importClause?.isTypeOnly ? 'type_only' : 'static')
@@ -1169,6 +1294,8 @@ function analyze(paths: string[]) {
           if (hook) relationships.push({ origin: 'framework_adapter', source: { symbol: from }, site: { path: p, range: range(sf, node.getStart(sf), node.getEnd()) }, ...hook })
           const prisma = ts.isCallExpression(node) ? prismaFact(node, p, sf) : undefined
           if (prisma) relationships.push({ source: { symbol: from }, ...prisma })
+          const mounted = ts.isCallExpression(node) && components.size ? mountFact(node) : undefined
+          if (mounted) relationships.push({ origin: 'framework_adapter', source: { symbol: from }, site: { path: p, range: range(sf, node.getStart(sf), node.getEnd()) }, ...mounted })
         }
       }
       const gql = ts.isTaggedTemplateExpression(node) ? graphqlTemplate(node, sf) : undefined
@@ -1189,12 +1316,7 @@ function analyze(paths: string[]) {
       if (ts.isVariableDeclaration(node)) relationships.push(...literalFacts(node, p, sf))
       const reference = ts.isIdentifier(node) ? referenceOf(node) : undefined
       const user = reference && (owner(node) ?? declLocal.get(keyOf(sf)))
-      if (reference && user && user !== reference.target) {
-        // A property's reads and writes are apart, each citing every site of its access.
-        const key = reference.access ? `${user}|${reference.target}|${reference.access}` : `${user}|${reference.target}`
-        if (!references.has(key)) references.set(key, { from: user, target: reference.target, site: node, more: [], uses: new Set(), access: reference.access }); else references.get(key)!.more.push(node)
-        references.get(key)!.uses.add(reference.use)
-      }
+      if (reference && user && user !== reference.target) refer(user, reference.target, node.getStart(sf), node.getEnd(), reference.use, reference.access)
       const resource = ts.isNewExpression(node) ? resourceLocal.get(keyOf(node)) : undefined
       if (resource) relationships.push(...resourceFacts(node as TS.NewExpression, resource, p, sf))
       if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) {
@@ -1205,12 +1327,13 @@ function analyze(paths: string[]) {
       ts.forEachChild(node, visit)
     }
     visit(sf)
-    for (const r of references.values()) relationships.push({ type: 'references', origin: 'semantic_resolver', source: { symbol: r.from }, site: { path: p, range: range(sf, r.site.getStart(sf), r.site.getEnd()) }, ...(r.more.length ? { sites: r.more.map((n) => range(sf, n.getStart(sf), n.getEnd())) } : {}), resolution: 'resolved', target: { symbol: r.target }, detail: { use: [...r.uses].sort().join(','), ...(r.access ? { access: r.access } : {}) } })
+    if (sfc) relationships.push(...templateFacts(sf, sfc, p, (target, start, end) => refer(declLocal.get(keyOf(sf))!, target, start, end, 'value')))
+    for (const r of references.values()) relationships.push({ type: 'references', origin: 'semantic_resolver', source: { symbol: r.from }, site: { path: p, range: range(sf, ...r.site) }, ...(r.more.length ? { sites: r.more.map((at) => range(sf, ...at)) } : {}), resolution: 'resolved', target: { symbol: r.target }, detail: { use: [...r.uses].sort().join(','), ...(r.access ? { access: r.access } : {}) } })
     relationships.push(...(routeFacts.get(p) ?? []))
     symbols.push(...clientEndpoints)
     file_results.push({
       path: p, status: 'ok',
-      capabilities: { text: 'complete', syntax: 'complete', symbols: 'complete', imports: unresolvedImports ? 'partial' : 'complete', references: 'partial', resolved_calls: unresolvedCalls ? 'partial' : 'complete', framework: clientEndpoints.length || graphqlUnread ? 'partial' : 'unsupported' },
+      capabilities: { text: 'complete', syntax: 'complete', symbols: 'complete', imports: unresolvedImports ? 'partial' : 'complete', references: 'partial', resolved_calls: unresolvedCalls ? 'partial' : 'complete', framework: sfc || clientEndpoints.length || graphqlUnread ? 'partial' : 'unsupported' },
     })
   }
   flush()

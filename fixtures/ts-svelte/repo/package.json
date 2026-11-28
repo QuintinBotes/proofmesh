@@ -1,0 +1,6 @@
+{
+  "name": "ts-svelte",
+  "private": true,
+  "dependencies": { "svelte": "^5.0.0" },
+  "devDependencies": { "@testing-library/svelte": "^5.2.0" }
+}

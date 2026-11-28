@@ -54,11 +54,12 @@ const SYNTAX: Record<string, string> = {
   '.sh': 'bash', '.bash': 'bash', '.scala': 'scala', '.sc': 'scala', '.kt': 'kotlin', '.kts': 'kotlin',
   '.swift': 'swift', '.sql': 'sql', '.prisma': 'prisma',
 }
-const TS = { '.ts': 'typescript', '.tsx': 'typescript', '.mts': 'typescript', '.cts': 'typescript', '.js': 'javascript', '.jsx': 'javascript', '.mjs': 'javascript', '.cjs': 'javascript' }
+const TS = { '.ts': 'typescript', '.tsx': 'typescript', '.mts': 'typescript', '.cts': 'typescript', '.js': 'javascript', '.jsx': 'javascript', '.mjs': 'javascript', '.cjs': 'javascript', '.vue': 'vue', '.svelte': 'svelte' }
 
 export const BUILT_IN: AdapterSpec[] = [
   {
-    id: 'typescript', languages: new Set(['typescript', 'javascript']), extensions: TS, fallback: true,
+    // Vue and Svelte components are TypeScript or JavaScript in a container: their script blocks join the project (FR2280).
+    id: 'typescript', languages: new Set(['typescript', 'javascript', 'vue', 'svelte']), extensions: TS, fallback: true,
     // Prisma schemas name the tables Prisma Client code queries (A36); the syntax tier still analyses them as sources.
     isConfig: (name) => /^(tsconfig|jsconfig)(\..+)?\.json$/.test(name) || name === 'package.json' || /\.prisma$/i.test(name),
     entry: () => process.env.PROOFMESH_TS_ADAPTER ?? createRequire(import.meta.url).resolve('@proofmesh/adapter-typescript'),

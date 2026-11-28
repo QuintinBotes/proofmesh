@@ -9,8 +9,9 @@ import { indexedDataDir, ROOT, tmpDir } from './helpers.js'
 
 // Issue 20: one program in every language, the same eight calls, and the rows each tier gives or states it cannot.
 const ROSETTA = path.join(ROOT, 'fixtures', 'rosetta')
-const LANGUAGES = ['cpp', 'csharp', 'go', 'java', 'kotlin', 'php', 'python', 'ruby', 'rust', 'typescript']
-const PRECISE = ['csharp', 'python', 'typescript']
+const LANGUAGES = ['cpp', 'csharp', 'go', 'java', 'kotlin', 'php', 'python', 'ruby', 'rust', 'svelte', 'typescript', 'vue']
+// Vue and Svelte components are read by the TypeScript adapter (FR2286).
+const PRECISE = ['csharp', 'python', 'svelte', 'typescript', 'vue']
 const SYNTAX = LANGUAGES.filter((l) => !PRECISE.includes(l))
 
 type Row = { role?: string; extra?: string; known_defect?: string; row: string }
@@ -85,7 +86,7 @@ beforeAll(async () => {
 const of = (lang: string): Indexed => indexed.get(lang)!
 
 describe('FR211 FR212 one program per language, project-authored, with the expected rows written beside it', () => {
-  it('FR211 the suite holds exactly the ten languages, each with a repo, a PROVENANCE.md naming Apache-2.0 and the expected file', () => {
+  it('FR211 FR2286 the suite holds exactly the twelve languages, each with a repo, a PROVENANCE.md naming Apache-2.0 and the expected file', () => {
     const dirs = fs.readdirSync(ROSETTA, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name).sort()
     expect(dirs).toEqual(LANGUAGES)
     for (const lang of LANGUAGES) {
@@ -113,7 +114,7 @@ describe('FR213 each language answers the eight calls with the rows its expected
     expect(CALLS.flatMap((c) => differences(section!, c, answers[c]!))).toEqual([])
   })
 
-  it('FR213 the tier is the one the census names: precise for TypeScript, Python and C#, syntax for the other seven', () => {
+  it('FR213 the tier is the one the census names: precise for TypeScript, Vue, Svelte, Python and C#, syntax for the other seven', () => {
     for (const lang of LANGUAGES) expect(of(lang).tier, lang).toBe(PRECISE.includes(lang) ? 'precise' : 'syntax')
   })
 

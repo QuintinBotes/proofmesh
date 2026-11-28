@@ -1,0 +1,52 @@
+{
+  "census": { "language": "Svelte", "tier": "precise:typescript" },
+  "files": {
+    "src/App.svelte": "indexed precise:typescript",
+    "src/Badge.svelte": "indexed precise:typescript",
+    "src/Broken.svelte": "indexed syntax adapter_failed:typescript:script_syntax_error",
+    "src/Button.svelte": "indexed precise:typescript"
+  },
+  "symbols": [
+    ["src/App.svelte", "class", "src/App:App", 1, 19],
+    ["src/App.svelte", "variable", "src/App:added", 6, 6],
+    ["src/App.svelte", "function", "src/App:add", 8, 10],
+    ["src/Badge.svelte", "class", "src/Badge:Badge", 1, 9],
+    ["src/Badge.svelte", "variable", "src/Badge:count", 2, 2],
+    ["src/Badge.svelte", "function", "src/Badge:label", 4, 6],
+    ["src/Button.svelte", "class", "src/Button:Button", 1, 15],
+    ["src/Button.svelte", "variable", "src/Button:cart", 4, 4],
+    ["src/Button.svelte", "function", "src/Button:press", 6, 8]
+  ],
+  "facts": [
+    ["src/App.svelte", 2, "imports", "src/App.svelte", "src/Button.svelte", "resolved", null, "static"],
+    ["src/App.svelte", 3, "imports", "src/App.svelte", "src/Badge.svelte", "resolved", null, "static"],
+    ["src/App.svelte", 4, "imports", "src/App.svelte", "src/cart.ts", "resolved", null, "static"],
+    ["src/App.svelte", 9, "references", "src/App:add", "src/App:added", "resolved", null, null],
+    ["src/App.svelte", 14, "references", "src/App:App", "src/cart:items", "resolved", null, null],
+    ["src/App.svelte", 15, "renders", "src/App:App", "src/Badge:Badge", "resolved", null, "svelte_template"],
+    ["src/App.svelte", 15, "references", "src/App:App", "src/cart:items", "resolved", null, null],
+    ["src/App.svelte", 15, "references", "src/App:App", "src/App:added", "resolved", null, null],
+    ["src/App.svelte", 17, "renders", "src/App:App", "src/Button:Button", "resolved", null, "svelte_template"],
+    ["src/App.svelte", 17, "references", "src/App:App", "src/App:add", "resolved", null, null],
+    ["src/App.svelte", 18, "renders", "src/App:App", null, "unresolved", "unknown_name", "svelte_template"],
+    ["src/App.test.ts", 1, "imports", "src/App.test.ts", null, "unresolved", "import_unresolved", "static"],
+    ["src/App.test.ts", 2, "imports", "src/App.test.ts", "src/App.svelte", "resolved", null, "static"],
+    ["src/App.test.ts", 5, "calls", "src/App.test:testAppRenders", null, "unresolved", "dependency_missing", null],
+    ["src/App.test.ts", 5, "renders", "src/App.test:testAppRenders", "src/App:App", "resolved", null, "mount"],
+    ["src/Badge.svelte", 5, "references", "src/Badge:label", "src/Badge:count", "resolved", null, null],
+    ["src/Badge.svelte", 9, "references", "src/Badge:Badge", "src/Badge:label", "resolved", null, null],
+    ["src/Button.svelte", 2, "imports", "src/Button.svelte", "src/cart.ts", "resolved", null, "static"],
+    ["src/Button.svelte", 4, "calls", "src/Button:Button", "src/cart:useCart", "resolved", null, null],
+    ["src/Button.svelte", 7, "calls", "src/Button:press", "src/cart:useCart", "resolved", null, null],
+    ["src/Button.svelte", 7, "references", "src/Button:press", "src/Button:cart", "resolved", null, null],
+    ["src/Button.svelte", 11, "references", "src/Button:Button", "src/Button:press", "resolved", null, null]
+  ],
+  "callers": [
+    "Button src/Button.svelte:4",
+    "press src/Button.svelte:7",
+    "# 3 unresolved call sites in this snapshot have unknown targets and may call this symbol, 0 by its name; envelope compact lists them."
+  ],
+  "tests": [
+    "testAppRenders transitive_call: testAppRenders src/App.test.ts:5 > App src/App.svelte:17 > Button src/Button.svelte:4 > useCart src/cart.ts:5"
+  ]
+}

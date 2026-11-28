@@ -29,6 +29,16 @@ The TypeScript compiler's type checker, over every `tsconfig.json` and `jsconfig
 - TypeORM tables (A9): `@Entity()`, `@Entity('name')` and `@Entity({ name, schema })` map their class to a `table` symbol (rule `Entity`); a bare `@Entity()` takes TypeORM's default name, the class name in snake case, marked `inferred`. `@ChildEntity()` `inherits` its parent and shares its table. The decorators are recognised by their import from `typeorm`, so it need not be installed; a decorator re-exported through a local module is not followed.
 - Pulumi (A8, A25): each resource a program constructs is a `resource` symbol named by its type and name, as its URN names it. A resource `references` each resource whose outputs its arguments read, and `depends_on` each resource its `dependsOn` option names.
 
+### Vue and Svelte components (FR2280 to FR2286)
+
+A `.vue` or `.svelte` file is TypeScript or JavaScript in a container, so the same adapter and checker read it; the census lists it as `Vue` or `Svelte` with tier `precise:typescript`. No framework compiler is run or needed (`vue`, `svelte`, `vue-tsc` and `svelte-check` need not be installed): the adapter cuts the blocks out itself and reads the template with its own reader.
+
+- Scripts: every `<script>` block of a file (Vue's `<script>` and `<script setup>` both, Svelte's instance and module scripts) is one module to the checker, at the file's own offsets, so every range and line is the component file's. `lang="ts"` (or `tsx`) is TypeScript; no `lang`, `js` or `jsx` is JavaScript. A file whose blocks do not close, whose script is in another language (`lang="coffee"`, detail `unsupported_script_lang:<lang>`) or whose script does not parse (`script_syntax_error`) is `failed` and goes to the syntax tier, which reads its scripts the same way; other files are unaffected.
+- Symbols: each file declares a `class` symbol named by its file (`src/Button:Button`, signature `vue component` or `svelte component`) spanning it, and its scripts' declarations with the usual TypeScript names (`src/Button:press`). The component owns its scripts' top-level code, a top-level variable's initializer included, as a setup function would: the calls `const cart = useCart()` makes are the component's. Options API methods (`export default { methods: { ... } }`, also through `defineComponent`) are `method` symbols of the component (`src/Badge:Badge.label`); `this.x` resolves where the checker resolves it.
+- Imports: `import Button from './Button.vue'` from any module, also through a tsconfig `paths` alias, resolves to the component file, and its default import is the component. A component without an `export default` gets the one its compiler would give.
+- Templates (rules `vue_template`, `svelte_template`): a tag naming a component (PascalCase, or a Vue kebab-case tag such as `<my-button>` for `MyButton`) is a `renders` from the component, at the tag's line, resolved through the script binding of that name. A Vue tag no script binds, a globally registered component or an auto-import (`unplugin-vue-components`, Nuxt), is unresolved with `unknown_name` and `detail.why: global_or_auto_import`, never matched by name; Vue's built-in tags (`<component>`, `<transition>`, `<keep-alive>`, `<teleport>`, `<suspense>`, `<slot>`) are none. A name an expression uses (`{{ }}`, `v-`, `:` and `@` attributes, a `v-for`'s source; Svelte's `{ }` in text, attributes and blocks) that a script binds, or an Options API method, is a `references` from the component with use `value`; a Svelte `$store` is a reference to the store. Not read: a template in another language (`lang="pug"`), dotted Svelte tags (`<ui.Button>`), names a `v-for`, slot or `{#each}` binds (they read as the script binding of the same name, if there is one), and Astro.
+- Tests (rule `mount`): `mount` and `shallowMount` from `@vue/test-utils`, `render` from `@testing-library/vue` or `@testing-library/svelte`, and Svelte's `mount` and `hydrate`, given a component, `renders` it, so `find_tests` reaches a composable through the components that call it.
+
 ## C#
 
 Roslyn, over the solution's projects, with no restore and no build unless the repository is trusted for build evaluation. An index that reads C# without that trust says so in its output, with the command that grants it, since `repo move` and `repo untrust` revoke it.
@@ -108,7 +118,7 @@ What the tier records per language (FR118):
 
 ## The syntax tier as the floor under TypeScript, JavaScript and C#
 
-The TypeScript, TSX and C# grammars are shipped too (FR310), but the tier reads these languages only when their precise adapter cannot (FR311, FR313, FR314); a file the adapter analyses never reaches it (FR318).
+The TypeScript, TSX and C# grammars are shipped too (FR310), but the tier reads these languages only when their precise adapter cannot (FR311, FR313, FR314); a file the adapter analyses never reaches it (FR318). A Vue or Svelte component it reads is read as its script blocks, everything else blanked (FR2284).
 
 - A file goes to the syntax tier when its adapter is unavailable (no .NET SDK, the adapter missing), answers `failed` for it, dies, runs out of restarts or cannot start. The rest of the repository keeps its precise facts, and the snapshot publishes. A file the adapter had already analysed before it died keeps its facts.
 - Each such file records tier `syntax` and why in its disposition detail: `adapter_unavailable:<adapter>`, or `adapter_failed:<adapter>` with the adapter's own detail after it. The census row names the same reason with its remedy (FR312); the finished job's result, a line of `proofmesh index` and the snapshot's meta `fallbacks` give the adapter, the number of files and the stored failure, never the adapter's stderr (FR314). For an adapter that is not built, the result and the line add what is missing and where it was looked for: `adapter_unavailable:csharp (not built: looked in <paths>)`; the file rows, census and meta keep the bare reason (FR385).
@@ -351,7 +361,9 @@ A tier gives a row, or states under `not_at_tier` why it cannot; a row neither g
 | `python` | precise | 4/4 | 0/2 | 1/1 | 2/2 | 1/1 | 4/4 | 1/1 | 3/3 |
 | `ruby` | syntax | 4/4 | 0/2 | 0/1 | 0/2 | 1/1 | 0/4 | 1/1 | 0/3 |
 | `rust` | syntax | 3/4 | 2/2 | 0/1 | 0/2 | 0/1+2 | 0/4 | 0/1 | 0/3 |
+| `svelte` | precise | 4/4 | 2/2 | 1/1 | 2/2 | 1/1 | 4/4 | 1/1+1 | 3/3 |
 | `typescript` | precise | 4/4 | 2/2 | 1/1 | 2/2 | 1/1 | 4/4 | 1/1 | 3/3 |
+| `vue` | precise | 4/4 | 2/2 | 1/1 | 2/2 | 1/1 | 4/4 | 1/1+1 | 3/3 |
 
 ## Other languages
 
