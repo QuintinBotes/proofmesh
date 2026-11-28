@@ -1,18 +1,59 @@
 // Reading a SARIF 2.1.0 file another analyser wrote (#30, FR1900): its results, each at a repository file and line. Proofmesh runs no analyser.
 import fs from 'node:fs'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { ProofmeshError } from '../core/errors.js'
 
-export type Finding = { tool: string; rule: string; level: string; message: string; path: string; line: number | null; end_line: number | null; rank: number | null; precision: string | null }
+export type FlowStep = { unresolved_location?: true; flow: number; thread: number; step: number; uri: string | null; path: string | null; line: number | null; end_line: number | null; column: number | null; end_column: number | null }
+export type Flow = { total_steps: number; steps: FlowStep[] }
+export type Finding = { flow?: Flow; tool: string; rule: string; level: string; message: string; path: string; line: number | null; end_line: number | null; rank: number | null; precision: string | null }
 export type Unattached = { tool: string; rule: string; uri: string; line: number | null; reason: 'outside_repository' | 'not_in_snapshot' | 'no_location' }
 
 type Rule = { id?: string; defaultConfiguration?: { level?: string }; properties?: { precision?: string } }
+type Artifact = { uri?: string; uriBaseId?: string; index?: number }
+type Location = { physicalLocation?: { artifactLocation?: Artifact; region?: { startLine?: number; endLine?: number; startColumn?: number; endColumn?: number } } }
 type Result = {
   ruleId?: string; ruleIndex?: number; rule?: { id?: string; index?: number }; level?: string; rank?: number; message?: { text?: string }
-  locations?: Array<{ physicalLocation?: { artifactLocation?: { uri?: string }; region?: { startLine?: number; endLine?: number } } }>
+  locations?: Location[]
+  codeFlows?: Array<{ threadFlows?: Array<{ locations?: Array<{ location?: Location }> }> }>
 }
-type Run = { tool?: { driver?: { name?: string; version?: string; semanticVersion?: string; rules?: Rule[] } }; results?: Result[] }
+type Run = { artifacts?: Array<{ location?: Artifact }>; originalUriBaseIds?: Record<string, Artifact>; tool?: { driver?: { name?: string; version?: string; semanticVersion?: string; rules?: Rule[] } }; results?: Result[] }
+
+/** Resolve producer URI bases without opening network resources or guessing the location of an unknown base. */
+function flowLocation(artifact: Artifact | undefined, run: Run, root: string) {
+  const loc = artifact?.uri === undefined && artifact?.index !== undefined ? run.artifacts?.[artifact.index]?.location : artifact
+  const uri = loc?.uri ?? null
+  if (!uri) return { uri, path: null, ...(artifact?.index !== undefined ? { unresolved_location: true as const } : {}) }
+  const seen = new Set<string>(), parts = [uri]
+  let base = loc?.uriBaseId
+  try {
+    while (base && !/^[a-z][a-z0-9+.-]*:/i.test(parts.at(-1)!)) {
+      const parent: Artifact | undefined = Object.hasOwn(run.originalUriBaseIds ?? {}, base) ? run.originalUriBaseIds![base] : undefined
+      if (!parent?.uri || seen.has(base)) return { uri, path: null, unresolved_location: true as const }
+      seen.add(base)
+      parts.push(parent.uri)
+      base = parent.uriBaseId
+    }
+    const url = parts.reverse().reduce((parent, segment) => new URL(segment, parent), pathToFileURL(root + path.sep))
+    return { uri, path: url.protocol === 'file:' ? relative(root, url.href) : null }
+  } catch { return { uri, path: null, unresolved_location: true as const } }
+}
+
+function reportedFlow(result: Result, run: Run, root: string): Flow | undefined {
+  if (!result.codeFlows?.length) return undefined
+  const steps: FlowStep[] = []
+  let total = 0
+  for (const [f, flow] of result.codeFlows.entries()) for (const [t, thread] of (flow.threadFlows ?? []).entries()) {
+    const locations = thread.locations ?? []
+    total += locations.length
+    for (let i = 0; i < locations.length && steps.length < 256; i++) {
+      const physical = locations[i]?.location?.physicalLocation, artifact = physical?.artifactLocation, region = physical?.region
+      const position = (n?: number) => n !== undefined && Number.isSafeInteger(n) && n > 0 ? n : null
+      steps.push({ flow: f + 1, thread: t + 1, step: i + 1, ...flowLocation(artifact, run, root), line: position(region?.startLine), end_line: position(region?.endLine ?? region?.startLine), column: position(region?.startColumn), end_column: position(region?.endColumn) })
+    }
+  }
+  return { total_steps: total, steps }
+}
 
 /**
  * The results of every run, deduplicated by tool, rule and location; `indexed` says whether a repository-relative path is a file of the
@@ -40,7 +81,8 @@ export function readSarif(file: string, root: string, indexed: (rel: string) => 
       const reason = uri === undefined ? 'no_location' : rel === null ? 'outside_repository' : !indexed(rel) ? 'not_in_snapshot' : null
       if (reason) { unattached.push({ tool, rule, uri: uri ?? '', line, reason }); continue }
       // SARIF's default level is warning (SARIF 2.1.0, 3.27.10).
-      findings.push({ tool, rule, level: x.level ?? ruleOf?.defaultConfiguration?.level ?? 'warning', message: x.message?.text ?? '', path: rel!, line, end_line: loc?.region?.endLine ?? line, rank: typeof x.rank === 'number' && x.rank >= 0 ? x.rank : null, precision: ruleOf?.properties?.precision ?? null })
+      const flow = reportedFlow(x, r, root)
+      findings.push({ ...(flow ? { flow } : {}), tool, rule, level: x.level ?? ruleOf?.defaultConfiguration?.level ?? 'warning', message: x.message?.text ?? '', path: rel!, line, end_line: loc?.region?.endLine ?? line, rank: typeof x.rank === 'number' && x.rank >= 0 ? x.rank : null, precision: ruleOf?.properties?.precision ?? null })
     }
   } } catch (e) { if (e instanceof TypeError) throw new ProofmeshError('INVALID_ARGUMENT', `${file} is not a SARIF 2.1.0 file: ${e.message}`); throw e }
   return { tools, findings, unattached }

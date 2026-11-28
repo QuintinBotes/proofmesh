@@ -15,6 +15,7 @@ import { appendSide, CARD_ROWS, cardHood, declarationEvidence, rowEvidence, type
 import { ProofLens, type Chain } from './ProofLens'
 import { defaultSelection, evidenceFor, LINK_WORDS, pairs, RELATION_COLOURS, RELATION_WORDS, relations, toEcosystem, type Ecosystem, type Relation } from './ecosystem'
 import { FRAMEWORK_TYPES, glyph, toScene, type TraceEnvelope } from './scene'
+import { DependencyMatrix } from './DependencyMatrix'
 import { visible } from './visible'
 import { GraphView, Terrain } from './views'
 import { VirtualTable } from './virtual'
@@ -742,6 +743,7 @@ export function App() {
         {mode === 'terrain' && galaxyOverlay && <p className="dim diff-legend" role="note"><span><i className="sw added" />added since {diff!.data.base.snapshot_id.slice(0, 13)}</span><span><i className="sw changed" />changed</span><span>removed symbols are in the Diff table</span><span><kbd>d</kbd> hides this overlay</span></p>}
         {mode === 'terrain' && galaxy && terrain && (tableView || noWebGl) && (
           <section className="table-view" aria-label="Terrain table">
+            <DependencyMatrix key={galaxy.snapshotId} areas={galaxy.areas} pairs={terrain.pairs} open={(p) => void openBundle(p)} />
             {query.trim().length >= 2 ? (
               <VirtualTable count={rankedMatches.length} columns={4} caption={`Symbols matching “${query.trim()}”: ${plural(rankedMatches.length, 'symbol')}`}
                 head={<thead><tr><th>Name</th><th>Kind</th><th>Qualified name</th><th /></tr></thead>}

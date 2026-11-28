@@ -241,7 +241,7 @@ export function Terrain({ data: d, terrain: t, query, focusArea, hoverArea, over
         const q = ghostRect(view, i)
         return <div key={g.name} className="terrain-fog empty" data-area={g.name} title={g.text} aria-hidden="true" style={{ left: q.left, top: q.top, width: q.width, height: q.height }}>{q.width >= 40 && <span className="fog-label">{visible(g.name)}</span>}</div>
       })}
-      {placed.map((l) => <div key={l.key} className={`terrain-label ${l.kind}${l.height > 16 ? ' stacked' : ''}`} data-kind={l.kind} title={l.title} style={{ left: l.kind === 'symbol' ? l.left + l.width / 2 : l.left, top: l.top }} aria-hidden="true">{l.kind === 'area' ? l.text.split(' ').map((x, i) => <span key={i}>{i ? ' ' : ''}{visible(x)}</span>) : visible(l.text)}</div>)}
+      {placed.map((l) => <div key={l.key} className={`terrain-label ${l.kind}${l.height > 16 ? ' stacked' : ''}`} data-kind={l.kind} data-point={l.kind === 'symbol' ? l.index : undefined} title={l.title} style={{ left: l.kind === 'symbol' ? l.left + l.width / 2 : l.left, top: l.top }} aria-hidden="true">{l.kind === 'area' ? l.text.split(' ').map((x, i) => <span key={i}>{i ? ' ' : ''}{visible(x)}</span>) : visible(l.text)}</div>)}
       {/* Moved lines and changes through members are not ringed (FR1762); a moved symbol slides in from where it was, as far as it is on screen now. */}
       {view && marks?.map((m) => UNDRAWN.has(m.change) ? null : (
         <i key={`${m.change}:${m.name}`} className={`time-mark ${m.change}`} data-change={m.change} data-name={m.name} aria-hidden="true"

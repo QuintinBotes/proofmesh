@@ -1,5 +1,6 @@
 // Imported SARIF findings on the snapshot being asked (#30, FR1901, FR1904): each on the innermost symbol at its line, or the file's module,
 // and stale when its file's content in the snapshot is not what it was when the SARIF file was imported.
+import type { EvidenceStore } from '../evidence/store.js'
 import type Database from 'better-sqlite3'
 import type { SarifImportRecord } from '../meshstore/catalog.js'
 import type { Finding } from '../sarif/read.js'
@@ -35,4 +36,34 @@ export function findingCounts(db: Database.Database, imports: SarifImportRecord[
   const counts = new Map<string, number>()
   if (imports.length) for (const f of attachFindings(db, imports)) if (f.symbol) counts.set(f.symbol.id, (counts.get(f.symbol.id) ?? 0) + 1)
   return counts
+}
+
+/** Each line is read from the sealed object and verified against its hash. SARIF describes the flow; the snapshot proves the quoted text. */
+export function findingDetails(db: Database.Database, store: EvidenceStore, imports: SarifImportRecord[], findings: Attached[], limit?: number) {
+  const imported = new Map(imports.map((record) => [record.name, record.files]))
+  const file = db.prepare("select content_hash from file where path = ? and disposition = 'indexed'")
+  const verified = new Map<string, { status: string; lines?: string[] }>()
+  return findings.map(({ flow, ...summary }) => {
+    if (!flow || limit === undefined) return summary
+    const steps = flow.steps.slice(0, limit).map(({ unresolved_location, ...step }) => {
+      const hash = step.path ? (file.get(step.path) as { content_hash: string } | undefined)?.content_hash : undefined
+      const result = { ...step, object_hash: hash ?? null, source_line: null as string | null, line_truncated: false }
+      if (unresolved_location) return { ...result, status: 'unresolved_location' }
+      if (!step.uri) return { ...result, status: 'no_position' }
+      if (!step.path) return { ...result, status: 'outside_repository' }
+      if (!hash) return { ...result, status: 'not_in_snapshot' }
+      if (imported.get(summary.import)?.[step.path] !== hash) return { ...result, status: 'stale' }
+      if (!step.line) return { ...result, status: 'no_position' }
+      if (!verified.has(hash)) {
+        const { integrity, content } = store.verify(hash)
+        verified.set(hash, { status: integrity.status, lines: integrity.status === 'verified' ? content?.toString('utf8').split(/\r\n|\n|\r/) : undefined })
+      }
+      const source = verified.get(hash)!
+      if (source.status !== 'verified') return { ...result, status: source.status }
+      const line = source.lines?.[step.line - 1]
+      if (line === undefined) return { ...result, status: 'no_position' }
+      return { ...result, status: 'verified', source_line: line.slice(0, 2048), line_truncated: line.length > 2048 }
+    })
+    return { ...summary, code_flow: { steps, total_steps: flow.total_steps, truncated: flow.total_steps > steps.length } }
+  })
 }

@@ -56,6 +56,12 @@
         "compact"
       ],
       "description": "compact leaves out the snapshot-wide parts of the envelope that an earlier answer from the same snapshot already gave."
+    },
+    "flow_steps": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 256,
+      "description": "Include up to this many ordered analyzer-reported code-flow steps per finding, with individually verified source lines where available."
     }
   },
   "description": "Findings that data-flow and other analysers (CodeQL, Opengrep, ...) wrote as SARIF and a person imported with proofmesh sarif add, each with its tool, rule, level, message, path:line and the innermost symbol at that line; stale (sarif_stale:<name>) when its file changed since the import. Proofmesh runs no analyser. analyze_impact and find_tests rows carry findings=<n>."
