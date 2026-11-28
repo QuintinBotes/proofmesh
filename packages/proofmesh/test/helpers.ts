@@ -1,4 +1,4 @@
-import { spawnSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -17,6 +17,19 @@ export const EXPECTED = expectedFor('ts-invoicing')
 export const CLI = path.join(ROOT, 'packages', 'proofmesh', 'bin', 'proofmesh.mjs')
 
 export const tmpDir = (prefix = 'pm-') => fs.mkdtempSync(path.join(os.tmpdir(), prefix))
+
+/** A private copy of the fixture's tracked input files, excluding local restore and build output. */
+export function copyTrackedFixture(name: string): string {
+  const root = fixtureRepo(name)
+  const copy = tmpDir('pm-fixture-')
+  const files = execFileSync('git', ['-C', root, 'ls-files', '-z', '--', '.'], { encoding: 'utf8' })
+  for (const file of files.split('\0').filter(Boolean)) {
+    const dest = path.join(copy, file)
+    fs.mkdirSync(path.dirname(dest), { recursive: true })
+    fs.copyFileSync(path.join(root, file), dest)
+  }
+  return copy
+}
 
 export function copyFixture(): string {
   const dir = tmpDir('pm-repo-')

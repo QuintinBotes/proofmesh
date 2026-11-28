@@ -9,6 +9,7 @@ A client that does not defer tool loading puts every listed tool's name, descrip
 | Profile | Tools |
 |---|---|
 | `core` (default) | `find_symbols`, `get_symbol`, `get_symbols_at`, `get_relationships`, `trace_paths`, `analyze_impact`, `find_tests`, `search_sources`, `search_concepts`, `read_evidence`, `workspace_status`, `list_repositories`, `get_overview`, `list_queries` |
+| `evidence` | `find_symbols`, `get_symbol`, `get_relationships`, `read_evidence` on published snapshots |
 | `data` | `get_table_reach`, `get_property_reads`, `find_query_source`, `get_external_usage`, `get_session_trail`, `get_context_map` |
 | `claims` | `verify_claim`, `get_claims`, `prepare_verification`, `get_verification` |
 | `extra` | `list_snapshots`, `list_workspaces`, `get_ecosystem`, `compare_snapshots`, `impact_completeness`, `request_index`, `get_job`, `get_memory`, `save_memory`, `find_stale_mentions`, `find_unused`, `find_cycles`, `find_entry_points`, `find_hubs`, `plan_rename`, `plan_move`, `search_structure`, `get_symbol_card`, `query_graph`, `get_findings`, `get_cochanges` |
@@ -17,6 +18,24 @@ A client that does not defer tool loading puts every listed tool's name, descrip
 - Outside `all`, a listed tool keeps its description and every field of its input schema, with types, enums, patterns, defaults and required fields, but not the per-field descriptions; `envelope` keeps its first sentence. The full schemas are `schemas/tools/<tool>.input.schema.json`, and the server validates every call against them whatever the profile.
 - `list_queries` lists every tool with its `profile`, loaded or not, and says how to load the others.
 - A call to a tool of a profile the server was not started with is `INVALID_ARGUMENT` with `details.profile` naming the profile, and the message says which `--tools` option loads it.
+
+## Connecting a Diderot evidence reader
+
+Start Proofmesh with `proofmesh mcp --http --port 7719 --tools evidence`. The four tools carry MCP read-only hints. Symbol lookup and relationship queries read sealed snapshot tables. Evidence reads verify the stored source bytes. Strict freshness can start an index, so this profile accepts only snapshot freshness. Adding `core` or `all` restores the broader versions of these tools and removes their read-only hints.
+
+The repository and its published facts stay unchanged. Successful queries record the tool, input hash and timing in the local catalog. If session trail recording is enabled, the catalog also records subject ids and paths. Pagination can create a local cursor-signing key. Reads can warm process and filesystem caches. The data directory must be writable.
+
+For Diderot standalone on the same loopback network namespace, enable Ask and add a generic MCP connection. Enter the printed loopback URL and bearer token, leave the unmarked-tool override off, and select all four listed tools. Diderot documents its connection and selection rules at [revision 3b8db09](https://github.com/bluesky-social/diderot/blob/3b8db09c3cbf8e87a1a4b419a29f7d46fa0ae89c/docs/mcp-servers.md).
+
+The compatibility example runs a protocol fixture with MCP SDK 1.32.2. To reproduce the original Proofmesh revision and fixture from a full clone, use a clean checkout:
+
+```sh
+git switch --detach "$(git rev-list -1 --diff-filter=A HEAD -- packages/proofmesh/test/evidence-profile.test.ts)"
+pnpm install --frozen-lockfile
+pnpm exec vitest run packages/proofmesh/test/evidence-profile.test.ts
+```
+
+The client indexes the invoicing fixture, pins its snapshot, finds `handleInvoice`, follows its outbound call and reads the call-site evidence. The expected answer is “`handleInvoice` calls `invoiceTotal(request.lines, "EUR")` at `packages/api/src/handler.ts:5`.” The evidence integrity status is `verified`, and its envelope identifies the snapshot. The fixture exercises authenticated HTTP and the documented selection rule. A deployed Diderot instance was not used.
 
 ## Concept search (FR580 to FR585)
 

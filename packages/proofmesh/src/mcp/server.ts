@@ -25,7 +25,8 @@ const INSTRUCTIONS = [
   'Every JSON envelope names the snapshot commit and branch, and a lean header names the snapshot and says whether it is current (ask workspace_status or envelope compact for its commit and branch); check them against the branch you care about before trusting an answer, and ask for freshness "strict" when the answer must match the working tree now.',
 ].join(' ')
 
-const NAMES = [...new Set(Object.values(PROFILE)), 'all']
+const EVIDENCE = new Set<ToolName>(['find_symbols', 'get_symbol', 'get_relationships', 'read_evidence'])
+const NAMES = [...new Set(Object.values(PROFILE)), 'all', 'evidence']
 /** The tool profiles `--tools` names, comma-separated (FR421); core when it names none. */
 export function toolProfiles(option = 'core'): string[] {
   const names = option.split(','), unknown = names.filter((n) => !NAMES.includes(n))
@@ -53,13 +54,25 @@ function listing(name: ToolName, full: boolean) {
 
 /** One tool surface for every transport, so stdio and HTTP clients see the same tools and envelopes. */
 function createServer(dataDir: string, version: string, profiles: string[], sessionId: string): Server {
-  const full = profiles.includes('all'), loaded = (name: ToolName) => full || profiles.includes(PROFILE[name])
-  const server = new Server({ name: 'proofmesh', version }, { capabilities: { tools: {} }, instructions: INSTRUCTIONS })
+  const full = profiles.includes('all')
+  const evidenceOnly = profiles.every((profile) => profile === 'evidence')
+  const restricted = (name: ToolName) => profiles.includes('evidence') && EVIDENCE.has(name) && !full && !profiles.includes(PROFILE[name])
+  const loaded = (name: ToolName) => full || profiles.includes(PROFILE[name]) || restricted(name)
+  const instructions = evidenceOnly
+    ? 'Read a published snapshot. Start with find_symbols, follow get_relationships, and use read_evidence for cited source. For JSON with ids, request envelope full. Pass repository_id when several repositories are registered.'
+    : INSTRUCTIONS
+  const server = new Server({ name: 'proofmesh', version }, { capabilities: { tools: {} }, instructions })
   // One connection, one agent context: the snapshot-wide parts of an envelope are sent once per snapshot, then left out.
   // Its id groups the subjects of its queries, where a person turned recording on (#50).
   const session = { fullSent: new Set<string>(), id: sessionId }
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: TOOLS.filter(loaded).map((name) => listing(name, full)),
+    tools: TOOLS.filter(loaded).map((name) => {
+      const tool = listing(name, full)
+      if (!restricted(name)) return tool
+      const properties = (tool.inputSchema as { type: 'object'; properties?: Record<string, unknown> }).properties
+      return { ...tool, inputSchema: { ...tool.inputSchema, properties: { ...properties, freshness: { enum: ['snapshot'] } } },
+        annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false } }
+    }),
   }))
   server.setRequestHandler(CallToolRequestSchema, async (req, extra) => {
     log('debug', 'tool call', { tool: req.params.name })
@@ -69,6 +82,7 @@ function createServer(dataDir: string, version: string, profiles: string[], sess
       const name = req.params.name as ToolName, profile = Object.hasOwn(PROFILE, name) ? PROFILE[name] : undefined
       // A tool of a profile not loaded is refused by name, never answered as if it did not exist (FR423).
       if (profile && !loaded(name)) throw new ProofmeshError('INVALID_ARGUMENT', `${name} is in the ${profile} tool profile, which this server was not started with; start proofmesh mcp with --tools core,${profile} or --tools all`, { detail: 'tool_not_loaded', profile })
+      if (restricted(name) && args.freshness === 'strict') throw new ProofmeshError('INVALID_ARGUMENT', 'the evidence profile reads published snapshots; strict freshness can start indexing')
       // The query tools answer lean unless a client names compact or full; a lean answer is its text alone (FR099).
       const envelope = runTool(dataDir, req.params.name, LEAN.has(req.params.name) && args.envelope === undefined ? { ...args, envelope: 'lean' } : args, session, extra.signal)
       if (envelope.text !== undefined) return { content: [{ type: 'text', text: envelope.text }] }

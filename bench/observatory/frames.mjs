@@ -109,7 +109,13 @@ if (fixtureName === 'synthetic') {
 // ---------- one page load, timed inside the page ----------
 // Long tasks and the moments the map is drawn and settles are recorded from the first script on, by observers in the page.
 const INIT = `(() => {
-  const o = window.__obs = { longTasks: [], marks: {} }
+  const o = window.__obs = { longTasks: [], marks: {}, apiRequests: 0 }
+  const fetch = window.fetch.bind(window)
+  window.fetch = (input, init) => {
+    const url = new URL(input instanceof Request ? input.url : input, location.href)
+    if (url.origin === location.origin && url.pathname.startsWith('/api/')) o.apiRequests++
+    return fetch(input, init)
+  }
   try { new PerformanceObserver((l) => { for (const e of l.getEntries()) o.longTasks.push({ start: e.startTime, duration: e.duration }) }).observe({ type: 'longtask', buffered: true }) } catch {}
   const check = () => {
     const c = document.querySelector('[data-testid=conclusion]')
@@ -181,10 +187,11 @@ const timedClick = (page, find, ready, arg) => page.evaluate(async ({ find, read
   const el = new Function('arg', `return (${find})(arg)`)(arg), isReady = new Function('arg', `return (${ready})(arg)`)
   if (!el) return null
   const t0 = performance.now()
+  const requestsBefore = window.__obs.apiRequests
   el.click()
   await new Promise((resolve, reject) => { const stop = performance.now() + 60000; const poll = () => (isReady(arg) ? requestAnimationFrame(() => requestAnimationFrame(resolve)) : performance.now() > stop ? reject(new Error(`not ready: ${ready}`)) : requestAnimationFrame(poll)); poll() })
   const t1 = performance.now()
-  return { ms: Math.round(t1 - t0), requests: performance.getEntriesByType('resource').filter((e) => e.startTime >= t0 && e.startTime <= t1 && e.name.includes('/api/')).length }
+  return { ms: Math.round(t1 - t0), requests: window.__obs.apiRequests - requestsBefore }
 }, { find: find.toString(), ready: ready.toString(), arg })
 /** The galaxy of a snapshot (or the only one) in the server's cache: the name, degree and kind of each point. */
 function cachedGalaxy(snapshotId) {
@@ -314,6 +321,14 @@ async function coldRun(i, { keepFor } = {}) {
   // The Terrain shown is the one of the snapshot its layout key names; a data directory's cache may hold others.
   if (!evidenceNames) { const g = cachedGalaxy(layout.key); evidenceNames = evidencePoints(g).map((i) => g.names[i]) }
   if (evidenceNames.length < 2) throw new Error('no two symbols with names no other name contains')
+  const apiCalls = () => page.evaluate(() => performance.getEntriesByType('resource').filter((e) => e.name.includes('/api/')).map((e) => ({ call: new URL(e.name).pathname, ms: e.duration })))
+  const calls = await apiCalls()
+  // The pan and zoom exercise can dwell on either measured point long enough to prefetch its card.
+  // Start the evidence scenario with a fresh document and the pointer away from the Terrain.
+  const galaxyUrl = v.origin + (workspace && repository ? new URL(v.url).search : '/')
+  await page.mouse.move(0, 0)
+  await page.goto(galaxyUrl)
+  await page.locator('.terrain[data-ready]').waitFor()
   const openSymbol = async (symbol) => {
     await page.getByRole('tab', { name: 'Terrain' }).click()
     await page.getByRole('button', { name: 'Table', exact: true }).click()
@@ -331,7 +346,7 @@ async function coldRun(i, { keepFor } = {}) {
   const edge = await timedClick(page, () => document.querySelector('[aria-label="Proof lens"] [role=listbox][aria-label=Callees] [role=option]') ?? document.querySelector('[aria-label="Proof lens"] [role=listbox][aria-label=Callers] [role=option]'),
     () => document.querySelector('[data-testid=cited]')?.textContent)
   await page.getByLabel('Search').fill('')
-  const calls = (await page.evaluate(() => performance.getEntriesByType('resource').filter((e) => e.name.includes('/api/')).map((e) => ({ call: new URL(e.name).pathname, ms: e.duration })))).map((c) => ({ ...c, call: route(c.call) }))
+  calls.push(...await apiCalls())
   Object.assign(run, {
     frame_idle_p50_ms: pct(idle, 0.5), frame_idle_p95_ms: pct(idle, 0.95), frame_idle_max_ms: pct(idle, 1),
     frame_pan_zoom_p50_ms: pct(panZoom, 0.5), frame_pan_zoom_p95_ms: pct(panZoom, 0.95), frame_pan_zoom_max_ms: pct(panZoom, 1),
@@ -345,10 +360,9 @@ async function coldRun(i, { keepFor } = {}) {
   })
   for (const k of Object.keys(run)) if (typeof run[k] === 'number') run[k] = Math.round(run[k] * 10) / 10
   // Warm: the Terrain loaded again in the same page, its HTTP cache kept (a reload would reopen the symbol Explore shows).
-  const galaxyUrl = v.origin + (workspace && repository ? new URL(v.url).search : '/')
   await page.goto(galaxyUrl)
   const warm = await loadMetrics(page, cdp, server.process().pid)
-  const result = { run, warm, layout, renderer, summary, bytes: loadBytes, calls, browserVersion: browser.version(), symbol: evidenceNames.join(', '), galaxyUrl }
+  const result = { run, warm, layout, renderer, summary, bytes: loadBytes, calls: calls.map((c) => ({ ...c, call: route(c.call) })), browserVersion: browser.version(), symbol: evidenceNames.join(', '), galaxyUrl }
   if (keepFor) { result.keep = { page, close: async () => { await server.close(); v.stop() } }; return result }
   await server.close()
   v.stop()
