@@ -248,29 +248,29 @@ truth, which credits a field's type to its file).
 
 ### ProofMesh through `query_graph` (#36)
 
-Run on 2026-11-27 at ProofMesh 969d78d (`PARITY_RUNS=3`), on the same machine with a load average between 9 and 44. Every comparator ran at its pinned version. Q10 to Q13's typed answers are from the structure tools (#34):
+Run on 2026-11-28 at ProofMesh e745e03 (`PARITY_RUNS=3`), on the same machine with a load average between 60 and 80. Every comparator ran at its pinned version. Q10 to Q13's typed answers are from the structure tools (#34):
 
 | Q | class | ProofMesh (typed tools) | ProofMesh query_graph | same items as typed | ms (median) |
 |---|---|---|---|---|---|
-| Q1 | callers | 100 / 100 | 100 / 100 | yes | 8 |
-| Q2 | callers | 100 / 100 | 100 / 100 | yes | 8 |
-| Q3 | callers | 100 / 100 | 100 / 100 | yes | 6 |
+| Q1 | callers | 100 / 100 | 100 / 100 | yes | 7 |
+| Q2 | callers | 100 / 100 | 100 / 100 | yes | 9 |
+| Q3 | callers | 100 / 100 | 100 / 100 | yes | 4 |
 | Q4 | implementations | 100 / 100 | 100 / 100 | yes | 4 |
-| Q5 | importers | 100 / 100 | 100 / 100 | yes | 8 |
-| Q6 | dependents | 100 / 100 | 100 / 100 | no (+0 −1) | 21 |
+| Q5 | importers | 100 / 100 | 100 / 100 | yes | 6 |
+| Q6 | dependents | 100 / 100 | 100 / 100 | yes | 20 |
 | Q7 | transitive_callers | 100 / 50 | 100 / 100 | no (+0 −11) | 4 |
-| Q8 | path | valid 3 hops (shortest 3) | valid 3 hops (shortest 3) | yes | 16 |
-| Q9 | type_users | 100 / 100 | 100 / 100 | yes | 26 |
-| Q10 | dead_code | 99 / 100 | 100 / 100 | no (+1 −0) | 9 |
-| Q11 | cycles | 100 / 100 | 98 / 100 | no (+0 −5) | 43 |
-| Q12 | roots | 100 / 100 | 100 / 100 | yes | 30 |
-| Q13 | hubs | 80 / 80 | 10 / 10 (cut) | no (+9 −9) | 42 |
+| Q8 | path | valid 3 hops (shortest 3) | valid 3 hops (shortest 3) | yes | 13 |
+| Q9 | type_users | 100 / 100 | 100 / 100 | yes | 27 |
+| Q10 | dead_code | 99 / 100 | 100 / 100 | no (+1 −0) | 8 |
+| Q11 | cycles | 100 / 100 | 100 / 100 | yes | 33 |
+| Q12 | roots | 100 / 100 | 100 / 100 | yes | 25 |
+| Q13 | hubs | 90 / 90 | 10 / 10 (cut) | no (+9 −9) | 37 |
 
-query_graph p95 over Q1–Q12, 3 runs each: 43 ms (target 500 ms).
+query_graph p95 over Q1–Q12, 3 runs each: 33 ms (target 500 ms).
 
-- Q6 and Q11 differ because a variable-length pattern follows at most 6 hops (FR962). On Q6, one dependent of `StringUtils.ts` is more than 6 imports away: 315 of 316, which rounds to 100% recall. On Q11, five files are only in import cycles longer than 6.
-- Q7 differs on purpose. `analyze_impact` follows calls through the interface method that `DefaultNamingStrategy.columnName` implements; `query_graph` follows only the calls the snapshot resolved. So it equals the truth, which counts direct calls only.
-- Q10 says "top-level" as `f.qualified_name ENDS WITH ':' + f.name`. A module path can hold a dot (`bson.typings`), so a test for a dot in the qualified name would drop real functions. Its one item beyond `find_unused` is `createConnection`: `find_unused` calls it `possibly_used`, because an unresolved call by that name could reach it.
+- Q6 and Q11 ask `*1..12` under `max_depth` 12, the depth the typed tools use for them (FR2400). The run before, at 6 hops, missed one dependent of `StringUtils.ts` on Q6 and five files on Q11 that are only in import cycles longer than 6.
+- Q7 differs on purpose (FR2401). `analyze_impact` follows calls through the interface method that `DefaultNamingStrategy.columnName` implements; `query_graph` follows only the calls the snapshot resolved. So it equals the truth, which counts direct calls only.
+- Q10 differs on purpose too (FR2401). It says "top-level" as `f.qualified_name ENDS WITH ':' + f.name`. A module path can hold a dot (`bson.typings`), so a test for a dot in the qualified name would drop real functions. Its one item beyond `find_unused` is `createConnection` (`src/globals.ts:92`). `find_unused` marks it `possibly_used sites=1`, because of an unresolved call by that name: `this.sqlite.createConnection(...)` in `src/driver/capacitor/CapacitorDriver.ts:73`, which calls the Capacitor SQLite plugin. `query_graph` sees no relationship to the function, and neither does the truth.
 - Q13 ranks every call and reference by its target. That is tens of thousands of rows, so `count` is cut at `max_rows` (1,000) before it ranks, and the answer says so (FR963). `find_hubs` answers this question.
 
 ### Against the study of 2026-11-20 (scenario 3 of #25)

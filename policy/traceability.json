@@ -2348,6 +2348,12 @@
     "FR966": [
       "packages/proofmesh/test/parity-bench.test.ts"
     ],
+    "FR2400": [
+      "packages/proofmesh/test/graph-query.test.ts"
+    ],
+    "FR2401": [
+      "packages/proofmesh/test/graph-query.test.ts"
+    ],
     "FR1810": [
       "apps/observatory/test/changeModel.test.ts",
       "e2e/change-review.spec.ts"

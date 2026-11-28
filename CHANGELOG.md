@@ -46,6 +46,11 @@ Claims & trace: what an agent session read, changed and claimed, on the Terrain 
 - Observatory's Claims tab pins each claim on the Terrain at its source symbol (✓, ✗, or `checked at <snapshot>` when its last run was against another snapshot), summarises `1 of 4 claims refuted`, and shows the seven layers as equal cells in pipeline order with a failed layer boldest and `not run` and `unsupported` hatched. Below it, a recorded session's steps are numbered in order and on the map (`+n` for a subject visited again), with the dependents of its change it never looked at.
 - Upgrade note: catalog migration 0024. Back up the data directory before upgrading.
 
+query_graph follows paths up to `max_depth` (#36; FR2400, FR2401):
+
+- A variable-length relationship may now follow up to the query's `limits.max_depth`: 6 by default, at most 12 (`*1..12`). The upper bounds of all the variable-length relationships of a query are added up, and the total may not pass `max_depth` either. A query that chained two `*1..6` patterns under the default `max_depth` 6 used to run; it is now refused with `query_unbounded` and the bound, and runs with `max_depth` 12.
+- `bench/parity` asks Q6 (dependents) and Q11 (cycles) with `*1..12`, as the typed tools use `max_depth` 12. Q7 and Q10 still differ from their typed tools on purpose: `query_graph` follows no dispatch and treats no unresolved call as a use. `bench/parity/README.md` says why.
+
 Time: scrub snapshots on the same map (part of #48; FR1760 to FR1765):
 
 - The header's snapshot picker is now Time, in the left panel: a scrubber and a strip of every published snapshot, newest first, each with its symbols and unresolved share, which `list_snapshots` now gives (`symbols`, `relationships`, `unresolved`). `[` and `]` step one snapshot, and every view is pinned to the snapshot shown.

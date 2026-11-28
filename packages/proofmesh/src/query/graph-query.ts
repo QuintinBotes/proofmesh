@@ -2,7 +2,8 @@
  * query_graph (FR960 to FR965): a bounded, read-only subset of openCypher over one sealed snapshot, for questions the typed tools do
  * not answer in one call. The text is parsed into a typed plan and run by a small interpreter over fixed prepared statements: no SQL is
  * ever built from the query, its parameters or its names. Writes, procedures and file access have no syntax here and are refused by
- * name before anything runs; a variable-length pattern needs an upper bound of at most MAX_HOPS; rows, time and bytes are the server's.
+ * name before anything runs; each variable-length pattern needs an upper bound, and those bounds together may not pass the query's
+ * max_depth (FR2400); rows, time and bytes are the server's.
  */
 import type Database from 'better-sqlite3'
 import { ProofmeshError } from '../core/errors.js'
@@ -11,8 +12,6 @@ import { leanName, leanRow, quote } from './lean.js'
 import { isTestCode, isTestPath, parseRoles, rolesSql } from './tests.js'
 import { hasSites } from '../meshstore/order.js'
 
-/** The longest variable-length pattern a query may ask for, before the server's max_depth lowers it. */
-export const MAX_HOPS = 6
 /** Node labels: the symbol kinds of the snapshot format, plus file and external. A file whose module symbol exists is also a module. */
 export const LABELS = ['function', 'class', 'method', 'interface', 'type_alias', 'variable', 'module', 'struct', 'enum', 'property', 'field', 'constructor', 'namespace', 'project', 'package', 'endpoint', 'table', 'message', 'channel', 'job', 'feature_flag', 'config_key', 'team', 'service', 'resource', 'output', 'module_call', 'file', 'external']
 /** Relationship types: the assertion types of the snapshot format (a test holds both lists to it). */
@@ -121,6 +120,8 @@ class Parser {
   private i = 0
   private depth = 0
   private anon = 0
+  /** The upper bounds of the variable-length relationships parsed so far, summed over the whole query (FR2400). */
+  private hops = 0
   private scope: string[] = []
   readonly params = new Set<string>()
   constructor(private readonly src: string, private readonly toks: Tok[], private readonly bound: number) {}
@@ -220,8 +221,10 @@ class Parser {
         if (this.op('..')) upper = this.peek()?.k === 'num' ? this.int('an upper bound') : undefined
         else if (this.peek(-1)?.k === 'num') upper = min
         if (upper === undefined) throw bad(`a variable-length relationship needs an upper bound of at most ${this.bound}, such as *1..${this.bound}; an unbounded one is refused before it runs`, 'query_unbounded')
-        if (upper > this.bound) throw bad(`the variable-length relationship's upper bound ${upper} is above ${this.bound}, the most this query may follow${this.bound < MAX_HOPS ? ' under its max_depth' : ''}; it is refused before it runs`, 'query_unbounded')
+        if (upper > this.bound) throw bad(`the variable-length relationship's upper bound ${upper} is above ${this.bound}, the most this query may follow under its max_depth (at most 12); it is refused before it runs`, 'query_unbounded')
         if (min > upper) throw syntax(`the lower bound ${min} is above the upper bound ${upper}`)
+        this.hops += upper
+        if (this.hops > this.bound) throw bad(`the variable-length relationships of this query follow up to ${this.hops} hops together, above ${this.bound}, its max_depth; lower their upper bounds or raise limits.max_depth (at most 12). It is refused before it runs`, 'query_unbounded')
         max = upper
       }
       props = this.props()
@@ -332,7 +335,7 @@ class Parser {
     }
     if (this.isOp('(')) {
       // A parenthesis opens a pattern predicate when a relationship follows its node; otherwise it groups an expression.
-      const at = this.i
+      const at = this.i, hops = this.hops
       try {
         const p = this.pattern(true)
         if (p.rels.length) return { k: 'pattern', p }
@@ -340,6 +343,7 @@ class Parser {
         if ((e as ProofmeshError).details?.detail !== 'query_syntax') throw e
       }
       this.i = at
+      this.hops = hops
       this.need('(')
       const e = this.expr()
       this.need(')')
@@ -389,7 +393,7 @@ const hasAggregate = (e: Expr): boolean =>
 
 /** Parses and checks a query, refusing writes, procedures, unbounded or too-deep paths and unknown names before anything runs. */
 export function parseGraphQuery(text: string, params: Record<string, Param>, maxDepth: number): GraphQuery {
-  const p = new Parser(text, tokenize(text), Math.min(MAX_HOPS, maxDepth))
+  const p = new Parser(text, tokenize(text), maxDepth)
   const clauses = p.query()
   const missing = [...p.params].filter((n) => !Object.hasOwn(params, n))
   if (missing.length) throw bad(`parameter${missing.length === 1 ? '' : 's'} ${missing.map((m) => `$${m}`).join(', ')} ${missing.length === 1 ? 'is' : 'are'} not given in params`)

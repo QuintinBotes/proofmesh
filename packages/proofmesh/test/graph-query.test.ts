@@ -24,13 +24,19 @@ const FILES: Record<string, string> = {
 }
 const git = (cwd: string, ...args: string[]) => execFileSync('git', ['-c', 'user.name=Test', '-c', 'user.email=test@example.com', '-c', 'commit.gpgsign=false', ...args], { cwd, encoding: 'utf8' }).trim()
 
-let d: string, commit: string
-beforeAll(async () => {
-  const repo = tmpDir('pm-graph-query-')
-  for (const [p, text] of Object.entries(FILES)) { fs.mkdirSync(path.dirname(path.join(repo, p)), { recursive: true }); fs.writeFileSync(path.join(repo, p), text) }
+/** A repository of these files in one commit. */
+const makeRepo = (prefix: string, files: Record<string, string>) => {
+  const repo = tmpDir(prefix)
+  for (const [p, text] of Object.entries(files)) { fs.mkdirSync(path.dirname(path.join(repo, p)), { recursive: true }); fs.writeFileSync(path.join(repo, p), text) }
   git(repo, 'init', '-q')
   git(repo, 'add', '-A')
   git(repo, 'commit', '-q', '-m', 'fixture')
+  return repo
+}
+
+let d: string, commit: string
+beforeAll(async () => {
+  const repo = makeRepo('pm-graph-query-', FILES)
   commit = git(repo, 'rev-parse', 'HEAD')
   ;({ dataDir: d } = await indexedDataDir(repo))
 }, 120000)
@@ -182,6 +188,74 @@ describe('FR962 SC-003 scenario 4: a variable-length path with no upper bound, o
   it('unknown labels and relationship types are refused with the valid ones', () => {
     expect(refusal({ query: 'MATCH (a:widget) RETURN a' })?.message).toMatch(/^unknown node label widget; the labels are function, class, method, .*file, external$/)
     expect(refusal({ query: 'MATCH (a)-[:writes]->(b) RETURN b' })?.message).toMatch(/^unknown relationship type writes; the types are calls, imports, .*mentions$/)
+  })
+})
+
+describe("FR2400 a variable-length pattern follows up to the query's max_depth (at most 12), and so do all of them together", () => {
+  // An import ring of eight files, c0 -> c1 -> ... -> c7 -> c0, each calling the next: every path round it is longer than 6.
+  const RING = Object.fromEntries(Array.from({ length: 8 }, (_, i) => [`src/c${i}.ts`, `import { f${(i + 1) % 8} } from './c${(i + 1) % 8}'\nexport function f${i}(n: number): number {\n  return n > 0 ? f${(i + 1) % 8}(n - 1) : 0\n}\n`]))
+  const ringFiles = Object.keys(RING).sort()
+  let r: string
+  beforeAll(async () => { ({ dataDir: r } = await indexedDataDir(makeRepo('pm-graph-query-ring-', { ...RING, 'tsconfig.json': FILES['tsconfig.json']! }))) }, 120000)
+  const ask = (q: string, max_depth?: number) => runTool(r, 'query_graph', { query: q, envelope: 'lean', ...(max_depth ? { limits: { max_depth } } : {}) }).text!
+  const fail = (q: string, max_depth?: number) => { try { runTool(r, 'query_graph', { query: q, ...(max_depth ? { limits: { max_depth } } : {}) }); return null } catch (e) { return e as ProofmeshError } }
+
+  it('Q6 dependents past 6 imports: *1..12 under max_depth 12 equals analyze_impact at max_depth 12, which *1..6 does not', () => {
+    const dependents = (n: number) => items(ask(`MATCH (d:file)-[:imports*1..${n}]->(:file {path: 'src/c0.ts'}) WHERE d.path <> 'src/c0.ts' RETURN DISTINCT d`, n))
+    const typed = items(runTool(r, 'analyze_impact', { paths: ['src/c0.ts'], types: ['imports'], limits: { max_depth: 12 }, envelope: 'lean' }).text!).filter((x) => x !== 'src/c0.ts')
+    expect(typed).toEqual(ringFiles.filter((f) => f !== 'src/c0.ts'))
+    expect(dependents(12)).toEqual(typed)
+    expect(dependents(6)).toHaveLength(6)
+  })
+
+  it('Q11 an import cycle of 8: *1..12 under max_depth 12 finds every file of it; *1..6 finds none', () => {
+    expect(items(ask("MATCH (a:file)-[:imports*1..12]->(a) WHERE a.path STARTS WITH 'src/' RETURN a", 12))).toEqual(ringFiles)
+    expect(rows(ask("MATCH (a:file)-[:imports*1..6]->(a) WHERE a.path STARTS WITH 'src/' RETURN a"))).toEqual([])
+  })
+
+  it('above max_depth is refused naming it; above 12 is refused at 12, the most max_depth applies', () => {
+    expect(fail('MATCH (a)-[:calls*1..7]->(b) RETURN b')?.message).toContain('upper bound 7 is above 6')
+    expect(fail('MATCH (a)-[:calls*1..12]->(b) RETURN b', 12)).toBeNull()
+    const e = fail('MATCH (a)-[:calls*1..13]->(b) RETURN b', 13)
+    expect([e?.code, e?.details.detail]).toEqual(['INVALID_ARGUMENT', 'query_unbounded'])
+    expect(e?.message).toContain('upper bound 13 is above 12')
+  })
+
+  it('the upper bounds of all the variable-length patterns of a query, in MATCH, WHERE and EXISTS, together stay within max_depth', () => {
+    expect(fail('MATCH (a)-[:calls*1..3]->(b)-[:calls*1..3]->(c) RETURN c')).toBeNull()
+    for (const q of ['MATCH (a)-[:calls*1..4]->(b)-[:calls*1..3]->(c) RETURN c', 'MATCH (a)-[:calls*1..4]->(b), (b)-[:imports*3]->(c) RETURN c', 'MATCH (a)-[:calls*1..4]->(b) WHERE (b)-[:calls*1..3]->() RETURN b', 'MATCH (a)-[:calls*1..6]->(b) WHERE NOT EXISTS { (b)-[:calls*1..2]->() } RETURN b']) {
+      const e = fail(q)
+      expect([e?.code, e?.details.detail], q).toEqual(['INVALID_ARGUMENT', 'query_unbounded'])
+      expect(e?.message, q).toMatch(/^the variable-length relationships of this query follow up to (7|8) hops together, above 6, its max_depth/)
+    }
+    expect(fail('MATCH (a)-[:calls*1..6]->(b)-[:calls*1..6]->(c) RETURN c', 12)).toBeNull()
+    expect(fail('MATCH (a)-[:calls*1..6]->(b)-[:calls*1..7]->(c) RETURN c', 12)?.message).toContain('up to 13 hops together, above 12')
+    // A single hop is no variable-length pattern and counts nothing.
+    expect(fail("MATCH (:function {name: 'f0'})-[:calls*1..6]->(c)-[:calls]->(d) RETURN d")).toBeNull()
+  })
+})
+
+describe('FR2401 query_graph reads only what the snapshot resolved: no dispatch, and no unresolved site makes code used', () => {
+  const LITERAL = {
+    'src/shape.ts': 'export interface Shape {\n  area(): number\n}\nexport class Square implements Shape {\n  area(): number {\n    return 1\n  }\n}\nexport function total(s: Shape): number {\n  return s.area()\n}\n',
+    'src/loose.ts': 'export function orphan(): number {\n  return 1\n}\nexport function caller(o: any): number {\n  return o.orphan()\n}\n',
+    'tsconfig.json': FILES['tsconfig.json']!,
+  }
+  let s: string
+  beforeAll(async () => { ({ dataDir: s } = await indexedDataDir(makeRepo('pm-graph-query-literal-', LITERAL))) }, 120000)
+  const ask = (q: string) => runTool(s, 'query_graph', { query: q, envelope: 'lean' }).text!
+
+  it('Q7: the transitive callers of an implementation are its resolved callers; analyze_impact adds those of the interface method, which a pattern writes out', () => {
+    const typed = items(runTool(s, 'analyze_impact', { subject_ids: [SUBJECT('Square.area', 'src/shape.ts')], types: ['calls'], limits: { max_depth: 3 }, envelope: 'lean' }).text!)
+    expect(typed).toContain('total src/shape.ts')
+    expect(rows(ask("MATCH (c)-[:calls*1..3]->(:method {qualified_name: 'src/shape:Square.area'}) RETURN DISTINCT c"))).toEqual([])
+    expect(items(ask("MATCH (c)-[:calls]->(:method)<-[:implements|overrides]-(:method {qualified_name: 'src/shape:Square.area'}) RETURN DISTINCT c"))).toEqual(['total src/shape.ts'])
+  })
+
+  it('Q10: a function only an unresolved call could reach has no relationship, so it is unused here; find_unused calls it possibly_used', () => {
+    const unused = rows(runTool(s, 'find_unused', { kinds: ['function'], path_prefix: 'src/loose', top_level_only: true, envelope: 'lean' }).text!)
+    expect(unused.find((l) => l.startsWith('orphan '))).toMatch(/possibly_used/)
+    expect(items(ask("MATCH (f:function) WHERE f.path STARTS WITH 'src/loose' AND NOT EXISTS { (x)-->(f) WHERE x <> f } RETURN f"))).toEqual(['caller src/loose.ts', 'orphan src/loose.ts'])
   })
 })
 
