@@ -1245,3 +1245,7 @@ Each must produce a tested result or an explicit unsupported limitation, never s
 - FR2224: MUST optionally identify each overview child's file communities by ID and label.
 - FR2225: MUST separate shared hubs in the highest degree percentile with at least thirty distinct neighbors.
 - FR2226: MUST exercise these requirements against a planted, cross-directory fixture and record their test in the traceability policy.
+
+### Per-language benchmark inputs
+
+- FR3001: MUST produce reproducible Go compiler observations on pinned Cobra inputs using two offline, memory-bounded indexer runs. The facts retain source ranges and role bits, and an empty or divergent result fails the run.

@@ -2611,6 +2611,9 @@
     ],
     "FR3000": [
       "packages/proofmesh/test/producer.test.ts"
+    ],
+    "FR3001": [
+      "packages/proofmesh/test/go-benchmark.test.ts"
     ]
   },
   "manual": {
