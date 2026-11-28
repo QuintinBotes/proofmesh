@@ -160,3 +160,18 @@ sealed snapshot (`snap_7be31f93fdcb4923d3b72b56`); Graphify 0.9.108.
 ## Symbol identity across renames and moves (issue 7, SC-2)
 
 `node bench/graph-bench/identity-mutation.mjs [<orbit-clone-or-url>] [--n 50] [--seed 7]` clones the same Orbit commit into a temporary directory, renames 25 and moves 25 random top-level functions (one per file, seeded), commits, indexes both trees with `index --rev`, and checks what `compare_snapshots` pairs. It exits 1 on any wrong pair or a paired rate below 95%. Result of 2026-11-24 (seed 7, 3,881 candidate functions in 685 files): 50 of 50 mutated functions paired as `renamed` or `moved` with the right target, 0 wrong pairs among 50 pairs, 0 ambiguous, 0 below the pairing floor. About 80 seconds.
+
+### Go compiler facts for the per-language benchmark
+
+The Go input for #9 is Cobra v1.8.1. The corpus file pins its commit and license, the Go image digest, and the release archives of scip-go and the upstream SCIP reader. Prepare the input once with Python 3, Git, curl and Docker. The pinned container platform is Linux arm64 and requires Docker emulation on other architectures.
+
+```sh
+python3 bench/graph-bench/go-truth.py prepare ~/.cache/proofmesh/cobra-v1.8.1
+python3 bench/graph-bench/go-truth.py run ~/.cache/proofmesh/cobra-v1.8.1 --out out/go/compiler-facts.jsonl
+```
+
+Preparation fetches the corpus, checks the archive hashes and verifies the downloaded Go modules. The second command takes the shared benchmark lock and runs two independent indexer processes with a read-only checkout, a read-only module cache, networking disabled and a 2 GiB container memory limit. Each index is read with the upstream SCIP CLI. The output file is published only after both runs agree.
+
+Each JSON line represents a symbol, a site or a declared relationship. Sites retain the document path, position encoding, SCIP identifier, role bits and source and enclosing ranges. Relationships retain every flag from the indexer. Sorting records preserves repeated occurrences and removes variation in the order of the protobuf records.
+
+On the pinned Cobra checkout both runs produced 37 documents, 3,672 symbol records, 21,617 occurrences and eight declared relationships. The SHA-256 of the JSON lines was `9f43976797cf4b0b052d4bcfcf34d40557fc14560428840ca9cf892a96275a06`. These are compiler observations. The per-question scores, independently reviewed truth sets and supported-tier decision remain tracked in #9.
