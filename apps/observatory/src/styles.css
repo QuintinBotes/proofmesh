@@ -106,7 +106,7 @@ body[data-motion=reduced] * { transition: none !important; animation: none !impo
 .terrain-fog.hatched { background: repeating-linear-gradient(-45deg, rgba(242, 184, 75, 0.2) 0 1px, transparent 1px 10px); }
 .terrain-ghost { position: absolute; right: 6%; bottom: 6%; width: 22%; height: 22%; min-width: 8px; min-height: 8px; max-width: 36px; max-height: 36px; border: 1px dashed rgba(203, 213, 225, 0.75); background: repeating-linear-gradient(45deg, rgba(203, 213, 225, 0.16) 0 2px, transparent 2px 7px); box-sizing: border-box; }
 .terrain-fog.empty { border: 1px dashed rgba(203, 213, 225, 0.6); background: repeating-linear-gradient(45deg, rgba(203, 213, 225, 0.16) 0 2px, transparent 2px 7px); }
-.terrain-fog .fog-label { position: absolute; top: 100%; left: 0; margin-top: 4px; font-size: 11px; color: #cbd5e1; white-space: nowrap; text-shadow: 0 0 2px #000; }
+.terrain-fog .fog-label { max-width: 100%; overflow: hidden; text-overflow: ellipsis; position: absolute; top: 100%; left: 0; margin-top: 4px; font-size: 11px; color: #cbd5e1; white-space: nowrap; text-shadow: 0 0 2px #000; }
 .terrain-label { position: absolute; font-size: 11px; color: #c9d3ea; white-space: nowrap; pointer-events: none; text-shadow: 0 0 2px #000, 0 0 4px #000; line-height: 14px; }
 .terrain-label.area { font-size: 12px; font-weight: 600; color: #e6eeff; letter-spacing: 0.02em; line-height: 16px; }
 .terrain-label.stacked span { display: block; }

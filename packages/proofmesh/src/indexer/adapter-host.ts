@@ -121,8 +121,8 @@ export class AdapterProcess {
         if (this.budgetMb && kb > this.budgetMb * 1024 && !this.exited && this.overBudgetKb === undefined) {
           this.overBudgetKb = this.processPeakKb
           this.stopChild(this.loading
-            ? `needed ${Math.round(kb / 1024)} MB to load the project, over its memory budget of ${this.budgetMb} MB (load peak ${Math.round(kb / 1024)} MB; raise it with adapter_memory_mb) and was stopped with SIGKILL`
-            : `exceeded its memory budget of ${this.budgetMb} MB (peak resident memory ${Math.round(kb / 1024)} MB; raise it with adapter_memory_mb) and was stopped with SIGKILL`)
+            ? `needed ${Math.ceil(kb / 1024)} MB to load the project, over its memory budget of ${this.budgetMb} MB (load peak ${Math.ceil(kb / 1024)} MB; raise it with adapter_memory_mb) and was stopped with SIGKILL`
+            : `exceeded its memory budget of ${this.budgetMb} MB (peak resident memory ${Math.ceil(kb / 1024)} MB; raise it with adapter_memory_mb) and was stopped with SIGKILL`)
         }
       }
     })
@@ -301,7 +301,7 @@ export class AdapterProcess {
   private async checkLoad(): Promise<void> {
     await this.sampleRss()
     if (this.overBudgetKb !== undefined && this.budgetMb) {
-      const mb = Math.round(this.overBudgetKb / 1024)
+      const mb = Math.ceil(this.overBudgetKb / 1024)
       throw new AdapterBudgetError(`adapter ${this.name} needed ${mb} MB to load the project, over its memory budget of ${this.budgetMb} MB (load peak ${mb} MB; raise it with adapter_memory_mb)`, this.budgetMb, this.overBudgetKb, undefined, true)
     }
   }
@@ -346,7 +346,7 @@ export class AdapterProcess {
     // A batch's results are accepted only if the adapter, and what it started, is within budget when it ends: polling can miss a spike.
     await this.sampleRss()
     if (this.overBudgetKb !== undefined && this.budgetMb) {
-      const head = `adapter ${this.name} exceeded its memory budget of ${this.budgetMb} MB (peak resident memory ${Math.round(this.overBudgetKb / 1024)} MB; raise it with adapter_memory_mb) at the end of a batch`
+      const head = `adapter ${this.name} exceeded its memory budget of ${this.budgetMb} MB (peak resident memory ${Math.ceil(this.overBudgetKb / 1024)} MB; raise it with adapter_memory_mb) at the end of a batch`
       throw new AdapterBudgetError(head, this.budgetMb, this.overBudgetKb)
     }
     return result as AnalyzeResponse

@@ -70,7 +70,7 @@ const BATCH = () => Number(process.env.PROOFMESH_INDEX_BATCH) || 200
 export const testMs = (name: string, min: number, max: number): number | undefined => (Number(process.env[name]) ? Math.min(max, Math.max(min, Number(process.env[name]))) : undefined)
 /** Files in a row that each pass the budget alone, after which the adapter's remaining files fail without another restart. */
 const MAX_FILE_OVERRUNS = 20
-const peakOf = (e: AdapterBudgetError) => ({ budget_mb: e.budgetMb, peak_rss_mb: e.peakRssKb ? Math.round(e.peakRssKb / 1024) : null, ...(e.atLoad ? { at_load: true as const } : {}) })
+const peakOf = (e: AdapterBudgetError) => ({ budget_mb: e.budgetMb, peak_rss_mb: e.peakRssKb ? Math.ceil(e.peakRssKb / 1024) : null, ...(e.atLoad ? { at_load: true as const } : {}) })
 const languagesOf = (run: AdapterRun) => [...run.spec.languages].join('+')
 
 /**
