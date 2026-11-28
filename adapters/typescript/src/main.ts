@@ -8,7 +8,7 @@ import type * as TS from 'typescript'
 import { graphqlDocument } from '../../syntax/src/contracts.js'
 
 const ts = createRequire(import.meta.url)('typescript') as typeof TS
-const VERSION = '0.2.6'
+const VERSION = '0.2.7'
 type Range = { start_byte: number; end_byte: number; start_line: number; end_line: number }
 type Ref = { symbol: string } | { file: string } | { external: { module: string; name: string } }
 
@@ -959,8 +959,10 @@ function graphqlTemplate(node: TS.TaggedTemplateExpression, sf: TS.SourceFile): 
 }
 
 function owner(node: TS.Node): string | undefined {
-  for (let n: TS.Node | undefined = node.parent; n; n = n.parent) {
+  for (let c = node, n: TS.Node | undefined = node.parent; n; c = n, n = n.parent) {
     const local = declLocal.get(keyOf(n))
+    // A property's declared type and decorators are its class's, as before it was a symbol (#182); only its initializer is its own.
+    if (local?.startsWith(`${rel(n.getSourceFile().fileName)}#property#`) && !(ts.isPropertyDeclaration(n) && n.initializer === c)) continue
     if (local) return local
   }
   return undefined

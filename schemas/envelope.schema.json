@@ -70,7 +70,8 @@
         "search_structure",
         "search_concepts",
         "get_symbol_card",
-        "query_graph"
+        "query_graph",
+        "get_findings"
       ]
     },
     "snapshot": {

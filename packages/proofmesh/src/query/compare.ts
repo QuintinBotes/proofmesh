@@ -50,7 +50,7 @@ function relationships(db: Database.Database): Map<string, number> {
   return out
 }
 
-function side(db: Database.Database, snapshot_id: string, published_at: string): Side {
+export function side(db: Database.Database, snapshot_id: string, published_at: string): Side {
   const n = (sql: string) => (db.prepare(sql).get() as { n: number }).n
   return { snapshot_id, published_at, symbols: n('select count(*) n from symbol'), relationships: n('select count(*) n from assertion'), unresolved: n("select count(*) n from assertion where resolution not in ('resolved', 'resolved_external')") }
 }

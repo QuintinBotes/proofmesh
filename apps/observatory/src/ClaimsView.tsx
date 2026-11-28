@@ -174,7 +174,7 @@ export function ClaimsView({ onError, galaxy, terrain, snapshotId, map, onWebGlF
       <p className="claims-summary" role="status" data-testid="claims-summary">{claimsSummary(runs, snapshotId)}</p>
       {map && galaxy && terrain && (
         <div className="claims-map">
-          <Terrain data={galaxy} terrain={terrain} query="" focusArea={null} hoverArea={null} onOpen={NOOP} onHoverArea={NOOP} onBundle={NOOP} onClear={NOOP} onWebGlFailure={onWebGlFailure} marks={marks} />
+          <Terrain data={galaxy} terrain={terrain} query="" focusArea={null} hoverArea={null} onOpen={NOOP} onHoverArea={NOOP} onBundle={NOOP} onClear={NOOP} onWebGlFailure={onWebGlFailure} drawOver={marks} />
         </div>
       )}
       {!claims.length ? (

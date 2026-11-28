@@ -25,11 +25,11 @@ test.afterAll(() => view?.stop())
 test('FR010 Replay pins every view to an older snapshot and says so until the person returns to the current one', async ({ page }) => {
   await page.goto(view.launchUrl)
   await expect(page.getByTestId('conclusion')).toContainText('symbols in', { timeout: 60000 })
-  const picker = page.getByRole('combobox', { name: 'Snapshot' })
-  const options = await picker.locator('option').allTextContents()
-  expect(options).toHaveLength(2)
-  expect(options.some((o) => o.endsWith('(current)'))).toBe(true)
-  older = await picker.locator('option').filter({ hasNotText: '(current)' }).getAttribute('value') as string
+  // Time's strip lists every published snapshot, newest first (FR1761).
+  const strip = page.getByRole('list', { name: 'Snapshots, newest first' }).getByRole('button')
+  await expect(strip).toHaveCount(2)
+  await expect(strip.first()).toContainText('(current)')
+  older = await strip.filter({ hasNotText: '(current)' }).getAttribute('data-snapshot') as string
 
   // The current snapshot knows the new function; the Terrain's table lists it.
   await page.getByRole('button', { name: 'Table', exact: true }).click()
@@ -38,7 +38,7 @@ test('FR010 Replay pins every view to an older snapshot and says so until the pe
 
   const pinned: string[] = []
   page.on('request', (r) => { if (r.url().includes('/api/v1/') && r.method() === 'POST') pinned.push(`${r.url().split('/api/v1/')[1]} ${JSON.parse(r.postData() || '{}').snapshot_id ?? '-'}`) })
-  await answered(page, () => picker.selectOption(older))
+  await answered(page, () => strip.filter({ hasNotText: '(current)' }).click())
   await expect(page.getByTestId('replay-banner')).toContainText(`Replaying snapshot ${older.slice(0, 13)}`)
   // The older snapshot does not know the new function: the same search now matches nothing.
   await expect(page.getByTestId('conclusion')).toContainText('0 matching symbols')

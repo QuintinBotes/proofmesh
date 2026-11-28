@@ -1,0 +1,167 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "tools/get_findings.data.schema.json",
+  "title": "get_findings data",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "findings",
+    "imports",
+    "total"
+  ],
+  "properties": {
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "import",
+          "tool",
+          "rule",
+          "level",
+          "message",
+          "path",
+          "line",
+          "end_line",
+          "rank",
+          "precision",
+          "symbol",
+          "stale"
+        ],
+        "properties": {
+          "import": {
+            "type": "string",
+            "description": "The name the SARIF file was imported under."
+          },
+          "tool": {
+            "type": "string",
+            "description": "The run's tool and version, as the SARIF file names them."
+          },
+          "rule": {
+            "type": "string"
+          },
+          "level": {
+            "type": "string",
+            "description": "The SARIF level: error, warning, note or none (warning when the file gives none)."
+          },
+          "message": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "line": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "The finding's start line; null when the SARIF result names its file only."
+          },
+          "end_line": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "rank": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "SARIF rank, 0 to 100, when the tool gave one."
+          },
+          "precision": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The rule's precision property (CodeQL's @precision), when the tool gave one."
+          },
+          "symbol": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "kind",
+                  "name",
+                  "qualified_name"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "qualified_name": {
+                    "type": "string"
+                  }
+                }
+              }
+            ],
+            "description": "The innermost symbol whose span holds the line, or the file's module when none does (get_symbols_at)."
+          },
+          "stale": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "sarif_stale:<import> when the file's content in this snapshot is not what it was when the SARIF file was imported; null otherwise."
+          }
+        }
+      }
+    },
+    "imports": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "tools",
+          "findings",
+          "unattached",
+          "added_at"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "tools": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "findings": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "unattached": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Results left out at import: outside the repository, in a file not in the snapshot, or with no location."
+          },
+          "added_at": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "total": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Findings that match, before max_rows."
+    }
+  },
+  "description": "Imported SARIF findings by path and line (FR1902)."
+}

@@ -1,0 +1,53 @@
+{
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "CodeQL",
+          "semanticVersion": "2.19.0",
+          "rules": [
+            { "id": "js/sql-injection", "defaultConfiguration": { "level": "error" }, "properties": { "precision": "high" } }
+          ]
+        }
+      },
+      "results": [
+        {
+          "ruleId": "js/sql-injection", "ruleIndex": 0, "rank": 90.0,
+          "message": { "text": "This query string depends on a user-provided value." },
+          "locations": [{ "physicalLocation": { "artifactLocation": { "uri": "src/db.ts", "uriBaseId": "%SRCROOT%" }, "region": { "startLine": 7, "startColumn": 21, "endColumn": 68 } } }]
+        },
+        {
+          "ruleId": "js/sql-injection", "ruleIndex": 0, "rank": 90.0,
+          "message": { "text": "The same alert again, as an analyser that reports one alert per path does." },
+          "locations": [{ "physicalLocation": { "artifactLocation": { "uri": "src/db.ts", "uriBaseId": "%SRCROOT%" }, "region": { "startLine": 7, "startColumn": 21, "endColumn": 68 } } }]
+        },
+        {
+          "ruleId": "js/sql-injection", "ruleIndex": 0,
+          "message": { "text": "A location outside the repository." },
+          "locations": [{ "physicalLocation": { "artifactLocation": { "uri": "../outside/lib.ts", "uriBaseId": "%SRCROOT%" }, "region": { "startLine": 3 } } }]
+        }
+      ]
+    },
+    {
+      "tool": { "driver": { "name": "Opengrep", "version": "1.6.0" } },
+      "results": [
+        {
+          "ruleId": "typescript.lang.tainted-store-lookup", "level": "warning",
+          "message": { "text": "A request parameter reaches Store.find." },
+          "locations": [{ "physicalLocation": { "artifactLocation": { "uri": "src/api.ts" }, "region": { "startLine": 5, "endLine": 5 } } }]
+        },
+        {
+          "ruleId": "javascript.lang.correctness.useless-eqeq", "level": "note",
+          "message": { "text": "Use === to compare strings." },
+          "locations": [{ "physicalLocation": { "artifactLocation": { "uri": "test/api.test.ts" }, "region": { "startLine": 4 } } }]
+        },
+        {
+          "ruleId": "typescript.lang.tainted-store-lookup", "level": "warning",
+          "message": { "text": "A file that is not in the snapshot." },
+          "locations": [{ "physicalLocation": { "artifactLocation": { "uri": "src/missing.ts" }, "region": { "startLine": 1 } } }]
+        }
+      ]
+    }
+  ]
+}
