@@ -2,11 +2,11 @@ import { execFileSync, spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import zlib from 'node:zlib'
+import { DatabaseSync } from 'node:sqlite'
 import AxeBuilder from '@axe-core/playwright'
 import { expect, test, type BrowserContext, type Page } from '@playwright/test'
 import { SNAPSHOT_B, writeSnapshotB } from '../bench/observatory/snapshot-b.mjs'
-import { displacement } from '../bench/observatory/stability.mjs'
+import { decodeLayout, displacement, identifyLayout } from '../bench/observatory/stability.mjs'
 import { CLI, ROOT, startView } from './view'
 
 // #48 on the Observatory benchmark's snapshots A and B of the TypeORM sample: A is TypeORM's src/ at a pinned commit (built once by
@@ -40,22 +40,16 @@ test.beforeAll(async ({ browser }) => {
 test.afterAll(async () => { await context?.close(); view?.stop() })
 
 const api = async (route: string, data: Record<string, unknown>) => (await page.request.post(`${view.origin}/api/v1/${route}`, { headers: { Origin: view.origin }, data })).json()
-/** A snapshot's layout as the Terrain receives it: positions and names from the Galaxy payload (#44). */
+/** A snapshot's layout as the Terrain receives it: served positions paired with stable keys (#44). */
 async function layout(snapshotId: string) {
   const res = await page.request.post(`${view.origin}/api/v1/galaxy`, { headers: { Origin: view.origin }, data: { snapshot_id: snapshotId } })
-  const body = await res.body()
-  // The browser undoes the gzip transfer encoding; Playwright's request may hand it back still encoded.
-  const buf = body[0] === 0x1f && body[1] === 0x8b ? zlib.gunzipSync(body) : body
-  const hl = buf.readUInt32LE(0), h = JSON.parse(buf.subarray(4, 4 + hl).toString('utf8')), base = 4 + hl + ((4 - ((4 + hl) % 4)) % 4)
-  const positions: number[] = []
-  for (let i = 0; i < h.nodes * 2; i++) positions.push(buf.readUInt16LE(base + h.offsets.positions + 2 * i))
-  return { positions, names: buf.subarray(base + h.offsets.names, base + h.offsets.names + h.names_bytes).toString('utf8').split('\n') }
+  try { return identifyLayout(view.dataDir, decodeLayout(await res.body(), snapshotId)) } finally { await res.dispose() }
 }
 const shown = (id: string) => page.locator(`.terrain[data-ready][data-snapshot="${id}"]`)
 const marked = (change: string) => page.locator(`.terrain .time-mark[data-change="${change}"]`).evaluateAll((ms) => ms.map((m) => m.getAttribute('data-name')).sort())
 const declared = (s: { what: string[] }) => s.what.some((w) => w === 'body' || w === 'signature')
 
-test('#48 S1 FR1761 FR1762 FR1763 FR2620 from A to B: no shared symbol moves more than 2% of the width, the added symbols and file appear, titleCase is a cross where it was, and the counts are compare_snapshots\'', async () => {
+test('#48 S1 FR1163 FR1761 FR1762 FR1763 FR2620 from A to B: no shared symbol moves more than 2% of the width, the added symbols and file appear, titleCase is a cross where it was, and the counts are compare_snapshots\'', async () => {
   // The strip lists every snapshot newest first, each with its symbols and unresolved share from list_snapshots (FR1760).
   const listed = (await api('snapshots', {})).snapshots as Array<{ id: string; symbols: number; relationships: number; unresolved: number }>
   const strip = page.getByRole('list', { name: 'Snapshots, newest first' }).getByRole('button')
@@ -76,7 +70,15 @@ test('#48 S1 FR1761 FR1762 FR1763 FR2620 from A to B: no shared symbol moves mor
   // Scenario 1: no symbol present in both moves more than 2% of the map's width (FR2620, #275), so SC-001's at most 1% holds too.
   const moved = displacement(await layout(A), await layout(B))
   console.log(`A to B: ${JSON.stringify(moved)}`)
-  expect(moved.shared).toBeGreaterThan(6000)
+  const declarationKeys = (id: string) => {
+    const db = new DatabaseSync(path.join(view.dataDir, 'snapshots', id + '.db'), { readOnly: true })
+    try { return new Set(db.prepare("select stable_key from symbol where kind <> 'module'").all().map(r => r.stable_key)) }
+    finally { db.close() }
+  }
+  const keysB = declarationKeys(B)
+  const shared = [...declarationKeys(A)].filter(key => keysB.has(key)).length
+  expect(shared).toBeGreaterThan(6000)
+  expect(moved.shared).toBe(shared)
   expect(moved.max).toBeLessThanOrEqual(0.02)
   expect(moved.moved_2pct).toBeLessThanOrEqual(0.01)
 
