@@ -48,6 +48,7 @@ import { findCycles, findEntryPoints, findHubs, findUnused, type CycleEdge, type
 import { contextMap } from './context-map.js'
 import { stepKind, subjectsOf } from './subjects.js'
 import { generatedNavigation } from '../producer/generates.js'
+import { fileClusters } from './clusters.js'
 import { duplicateGroups, unchangedTwins } from './duplicates.js'
 import { compare, hasBodyHash, side, unreadableFiles } from './compare.js'
 import { importersOf, MAX_FILE_BYTES, MAX_SOURCE_BYTES, reachSet, searchStructure, type StructureMatch } from './structure-search.js'
@@ -60,10 +61,10 @@ import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 
-export const TOOLS = ['workspace_status', 'list_repositories', 'list_snapshots', 'list_workspaces', 'find_symbols', 'get_symbol', 'get_relationships', 'trace_paths', 'read_evidence', 'get_overview', 'analyze_impact', 'find_tests', 'search_sources', 'get_memory', 'verify_claim', 'request_index', 'get_job', 'get_claims', 'save_memory', 'get_table_reach', 'get_property_reads', 'get_external_usage', 'find_query_source', 'compare_snapshots', 'list_queries', 'get_ecosystem', 'prepare_verification', 'get_verification', 'impact_completeness', 'get_symbols_at', 'get_session_trail', 'find_stale_mentions', 'find_unused', 'find_cycles', 'find_entry_points', 'find_hubs', 'get_context_map', 'plan_rename', 'plan_move', 'search_structure', 'search_concepts', 'get_symbol_card', 'query_graph', 'get_findings', 'get_cochanges', 'find_duplicates'] as const
+export const TOOLS = ['workspace_status', 'list_repositories', 'list_snapshots', 'list_workspaces', 'find_symbols', 'get_symbol', 'get_relationships', 'trace_paths', 'read_evidence', 'get_overview', 'analyze_impact', 'find_tests', 'search_sources', 'get_memory', 'verify_claim', 'request_index', 'get_job', 'get_claims', 'save_memory', 'get_table_reach', 'get_property_reads', 'get_external_usage', 'find_query_source', 'compare_snapshots', 'list_queries', 'get_ecosystem', 'prepare_verification', 'get_verification', 'impact_completeness', 'get_symbols_at', 'get_session_trail', 'find_stale_mentions', 'find_unused', 'find_cycles', 'find_entry_points', 'find_hubs', 'get_context_map', 'plan_rename', 'plan_move', 'search_structure', 'search_concepts', 'get_symbol_card', 'query_graph', 'get_findings', 'get_cochanges', 'find_duplicates', 'find_clusters'] as const
 export type ToolName = (typeof TOOLS)[number]
 /** The query tools whose results are code locations: they answer in the lean envelope on request, and by default over MCP (FR099). */
-export const LEAN = new Set<string>(['find_symbols', 'search_concepts', 'get_symbol', 'get_symbols_at', 'get_relationships', 'trace_paths', 'analyze_impact', 'find_tests', 'get_session_trail', 'find_unused', 'find_cycles', 'find_entry_points', 'find_hubs', 'get_context_map', 'search_structure', 'query_graph', 'get_cochanges', 'find_duplicates'])
+export const LEAN = new Set<string>(['find_symbols', 'search_concepts', 'get_symbol', 'get_symbols_at', 'get_relationships', 'trace_paths', 'analyze_impact', 'find_tests', 'get_session_trail', 'find_unused', 'find_cycles', 'find_entry_points', 'find_hubs', 'get_context_map', 'search_structure', 'query_graph', 'get_cochanges', 'find_duplicates', 'find_clusters'])
 /** A lean answer is its text; the envelope beside it is what the text was rendered from, for in-process callers. */
 export type Answer = Envelope & { text?: string }
 
@@ -78,7 +79,7 @@ export const CAPABILITY: Record<ToolName, ListQueriesData['tools'][number]['capa
   verify_claim: 'read', request_index: 'management', get_job: 'read', get_claims: 'read', save_memory: 'management', get_table_reach: 'read',
   get_property_reads: 'read', get_external_usage: 'read', find_query_source: 'read', compare_snapshots: 'read', list_queries: 'read',
   get_ecosystem: 'read', prepare_verification: 'management', get_verification: 'read', impact_completeness: 'management', get_symbols_at: 'read', get_session_trail: 'read', find_stale_mentions: 'read',
-  find_unused: 'read', find_cycles: 'read', find_entry_points: 'read', find_hubs: 'read', get_context_map: 'read', plan_rename: 'read', plan_move: 'read', search_structure: 'read', search_concepts: 'read', get_symbol_card: 'read', query_graph: 'read', get_findings: 'read', get_cochanges: 'read', find_duplicates: 'read',
+  find_unused: 'read', find_cycles: 'read', find_entry_points: 'read', find_hubs: 'read', get_context_map: 'read', plan_rename: 'read', plan_move: 'read', search_structure: 'read', search_concepts: 'read', get_symbol_card: 'read', query_graph: 'read', get_findings: 'read', get_cochanges: 'read', find_duplicates: 'read', find_clusters: 'read',
 }
 
 /**
@@ -105,7 +106,7 @@ export const PROFILE: Record<ToolName, ListQueriesData['tools'][number]['profile
   // Imported analyser findings (#30); analyze_impact and find_tests rows in core already carry their count.
   get_findings: 'extra',
   // Files that change together from git history (#239): asked before finishing a change, like impact_completeness.
-  get_cochanges: 'extra', find_duplicates: 'extra',
+  get_cochanges: 'extra', find_duplicates: 'extra', find_clusters: 'extra',
 }
 /** How a client loads the tools of another profile, said by list_queries, which lists them all (FR422). */
 const PROFILES_NOTE = 'Over MCP, proofmesh mcp lists the core profile; start it with --tools <profile[,profile]> (core, data, claims, extra) or --tools all to list the others. A tool outside the profiles it was started with answers INVALID_ARGUMENT naming its profile.'
@@ -158,7 +159,7 @@ type Partial = {
 }
 
 /** Tools whose shrink list has a total order and honours ctx.page.offset, so a cursor continues it with no omission or duplicate. */
-const PAGED = new Set<ToolName>(['get_symbols_at', 'find_symbols', 'get_relationships', 'search_sources', 'workspace_status', 'find_tests', 'impact_completeness', 'find_unused', 'find_cycles', 'find_entry_points', 'get_context_map', 'search_structure', 'find_duplicates'])
+const PAGED = new Set<ToolName>(['get_symbols_at', 'find_symbols', 'get_relationships', 'search_sources', 'workspace_status', 'find_tests', 'impact_completeness', 'find_unused', 'find_cycles', 'find_entry_points', 'get_context_map', 'search_structure', 'find_duplicates', 'find_clusters'])
 /** Tools that answer over a workspace's link file rather than one repository snapshot (A28). None yet in this file; get_ecosystem joins at integration. */
 const WORKSPACE_SCOPED = new Set<ToolName>([])
 
@@ -539,7 +540,7 @@ function withNamedIds(db: Database.Database, tool: string, input: Record<string,
   const id = (v: unknown) => (v !== null && typeof v === 'object' ? symbolNamed(db, v as { name: string; path: string }) : v)
   const out = { ...input }
   // A `key` is a stable_key, the same in every tier (FR149): it stands in for the id the tool takes.
-  const ids: Record<string, [string, string]> = { find_duplicates: ['key', 'subject_id'], get_symbol: ['key', 'symbol_id'], get_memory: ['key', 'symbol_id'], get_relationships: ['key', 'subject_id'], analyze_impact: ['key', 'subject_ids'], find_tests: ['key', 'subject_ids'], plan_rename: ['key', 'subject_id'], plan_move: ['key', 'subject_id'], get_symbol_card: ['key', 'symbol_id'] }
+  const ids: Record<string, [string, string]> = { find_clusters: ['key', 'subject_id'], find_duplicates: ['key', 'subject_id'], get_symbol: ['key', 'symbol_id'], get_memory: ['key', 'symbol_id'], get_relationships: ['key', 'subject_id'], analyze_impact: ['key', 'subject_ids'], find_tests: ['key', 'subject_ids'], plan_rename: ['key', 'subject_id'], plan_move: ['key', 'subject_id'], get_symbol_card: ['key', 'symbol_id'] }
   const keyed = (name: string, into: string) => {
     if (!(name in out)) return
     // A key is one way to name the subject: with an id or a path as well, the call does not say which it means.
@@ -1394,6 +1395,39 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     }
   },
 
+  find_clusters(ctx, input) {
+    if (input.subject_id && input.path) throw new ProofmeshError('INVALID_ARGUMENT', 'give subject_id or path')
+    let path = input.path === undefined ? undefined : fileAt(ctx, String(input.path)).path
+    if (input.subject_id) {
+      const row = ctx.db.prepare(`select path from file where disposition='indexed' and id=coalesce((select file_id from symbol where id=?),?)`).get(input.subject_id, input.subject_id) as { path: string } | undefined
+      if (!row) throw new ProofmeshError('NOT_FOUND', 'subject has no indexed file in this snapshot')
+      path = row.path
+    }
+    const result = fileClusters(ctx.db, ctx.snapshot.id, input)
+    const cluster = path === undefined ? undefined : result.byPath.get(path)
+    const shared = path === undefined ? result.shared : result.shared.filter(f => f.path === path)
+    const groups = path === undefined ? result.clusters.filter(c => c.files > 1 || result.tiny || input.include_singletons) : cluster ? [cluster] : []
+    const members = cluster ? result.members.get(cluster.id)! : []
+    const boundaries = cluster ? [...result.boundaries.get(cluster.id)!].sort(([a, x], [b, y]) => y - x || (a < b ? -1 : 1)).map(([target, edges]) => ({ target, edges })) : []
+    const offset = ctx.page.offset, limit = ctx.limits.max_rows
+    const total = path === undefined ? groups.length : members.length
+    const more = offset + limit < total
+    const data = {
+      clusters: (path === undefined ? groups.slice(offset, offset + limit) : groups).map(c => ({ ...c, representative: result.members.get(c.id)![0]!.path })),
+      members: members.slice(offset, offset + limit).map(m => ({ ...m })),
+      boundaries: boundaries.slice(0, limit), total_boundaries: boundaries.length,
+      shared: shared.slice(0, limit).map(f => ({ ...f })), total_shared: shared.length, singletons: result.singletons, tiny: result.tiny,
+    }
+    return { data, total, more, shrink: path === undefined ? 'clusters' : 'members',
+      stop_reasons: more || shared.length > limit || boundaries.length > limit ? ['max_rows'] : [],
+      limitations: [...(result.tiny ? ['Fewer than 20 indexed files in scope. All form one cluster.'] : []),
+        ...(path && !cluster && !shared.length ? ['The subject is excluded by the file filters.'] : [])],
+      lean: d => [...(d.clusters as typeof data.clusters).map(c => `${quote(c.label)} ${quote(c.representative)} files=${c.files} cohesion=${c.cohesion} id=${c.id}`),
+        ...(d.members as typeof data.members).map(m => `${quote(m.path)} internal_degree=${m.internal_degree}`),
+        ...(d.boundaries as typeof data.boundaries).map(b => `to=${b.target} edges=${b.edges}`),
+        ...(d.shared as typeof data.shared).map(f => `${quote(f.path)} shared degree=${f.degree}`)] }
+  },
+
   find_duplicates(ctx, input) {
     if (input.subject_id && input.path) throw new ProofmeshError('INVALID_ARGUMENT', 'give subject_id or path')
     if (input.subject_id && !ctx.db.prepare('select 1 from symbol where id = ?').get(input.subject_id)) throw new ProofmeshError('NOT_FOUND', 'subject symbol is absent from the snapshot')
@@ -1933,6 +1967,15 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
 
   get_overview(ctx, input) {
     const o = overview(ctx.db, ctx.snapshot.id, { path: input.path as string | undefined, text: input.text as string | undefined, maxRows: ctx.limits.max_rows })
+    if (input.include_clusters === true) {
+      const { byPath } = fileClusters(ctx.db, ctx.snapshot.id)
+      for (const child of o.children) {
+        const matches = child.kind === 'directory'
+          ? new Set([...byPath].filter(([path]) => path.startsWith(child.key + '/')).map(([, c]) => c))
+          : [byPath.get(child.kind === 'symbol' ? o.path : child.key)]
+        Object.assign(child, { clusters: [...matches].flatMap(c => c ? [{ id: c.id, label: c.label }] : []).sort((a, b) => a.id < b.id ? -1 : 1) })
+      }
+    }
     return { data: o, stop_reasons: o.omitted > 0 ? ['max_rows'] : [], shrink: 'children' }
   },
 

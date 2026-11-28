@@ -1235,3 +1235,13 @@ Each must produce a tested result or an explicit unsupported limitation, never s
 - [ ] Publication gate passed: fresh-history export, leak scan, manual review, ownership confirmation, name clearance.
 - [ ] Execution features remain disabled until P2 security gates pass.
 - [ ] Shared hosting remains unsupported until its own ADR and tests pass.
+
+### File communities
+
+- FR2220: MUST group indexed files using imports, calls, references, inheritance and implementation, with controls for resolution, inferred links, tests and result limits.
+- FR2221: MUST cache each snapshot partition and use fixed module-key order for deterministic Louvain clustering.
+- FR2222: MUST derive each cluster ID from its lowest member key and the requested resolution.
+- FR2223: MUST report file and symbol counts, internal and boundary edge counts, cohesion, a path-and-symbol label, ranked members and boundary counts by destination.
+- FR2224: MUST optionally identify each overview child's file communities by ID and label.
+- FR2225: MUST separate shared hubs in the highest degree percentile with at least thirty distinct neighbors.
+- FR2226: MUST exercise these requirements against a planted, cross-directory fixture and record their test in the traceability policy.

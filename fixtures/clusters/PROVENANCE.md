@@ -1,0 +1,1 @@
+Project-authored for Proofmesh under Apache-2.0. Run `node fixtures/clusters/build.mjs <empty-directory>` to plant four eight-file TypeScript groups across the same eight directories, three bridges, one shared logger and an isolated file. The clustering test indexes the generated sources.

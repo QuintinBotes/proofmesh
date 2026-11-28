@@ -1,0 +1,149 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "find_clusters.data.schema.json",
+  "title": "find_clusters data",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "clusters",
+    "members",
+    "boundaries",
+    "total_boundaries",
+    "shared",
+    "total_shared",
+    "singletons",
+    "tiny"
+  ],
+  "properties": {
+    "clusters": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "label",
+          "representative",
+          "files",
+          "symbols",
+          "internal_edges",
+          "external_edges",
+          "cohesion"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "representative": {
+            "type": "string"
+          },
+          "files": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "symbols": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "internal_edges": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "external_edges": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "cohesion": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          }
+        }
+      }
+    },
+    "members": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "internal_degree"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "internal_degree": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "generated": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    "boundaries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "target",
+          "edges"
+        ],
+        "properties": {
+          "target": {
+            "type": "string"
+          },
+          "edges": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      }
+    },
+    "total_boundaries": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "shared": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "degree"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "degree": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "generated": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    "total_shared": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "singletons": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "tiny": {
+      "type": "boolean"
+    }
+  }
+}
