@@ -85,7 +85,19 @@ Three measured cold runs per fixture used an Apple M5 Max, 18 cores, 64 GB, macO
 | Synthetic, seed 1 | 50,000 | 0 | 249 ms | 449 MiB | All passed |
 | Synthetic, seed 1 | 250,000 | 0 | 373 ms | 662 MiB | All passed |
 
-TypeORM and the 250,000-point fixture met the 10% cold-run agreement criterion for every timed interaction with a median over 100 ms. At 50,000 points the repeat Terrain switch took 117, 102 and 101 ms, a 15.7% spread. This leaves SC-002 of #41 open. These are measurements of this build on this machine.
+TypeORM and the 250,000-point fixture met the 10% cold-run agreement criterion for every timed interaction with a median over 100 ms. At 50,000 points the repeat Terrain switch took 117, 102 and 101 ms, a 15.7% spread. These measurements predate renderer reuse in #333.
+
+### Returning to Terrain after snapshot Diff
+
+On 2026-11-28, three fresh profiles per fixture measured the return to the map after checking Diff. The previous build recreated the canvas. At `ebf6a8b`, the comparison reuses the canvas and preserves its camera. The timer runs from the click until the Terrain controls are visible and two animation frames have elapsed. The first browser run is reported separately. Both builds used Chromium 158.0.8127.18 (Playwright build 1254) with Metal on an Apple M5 Max with 18 cores and 64 GB of memory.
+
+| Fixture (symbols) | Previous median repeat switch (ms) | Repeat switch, three runs (ms) | Median cold first draw (ms) | Median browser RSS at load (MiB) |
+| --- | ---: | --- | ---: | ---: |
+| TypeORM (7,033) | 100 | 50, 50, 50 | 232 | 388 |
+| Synthetic (50,000) | 102 | 50, 49, 50 | 251 | 450 |
+| Synthetic (250,000) | 265 | 51, 50, 50 | 403 | 662 |
+
+All three fixtures passed their configured budgets. TypeORM and the 50,000-symbol fixture met the 10% agreement criterion for cold timings with medians over 100 ms. At 250,000 symbols, first draw and time to interactive each had a 12.2% spread, and layout settling had an 11.6% spread. The repeat switch stayed within 1 ms across the three runs. [Full reports for all three fixtures](https://github.com/QuintinBotes/proofmesh/issues/41#issuecomment-7245363576)
 
 ## Budgets
 
