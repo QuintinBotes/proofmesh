@@ -142,6 +142,14 @@ describe('FR1160 to FR1169 the Observatory benchmark measures what a reader wait
     expect(md).toMatch(/^\| Time, a step between two loaded snapshots \| 87 ms \|.*\| 300 ms \(gpu\) \| ≤ 300 ms \(#48 SC-002\) \| within \|$/m)
   })
 
+  it('FR2620 the farthest a shared symbol moves from A to B is budgeted at 2% of the width: #275\'s 16% fails the check', async () => {
+    const { checkBudgets } = await lib()
+    const budgets = JSON.parse(fs.readFileSync(path.join(ROOT, 'bench', 'observatory', 'budgets.json'), 'utf8')).budgets
+    const row = (max: number) => checkBudgets({ software_renderer: false, stability: { a_to_b: { max } } }, budgets).find((b: { key: string }) => b.key === 'stability.a_to_b.max')
+    expect(row(0.0177)).toMatchObject({ median: 0.0177, budget: 0.02, over: false })
+    expect(row(0.1624)).toMatchObject({ median: 0.1624, budget: 0.02, over: true })
+  })
+
   it('FR1166 the main thread is read from long tasks: blocking time and the quiet window that ends it', async () => {
     const { mainThread } = await lib()
     // Long tasks at 100 (80 ms), 300 (120 ms) and 3000 (60 ms); first paint at 50, first draw at 200; quiet for a second after 420.

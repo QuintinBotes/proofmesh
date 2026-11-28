@@ -2126,6 +2126,15 @@
     "FR1620": [
       "packages/proofmesh/test/layout.test.ts"
     ],
+    "FR2620": [
+      "packages/proofmesh/test/layout.test.ts",
+      "packages/proofmesh/test/observatory-bench.test.ts",
+      "e2e/time.spec.ts"
+    ],
+    "FR2621": [
+      "packages/proofmesh/test/layout.test.ts",
+      "apps/observatory/test/galaxy.test.ts"
+    ],
     "FR580": [
       "packages/proofmesh/test/concepts.test.ts"
     ],

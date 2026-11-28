@@ -32,4 +32,6 @@ Changed between `proofmesh view` and its browser (#44): the Galaxy payload (`/ap
 
 Changed between `proofmesh view` and its browser (#46): the Galaxy payload is format 5. Its areas are a file's first two directories (they were its first three), and it adds the layout's cells (four sections and `cells`, `cell_names_bytes` in the header) and the bundles between areas (`bundles`, `relationship_types` in the header). A new route, `/api/v1/galaxy/bundle`, lists the relationships of one bundle. Neither is a public contract; a data directory rebuilds each payload once as `cache/galaxy-v5-<snapshot>`, and the `galaxy-v4` files can be deleted. The snapshot file format and every MCP answer, `analyze_impact`'s `by_area` included, do not change.
 
+Changed between `proofmesh view` and its browser (#275): the Galaxy payload is format 6. Its sections and header are format 5's; the layout's strip counts changed, so every snapshot's positions and cells differ from format 5's. A data directory rebuilds each payload once as `cache/galaxy-v6-<snapshot>`, and the `galaxy-v5` files can be deleted. The snapshot file format and every MCP answer do not change.
+
 Deprecations are listed in CHANGELOG.md under the release that announces them.

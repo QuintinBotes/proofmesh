@@ -17,7 +17,7 @@ function random(seed) {
   return () => { a = (a + 0x6d2b79f5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296 }
 }
 
-/** { gz, ids, links }: the gzipped galaxy (format 5) and the id of each point, for `nodes` symbols and about 2.94 links per symbol. */
+/** { gz, ids, links }: the gzipped galaxy (format 6) and the id of each point, for `nodes` symbols and about 2.94 links per symbol. */
 export function generateGalaxy({ nodes: n, seed, snapshotId, ids: real }) {
   if (!Number.isInteger(n) || n < 1 || n > 1_000_000) throw new Error(`--nodes must be an integer from 1 to 1,000,000, not ${n}`)
   if (!real.length) throw new Error('the indexed fixture has no symbols to map synthetic points to')
@@ -85,7 +85,7 @@ export function generateGalaxy({ nodes: n, seed, snapshotId, ids: real }) {
   let at = 0
   for (const s of sections) { offsets.push(at); at += s.length; at += (4 - (at % 4)) % 4 }
   const header = Buffer.from(JSON.stringify({
-    format: 5, snapshot_id: snapshotId, nodes: n, links: made, areas, kinds, files, names_bytes: nameBytes.length,
+    format: 6, snapshot_id: snapshotId, nodes: n, links: made, areas, kinds, files, names_bytes: nameBytes.length,
     bundles, relationship_types: ['calls'], cells: cells.length, cell_names_bytes: cellNames.length,
     offsets: { links: offsets[0], degree: offsets[1], area: offsets[2], kind: offsets[3], positions: offsets[4], names: offsets[5], cell_rects: offsets[6], cell_parent: offsets[7], cell_count: offsets[8], cell_names: offsets[9] },
   }), 'utf8')

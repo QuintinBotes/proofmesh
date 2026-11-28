@@ -1,6 +1,6 @@
 import crypto from 'node:crypto'
 import { describe, expect, it } from 'vitest'
-import { LAYOUT_SCALE, type LayoutCell, layoutPositions, type Placed } from '../src/query/layout.js'
+import { LAYOUT_SCALE, type LayoutCell, layoutPositions, type Placed, powerOfTwo } from '../src/query/layout.js'
 
 /** A repository-shaped path tree: 500 files of 1 to 15 symbols in nested directories of uneven size, from a fixed seed. */
 function repository(): Placed[] {
@@ -50,7 +50,7 @@ describe('FR1220 positions are a pure function of the path tree and the names', 
     shuffled.forEach(([, i], j) => expect([q[j * 2], q[j * 2 + 1]]).toEqual([p[i * 2], p[i * 2 + 1]]))
     // Pinned: only IEEE 754 arithmetic that rounds the same everywhere, so another machine must print the same digest. A new
     // digest means the layout changed: bump GALAXY_FORMAT with it, so cached payloads are rebuilt.
-    expect(crypto.createHash('sha256').update(p).digest('hex')).toBe('b42ec81c78590e3ede314437fae1bf15dfa6eaca642f9d6cb6aafc3f6fcd0bd1')
+    expect(crypto.createHash('sha256').update(p).digest('hex')).toBe('aa0e39e897e4453525621d6a9ab81966b50efb3b96f412aab05bdda266d781d3')
   })
 
   it('directories, then files, then symbols in name order; overloads take their own places by declaration line', () => {
@@ -118,6 +118,46 @@ describe('FR1222 a commit moves only what it touches', () => {
     const family = dir(dir(added))
     const shifted = a.filter((x) => !x.path.startsWith(`${family}/`) && dist(before.get(key(x))!, next.get(key(x))!) > 0.02)
     expect(shifted).toEqual([])
+  })
+})
+
+/**
+ * The Observatory benchmark's TypeORM sample as the layout sees it around src/util: src's children with their real symbol
+ * counts, each directory but util as one file of that many symbols (what is inside a sibling cannot change util's cell), and
+ * util's own files with theirs. Snapshot B is bench/observatory/snapshot-b.mjs's commit in src/util: Retry.ts with three
+ * functions, and titleCase removed. Its method added to QueryBuilder.ts is in a directory this collapses into one file, so the
+ * whole commit is checked on the real sample (e2e/time.spec.ts, the Observatory benchmark's stability step).
+ */
+function typeorm(): { a: Placed[]; b: Placed[] } {
+  const src = 'cache 47, commands 97, common 8, connection 30, data-source 71, decorator 202, driver 3941, entity-manager 117, entity-schema 120, error 72, find-options 88, logger 40, metadata 399, metadata-args 177, metadata-builder 37, migration 38, naming-strategy 52, persistence 122, platform 23, query-builder 518, query-runner 132, repository 173, schema-builder 254, subscriber 125'
+  const util = 'ApplyValueTransformers 3, DateUtils 17, DepGraph 15, DirectoryExportedClassesLoader 2, ImportUtils 2, InstanceChecker 31, ObjectUtils 5, OrmUtils 21, PathUtils 5, RandomGenerator 2, StringUtils 12, TreeRepositoryUtils 4, VersionUtils 4, escapeRegExp 2'
+  const file = (path: string, names: string[]) => names.map((n, i) => ({ path, name: `${path.slice(0, -3)}:${n}`, line: 1 + i * 10, byte: i * 300 }))
+  const many = (path: string, n: number) => file(path, Array.from({ length: n }, (_, i) => `s${i}`))
+  const strings = ['camelCase', 'titleCase', 'abbreviate', 'IHashOptions.length', 'IShortenOptions.separator', 'IShortenOptions.termLength', 'IShortenOptions', 'IHashOptions', 'shorten', 'IShortenOptions.segmentLength', 'snakeCase', 'hash']
+  const a = [
+    ...src.split(', ').flatMap((s) => { const [d, n] = s.split(' '); return many(`src/${d}/index.ts`, +n!) }),
+    ...util.split(', ').flatMap((s) => { const [f, n] = s.split(' '); return f === 'StringUtils' ? file('src/util/StringUtils.ts', strings) : many(`src/util/${f}.ts`, +n!) }),
+    ...many('src/container.ts', 11), ...many('src/globals.ts', 14),
+  ]
+  const b = [
+    ...a.filter((x) => x.name !== 'src/util/StringUtils:titleCase'),
+    ...file('src/util/Retry.ts', ['withRetry', 'backoffDelay', 'isRetryable']),
+  ]
+  return { a, b }
+}
+
+describe('FR2620 a file added to a directory leaves the other files where they were (#275)', () => {
+  it('on the benchmark\'s commit to src/util, no symbol present in both moves more than 2% of the map\'s width', () => {
+    const { a, b } = typeorm()
+    const before = fitted(a), after = fitted(b)
+    const moved = a.filter((x) => after.has(key(x))).map((x) => [x.name, dist(before.get(key(x))!, after.get(key(x))!)] as const).sort((x, y) => y[1] - x[1])
+    expect(moved.length).toBe(a.length - 1)
+    expect(moved[0]![1], moved[0]![0]).toBeLessThanOrEqual(0.02)
+  })
+
+  it('FR2621 a cell\'s shape counts as the nearest power of two, by exact comparisons, so every machine picks the same strips', () => {
+    expect([1, 1.41, 1.42, 0.71, 0.7, 42, 1 / 42].map(powerOfTwo)).toEqual([1, 1, 2, 1, 0.5, 32, 1 / 32])
+    expect(powerOfTwo(Math.SQRT2)).toBe(2)
   })
 })
 

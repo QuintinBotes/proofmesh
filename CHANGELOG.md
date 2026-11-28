@@ -4,6 +4,8 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 ## Unreleased
 
+Adding a file no longer moves the other files of its directory across the map (closes #275, closes #48; FR2620, FR2621). On the Observatory benchmark's commit, which adds `src/util/Retry.ts` to the TypeORM sample, a symbol present in both snapshots moved up to 16.2% of the map's width (`src/util/PathUtils`); now none moves more than 1.8%, and none of 6,988 more than 2% (was 0.59%). The ordered strips are unchanged in kind; how many strips a cell gets changed. A directory's children take a whole number of strips, so no strip is born almost empty and no directory is laid out as a sliver (`src/util` was a 42:1 column). Files and symbols take about one item's thickness each, from their cell's shape rounded to a power of two, so a re-broken strip moves an item by about its own size. Fewer file cells are long and thin: 14% of symbols sit in a file more than 4:1, against 34%. The same snapshot still gives the same bytes, and 250,000 symbols take 0.17 s of CPU. The benchmark now also budgets the farthest move, `stability.a_to_b.max` (2%). Upgrade note: the Galaxy payload is format 6, so each snapshot's payload is rebuilt once (`cache/galaxy-v6-<snapshot>`), and positions differ from earlier builds for every snapshot.
+
 Time: scrub snapshots on the same map (part of #48; FR1760 to FR1765):
 
 - The header's snapshot picker is now Time, in the left panel: a scrubber and a strip of every published snapshot, newest first, each with its symbols and unresolved share, which `list_snapshots` now gives (`symbols`, `relationships`, `unresolved`). `[` and `]` step one snapshot, and every view is pinned to the snapshot shown.

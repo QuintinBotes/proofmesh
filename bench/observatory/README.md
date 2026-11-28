@@ -104,6 +104,7 @@ a task that long delays the answer to a click visibly. It is what makes `--check
 | First drawn map, warm | `warm.first_draw_ms` | - | - | ≤ 300 ms at 50,000 symbols (#47 SC-003) |
 | Time, a step between two loaded snapshots | `warm.time_step_ms` | 300 ms (#48) | 300 ms | ≤ 300 ms (#48 SC-002) |
 | Shared symbols moved more than 2% of the map's width, A then B (share) | `stability.a_to_b.moved_2pct` | 0.01 (#48) | 0.01 | ≤ 1% (#48 SC-001) |
+| Farthest a shared symbol moved, A then B (share of the map's width) | `stability.a_to_b.max` | 0.02 (#275) | 0.02 | ≤ 2% (#48 scenario 1, #275) |
 
 ## Latest results
 
