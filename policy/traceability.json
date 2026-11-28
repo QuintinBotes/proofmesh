@@ -2310,6 +2310,12 @@
     "FR966": [
       "packages/proofmesh/test/parity-bench.test.ts"
     ],
+    "FR2400": [
+      "packages/proofmesh/test/graph-query.test.ts"
+    ],
+    "FR2401": [
+      "packages/proofmesh/test/graph-query.test.ts"
+    ],
     "FR1760": [
       "packages/proofmesh/test/observatory-parity.test.ts",
       "e2e/time.spec.ts"

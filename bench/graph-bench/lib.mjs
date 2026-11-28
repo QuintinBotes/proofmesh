@@ -247,12 +247,12 @@ export function queryGraphQuery(q) {
     case 'callers': return ['MATCH ()-[r:calls]->(t {qualified_name: $t}) RETURN r', { t: qnameOf(t) }]
     case 'implementations': return ['MATCH ()-[r:implements]->(t {qualified_name: $t}) RETURN r', { t: qnameOf(t) }]
     case 'importers': return ['MATCH (:file)-[r:imports]->(:file {path: $path}) RETURN r', { path: t.file }]
-    case 'dependents': return ['MATCH (d:file)-[:imports*1..6]->(:file {path: $path}) WHERE d.path <> $path RETURN DISTINCT d', { path: t.file }]
+    case 'dependents': return ['MATCH (d:file)-[:imports*1..12]->(:file {path: $path}) WHERE d.path <> $path RETURN DISTINCT d', { path: t.file }]
     case 'transitive_callers': return [`MATCH (c)-[:calls*1..${q.depth}]->(t {qualified_name: $t}) RETURN DISTINCT c`, { t: qnameOf(t) }]
     case 'path': return ['MATCH p = (s {qualified_name: $s})-[:calls*1..6]->(t {qualified_name: $t}) RETURN p LIMIT 1', { s: qnameOf(q.source), t: qnameOf(t) }]
     case 'type_users': return ['MATCH ()-[r:references]->(t {qualified_name: $t}) RETURN r', { t: qnameOf(t) }]
     case 'dead_code': return ["MATCH (f:function) WHERE f.path STARTS WITH $scope AND f.qualified_name ENDS WITH ':' + f.name AND NOT EXISTS { (x)-->(f) WHERE x <> f } RETURN f", scope]
-    case 'cycles': return ['MATCH (a:file)-[:imports*1..6]->(a) WHERE a.path STARTS WITH $scope RETURN a', scope]
+    case 'cycles': return ['MATCH (a:file)-[:imports*1..12]->(a) WHERE a.path STARTS WITH $scope RETURN a', scope]
     case 'roots': return ["MATCH (f:file) WHERE f.path STARTS WITH $scope AND f.disposition = 'indexed' AND NOT EXISTS { (g:file)-[:imports]->(f) WHERE g.path STARTS WITH $scope } RETURN f", scope]
     // Distinct users by calls and references, as the truth counts them. Every use is held before count, so max_rows bounds what it ranks.
     case 'hubs': return [`MATCH (u)-[:calls|references]->(s) WHERE u <> s WITH s, count(DISTINCT u) AS users RETURN s, users ORDER BY users DESC, s LIMIT ${q.top}`, {}]
@@ -263,7 +263,7 @@ export function queryGraphAdapter(pm, { callKeys }, raw, runs = 1) {
     const [query, params] = queryGraphQuery(q)
     const ms = []
     let r
-    for (let i = 0; i < runs; i++) { r = await pm.call('query_graph', { query, params, limits: { max_rows: 1000, max_bytes: 1048576, timeout_ms: 30000 } }); ms.push(r.ms) }
+    for (let i = 0; i < runs; i++) { r = await pm.call('query_graph', { query, params, limits: { max_rows: 1000, max_bytes: 1048576, timeout_ms: 30000, max_depth: 12 } }); ms.push(r.ms) }
     raw(`pm-query-${q.id}.txt`, `${query}\n${JSON.stringify(params)}\n${r.text}`)
     if (r.isError || !r.text.startsWith('# ')) return { error: r.text.slice(0, 400), ms: ms[0], all_ms: ms, query }
     const rows = r.text.split('\n').slice(1).filter((l) => !l.startsWith('# ')).map(parseRow)

@@ -3753,7 +3753,7 @@ inferred?: boolean
 }
 
 /**
- * An escape hatch for a question the typed tools do not answer in one call: one bounded, read-only openCypher query over the snapshot (extra profile). Try find_symbols, get_relationships, trace_paths and analyze_impact first; they add dispatch, candidates and boundaries this does not. MATCH and OPTIONAL MATCH node and relationship patterns, variable-length paths with an upper bound of at most 6 (*1..3), WHERE, WITH, RETURN, ORDER BY, SKIP, LIMIT, count and collect. Labels are symbol kinds, file and external; relationship types are the snapshot's (calls, imports, implements, references, ...). Writes, procedures and file access are refused. Rows are `name path:line`, tagged inferred when a hop is.
+ * An escape hatch for a question the typed tools do not answer in one call: one bounded, read-only openCypher query over the snapshot (extra profile). Try find_symbols, get_relationships, trace_paths and analyze_impact first; they add dispatch, candidates and boundaries this does not. MATCH and OPTIONAL MATCH node and relationship patterns, variable-length paths with an upper bound of at most limits.max_depth, 6 by default and 12 at most, for the whole query (*1..3), WHERE, WITH, RETURN, ORDER BY, SKIP, LIMIT, count and collect. Labels are symbol kinds, file and external; relationship types are the snapshot's (calls, imports, implements, references, ...). Writes, procedures and file access are refused. Rows are `name path:line`, tagged inferred when a hop is.
  */
 export interface QueryGraphInput {
 /**
