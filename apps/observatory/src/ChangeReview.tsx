@@ -114,7 +114,7 @@ export function ChangeControls({ review, range, depth, pending, open, onReview, 
           <p data-testid="change-summary">{summaryText(review.data.totals)}</p>
           <p className={`gate ${g.passing ? 'passing' : 'failing'}`} data-testid="change-gate">Gate {g.text}</p>
           <ul className="change-legend" aria-label="Change legend">
-            {(Object.keys(MARK_WORDS) as MarkKind[]).map((k) => (
+            {(Object.keys(MARK_WORDS) as MarkKind[]).filter((k) => k !== 'covered' || review.data.totals.covered !== undefined).map((k) => (
               <li key={k}><svg width="32" height="32" viewBox="-16 -16 32 32" aria-hidden="true"><Shape kind={k} /></svg> {MARK_WORDS[k]} <span className="count">{counts[k]}</span></li>
             ))}
           </ul>
