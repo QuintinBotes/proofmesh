@@ -1,0 +1,7 @@
+{
+  "type": "object",
+  "description": "Discard the active buffer and restore queries against the published repository.",
+  "additionalProperties": false,
+  "required": [],
+  "properties": {}
+}

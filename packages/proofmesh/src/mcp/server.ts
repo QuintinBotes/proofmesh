@@ -1,4 +1,5 @@
 import http from 'node:http'
+import { EditorSession, editorListing, editorTools } from './editor.js'
 import { Server } from '@modelcontextprotocol/sdk/server/index.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
@@ -53,7 +54,7 @@ function listing(name: ToolName, full: boolean) {
 }
 
 /** One tool surface for every transport, so stdio and HTTP clients see the same tools and envelopes. */
-function createServer(dataDir: string, version: string, profiles: string[], sessionId: string): Server {
+function createServer(dataDir: string, version: string, profiles: string[], sessionId: string, editor?: EditorSession): Server {
   const full = profiles.includes('all')
   const evidenceOnly = profiles.every((profile) => profile === 'evidence')
   const restricted = (name: ToolName) => profiles.includes('evidence') && EVIDENCE.has(name) && !full && !profiles.includes(PROFILE[name])
@@ -61,30 +62,37 @@ function createServer(dataDir: string, version: string, profiles: string[], sess
   const instructions = evidenceOnly
     ? 'Read a published snapshot. Start with find_symbols, follow get_relationships, and use read_evidence for cited source. For JSON with ids, request envelope full. Pass repository_id when several repositories are registered.'
     : INSTRUCTIONS
-  const server = new Server({ name: 'proofmesh', version }, { capabilities: { tools: {} }, instructions })
+  const server = new Server({ name: 'proofmesh', version }, { capabilities: { tools: {} }, instructions: instructions + (editor ? ' Use apply_edit to query unsaved TypeScript on this connection. Discard it with discard_edit.' : '') })
   // One connection, one agent context: the snapshot-wide parts of an envelope are sent once per snapshot, then left out.
   // Its id groups the subjects of its queries, where a person turned recording on (#50).
   const session = { fullSent: new Set<string>(), id: sessionId }
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: TOOLS.filter(loaded).map((name) => {
+    tools: [...TOOLS.filter(loaded).map((name) => {
       const tool = listing(name, full)
       if (!restricted(name)) return tool
       const properties = (tool.inputSchema as { type: 'object'; properties?: Record<string, unknown> }).properties
       return { ...tool, inputSchema: { ...tool.inputSchema, properties: { ...properties, freshness: { enum: ['snapshot'] } } },
         annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false } }
-    }),
+    }), ...(editor ? editorTools.map(editorListing) : [])],
   }))
   server.setRequestHandler(CallToolRequestSchema, async (req, extra) => {
     log('debug', 'tool call', { tool: req.params.name })
     try {
       // A call cancelled before its handler starts is not run; the SDK sends nothing for a cancelled request, as MCP requires.
       const args = (req.params.arguments ?? {}) as Record<string, unknown>
+      const control = editorTools.find(n => n === req.params.name)
+      if (editor && control) {
+        const answer = await editor.control(control, args, extra.signal)
+        return { content: [{ type: 'text', text: JSON.stringify(answer) }], structuredContent: answer }
+      }
       const name = req.params.name as ToolName, profile = Object.hasOwn(PROFILE, name) ? PROFILE[name] : undefined
       // A tool of a profile not loaded is refused by name, never answered as if it did not exist (FR423).
       if (profile && !loaded(name)) throw new ProofmeshError('INVALID_ARGUMENT', `${name} is in the ${profile} tool profile, which this server was not started with; start proofmesh mcp with --tools core,${profile} or --tools all`, { detail: 'tool_not_loaded', profile })
       if (restricted(name) && args.freshness === 'strict') throw new ProofmeshError('INVALID_ARGUMENT', 'the evidence profile reads published snapshots; strict freshness can start indexing')
       // The query tools answer lean unless a client names compact or full; a lean answer is its text alone (FR099).
-      const envelope = runTool(dataDir, req.params.name, LEAN.has(req.params.name) && args.envelope === undefined ? { ...args, envelope: 'lean' } : args, session, extra.signal)
+      const view = editor?.route(name, args)
+      const query = view?.args ?? args
+      const envelope = runTool(view?.dataDir ?? dataDir, name, LEAN.has(name) && args.envelope === undefined ? { ...query, envelope: 'lean' } : query, view ? { ...session, edit: view.edit } : session, extra.signal)
       if (envelope.text !== undefined) return { content: [{ type: 'text', text: envelope.text }] }
       return { content: [{ type: 'text', text: JSON.stringify(envelope) }], structuredContent: envelope as unknown as Record<string, unknown> }
     } catch (e) {
@@ -99,8 +107,18 @@ function createServer(dataDir: string, version: string, profiles: string[], sess
 const mcpSessionId = () => `mcp_${queryId().slice(2)}`
 
 /** MCP over stdio. stdout carries protocol frames only; logs go to stderr. */
-export async function serveStdio(dataDir: string, version: string, profiles = ['core']): Promise<void> {
-  await createServer(dataDir, version, profiles, mcpSessionId()).connect(new StdioServerTransport())
+export async function serveStdio(dataDir: string, version: string, profiles = ['core'], editing = false): Promise<void> {
+  const editor = editing ? new EditorSession(dataDir) : undefined
+  const server = createServer(dataDir, version, profiles, mcpSessionId(), editor)
+  if (editor) {
+    const close = () => editor.close()
+    server.onclose = close
+    process.once('exit', close)
+    process.once('SIGTERM', () => process.exit(143))
+    process.once('SIGINT', () => process.exit(130))
+    process.stdin.once('end', close)
+  }
+  await server.connect(new StdioServerTransport())
   log('info', 'mcp server ready', { dataDir })
 }
 

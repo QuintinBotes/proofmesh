@@ -1,0 +1,28 @@
+{
+  "type": "object",
+  "description": "Index one unsaved TypeScript buffer for this stdio session. Copy the snapshot ID and the object hash of the file from its sealed evidence. Call discard_edit to restore ordinary queries.",
+  "additionalProperties": false,
+  "required": [
+    "snapshot_id",
+    "path",
+    "base_hash",
+    "content"
+  ],
+  "properties": {
+    "snapshot_id": {
+      "type": "string",
+      "pattern": "^snap_[0-9a-z]+$"
+    },
+    "path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "base_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "content": {
+      "type": "string"
+    }
+  }
+}

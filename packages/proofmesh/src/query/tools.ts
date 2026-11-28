@@ -128,7 +128,7 @@ const TRUNCATED = 'Results were truncated and this tool does not page; narrow th
 const NARROW = 'Results were truncated; narrow the query or raise the limits.'
 const CONTINUED = 'Results were truncated; pass completion.next_cursor as cursor to get the next page.'
 
-type Ctx = { dataDir: string; db: Database.Database; catalog: Catalog; snapshot: SnapshotRow; limits: AppliedLimits; started: number; store: EvidenceStore; repo: { id: string; name: string; root: string }; page: { offset: number; query: string }; compact: boolean; lean: boolean }
+type Ctx = { edit?: Envelope['edit']; dataDir: string; db: Database.Database; catalog: Catalog; snapshot: SnapshotRow; limits: AppliedLimits; started: number; store: EvidenceStore; repo: { id: string; name: string; root: string }; page: { offset: number; query: string }; compact: boolean; lean: boolean }
 /** Lean leaves out the standing notes, so a lean answer that asks for references says what the snapshot records of them. */
 const leanReferencesNote = (ctx: Ctx, types: readonly string[]): string[] => {
   const note = ctx.lean && types.includes('references') ? referencesNote(snapshotSummary(ctx.db, ctx.snapshot.id).capabilities.references) : null
@@ -165,7 +165,7 @@ const PAGED = new Set<ToolName>(['get_symbols_at', 'find_symbols', 'get_relation
 const WORKSPACE_SCOPED = new Set<ToolName>([])
 
 /** Options a long-lived caller passes: the snapshots it already sent a full envelope for, which later answers send compact, and the MCP session's id. */
-export type ToolSession = { fullSent: Set<string>; id?: string }
+export type ToolSession = { edit?: Envelope['edit']; fullSent: Set<string>; id?: string }
 
 export function runTool(dataDir: string, tool: string, input: Record<string, unknown>, session?: ToolSession, signal?: AbortSignal): Answer {
   // shortcut: cancellation is honoured only before a query starts; a query runs synchronously to its answer or its deadline
@@ -302,7 +302,7 @@ function runRepositoryTool(dataDir: string, tool: string, input: Record<string, 
       registerTestFilter(db)
       // Lean leaves out what compact leaves out: it states only this answer's limitations.
       const lean = input.envelope === 'lean'
-      const ctx: Ctx = { dataDir, db, catalog, snapshot, limits: applied, started: Date.now(), store: new EvidenceStore(dataDir), repo: { id: repo.id, name: repo.name, root: repo.root }, page: { offset: cursor?.offset ?? 0, query }, compact: lean || input.envelope === 'compact' || (input.envelope === undefined && !!session?.fullSent.has(snapshot.id)), lean }
+      const ctx: Ctx = { edit: session?.edit, dataDir, db, catalog, snapshot, limits: applied, started: Date.now(), store: new EvidenceStore(dataDir), repo: { id: repo.id, name: repo.name, root: repo.root }, page: { offset: cursor?.offset ?? 0, query }, compact: lean || input.envelope === 'compact' || (input.envelope === undefined && !!session?.fullSent.has(snapshot.id)), lean }
       const freshness = strict ? strictFreshness(ctx, repo.root) : SNAPSHOT_FRESHNESS
       // Every row that names a file the policy flags generated says so, in the data and in a lean row (FR292).
       const generated = generatedPaths(db)
@@ -420,13 +420,15 @@ function envelope(ctx: Ctx, tool: ToolName, requested: Limits | undefined, r: Pa
   // An imported snapshot says so in every answer, compact and lean included, with its origin and the files that were stale on import (FR1084).
   const imported = ctx.catalog.imported(ctx.snapshot.id)
   const importNote = imported ? [importedLimitation(ctx.snapshot.id, imported)] : []
-  const limitations = [...importNote, ...partialNote, ...clampNotes, ...(r.limitations ?? []), ...(ctx.compact ? [] : standing)]
+  const editNote = ctx.edit ? [`Unsaved edit revision ${ctx.edit.revision} of ${ctx.edit.base_snapshot_id}. Scope: captured TypeScript and JavaScript project sources and configuration; installed packages and other language tiers are outside this view.`] : []
+  const limitations = [...editNote, ...importNote, ...partialNote, ...clampNotes, ...(r.limitations ?? []), ...(ctx.compact ? [] : standing)]
   const order = ['max_rows', 'max_depth', 'max_bytes', 'timeout'] as const
   const env: Envelope = {
     schema_version: ENVELOPE_VERSION,
     query_id: queryId(),
     tool,
-    snapshot: { id: ctx.snapshot.id, repository_id: ctx.snapshot.repository_id, analysis_mode: ctx.snapshot.analysis_mode, published_at: ctx.snapshot.published_at!, commit: git.commit ?? null, ref: git.ref ?? null, behind_remote: git.behind_remote ?? null, behind_ref: git.behind_ref ?? null, fetched_at: git.fetched_at ?? null, ...(imported ? { imported: { origin: imported.origin, imported_at: imported.imported_at, stale_count: imported.stale.length } } : {}) },
+    ...(ctx.edit ? { edit: ctx.edit } : {}),
+    snapshot: { id: ctx.snapshot.id, repository_id: ctx.edit?.repository_id ?? ctx.snapshot.repository_id, analysis_mode: ctx.snapshot.analysis_mode, published_at: ctx.snapshot.published_at!, commit: git.commit ?? null, ref: git.ref ?? null, behind_remote: git.behind_remote ?? null, behind_ref: git.behind_ref ?? null, fetched_at: git.fetched_at ?? null, ...(imported ? { imported: { origin: imported.origin, imported_at: imported.imported_at, stale_count: imported.stale.length } } : {}) },
     freshness,
     // Compact: coverage, like the standing limitations, came with the first answer from this snapshot.
     coverage: ctx.compact ? null : { inventory_complete: true, files_discovered: summary.files_discovered, dispositions: summary.dispositions, capabilities: summary.capabilities },
