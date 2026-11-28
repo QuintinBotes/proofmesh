@@ -4,6 +4,38 @@ All notable changes are listed here. The format follows Keep a Changelog; versio
 
 ## Unreleased
 
+Coverage reports, imported beside static test reach (#241; FR2060 to FR2067):
+
+- `proofmesh observe import <repository> <report> --format lcov|cobertura|jacoco|go-cover [--source NAME] [--test NAME] [--strip-prefix P]` imports a coverage report a test run wrote; `observe validate` reads the same formats. Proofmesh runs no test. Report paths are matched to snapshot paths by suffix; an ambiguous one and one not in the snapshot are listed and not attached. Each file's content hash in the snapshot is stored, and its coverage is stale once the file changes.
+- `find_tests` and `get_symbol` (full envelope) carry `coverage` (`executed`, `lines_covered`, `lines_total`, `source`, `window`), the lean header says `executed by coverage`, and each test the report names as running the subject that no static chain reaches is a row with `evidence: coverage`.
+- `impact_completeness` has the status `covered` for a dependent no test reaches statically that the report shows executed, counted apart; `proofmesh completeness --static-only` counts it as neither. `workspace_status` lists the imports.
+- Answers for a repository with no coverage import are unchanged.
+- Upgrade note: catalog migration 0025 (`coverage_import`). Back up the data directory before upgrading.
+
+Change review: a diff's blast radius and test reach on the Terrain (#49; FR1810 to FR1816):
+
+- The Diff view gains Change review, beside the comparison of snapshots. For a base and a head commit, or the working tree, it lists every row `impact_completeness` returns, each changed symbol then its dependents with their statuses in the tool's words, the summary, and the gate, which fails while any dependent is neither changed nor tested. It has no status logic of its own, and waits for the index job the tool starts when a side has no snapshot yet.
+- On the head snapshot's Terrain, a modified symbol is a filled dot with a ring, an added one a filled dot, a deleted one a cross at its place in the base snapshot; each dependent is ringed solid (changed), double (tested) or dashed (neither). The legend says each in words with its count. A mark or a row opens the row's evidence.
+- Each `impact_completeness` dependent now carries `chain` in JSON: the hops from the dependent at its site to the changed symbol at its declaration, each with its path, line and the assertion id of the relationship to the next. Opening a row shows its chain with no request, and its tests from one `find_tests` request, each with its evidence kind and chain; a test file that only imports it is named, and the row stays neither.
+- `?change=<base>..<head>` (or `?change=<base>` for the working tree) opens it, with `&depth=<n>` and `&open=<stable key>` to open a row. More than 500 rows are drawn a window at a time. The export carries the range, the summary, the gate and the limits in its caption.
+- New route `/api/v1/galaxy/points` gives the Terrain point of each stable key in a snapshot.
+
+The Observatory is sent compressed and cached, its payload parsed off the main thread, and the Terrain's first load kept within the main thread's budget (part of #47, closes #208; FR1450 to FR1455):
+
+- `proofmesh view` sends each asset Brotli- or gzip-compressed from copies the build writes beside it (`.br`, `.gz`), as `Accept-Encoding` allows. Hashed assets carry `Cache-Control: public, max-age=31536000, immutable` and the page `no-cache`; every API answer and refusal now carries `no-store`.
+- A snapshot's Galaxy payload has an address of its own, `GET /api/v1/galaxy/v5/<snapshot id>`, behind the session and cached `private, max-age=31536000, immutable`, so a reload takes it from the HTTP cache. A snapshot gc retired, or another format, is 404, and the page asks again for the current snapshot. `POST /api/v1/galaxy` is unchanged.
+- The Terrain view and the graph view of the other views are chunks of their own, loaded when first shown; the Terrain's comes while its data does.
+- The payload is parsed in a Web Worker that hands the page its typed arrays by transfer, then sends the names lowered for search. Without Web Workers it is parsed on the page in slices of at most 16 ms.
+- The Terrain's first load is cut into tasks: its renderer's shaders are compiled while the payload loads, the renderer is built on the area anchors and bundles, the points layer follows, then the cells in two batches. At 250,000 symbols the longest main-thread task of a cold load was 168 ms and is now 54 to 70 ms; the export drawing is built when it is exported, not on every load; `pnpm bench:observatory --fixture synthetic --nodes 250000 --check` exits 0 (#208).
+- The Terrain table's symbol matches and the Diff table are virtual: every row is reachable by scrolling, a few hundred are in the page, and the 200-row cut is gone. The caption keeps the full count.
+- Not done yet (#47): the Terrain's progressive loading by area (scenario 4); 150 KB of initial JavaScript (213 KB gzip, of which sigma is 107 KB; 186 KB transferred, within the 250 KB target); a payload within 1.0 MB and 5 MB gzip (SC-004, front-coded names); browser memory (SC-005).
+
+Change coupling: the files that change together though no relationship links them (#239; FR2020 to FR2026):
+
+- New tool `get_cochanges` (profile `extra`, lean by default): for each subject file, the files that changed in the same commits of the local git history, with `shared`, `subject_commits`, `partner_commits` and `degree = shared / min(subject_commits, partner_commits)`, ordered by degree. Each row says whether a relationship also links the two files (`linked`, with its types) and whether the partner is test code. Defaults: `min_shared` 3, `min_degree` 0.3, `max_files_per_commit` 50, a window of 365 days back from the snapshot's commit, at most 10,000 commits read. History ends at the snapshot's commit, so one snapshot always gives one answer; renames are followed, nothing is fetched. No history says `no_history` or `history_shallow`.
+- `impact_completeness` takes `include_cochanges`: a separate `cochange` list of the partners of changed files that the diff does not change (`not_changed`). Without it the answer is unchanged.
+- A shared git history reader (`packages/proofmesh/src/indexer/history.ts`) with a per-snapshot cache, for hotspots (#238) and symbol history (#240) to reuse. New fixture `fixtures/history`, a scripted git repository.
+
 Claims & trace: what an agent session read, changed and claimed, on the Terrain (#50; FR1940 to FR1945, FR1950 to FR1957):
 
 - While a person has turned recording on (`proofmesh trail on <repo>`, off by default), `proofmesh mcp` keeps the subjects of each query it answers: symbol ids and repository-relative paths the snapshot holds, never source text or the query's words, in the local catalog beside the query record (migration 0024, `query_subject`), grouped by the session id the server holds for the connection. `list_queries` names a recorded query's `session_id`.

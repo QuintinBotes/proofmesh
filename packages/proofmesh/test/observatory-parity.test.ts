@@ -151,6 +151,17 @@ describe('FR055 Observatory is built only on what other clients can get: its non
     expect(tail.next_offset).toBe(whole.total > 2 ? 2 : null)
   })
 
+  it('FR055 FR1813 /api/v1/galaxy/points: each stable key find_symbols returns is the point /api/v1/galaxy/symbol names by that symbol\'s id; a key with no point is -1', async () => {
+    const g = decodeGalaxy(await route('POST', '/api/v1/galaxy', {}))
+    const ids = await Promise.all(g.names.map(async (_, i) => JSON.parse((await route('POST', '/api/v1/galaxy/symbol', { index: i })).toString()).id as string))
+    const found = (await mcp('find_symbols', { text: ':', limits: { max_rows: 200 } })).data.symbols as Array<{ id: string; key: string; kind: string }>
+    const keys = [...found.map((x) => x.key), 'no such key']
+    const { indices } = JSON.parse((await route('POST', '/api/v1/galaxy/points', { keys })).toString()) as { indices: number[] }
+    expect(indices).toEqual([...found.map((x) => (x.kind === 'module' ? -1 : ids.indexOf(x.id))), -1])
+    expect(indices.filter((i) => i >= 0).length).toBeGreaterThan(5)
+    expect((await request('POST', '/api/v1/galaxy/points', { repository_id: repoId, keys: 'x' })).status).toBe(400)
+  })
+
   it('FR055 /api/v1/snapshots: each listed snapshot\'s id, analysis mode, publication time, commit and current flag are what workspace_status and list_repositories say, and the route is list_snapshots\' data', async () => {
     const listed = JSON.parse((await route('POST', '/api/v1/snapshots', {})).toString()).snapshots as Array<{ id: string; published_at: string; analysis_mode: string; current: boolean; git: { commit?: string } | null }>
     expect(listed).toEqual((await mcp('list_snapshots', { repository_id: repoId })).data.snapshots)

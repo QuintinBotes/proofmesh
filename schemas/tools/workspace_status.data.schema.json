@@ -953,6 +953,63 @@
           "minimum": 0
         }
       }
+    },
+    "coverage": {
+      "type": "array",
+      "description": "Present only when a coverage report is imported for the repository (#241): each import by source.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "source",
+          "format",
+          "imported_at",
+          "window",
+          "files_matched",
+          "stale_files"
+        ],
+        "properties": {
+          "source": {
+            "type": "string"
+          },
+          "format": {
+            "enum": [
+              "lcov",
+              "cobertura",
+              "jacoco",
+              "go-cover"
+            ]
+          },
+          "imported_at": {
+            "type": "string"
+          },
+          "window": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "from",
+              "to"
+            ],
+            "properties": {
+              "from": {
+                "type": "string"
+              },
+              "to": {
+                "type": "string"
+              }
+            }
+          },
+          "files_matched": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "stale_files": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Matched files whose content in this snapshot differs from the content at import."
+          }
+        }
+      }
     }
   }
 }

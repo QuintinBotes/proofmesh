@@ -41,6 +41,11 @@ h2 { font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: 
 table { border-collapse: collapse; width: 100%; font-size: 13px; }
 th, td { border-bottom: 1px solid var(--line); padding: 5px 8px; text-align: left; word-break: break-all; }
 caption { text-align: left; color: var(--dim); padding-bottom: 6px; }
+/* A virtual table scrolls in its own box, and every row is one line of ROW_PX (virtual.tsx), so spacer rows stand in exactly for the rows not drawn (FR1454). */
+.virtual { max-height: 70vh; overflow-y: auto; }
+.virtual tbody tr { height: 28px; }
+.virtual td { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 32em; word-break: normal; padding-block: 0; }
+.virtual tr.spacer td { border: 0; padding: 0; }
 .right { grid-row: 2 / 4; grid-column: 3; width: 380px; padding: 14px; border-left: 1px solid var(--line); overflow-y: auto; position: relative; }
 .close { position: absolute; top: 8px; right: 10px; }
 .ev-title { text-transform: none; letter-spacing: 0; font-size: 15px; color: var(--text); word-break: break-all; padding-right: 30px; }
@@ -267,3 +272,23 @@ kbd { font: 11px ui-monospace, Menlo, monospace; padding: 0 5px; border: 1px sol
 /* The path sits above the rows, so a long horizon scrolls in its own box (focusable, so the keyboard can scroll it too). */
 .lens-path .horizon { max-height: 24vh; overflow-y: auto; margin: 0 0 6px; }
 .source mark { background: rgba(242, 184, 75, 0.35); color: inherit; outline: 1px solid var(--amber); border-radius: 2px; }
+/* Change review (FR1814): marks over the Terrain, the form, the legend and the rows. */
+.change-marks { position: absolute; inset: 0; pointer-events: none; z-index: 3; }
+.change-mark { pointer-events: auto; cursor: pointer; }
+.change-mark.open { filter: drop-shadow(0 0 4px #fff); }
+.change-form { display: grid; gap: 4px; }
+.change-form input, .change-form select { font: inherit; }
+.gate.failing { color: var(--bad); font-weight: 600; }
+.gate.passing { color: var(--ok); font-weight: 600; }
+.change-legend { list-style: none; padding: 0; margin: 4px 0; display: grid; gap: 2px; font-size: 12px; }
+.change-legend li { display: flex; align-items: center; gap: 6px; }
+.change-legend svg { background: #04060d; border-radius: 4px; flex: none; }
+.change-legend .count { margin-left: auto; opacity: 0.8; }
+.change-rows { list-style: none; padding: 0; margin: 4px 0; max-height: 46vh; overflow-y: auto; display: block; }
+.change-rows li.dependent { padding-left: 14px; }
+.change-rows button { display: block; width: 100%; text-align: left; background: none; border: 0; color: inherit; font: inherit; font-size: 12px; padding: 3px 4px; border-radius: 4px; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.change-rows button[aria-pressed="true"] { background: rgba(127, 212, 255, 0.14); }
+.change-rows li[data-status="neither"] .words { color: var(--bad); }
+.change-rows .words { opacity: 0.85; }
+.change-chain { margin: 4px 0 8px; padding-left: 20px; font-size: 12px; }
+.change-tests { padding-left: 16px; font-size: 12px; }

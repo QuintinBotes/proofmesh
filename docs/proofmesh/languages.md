@@ -31,7 +31,7 @@ The TypeScript compiler's type checker, over every `tsconfig.json` and `jsconfig
 
 ## C#
 
-Roslyn, over the solution's projects, with no restore and no build unless the repository is trusted for build evaluation.
+Roslyn, over the solution's projects, with no restore and no build unless the repository is trusted for build evaluation. An index that reads C# without that trust says so in its output, with the command that grants it, since `repo move` and `repo untrust` revoke it.
 
 - Symbols, inheritance, interface implementations and overrides; calls resolved to declarations in the repository. A call into a package that would need a restore or generated code is unresolved.
 - Framework rules: ASP.NET Core endpoints (`exposes`, `maps_to`), dependency injection (`registered_as`, `injects`), Entity Framework tables, hosted services (`runs`), MediatR (`dispatches_to`, `handles`), Kafka (`publishes`, `consumes`), configuration (`reads_config`), package references (`depends_on_package`), named HTTP clients (`AddHttpClient("name")` gives a `service` symbol and `calls_service`, rule `http_client_name`), and Pulumi resources (`new T("name", ...)` for a type deriving from Pulumi's `CustomResource` or `ComponentResource`, named as the TypeScript rules name them, with `references` and `depends_on`).
