@@ -17,7 +17,7 @@ beforeAll(async () => {
 })
 afterAll(async () => { await client?.close() })
 
-const TOOLS = ['analyze_impact', 'compare_snapshots', 'find_cycles', 'find_entry_points', 'find_hubs', 'find_query_source', 'find_stale_mentions', 'find_symbols', 'find_tests', 'find_unused', 'get_claims', 'get_cochanges', 'get_context_map', 'get_ecosystem', 'get_external_usage', 'get_findings', 'get_job', 'get_memory', 'get_overview', 'get_property_reads', 'get_relationships', 'get_session_trail', 'get_symbol', 'get_symbol_card', 'get_symbols_at', 'get_table_reach', 'get_verification', 'impact_completeness', 'list_queries', 'list_repositories', 'list_snapshots', 'list_workspaces', 'plan_move', 'plan_rename', 'prepare_verification', 'query_graph', 'read_evidence', 'request_index', 'save_memory', 'search_concepts', 'search_sources', 'search_structure', 'trace_paths', 'verify_claim', 'workspace_status']
+const TOOLS = ['analyze_impact', 'compare_snapshots', 'find_cycles', 'find_duplicates', 'find_entry_points', 'find_hubs', 'find_query_source', 'find_stale_mentions', 'find_symbols', 'find_tests', 'find_unused', 'get_claims', 'get_cochanges', 'get_context_map', 'get_ecosystem', 'get_external_usage', 'get_findings', 'get_job', 'get_memory', 'get_overview', 'get_property_reads', 'get_relationships', 'get_session_trail', 'get_symbol', 'get_symbol_card', 'get_symbols_at', 'get_table_reach', 'get_verification', 'impact_completeness', 'list_queries', 'list_repositories', 'list_snapshots', 'list_workspaces', 'plan_move', 'plan_rename', 'prepare_verification', 'query_graph', 'read_evidence', 'request_index', 'save_memory', 'search_concepts', 'search_sources', 'search_structure', 'trace_paths', 'verify_claim', 'workspace_status']
 
 describe('AC22 MCP tool contracts', () => {
   it('FR035 FR421 with --tools all lists exactly the M0 tools plus the M2, M3, M5 and M6 tools, each with its input schema file unchanged', async () => {
@@ -67,6 +67,7 @@ describe('AC22 MCP tool contracts', () => {
       ['find_unused', {}], ['find_cycles', {}], ['find_entry_points', {}], ['find_hubs', {}],
       ['get_context_map', { focus: { paths: ['packages/api/src/handler.ts'] } }], ['search_structure', { pattern: 'formatAmount($$$)', language: 'typescript' }], ['search_concepts', { text: 'format the invoice amount' }],
       ['query_graph', { query: "MATCH (c)-[r:calls]->(:function {name: 'formatAmount'}) RETURN r" }],
+      ['find_duplicates', {}],
       ['get_cochanges', { paths: ['packages/api/src/handler.ts'] }],
     ]
     expect(calls.map(([name]) => name).sort()).toEqual([...LEAN].sort())

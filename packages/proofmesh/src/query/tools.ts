@@ -23,7 +23,7 @@ import { analyzeImpact, IMPACT_TYPES, structure, type Impact } from './impact.js
 import { mismatchNotes, repoTag, withWorkspace, workspaceDependents, type Inbound, type Side, type Workspace, type WorkspaceDependent } from './workspace.js'
 import { CANDIDATE_TYPES, candidatesFrom, inferredNotes, resolveFollow, sitesNaming } from './inferred.js'
 import { ADAPTER_LANGUAGE_NAMES } from '../indexer/language-detect.js'
-import { hasRoles, isTestCode, isTestPath, parseRoles, roleTest, rolesSql } from './tests.js'
+import { registerTestFilter, hasRoles, isTestCode, isTestPath, parseRoles, rolesSql } from './tests.js'
 import { EXECUTING, testReach, type TestRow } from './test-reach.js'
 import { changedSymbols, complete, touched, completenessRows, diffLines, inTestCode, projectOf, summaryLine, type Changed } from './completeness.js'
 import { coverageOf, type Coverage } from './coverage.js'
@@ -47,6 +47,8 @@ import { readHistory, type Window } from '../indexer/history.js'
 import { findCycles, findEntryPoints, findHubs, findUnused, type CycleEdge, type EntryPoint, type Hub, type UnusedRow } from './structure.js'
 import { contextMap } from './context-map.js'
 import { stepKind, subjectsOf } from './subjects.js'
+import { generatedNavigation } from '../producer/generates.js'
+import { duplicateGroups, unchangedTwins } from './duplicates.js'
 import { compare, hasBodyHash, side, unreadableFiles } from './compare.js'
 import { importersOf, MAX_FILE_BYTES, MAX_SOURCE_BYTES, reachSet, searchStructure, type StructureMatch } from './structure-search.js'
 import { loadSchema } from '../core/schemas.js'
@@ -58,10 +60,10 @@ import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 
-export const TOOLS = ['workspace_status', 'list_repositories', 'list_snapshots', 'list_workspaces', 'find_symbols', 'get_symbol', 'get_relationships', 'trace_paths', 'read_evidence', 'get_overview', 'analyze_impact', 'find_tests', 'search_sources', 'get_memory', 'verify_claim', 'request_index', 'get_job', 'get_claims', 'save_memory', 'get_table_reach', 'get_property_reads', 'get_external_usage', 'find_query_source', 'compare_snapshots', 'list_queries', 'get_ecosystem', 'prepare_verification', 'get_verification', 'impact_completeness', 'get_symbols_at', 'get_session_trail', 'find_stale_mentions', 'find_unused', 'find_cycles', 'find_entry_points', 'find_hubs', 'get_context_map', 'plan_rename', 'plan_move', 'search_structure', 'search_concepts', 'get_symbol_card', 'query_graph', 'get_findings', 'get_cochanges'] as const
+export const TOOLS = ['workspace_status', 'list_repositories', 'list_snapshots', 'list_workspaces', 'find_symbols', 'get_symbol', 'get_relationships', 'trace_paths', 'read_evidence', 'get_overview', 'analyze_impact', 'find_tests', 'search_sources', 'get_memory', 'verify_claim', 'request_index', 'get_job', 'get_claims', 'save_memory', 'get_table_reach', 'get_property_reads', 'get_external_usage', 'find_query_source', 'compare_snapshots', 'list_queries', 'get_ecosystem', 'prepare_verification', 'get_verification', 'impact_completeness', 'get_symbols_at', 'get_session_trail', 'find_stale_mentions', 'find_unused', 'find_cycles', 'find_entry_points', 'find_hubs', 'get_context_map', 'plan_rename', 'plan_move', 'search_structure', 'search_concepts', 'get_symbol_card', 'query_graph', 'get_findings', 'get_cochanges', 'find_duplicates'] as const
 export type ToolName = (typeof TOOLS)[number]
 /** The query tools whose results are code locations: they answer in the lean envelope on request, and by default over MCP (FR099). */
-export const LEAN = new Set<string>(['find_symbols', 'search_concepts', 'get_symbol', 'get_symbols_at', 'get_relationships', 'trace_paths', 'analyze_impact', 'find_tests', 'get_session_trail', 'find_unused', 'find_cycles', 'find_entry_points', 'find_hubs', 'get_context_map', 'search_structure', 'query_graph', 'get_cochanges'])
+export const LEAN = new Set<string>(['find_symbols', 'search_concepts', 'get_symbol', 'get_symbols_at', 'get_relationships', 'trace_paths', 'analyze_impact', 'find_tests', 'get_session_trail', 'find_unused', 'find_cycles', 'find_entry_points', 'find_hubs', 'get_context_map', 'search_structure', 'query_graph', 'get_cochanges', 'find_duplicates'])
 /** A lean answer is its text; the envelope beside it is what the text was rendered from, for in-process callers. */
 export type Answer = Envelope & { text?: string }
 
@@ -76,7 +78,7 @@ export const CAPABILITY: Record<ToolName, ListQueriesData['tools'][number]['capa
   verify_claim: 'read', request_index: 'management', get_job: 'read', get_claims: 'read', save_memory: 'management', get_table_reach: 'read',
   get_property_reads: 'read', get_external_usage: 'read', find_query_source: 'read', compare_snapshots: 'read', list_queries: 'read',
   get_ecosystem: 'read', prepare_verification: 'management', get_verification: 'read', impact_completeness: 'management', get_symbols_at: 'read', get_session_trail: 'read', find_stale_mentions: 'read',
-  find_unused: 'read', find_cycles: 'read', find_entry_points: 'read', find_hubs: 'read', get_context_map: 'read', plan_rename: 'read', plan_move: 'read', search_structure: 'read', search_concepts: 'read', get_symbol_card: 'read', query_graph: 'read', get_findings: 'read', get_cochanges: 'read',
+  find_unused: 'read', find_cycles: 'read', find_entry_points: 'read', find_hubs: 'read', get_context_map: 'read', plan_rename: 'read', plan_move: 'read', search_structure: 'read', search_concepts: 'read', get_symbol_card: 'read', query_graph: 'read', get_findings: 'read', get_cochanges: 'read', find_duplicates: 'read',
 }
 
 /**
@@ -103,7 +105,7 @@ export const PROFILE: Record<ToolName, ListQueriesData['tools'][number]['profile
   // Imported analyser findings (#30); analyze_impact and find_tests rows in core already carry their count.
   get_findings: 'extra',
   // Files that change together from git history (#239): asked before finishing a change, like impact_completeness.
-  get_cochanges: 'extra',
+  get_cochanges: 'extra', find_duplicates: 'extra',
 }
 /** How a client loads the tools of another profile, said by list_queries, which lists them all (FR422). */
 const PROFILES_NOTE = 'Over MCP, proofmesh mcp lists the core profile; start it with --tools <profile[,profile]> (core, data, claims, extra) or --tools all to list the others. A tool outside the profiles it was started with answers INVALID_ARGUMENT naming its profile.'
@@ -156,7 +158,7 @@ type Partial = {
 }
 
 /** Tools whose shrink list has a total order and honours ctx.page.offset, so a cursor continues it with no omission or duplicate. */
-const PAGED = new Set<ToolName>(['get_symbols_at', 'find_symbols', 'get_relationships', 'search_sources', 'workspace_status', 'find_tests', 'impact_completeness', 'find_unused', 'find_cycles', 'find_entry_points', 'get_context_map', 'search_structure'])
+const PAGED = new Set<ToolName>(['get_symbols_at', 'find_symbols', 'get_relationships', 'search_sources', 'workspace_status', 'find_tests', 'impact_completeness', 'find_unused', 'find_cycles', 'find_entry_points', 'get_context_map', 'search_structure', 'find_duplicates'])
 /** Tools that answer over a workspace's link file rather than one repository snapshot (A28). None yet in this file; get_ecosystem joins at integration. */
 const WORKSPACE_SCOPED = new Set<ToolName>([])
 
@@ -295,7 +297,7 @@ function runRepositoryTool(dataDir: string, tool: string, input: Record<string, 
     try {
       const { applied, limitations } = applyLimits(input.limits as Limits | undefined)
       // Test code is recognised by path and by a symbol's roles in SQL, so a filter keeps the paging order intact; a call with the path alone judges the file.
-      db.function('pm_is_test', { deterministic: true, varargs: true }, (p: unknown, roles?: unknown) => (p !== null && (isTestPath(String(p)) || (typeof roles === 'string' && roleTest(parseRoles(roles)))) ? 1 : 0))
+      registerTestFilter(db)
       // Lean leaves out what compact leaves out: it states only this answer's limitations.
       const lean = input.envelope === 'lean'
       const ctx: Ctx = { dataDir, db, catalog, snapshot, limits: applied, started: Date.now(), store: new EvidenceStore(dataDir), repo: { id: repo.id, name: repo.name, root: repo.root }, page: { offset: cursor?.offset ?? 0, query }, compact: lean || input.envelope === 'compact' || (input.envelope === undefined && !!session?.fullSent.has(snapshot.id)), lean }
@@ -537,7 +539,7 @@ function withNamedIds(db: Database.Database, tool: string, input: Record<string,
   const id = (v: unknown) => (v !== null && typeof v === 'object' ? symbolNamed(db, v as { name: string; path: string }) : v)
   const out = { ...input }
   // A `key` is a stable_key, the same in every tier (FR149): it stands in for the id the tool takes.
-  const ids: Record<string, [string, string]> = { get_symbol: ['key', 'symbol_id'], get_memory: ['key', 'symbol_id'], get_relationships: ['key', 'subject_id'], analyze_impact: ['key', 'subject_ids'], find_tests: ['key', 'subject_ids'], plan_rename: ['key', 'subject_id'], plan_move: ['key', 'subject_id'], get_symbol_card: ['key', 'symbol_id'] }
+  const ids: Record<string, [string, string]> = { find_duplicates: ['key', 'subject_id'], get_symbol: ['key', 'symbol_id'], get_memory: ['key', 'symbol_id'], get_relationships: ['key', 'subject_id'], analyze_impact: ['key', 'subject_ids'], find_tests: ['key', 'subject_ids'], plan_rename: ['key', 'subject_id'], plan_move: ['key', 'subject_id'], get_symbol_card: ['key', 'symbol_id'] }
   const keyed = (name: string, into: string) => {
     if (!(name in out)) return
     // A key is one way to name the subject: with an id or a path as well, the call does not say which it means.
@@ -1105,7 +1107,8 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
       const depth = Number(input.depth ?? 1)
       const includeTests = input.include_tests === true, coverage = ctx.catalog.coverageImports(ctx.repo.id)
       // Test code changed by the diff is evidence for the rest, not a changed symbol of its own, unless asked for.
-      const done = changedSymbols(headSnap, baseSnap, diff, read).filter((c) => includeTests || !inTestCode(c.snap.db, c.sym, isTestCode))
+      const touched = changedSymbols(headSnap, baseSnap, diff, read)
+      const done = touched.filter((c) => includeTests || !inTestCode(c.snap.db, c.sym, isTestCode))
         .map((c) => complete(c, { head: headSnap, base: baseSnap, depth, includeTests, isTest: isTestCode, read, readHash: (h) => ctx.store.read(h), maxDepth: ctx.limits.max_depth, include: input.include_inferred, coverage }))
       const all = done.map((d) => d.changed), stopped = done.reduce((n, d) => n + d.stopped, 0), unfollowed = [...new Set(done.flatMap((d) => d.unfollowed))].sort()
       const deps = all.flatMap((c) => c.dependents)
@@ -1115,9 +1118,11 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
       // Files the diff touches that a side's snapshot does not analyse are named, never dropped.
       const unanalysed = [...new Set([...[...diff.head.keys()].filter((p) => !indexed(headDb, p)), ...[...diff.base.keys()].filter((p) => !indexed(baseDb, p) && !diff.head.has(p))])].sort()
       const end = ctx.page.offset + ctx.limits.max_rows
+      const page = all.slice(ctx.page.offset, end)
+      const duplicates = input.include_duplicates === true ? unchangedTwins(baseDb, new Set(touched.map((c) => c.sym.stable_key)), page) : undefined
       const co = input.include_cochanges === true ? cochangesOf(root, base, baseDb, diff) : null
       return {
-        data: { ...sides, pending: [], changed: all.slice(ctx.page.offset, end), totals, ...(co ? { cochange: co.rows.slice(0, ctx.limits.max_rows) } : {}) },
+        data: { ...sides, pending: [], changed: page, totals, ...(duplicates ? { duplicates } : {}), ...(co ? { cochange: co.rows.slice(0, ctx.limits.max_rows) } : {}) },
         stop_reasons: all.length > end ? ['max_rows'] : [], more: all.length > end, shrink: 'changed',
         limitations: [
           ...(ctx.lean ? [summaryLine(totals)] : []),
@@ -1134,7 +1139,7 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
           ]),
           ...(co?.notes ?? []),
         ],
-        lean: (data) => [...completenessRows(data.changed as Changed[]), ...((data.cochange as CochangeRow[] | undefined) ?? []).map((c) => `cochange ${leanPartner(c)} ${c.status} (with ${quote(c.of)})`)],
+        lean: (data) => [...completenessRows(data.changed as Changed[]), ...((data.duplicates as typeof duplicates) ?? []).flatMap((g) => g.symbols.map((s) => leanRow(s.name, s.path, s.line, ['unchanged_twin', `of=${quote(g.changed_key)}`]))), ...((data.cochange as CochangeRow[] | undefined) ?? []).map((c) => `cochange ${leanPartner(c)} ${c.status} (with ${quote(c.of)})`)],
       }
     } finally {
       for (const db of new Set([baseDb, headDb])) if (db !== ctx.db) db.close()
@@ -1383,6 +1388,17 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
         }),
       ],
     }
+  },
+
+  find_duplicates(ctx, input) {
+    if (input.subject_id && input.path) throw new ProofmeshError('INVALID_ARGUMENT', 'give subject_id or path')
+    if (input.subject_id && !ctx.db.prepare('select 1 from symbol where id = ?').get(input.subject_id)) throw new ProofmeshError('NOT_FOUND', 'subject symbol is absent from the snapshot')
+    const path = input.path === undefined ? undefined : fileAt(ctx, String(input.path)).path
+    const data = duplicateGroups(ctx.db, { ...input, path }, ctx.page.offset, ctx.limits.max_rows)
+    const more = ctx.page.offset + data.groups.length < data.total_groups
+    return { data, total: data.total_groups, shrink: 'groups', more, stop_reasons: more ? ['max_rows'] : [],
+      limitations: [data.status === 'no_body_hash' ? 'Snapshot has no body hashes. Index the repository again.' : 'Exact normalised declarations only.', ...(data.status === 'unique' ? ['unique: no qualifying twins.'] : [])],
+      lean: (d) => (d.groups as typeof data.groups).flatMap((g) => [`${g.hash} members=${g.members} tokens=${g.tokens} callers_overlap=${g.callers_overlap}`, ...g.symbols.map((s) => leanRow(s.name, s.path, s.line, [s.kind, `key=${quote(s.key)}`, ...(s.test ? ['test'] : [])]))]) }
   },
 
   get_cochanges(ctx, input) {
@@ -1923,18 +1939,19 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
     if (!s) throw new ProofmeshError('NOT_FOUND', input.path !== undefined ? `${String(input.path)} has no module symbol in snapshot ${ctx.snapshot.id}` : `symbol ${String(input.symbol_id)} is not in snapshot ${ctx.snapshot.id}`)
     // Only a hash sealed with the snapshot is answered; none is computed here from another reading of the span (FR135).
     const sealed = hasBodyHash(ctx.db)
+    const navigation = generatedNavigation(ctx.catalog, ctx.repo.id, ctx.snapshot.id, s.id)
     const identity = ctx.db.prepare(`select stable_key, ${sealed ? 'body_hash' : 'null as body_hash'} from symbol where id = ?`).get(id) as { stable_key: string; body_hash: string | null }
     // What the adapter kept beside the name, such as the SCIP index's own symbol (FR441); a snapshot before format 0.11 has none.
     const detail = ctx.db.prepare("select 1 from pragma_table_info('symbol') where name = 'detail'").get() ?(ctx.db.prepare('select detail from symbol where id = ?').get(id) as { detail: string | null }).detail : null
     // Coverage in the full envelope only, and only when an imported report covers the file (FR2063).
     const cov = ctx.compact ? null : coverageOf(ctx.db, ctx.catalog.coverageImports(ctx.repo.id), [s.id])
     return {
-      data: { symbol: { ...withRoles(ctx.db, [s])[0]!, ...identity, ...(detail ? { detail: JSON.parse(detail) as Record<string, string> } : {}) }, ...(cov ? { coverage: coverageData(cov) } : {}) }, evidence_ids: [s.evidence_id],
+      data: { ...(navigation.length ? { generation: navigation } : {}), symbol: { ...withRoles(ctx.db, [s])[0]!, ...identity, ...(detail ? { detail: JSON.parse(detail) as Record<string, string> } : {}) }, ...(cov ? { coverage: coverageData(cov) } : {}) }, evidence_ids: [s.evidence_id],
       limitations: !sealed ? ['This snapshot was sealed before body hashes existed, so body_hash is null; index again to compute it.']
         : identity.body_hash ? []
         : unreadableFiles(ctx.db).paths.includes(s.path) ? [`The content of ${s.path} was unavailable when the snapshot was sealed, so body_hash is null.`]
         : ['body_hash is null: the declaration span is no more than the name, so there is no text to hash.'],
-      lean: () => [leanRow(leanName(s), s.path, s.start_line, [s.kind, `stable_key=${quote(identity.stable_key)}`, ...(identity.body_hash ? [`body_hash=${identity.body_hash}`] : [])])],
+      lean: () => [leanRow(leanName(s), s.path, s.start_line, [s.kind, `stable_key=${quote(identity.stable_key)}`, ...(identity.body_hash ? [`body_hash=${identity.body_hash}`] : [])]), ...navigation.map((r) => leanRow(r.endpoint.name, r.endpoint.path, r.endpoint.start_line, [r.direction, `key=${quote(r.endpoint.key)}`, `producer=${quote(r.producer)}`]))],
     }
   },
 

@@ -261,3 +261,7 @@ Pass a symbol id as `target_id` to `find_entry_points` to find static witnesses 
 ### Imported analyzer paths
 
 To inspect a finding from `proofmesh sarif add`, call `get_findings` with its `paths` or `subject_ids` and `flow_steps` from 1 through 256. `code_flow.steps` carries the analyzer's 1-based flow, thread and step numbers in producer order, including repeated sites. `total_steps` includes steps beyond the retained prefix. An attached step gives its file, reported region, sealed object hash and separately verified first source line (up to 2,048 characters). Unavailable, stale and unplaced steps keep their positions. Verification establishes the cited bytes. The producer supplies the claimed relationship between steps.
+
+### Duplicate declarations
+
+In the extra tool profile, `find_duplicates` lists groups with the same sealed, normalised declaration hash. The default minimum is 30 tokens. Pass `subject_id` or `key` for the other members of a symbol's group, or `path` for all groups represented in a file. Results carry stable keys, declaration lines, a test marker, group size and caller overlap. `include_generated`, `include_tests`, `kinds` and `path_prefix` control membership. `proofmesh duplicates <repository> [--min-tokens N] [--json]` lists these groups from the CLI. In `impact_completeness`, request `include_duplicates: true` to see unchanged twins from the base snapshot alongside the affected dependents.

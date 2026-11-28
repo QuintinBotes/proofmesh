@@ -1,0 +1,151 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "find_duplicates.input.schema.json",
+  "title": "find_duplicates input",
+  "description": "Find exact normalised body duplicates. Give a symbol or a file to restrict which groups appear. Symbol queries return its other members. The minimum token count defaults to 30.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "repository_id": {
+      "type": "string",
+      "pattern": "^repo_[0-9a-z]+$",
+      "description": "Optional when exactly one repository is registered."
+    },
+    "snapshot_id": {
+      "oneOf": [
+        {
+          "type": "string",
+          "pattern": "^snap_[0-9a-z]+$"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Null pins the current published snapshot."
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "timeout_ms": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_rows": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_depth": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "freshness": {
+      "enum": [
+        "snapshot",
+        "strict"
+      ],
+      "description": "snapshot (default) answers from the published snapshot. strict first checks that the working tree is exactly what the snapshot was built from; if not, it starts an index and refuses with STALE_INPUT naming the changed files."
+    },
+    "envelope": {
+      "enum": [
+        "full",
+        "compact",
+        "lean"
+      ],
+      "description": "lean, the default over MCP: plain text with no JSON and no structuredContent. A header `# <tool> · <n> rows · <snapshot> current` (stale when the snapshot is older than the repository's current one), one `<name> <path>:<line>` row per result, then `# ` lines for the limitations of this answer and `# more: cursor <c>` when a next page exists. The line is the call, import or reference site for relationship, impact and path rows and the declaration for symbol rows; tags follow: in or out when both directions are asked, depth=<n>, dispatch, external, candidate, ambiguous, unresolved:<reason>, and the relationship type when the query mixes types. A name or path with a space, quote or # is quoted as JSON. compact: the JSON envelope without the snapshot-wide parts an earlier answer gave (coverage, unresolved reasons, standing limitations). full: the whole JSON envelope. Ask for compact or full for ids, evidence and totals."
+    },
+    "cursor": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096,
+      "description": "The next_cursor of the previous page. It continues the same query on the same snapshot; it expires after an hour."
+    },
+    "kinds": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "function",
+          "class",
+          "method",
+          "interface",
+          "type_alias",
+          "variable",
+          "module",
+          "struct",
+          "enum",
+          "property",
+          "field",
+          "constructor",
+          "namespace",
+          "endpoint",
+          "job"
+        ]
+      }
+    },
+    "path_prefix": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Only files whose repository-relative path starts with this, such as `src/`. Default: the whole repository."
+    },
+    "include_generated": {
+      "type": "boolean",
+      "description": "Default false: files the generated-code policy flags are left out, and a limitation says how many (FR299). True lists them."
+    },
+    "include_tests": {
+      "type": "boolean",
+      "description": "Default true. False leaves test code out of the graph: neither ranked nor counted as a user."
+    },
+    "key": {
+      "type": "string",
+      "minLength": 1,
+      "description": "A symbol by its stable_key (FR149): the key get_symbol and every other row names it with, unique in a snapshot and the same in every tier. An unknown key is NOT_FOUND. In place of the id."
+    },
+    "path": {
+      "type": "string",
+      "minLength": 1,
+      "description": "A file by its repository-relative path, meaning the file itself and its module symbol; .., an absolute path inside the repository and backslashes are normalised. A path the snapshot does not index is INVALID_ARGUMENT naming its disposition. Give subject_id or path."
+    },
+    "subject_id": {
+      "oneOf": [
+        {
+          "type": "string",
+          "pattern": "^(sym|file|ext)_[0-9a-z]+$"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "path"
+          ],
+          "description": "A symbol by name and file, in place of its id.",
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The name a lean row shows (BudgetLedger.consume), or the plain name (consume); it must name one symbol in the file."
+            },
+            "path": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The repository-relative path of the file that declares the symbol."
+            }
+          }
+        }
+      ],
+      "description": "An ext_ id names an external symbol; then only inbound calls are known. A file_ id, or the id of a file's module symbol, answers for the file. Or { name, path }: the symbol of that name in that file; an ambiguous name is refused with the candidates."
+    },
+    "min_tokens": {
+      "type": "integer",
+      "minimum": 1
+    }
+  }
+}

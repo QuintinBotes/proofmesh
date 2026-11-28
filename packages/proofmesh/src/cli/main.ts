@@ -18,6 +18,9 @@ import { indexRepository, testMs } from '../indexer/coordinator.js'
 import { watch } from '../indexer/watch.js'
 import { BUILT_IN, Registry, registryFor } from '../indexer/languages.js'
 import { runKit } from '../conformance/kit.js'
+import { duplicateGroups } from '../query/duplicates.js'
+import { registerTestFilter } from '../query/tests.js'
+import { producerCommand } from './producer.js'
 import { runTool, treeFreshness } from '../query/tools.js'
 import { serveHttp, serveStdio, toolProfiles } from '../mcp/server.js'
 import { startViewServer } from '../http/server.js'
@@ -86,6 +89,9 @@ Usage: proofmesh [--data-dir DIR] <command>
   mcp-config [--client claude-code|codex] [--scope project|user] [--write .mcp.json]   print the client registration
   index <repository-id or path> [--rev <commit-ish>] [--no-wait] [--allow-partial]   capture, analyse, seal, and publish a snapshot; --rev indexes a commit without touching the working tree; one index per repository at a time: a second waits, or with --no-wait exits INDEX_IN_PROGRESS; progress on stderr
   watch <repository> [--interval S] [--quiet-ms MS] [--poll]   keep the snapshot current; --poll ignores file notifications
+  cquery add|deps|status <repository>   import and query a configured Bazel graph
+  generates add|status <repository>   import and inspect a generated-source mapping
+  duplicates <repository> [--min-tokens N] [--json]   list exact duplicate declarations in the current snapshot
   completeness <repository> <base>[..<head>] [--depth N] [--static-only] [--format lean|json|markdown|sarif|github] [--max-bytes N]   every symbol the change made and what calls, implements, references or imports it, each changed, tested, covered (by an imported coverage report) or neither; markdown is a pull request report cut to --max-bytes (default 60000), sarif one result per dependent neither changed nor tested, github workflow annotations and the report appended to $GITHUB_STEP_SUMMARY; --json is --format json; indexes a side with no snapshot and waits; exits 0 when no dependent is neither, 1 when one is (or with --static-only is only covered), 2 on a usage error or unknown commit
   completeness <repository> --branches [--depth N] [--json]   the local branches with commits the checked-out one lacks, ranked by blast radius (changed symbols with a dependent neither changed nor tested), then by changed symbols shared with the other branches; local refs only
   tests <repository> <path | path#name> [--json]   the tests that reach a file or symbol, how each is known and its chain; exits 0 when one executes it, 1 when none does, 2 on a usage error or unknown subject
@@ -350,6 +356,28 @@ export async function main(argv: string[]): Promise<number> {
         } finally {
           catalog.close()
         }
+      }
+      case 'cquery': case 'generates': return producerCommand(dataDir, cmd, rest)
+      case 'duplicates': {
+        const opts = [...rest], json = has(opts, '--json'), hasMinimum = opts.includes('--min-tokens'), minimum = Number(take(opts, '--min-tokens') ?? (hasMinimum ? NaN : 30))
+        if (opts.length !== 1 || !Number.isSafeInteger(minimum) || minimum < 1) throw new ProofmeshError('INVALID_ARGUMENT', 'usage: proofmesh duplicates <repository> [--min-tokens N] [--json]')
+        const catalog = Catalog.open(dataDir)
+        try {
+          const repo = catalog.repository(opts[0]!), snapshot = catalog.currentSnapshot(repo.id)
+          if (!snapshot) throw noSnapshot(catalog, repo.id)
+          const db = openSnapshot(catalog, snapshot)
+          try {
+            registerTestFilter(db)
+            const result = duplicateGroups(db, { min_tokens: minimum }, 0, Infinity)
+            if (json) console.log(JSON.stringify(result))
+            else if (result.status === 'no_body_hash') console.log('Index the repository again to compute body hashes.')
+            else for (const group of result.groups) {
+              console.log(`${group.hash}  ${group.members} members, ${group.tokens} tokens`)
+              for (const s of group.symbols) console.log(`  ${s.path}:${s.line}  ${s.name}`)
+            }
+          } finally { db.close() }
+        } finally { catalog.close() }
+        return 0
       }
       case 'discover': return runDiscover(dataDir, rest, take, has)
       case 'tests': return runTests(dataDir, rest, take, has)

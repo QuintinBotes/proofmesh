@@ -4,7 +4,7 @@
 export interface Envelope {
 schema_version: "0.1"
 query_id: string
-tool: ("workspace_status" | "list_repositories" | "list_snapshots" | "list_workspaces" | "find_symbols" | "get_symbol" | "get_relationships" | "trace_paths" | "read_evidence" | "get_overview" | "analyze_impact" | "find_tests" | "search_sources" | "get_memory" | "verify_claim" | "request_index" | "get_job" | "get_claims" | "save_memory" | "get_table_reach" | "get_property_reads" | "get_external_usage" | "find_query_source" | "compare_snapshots" | "list_queries" | "get_ecosystem" | "prepare_verification" | "get_verification" | "impact_completeness" | "get_symbols_at" | "get_session_trail" | "find_stale_mentions" | "find_unused" | "find_cycles" | "find_entry_points" | "find_hubs" | "get_context_map" | "plan_rename" | "plan_move" | "search_structure" | "search_concepts" | "get_symbol_card" | "query_graph" | "get_findings" | "get_cochanges")
+tool: ("workspace_status" | "list_repositories" | "list_snapshots" | "list_workspaces" | "find_symbols" | "get_symbol" | "get_relationships" | "trace_paths" | "read_evidence" | "get_overview" | "analyze_impact" | "find_tests" | "search_sources" | "get_memory" | "verify_claim" | "request_index" | "get_job" | "get_claims" | "save_memory" | "get_table_reach" | "get_property_reads" | "get_external_usage" | "find_query_source" | "compare_snapshots" | "list_queries" | "get_ecosystem" | "prepare_verification" | "get_verification" | "impact_completeness" | "get_symbols_at" | "get_session_trail" | "find_stale_mentions" | "find_unused" | "find_cycles" | "find_entry_points" | "find_hubs" | "get_context_map" | "plan_rename" | "plan_move" | "search_structure" | "search_concepts" | "get_symbol_card" | "query_graph" | "get_findings" | "get_cochanges" | "find_duplicates")
 /**
  * The sealed snapshot or link file that answered; null for a catalog tool, which answers from the list of registered repositories.
  */
@@ -548,6 +548,98 @@ include_type_only?: boolean
  * Default true. False leaves test files out of the graph.
  */
 include_tests?: boolean
+}
+
+export interface FindDuplicatesData {
+status: ("ok" | "unique" | "no_body_hash")
+groups: {
+hash: string
+tokens: number
+members: number
+callers_overlap: boolean
+symbols: {
+id: string
+key: string
+name: string
+path: string
+line: number
+kind: string
+test: boolean
+generated?: boolean
+}[]
+}[]
+total_groups: number
+too_small: number
+}
+
+/**
+ * Find exact normalised body duplicates. Give a symbol or a file to restrict which groups appear. Symbol queries return its other members. The minimum token count defaults to 30.
+ */
+export interface FindDuplicatesInput {
+/**
+ * Optional when exactly one repository is registered.
+ */
+repository_id?: string
+/**
+ * Null pins the current published snapshot.
+ */
+snapshot_id?: (string | null)
+limits?: {
+timeout_ms?: number
+max_rows?: number
+max_bytes?: number
+max_depth?: number
+}
+/**
+ * snapshot (default) answers from the published snapshot. strict first checks that the working tree is exactly what the snapshot was built from; if not, it starts an index and refuses with STALE_INPUT naming the changed files.
+ */
+freshness?: ("snapshot" | "strict")
+/**
+ * lean, the default over MCP: plain text with no JSON and no structuredContent. A header `# <tool> · <n> rows · <snapshot> current` (stale when the snapshot is older than the repository's current one), one `<name> <path>:<line>` row per result, then `# ` lines for the limitations of this answer and `# more: cursor <c>` when a next page exists. The line is the call, import or reference site for relationship, impact and path rows and the declaration for symbol rows; tags follow: in or out when both directions are asked, depth=<n>, dispatch, external, candidate, ambiguous, unresolved:<reason>, and the relationship type when the query mixes types. A name or path with a space, quote or # is quoted as JSON. compact: the JSON envelope without the snapshot-wide parts an earlier answer gave (coverage, unresolved reasons, standing limitations). full: the whole JSON envelope. Ask for compact or full for ids, evidence and totals.
+ */
+envelope?: ("full" | "compact" | "lean")
+/**
+ * The next_cursor of the previous page. It continues the same query on the same snapshot; it expires after an hour.
+ */
+cursor?: string
+/**
+ * @minItems 1
+ */
+kinds?: [("function" | "class" | "method" | "interface" | "type_alias" | "variable" | "module" | "struct" | "enum" | "property" | "field" | "constructor" | "namespace" | "endpoint" | "job"), ...(("function" | "class" | "method" | "interface" | "type_alias" | "variable" | "module" | "struct" | "enum" | "property" | "field" | "constructor" | "namespace" | "endpoint" | "job"))[]]
+/**
+ * Only files whose repository-relative path starts with this, such as `src/`. Default: the whole repository.
+ */
+path_prefix?: string
+/**
+ * Default false: files the generated-code policy flags are left out, and a limitation says how many (FR299). True lists them.
+ */
+include_generated?: boolean
+/**
+ * Default true. False leaves test code out of the graph: neither ranked nor counted as a user.
+ */
+include_tests?: boolean
+/**
+ * A symbol by its stable_key (FR149): the key get_symbol and every other row names it with, unique in a snapshot and the same in every tier. An unknown key is NOT_FOUND. In place of the id.
+ */
+key?: string
+/**
+ * A file by its repository-relative path, meaning the file itself and its module symbol; .., an absolute path inside the repository and backslashes are normalised. A path the snapshot does not index is INVALID_ARGUMENT naming its disposition. Give subject_id or path.
+ */
+path?: string
+/**
+ * An ext_ id names an external symbol; then only inbound calls are known. A file_ id, or the id of a file's module symbol, answers for the file. Or { name, path }: the symbol of that name in that file; an ambiguous name is refused with the candidates.
+ */
+subject_id?: (string | {
+/**
+ * The name a lean row shows (BudgetLedger.consume), or the plain name (consume); it must name one symbol in the file.
+ */
+name: string
+/**
+ * The repository-relative path of the file that declares the symbol.
+ */
+path: string
+})
+min_tokens?: number
 }
 
 export interface FindEntryPointsData {
@@ -2635,6 +2727,25 @@ path: string
 line: number
 } | null)
 }
+generation?: {
+direction: ("generates" | "generated_from")
+name: string
+producer: string
+revision: string
+endpoint: {
+path: string
+name: string
+kind: string
+start_line: number
+end_line: number
+start_byte: number
+end_byte: number
+id: string
+key: string
+evidence_id: string
+generated?: boolean
+}
+}[]
 }
 
 /**
@@ -3531,6 +3642,18 @@ of: string
  */
 status: "not_changed"
 }[]
+duplicates?: {
+changed_key: string
+symbols: {
+id: string
+key: string
+name: string
+path: string
+line: number
+kind: string
+generated?: boolean
+}[]
+}[]
 }
 
 /**
@@ -3579,6 +3702,10 @@ include_inferred?: (boolean | "auto")
  * Also list, in cochange, the files that usually change with the changed files (get_cochanges' default thresholds, history up to base) that the diff does not change. Default false; no other field changes.
  */
 include_cochanges?: boolean
+/**
+ * List unchanged twins of the changed symbols at the base revision. Defaults to false.
+ */
+include_duplicates?: boolean
 }
 
 export interface ListQueriesData {

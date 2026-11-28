@@ -35,7 +35,7 @@ export async function establishSession(): Promise<void> {
 
 /** The Galaxy payload format this page reads (packages/proofmesh/src/query/galaxy.ts); it is part of the payload's address. */
 const GALAXY_FORMAT = 6
-const galaxyAt = (snapshotId: string) => fetch(`/api/v1/galaxy/v${GALAXY_FORMAT}/${encodeURIComponent(snapshotId)}`, { credentials: 'same-origin' })
+const galaxyAt = (snapshotId: string) => fetch(`/api/v1/galaxy/v${GALAXY_FORMAT}/${encodeURIComponent(snapshotId)}`, { credentials: 'same-origin', headers: { Accept: 'application/vnd.proofmesh.terrain' } })
 
 /**
  * A snapshot's binary Galaxy payload, from the address that changes only with the snapshot and the format, so a reload is

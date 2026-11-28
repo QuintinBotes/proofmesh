@@ -5,6 +5,7 @@ import { asProofmeshError, ProofmeshError } from '../core/errors.js'
 import { randomToken } from '../core/hash.js'
 import { observatoryDir } from '../core/paths.js'
 import { runTool } from '../query/tools.js'
+import { terrainPayload } from '../query/terrain-payload.js'
 import { GALAXY_FORMAT, galaxyBundle, galaxyFor, galaxyPoints } from '../query/galaxy.js'
 import { Catalog } from '../meshstore/catalog.js'
 import { openSnapshot } from '../meshstore/snapshot.js'
@@ -108,7 +109,9 @@ export async function startViewServer(dataDir: string, port = 7317, assets = obs
         const snapshot = Number(artefact[1]) === GALAXY_FORMAT ? catalog.snapshot(artefact[2]!) : undefined
         catalog.close()
         if (snapshot?.state !== 'published') return fail(new ProofmeshError('NOT_FOUND', `no Galaxy v${artefact[1]} for snapshot ${artefact[2]}`))
-        return send(200, galaxyFor(dataDir, { snapshotId: snapshot!.id, repositoryId: snapshot!.repository_id }).gz, 'application/octet-stream', { 'Content-Encoding': 'gzip', 'Cache-Control': `private, ${IMMUTABLE}` })
+        const full = galaxyFor(dataDir, { snapshotId: snapshot.id, repositoryId: snapshot.repository_id }).gz
+        const terrain = req.headers.accept === 'application/vnd.proofmesh.terrain'
+        return send(200, terrain ? await terrainPayload(full) : full, terrain ? 'application/vnd.proofmesh.terrain' : 'application/octet-stream', { 'Content-Encoding': 'gzip', 'Cache-Control': `private, ${IMMUTABLE}`, Vary: 'Accept' })
       }
       if (!assets) return send(404, 'Observatory assets are not built; run pnpm build', 'text/plain; charset=utf-8')
       const rel = url.pathname === '/' ? 'index.html' : decodeURIComponent(url.pathname).replace(/^\/+/, '')
