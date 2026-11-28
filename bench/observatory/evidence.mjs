@@ -25,7 +25,7 @@ const short = symbol.split(':').pop().split('.').pop()
 const view = spawn(process.execPath, [CLI, '--data-dir', dataDir, 'view', '--port', '0', '--no-open'], { stdio: ['ignore', 'pipe', 'inherit'] })
 const launch = await new Promise((resolve, reject) => {
   const t = setTimeout(() => reject(new Error('proofmesh view printed no URL')), 30000)
-  readline.createInterface({ input: view.stdout }).on('line', (l) => { const m = /^Observatory: (http:\/\/127\.0\.0\.1:\d+\/#t=[0-9a-f]{64})$/.exec(l); if (m) { clearTimeout(t); resolve(m[1]) } })
+  readline.createInterface({ input: view.stdout }).on('line', (l) => { const m = /^Observatory: (http:\/\/(?:localhost|127\.0\.0\.1):\d+\/#t=[0-9a-f]{64})$/.exec(l); if (m) { clearTimeout(t); resolve(m[1]) } })
 })
 const load = { before: os.loadavg(), cpus: os.cpus().length, cpu: os.cpus()[0]?.model ?? 'unknown', memory_gb: Math.round(os.totalmem() / 2 ** 30), platform: `${os.platform()} ${os.release()}`, node: process.version }
 const browser = await chromium.launch({ headless: !args.includes('--headed') })

@@ -74,7 +74,7 @@ async function startView() {
   children.add(view)
   const url = await new Promise((resolve, reject) => {
     const t = setTimeout(() => reject(new Error('proofmesh view printed no URL')), 60000)
-    readline.createInterface({ input: view.stdout }).on('line', (l) => { const m = /^Observatory: (http:\/\/127\.0\.0\.1:\d+\/#t=[0-9a-f]{64})$/.exec(l); if (m) { clearTimeout(t); resolve(m[1]) } })
+    readline.createInterface({ input: view.stdout }).on('line', (l) => { const m = /^Observatory: (http:\/\/(?:localhost|127\.0\.0\.1):\d+\/#t=[0-9a-f]{64})$/.exec(l); if (m) { clearTimeout(t); resolve(m[1]) } })
     view.on('exit', (code) => reject(new Error(`proofmesh view exited ${code}`)))
   })
   const u = new URL(url)

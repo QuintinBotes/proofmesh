@@ -92,7 +92,7 @@ describe('FR053 local and private by default: no telemetry, no remote requests',
       }
     } finally { await client.close() }
 
-    const view = await serve(['--data-dir', data, 'view', '--port', '0', '--no-open'], env, /^Observatory: (http:\/\/127\.0\.0\.1:\d+)\/#t=([0-9a-f]{64})$/)
+    const view = await serve(['--data-dir', data, 'view', '--port', '0', '--no-open'], env, /^Observatory: (http:\/\/(?:localhost|127\.0\.0\.1):\d+)\/#t=([0-9a-f]{64})$/)
     try {
       const origin = view.match[1]!
       const s = await request(origin, 'POST', '/session', { token: view.match[2] })
@@ -149,7 +149,7 @@ describe('FR054 no shared or multi-user deployment is advertised, and the server
     expect(spawnSync(process.execPath, [CLI, '--data-dir', data, 'init']).status).toBe(0)
     const bind = ['--host', '0.0.0.0', '--bind', '0.0.0.0']
     const servers = [
-      await serve(['--data-dir', data, 'view', '--port', '0', '--no-open', ...bind], process.env, /^Observatory: http:\/\/127\.0\.0\.1:(\d+)\/#t=/),
+      await serve(['--data-dir', data, 'view', '--port', '0', '--no-open', ...bind], process.env, /^Observatory: http:\/\/(?:localhost|127\.0\.0\.1):(\d+)\/#t=/),
       await serve(['--data-dir', data, 'mcp', '--http', '--port', '0', ...bind], process.env, /^MCP over Streamable HTTP: http:\/\/127\.0\.0\.1:(\d+)\/mcp$/),
     ]
     try {

@@ -367,7 +367,11 @@ export function App() {
     const connect = () => deep()
       ? establishSession().then(() => { const { w, r } = deep()!; loadEcosystem(w, false); return drillInto(r, false) }).catch(report)
       : establishSession()
-      .then(() => callTool('workspace_status', { limits: { max_rows: 1 } }))
+      .then(() => {
+        const repository = param('repository')
+        if (param('change') && repository) setRepository(repository)
+        return callTool('workspace_status', { limits: { max_rows: 1 } })
+      })
       .then((s) => { setStatus(s); setError(null); listSnapshots().then(setSnapshots).catch(report); const f = focusFromUrl(), c = parseRange(param('change')); if (f) loadFocus(f, false); else if (c) reviewChange(c, Number(param('depth')) || 1, false, param('open')); else setAnswered((n) => n + 1) })
       // Several repositories registered: there is no single one to show until a person picks a workspace member.
       .catch((e) => { if (e instanceof ToolError && e.code === 'INVALID_ARGUMENT' && /repository_id is required/.test(e.message)) { setMode('ecosystem'); setError(null) } else report(e) })
