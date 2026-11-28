@@ -1,9 +1,9 @@
 // Change review (FR1810 to FR1816): a diff's changed symbols and every dependent, on the Terrain and as a list, read from
 // impact_completeness, with each row's chain from the same answer and its tests from find_tests. It decides no status itself.
 import { useState } from 'react'
-import { callTool, fetchGalaxy, galaxyPoints } from './api'
+import { callTool, fetchGalaxy, galaxyPoints, loadGalaxy } from './api'
 import { gate, hopText, MARK_WORDS, markAt, markCounts, marksOf, reviewRows, rowTitle, rowWords, sideText, summaryText, type Completeness, type Mark, type MarkKind, type Range, type Row } from './changeModel'
-import { parseGalaxy, type GalaxyData } from './galaxyData'
+import type { GalaxyData } from './galaxyData'
 import { terrainOf, type Terrain, type View } from './terrainModel'
 import { visible } from './visible'
 import { plural } from './plural'
@@ -35,9 +35,10 @@ export async function loadReview(range: Range, depth: number, onPending: (text: 
   }
   const rows = reviewRows(data)
   const deleted = rows.filter((r) => !r.dependent && r.changed.change === 'deleted')
+  if (!data.head.snapshot_id) throw new Error('Change review needs an indexed head snapshot')
   const [head, base] = await Promise.all([
-    fetchGalaxy(data.head.snapshot_id).then(parseGalaxy),
-    deleted.length && data.base.snapshot_id ? fetchGalaxy(data.base.snapshot_id).then(parseGalaxy) : Promise.resolve(null),
+    fetchGalaxy(data.head.snapshot_id).then(loadGalaxy),
+    deleted.length && data.base.snapshot_id ? fetchGalaxy(data.base.snapshot_id).then(loadGalaxy) : Promise.resolve(null),
   ])
   // Rows are looked up by stable key: a deleted symbol's dependents come from base and are drawn where they are in head.
   const keyed = rows.filter((r) => (r.dependent ? r.dependent.key : r.changed.change !== 'deleted' && r.changed.key))
