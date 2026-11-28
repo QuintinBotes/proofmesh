@@ -1,3 +1,4 @@
+import AxeBuilder from '@axe-core/playwright'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -20,6 +21,8 @@ test('FR1403 the directed matrix opens the counted sites, distinguishes coverage
   try {
     await page.goto(view.launchUrl)
     await page.getByRole('button', { name: 'Table', exact: true }).click()
+    await expect(page.locator('.table-view table').first()).toBeVisible()
+    await expect(page.locator('.dependency-matrix table')).toHaveCount(0)
     await page.getByText('Dependency matrix', { exact: true }).press('Enter')
     const matrix = page.getByRole('table', { name: 'Direct relationships from source rows to target columns' })
     const axes = page.getByRole('table', { name: 'Areas', exact: true })
@@ -38,6 +41,8 @@ test('FR1403 the directed matrix opens the counted sites, distinguishes coverage
     expect(await (await cell('src/c', 'src/ghost')).textContent()).toBe('Incomplete coverage')
     expect(await (await cell(names.at(-1)!, names.at(-1)!)).textContent()).toBe('Same area')
     expect(await matrix.getByRole('cell').count()).toBeLessThanOrEqual(100)
+    const audit = await new AxeBuilder({ page }).include('.dependency-matrix').analyze()
+    expect(audit.violations.filter((v) => v.impact === 'critical' || v.impact === 'serious')).toEqual([])
     await (await cell('src/a', 'src/b')).getByRole('button').press('Enter')
     const detail = page.getByRole('complementary', { name: 'Bundle' })
     await expect(detail.getByRole('cell', { name: 'src/a/a.ts:2', exact: true })).toHaveCount(2)
