@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { Ajv } from 'ajv'
@@ -241,6 +241,17 @@ describe('FR2144 FR2145 docs/proofmesh/ci: the sample workflow and job post with
     expect(y).toContain('GH_TOKEN: ${{ github.token }}')
     expect(y).toMatch(/^permissions:\n {2}contents: read\n {2}pull-requests: write\n/m)
   })
+  it('the GitLab selection step accepts complete and incomplete results and fails on a usage or indexing error', () => {
+    const step = read('gitlab-ci.yml').split('\n').find(line => line.startsWith('    - pm tests '))!.slice(6)
+    for (const [code, success] of [[0, true], [3, true], [2, false], [127, false]] as const) {
+      const r = spawnSync('sh', ['-ec', 'pm() { return "$PM_EXIT"; }\n' + step], {
+        cwd: tmpDir(), env: { ...process.env, PM_EXIT: String(code) },
+      })
+      expect(r.error).toBeUndefined()
+      expect(r.status === 0, 'selection exit ' + code).toBe(success)
+    }
+  })
+
   it('the GitLab CI job runs on merge requests and posts only when the person opts in with a token variable of their own', () => {
     const y = read('gitlab-ci.yml')
     expect(y).toContain('merge_request_event')
