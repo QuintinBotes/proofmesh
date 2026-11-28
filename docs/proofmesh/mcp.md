@@ -4,14 +4,14 @@ Proofmesh serves its tools over MCP on stdio (`proofmesh mcp`) and over Streamab
 
 ## Tool profiles (FR420 to FR423)
 
-A client that does not defer tool loading puts every listed tool's name, description and input schema into the model's context before the first question. So `proofmesh mcp` lists only the `core` profile, whose `tools/list` stays under 20,000 bytes (a test asserts it; 19,758 bytes for 14 tools since `search_concepts` joined it, against 136,882 for all 43 with `query_graph`):
+A client that does not defer tool loading puts every listed tool's name, description and input schema into the model's context before the first question. So `proofmesh mcp` lists only the `core` profile, whose `tools/list` stays under 20,000 bytes (a test asserts it; 19,758 bytes for 14 tools since `search_concepts` joined it, against 138,752 for all 44 with `get_findings`):
 
 | Profile | Tools |
 |---|---|
 | `core` (default) | `find_symbols`, `get_symbol`, `get_symbols_at`, `get_relationships`, `trace_paths`, `analyze_impact`, `find_tests`, `search_sources`, `search_concepts`, `read_evidence`, `workspace_status`, `list_repositories`, `get_overview`, `list_queries` |
 | `data` | `get_table_reach`, `get_property_reads`, `find_query_source`, `get_external_usage`, `get_session_trail`, `get_context_map` |
 | `claims` | `verify_claim`, `get_claims`, `prepare_verification`, `get_verification` |
-| `extra` | `list_snapshots`, `list_workspaces`, `get_ecosystem`, `compare_snapshots`, `impact_completeness`, `request_index`, `get_job`, `get_memory`, `save_memory`, `find_stale_mentions`, `find_unused`, `find_cycles`, `find_entry_points`, `find_hubs`, `plan_rename`, `plan_move`, `search_structure`, `get_symbol_card`, `query_graph` |
+| `extra` | `list_snapshots`, `list_workspaces`, `get_ecosystem`, `compare_snapshots`, `impact_completeness`, `request_index`, `get_job`, `get_memory`, `save_memory`, `find_stale_mentions`, `find_unused`, `find_cycles`, `find_entry_points`, `find_hubs`, `plan_rename`, `plan_move`, `search_structure`, `get_symbol_card`, `query_graph`, `get_findings` |
 
 - `proofmesh mcp --tools core,data` (or any comma-separated list) lists those profiles; `--tools all` lists every tool exactly as its schema file declares it. Both transports take it. In a client configuration, put the option after `mcp` in the arguments, for example `"args": ["mcp", "--tools", "all"]` in `.mcp.json`. A client restarts the server to change profile.
 - Outside `all`, a listed tool keeps its description and every field of its input schema, with types, enums, patterns, defaults and required fields, but not the per-field descriptions; `envelope` keeps its first sentence. The full schemas are `schemas/tools/<tool>.input.schema.json`, and the server validates every call against them whatever the profile.
@@ -170,7 +170,7 @@ search_structure { "pattern": "for (const $X of $Y) {\n  $$$\n  await $Z\n  $$$\
   ```
 
 - **Bounds.** A pattern is untrusted input that runs over captured source, so it is bounded and never run. The match runs in the syntax adapter's own process with a minimal environment and a 1 GiB heap. That process stops at `timeout_ms` and returns what it found, and it is killed one second later if it has not stopped. A pattern is at most 4,096 characters. A file over 1 MiB is not parsed, and one search reads at most 64 MiB of source; both are counted in a limitation. The matcher keeps only the rows of the page asked for, so `max_rows` pages with a cursor and `completion.total` counts every match. After a timeout, the total counts the matches found before it.
-- `bench/structure` compares every answer with the pinned ast-grep CLI. Every match set is the same. ast-grep is still several times faster on the parity fixture (SC-003 of #37, open).
+- `bench/structure` compares every answer with the pinned ast-grep CLI. Every match set is the same. On the parity fixture, each TypeScript pattern takes at most 2 s of CPU time at p95 (FR1880). That covers a whole MCP session: the server's startup and the matcher. 1.4 s was the most measured. ast-grep's native, multi-threaded CLI is still faster, at 240 to 300 ms of CPU and 35 to 100 ms of wall-clock time per pattern, against 0.3 to 1.4 s of wall-clock time for `search_structure`. The benchmark prints both tools' times beside each pattern.
 
 ## Graph query: `query_graph` (FR960 to FR966)
 
@@ -214,3 +214,12 @@ n, min, max = whole numbers, or a $param for SKIP and LIMIT
 
   The other columns follow as `<column>=<value>` tags. A row ends with `inferred` when any relationship it was matched through is inferred (FR181). A row of scalars alone is its tags. `envelope: "compact"` or `"full"` gives `data.columns` and `data.rows` (each `{ values, inferred? }`, a node as `{ id, kind, name, path, line, key }`, a relationship as `{ id, type, from, to, from_name, to_name, path, line, basis }`), and `evidence_ids` covers every returned node's declaration and relationship's site.
 - `bench/parity` asks its twelve questions through `query_graph` too, one query each (`queryGraphQuery` in `bench/graph-bench/lib.mjs`). It scores each answer beside the typed tools' answer, says whether their items are the same, and reports the p95 time.
+
+## Analyser findings: `get_findings` (FR1900 to FR1905)
+
+Proofmesh does no data-flow or taint analysis of its own (#30). It imports the findings that CodeQL, Opengrep or another analyser wrote as SARIF 2.1.0 and shows them on the symbols an agent changes. It runs no analyser and needs no analyser licence; which analysers produce the file is the person's choice.
+
+- `proofmesh sarif add <repository> <file.sarif> [--name N]` reads every run of the file against the repository's current snapshot. Results are deduplicated by tool, rule and location. A result outside the repository, in a file the snapshot does not index, or with no location is not attached: the command prints each with its reason (`outside_repository`, `not_in_snapshot`, `no_location`), and `get_findings` counts them in its limitations. Each file a finding is in has its hash recorded as the tree stands, as for a SCIP index. Importing a file of the same name again replaces it. `sarif list` and `sarif remove` manage imports.
+- `get_findings` (profile `extra`, JSON) takes `subject_ids`, `paths`, or neither for every finding. Each finding has `tool` (with its version), `rule`, `level`, `message`, `path`, `line`, `end_line`, `rank` and `precision` when the tool gave them, and `symbol`: the innermost symbol at the line, as `get_symbols_at` picks it, or the file's module.
+- A finding whose file's content in the asked snapshot differs from the file at import is `stale: "sarif_stale:<name>"`, because its line may have moved. It stays stale until a new SARIF file is imported.
+- `analyze_impact` dependents and `find_tests` rows carry `findings`, the number of findings on that symbol, when there are any. In lean the tag is `findings=<n>`. A row from another repository of the workspace carries none.

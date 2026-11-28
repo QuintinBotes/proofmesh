@@ -12,6 +12,14 @@ export const LABEL_PX = 40
 export const HATCH_SHARE = 0.04
 /** At most this many bundles are drawn between areas at rest, plus every inferred one (FR1402). */
 export const DRAWN_BUNDLES = 12
+// Neutral cells, darker the deeper (FR1406): colour is kept for basis, change and coverage.
+export const CELL = ['rgba(150,164,196,0.16)', 'rgba(150,164,196,0.10)', 'rgba(150,164,196,0.08)']
+export const SYMBOL = '#aab4c8', MATCH = '#ffd36e'
+export const STROKE = { observed: '#7fd4ff', inferred: '#c79bff' } as const
+/** A symbol's point is this share of its cell's side. */
+export const POINT = 0.12
+/** Ghost areas hold files but no symbols, so they have no cell in the layout; they sit in a row below it (FR1405). */
+export const GHOSTS = 10, GHOST_Y = FRAME * 1.04, GHOST_SIDE = FRAME * 0.06
 
 /** A directed pair of areas and the relationships from one to the other, by basis and type. */
 export type Pair = { from: number; to: number; observed: number; inferred: number; types: Array<{ type: string; observed: number; inferred: number }> }
@@ -113,6 +121,8 @@ export const toScreen = (v: View, x: number, y: number, w: number, h: number): R
   return { left: Math.min(x0, x1), top: Math.min(y0, y1), width: Math.abs(x1 - x0), height: Math.abs(y1 - y0) }
 }
 export const cellRect = (d: GalaxyData, v: View, c: number) => { const r = d.cells.rects; return toScreen(v, r[c * 4]!, r[c * 4 + 1]!, r[c * 4 + 2]!, r[c * 4 + 3]!) }
+/** The i-th ghost area's box on screen, in the row below the layout. */
+export const ghostRect = (v: View, i: number) => toScreen(v, FRAME * 0.01 + i * GHOST_SIDE * 1.25, GHOST_Y, GHOST_SIDE, GHOST_SIDE)
 
 export type Label = { key: string; kind: 'area' | 'dir' | 'file' | 'symbol'; text: string; title: string; left: number; top: number; width: number; height: number; index: number }
 const CHAR_PX = 7, LINE_PX = 16

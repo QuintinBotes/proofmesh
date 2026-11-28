@@ -241,6 +241,11 @@ TypeScript adapter does not record as references. Q10's four extras (`EJSONseria
 `stringify` in `bson.typings.ts`) are used only as `typeof f` in a type (#175), and its one miss, `createConnection`
 of `src/globals.ts`, is `possibly_used`: an unresolved call by that name could reach it.
 
+Since #182, property reads and writes are references, and a property's declared type and decorators are used by its class.
+A run on 2026-11-27 with that change (`PARITY_RUNS=1`) scores `find_hubs` 90 / 90, against 80 / 80 on main just before
+it. It misses only `ColumnMetadata` (the truth's 159 users) and ranks `Document` instead (200 users here, 140 in the
+truth, which credits a field's type to its file).
+
 ### ProofMesh through `query_graph` (#36)
 
 Run on 2026-11-27 at ProofMesh 969d78d (`PARITY_RUNS=3`), on the same machine with a load average between 9 and 44. Every comparator ran at its pinned version. Q10 to Q13's typed answers are from the structure tools (#34):
