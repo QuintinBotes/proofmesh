@@ -85,8 +85,10 @@ Usage: proofmesh [--data-dir DIR] <command>
   mcp-config [--client claude-code|codex] [--scope project|user] [--write .mcp.json]   print the client registration
   index <repository-id or path> [--rev <commit-ish>] [--no-wait] [--allow-partial]   capture, analyse, seal, and publish a snapshot; --rev indexes a commit without touching the working tree; one index per repository at a time: a second waits, or with --no-wait exits INDEX_IN_PROGRESS; progress on stderr
   watch <repository> [--interval S] [--quiet-ms MS] [--poll]   keep the snapshot current; --poll ignores file notifications
-  completeness <repository> <base>[..<head>] [--depth N] [--json]   every symbol the change made and what calls, implements, references or imports it, each changed, tested or neither; indexes a side with no snapshot and waits; exits 0 when no dependent is neither, 1 when one is, 2 on a usage error or unknown commit
+  completeness <repository> <base>[..<head>] [--depth N] [--format lean|json|markdown|sarif|github] [--max-bytes N]   every symbol the change made and what calls, implements, references or imports it, each changed, tested or neither; markdown is a pull request report cut to --max-bytes (default 60000), sarif one result per dependent neither changed nor tested, github workflow annotations and the report appended to $GITHUB_STEP_SUMMARY; --json is --format json; indexes a side with no snapshot and waits; exits 0 when no dependent is neither, 1 when one is, 2 on a usage error or unknown commit
+  completeness <repository> --branches [--depth N] [--json]   the local branches with commits the checked-out one lacks, ranked by blast radius (changed symbols with a dependent neither changed nor tested), then by changed symbols shared with the other branches; local refs only
   tests <repository> <path | path#name> [--json]   the tests that reach a file or symbol, how each is known and its chain; exits 0 when one executes it, 1 when none does, 2 on a usage error or unknown subject
+  tests <repository> --changed <base>[..<head>] [--depth N] [--json]   each test file that reaches a changed symbol or one of its dependents, once, sorted; exits 0 when answered, 3 when it may miss tests (each reason on stderr as # incomplete:), 2 on a usage or index failure
   status [repository] [--json] [--fresh]   inventory and coverage of the current snapshot, and index jobs queued or running; --fresh compares the working tree with it and starts nothing
   ${MCP_USAGE}
   view [--port P] [--no-open]       Observatory on loopback
@@ -336,7 +338,7 @@ export async function main(argv: string[]): Promise<number> {
         }
       }
       case 'discover': return runDiscover(dataDir, rest, take, has)
-      case 'tests': return runTests(dataDir, rest, has)
+      case 'tests': return runTests(dataDir, rest, take, has)
       case 'completeness': return runCompleteness(dataDir, rest, take, has)
       case 'clone': return runClone(dataDir, rest, take, has, os.userInfo().username)
       case 'verification':

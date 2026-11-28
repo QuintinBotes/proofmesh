@@ -12,6 +12,12 @@ Change review: a diff's blast radius and test reach on the Terrain (#49; FR1810 
 - `?change=<base>..<head>` (or `?change=<base>` for the working tree) opens it, with `&depth=<n>` and `&open=<stable key>` to open a row. More than 500 rows are drawn a window at a time. The export carries the range, the summary, the gate and the limits in its caption.
 - New route `/api/v1/galaxy/points` gives the Terrain point of each stable key in a snapshot.
 
+Change coupling: the files that change together though no relationship links them (#239; FR2020 to FR2026):
+
+- New tool `get_cochanges` (profile `extra`, lean by default): for each subject file, the files that changed in the same commits of the local git history, with `shared`, `subject_commits`, `partner_commits` and `degree = shared / min(subject_commits, partner_commits)`, ordered by degree. Each row says whether a relationship also links the two files (`linked`, with its types) and whether the partner is test code. Defaults: `min_shared` 3, `min_degree` 0.3, `max_files_per_commit` 50, a window of 365 days back from the snapshot's commit, at most 10,000 commits read. History ends at the snapshot's commit, so one snapshot always gives one answer; renames are followed, nothing is fetched. No history says `no_history` or `history_shallow`.
+- `impact_completeness` takes `include_cochanges`: a separate `cochange` list of the partners of changed files that the diff does not change (`not_changed`). Without it the answer is unchanged.
+- A shared git history reader (`packages/proofmesh/src/indexer/history.ts`) with a per-snapshot cache, for hotspots (#238) and symbol history (#240) to reuse. New fixture `fixtures/history`, a scripted git repository.
+
 Claims & trace: what an agent session read, changed and claimed, on the Terrain (#50; FR1940 to FR1945, FR1950 to FR1957):
 
 - While a person has turned recording on (`proofmesh trail on <repo>`, off by default), `proofmesh mcp` keeps the subjects of each query it answers: symbol ids and repository-relative paths the snapshot holds, never source text or the query's words, in the local catalog beside the query record (migration 0024, `query_subject`), grouped by the session id the server holds for the connection. `list_queries` names a recorded query's `session_id`.
