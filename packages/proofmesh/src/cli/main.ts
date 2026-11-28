@@ -67,6 +67,7 @@ Usage: proofmesh [--data-dir DIR] <command>
   workspace list | workspace remove <name> [<repository>...]
   workspace link <name>   seal the cross-repository link file of the workspace's current snapshots (A7, A28)
   observe import <repository> <file.json> | observe list <repository> | observe validate <file.json>   import runtime observations (schemas/observations/0.3) to show beside static reach
+  observe import <repository> <report> --format lcov|cobertura|jacoco|go-cover [--source NAME] [--test NAME] [--strip-prefix P]   import a coverage report a test run wrote, to show beside static test reach; Proofmesh runs no test (observe validate takes --format too)
   discover --anchor <repository> [--org ORG] [--limit N] [--json]   rank related GitHub repositories by this one's evidence, through read-only gh queries
   clone <owner/repo> --into <dir> [--add [--workspace NAME]]   gh repo clone one repository, and optionally register it
   verification enable|disable      allow agents to prepare verification recipes here (off by default; D07)
@@ -85,7 +86,7 @@ Usage: proofmesh [--data-dir DIR] <command>
   mcp-config [--client claude-code|codex] [--scope project|user] [--write .mcp.json]   print the client registration
   index <repository-id or path> [--rev <commit-ish>] [--no-wait] [--allow-partial]   capture, analyse, seal, and publish a snapshot; --rev indexes a commit without touching the working tree; one index per repository at a time: a second waits, or with --no-wait exits INDEX_IN_PROGRESS; progress on stderr
   watch <repository> [--interval S] [--quiet-ms MS] [--poll]   keep the snapshot current; --poll ignores file notifications
-  completeness <repository> <base>[..<head>] [--depth N] [--json]   every symbol the change made and what calls, implements, references or imports it, each changed, tested or neither; indexes a side with no snapshot and waits; exits 0 when no dependent is neither, 1 when one is, 2 on a usage error or unknown commit
+  completeness <repository> <base>[..<head>] [--depth N] [--static-only] [--json]   every symbol the change made and what calls, implements, references or imports it, each changed, tested, covered (by an imported coverage report) or neither; indexes a side with no snapshot and waits; exits 0 when no dependent is neither, 1 when one is (or with --static-only is only covered), 2 on a usage error or unknown commit
   tests <repository> <path | path#name> [--json]   the tests that reach a file or symbol, how each is known and its chain; exits 0 when one executes it, 1 when none does, 2 on a usage error or unknown subject
   status [repository] [--json] [--fresh]   inventory and coverage of the current snapshot, and index jobs queued or running; --fresh compares the working tree with it and starts nothing
   ${MCP_USAGE}
@@ -244,7 +245,7 @@ export async function main(argv: string[]): Promise<number> {
       }
       case 'observe': {
         const catalog = Catalog.open(dataDir)
-        try { return observe(catalog, [...rest]) } finally { catalog.close() }
+        try { return observe(catalog, [...rest], take) } finally { catalog.close() }
       }
       case 'scip': {
         const opts = [...rest]

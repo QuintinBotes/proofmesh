@@ -6,15 +6,15 @@ import { Catalog } from '../meshstore/catalog.js'
 import { openSnapshot } from '../meshstore/snapshot.js'
 import { cliPath, runTool, treeFreshness } from '../query/tools.js'
 
-const USAGE = 'usage: proofmesh completeness <repository> <base>[..<head>] [--depth N] [--json]'
+const USAGE = 'usage: proofmesh completeness <repository> <base>[..<head>] [--depth N] [--static-only] [--json]'
 
 /**
  * proofmesh completeness (FR114): impact_completeness from base to head, or to the working tree. It indexes a side with no snapshot first
  * and waits, the head first so a commit indexed for the base leaves the current snapshot as it was. Exits 0 when no dependent is neither,
- * 1 when one is, and 2 on a usage error, an unknown commit or a failed index.
+ * 1 when one is (or, with --static-only, is covered only by an imported coverage report: FR2064), and 2 on a usage error, an unknown commit or a failed index.
  */
 export function runCompleteness(dataDir: string, rest: string[], take: (args: string[], flag: string) => string | undefined, has: (args: string[], flag: string) => boolean): number {
-  const opts = [...rest], json = has(opts, '--json'), depthFlag = take(opts, '--depth')
+  const opts = [...rest], json = has(opts, '--json'), staticOnly = has(opts, '--static-only'), depthFlag = take(opts, '--depth')
   try {
     const depth = depthFlag === undefined ? 1 : Number(depthFlag)
     if (opts.length !== 2 || !Number.isInteger(depth) || depth < 1 || depth > 5) throw new ProofmeshError('INVALID_ARGUMENT', USAGE)
@@ -47,8 +47,8 @@ export function runCompleteness(dataDir: string, rest: string[], take: (args: st
       const header = lines[0]!.replace(/ · \d+ rows? · /, ` · ${rows.length} row${rows.length === 1 ? '' : 's'} · `)
       console.log([header, ...rows, ...lines.slice(1).filter((l) => l.startsWith('# ') && !l.startsWith('# more:'))].join('\n'))
     }
-    const data = env.data as { pending: unknown[]; totals: { neither: number } }
-    return data.pending.length ? 2 : data.totals.neither > 0 ? 1 : 0
+    const data = env.data as { pending: unknown[]; totals: { neither: number; covered?: number } }
+    return data.pending.length ? 2 : data.totals.neither + (staticOnly ? data.totals.covered ?? 0 : 0) > 0 ? 1 : 0
   } catch (e) {
     const err = asProofmeshError(e)
     process.stderr.write(`proofmesh: ${err.code}: ${err.message}\n`)

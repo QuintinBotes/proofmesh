@@ -246,8 +246,10 @@
                   "enum": [
                     "changed",
                     "tested",
+                    "covered",
                     "neither"
-                  ]
+                  ],
+                  "description": "covered: no test reaches the dependent statically and an imported coverage report that is not stale shows one of its lines executed (#241); neither: not changed, tested or covered."
                 },
                 "test": {
                   "type": [
@@ -309,6 +311,51 @@
                     }
                   }
                 },
+                "coverage": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "source",
+                    "lines_covered",
+                    "lines_total",
+                    "at"
+                  ],
+                  "description": "Present when the status is covered: the report and the dependent's lines it shows executed.",
+                  "properties": {
+                    "source": {
+                      "type": "string"
+                    },
+                    "lines_covered": {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    "lines_total": {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    "at": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "additionalProperties": false,
+                      "required": [
+                        "path",
+                        "line"
+                      ],
+                      "description": "The first executed line of the subject; null when none is or the coverage is stale.",
+                      "properties": {
+                        "path": {
+                          "type": "string"
+                        },
+                        "line": {
+                          "type": "integer",
+                          "minimum": 1
+                        }
+                      }
+                    }
+                  }
+                },
                 "key": {
                   "type": "string",
                   "description": "The stable_key of the dependent; absent for an importing file (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file."
@@ -342,7 +389,7 @@
         "neither",
         "by_basis"
       ],
-      "description": "Over every changed symbol, on this page or not; changed, tested and neither count the dependents.",
+      "description": "Over every changed symbol, on this page or not; changed, tested, covered and neither count the dependents.",
       "properties": {
         "changed_symbols": {
           "type": "integer",
@@ -359,6 +406,11 @@
         "tested": {
           "type": "integer",
           "minimum": 0
+        },
+        "covered": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Present only when a coverage report is imported: dependents covered by it and by no static test."
         },
         "neither": {
           "type": "integer",

@@ -2348,6 +2348,30 @@
     ],
     "FR1905": [
       "packages/proofmesh/test/sarif.test.ts"
+    ],
+    "FR2060": [
+      "packages/proofmesh/test/coverage-import.test.ts"
+    ],
+    "FR2061": [
+      "packages/proofmesh/test/coverage-import.test.ts"
+    ],
+    "FR2062": [
+      "packages/proofmesh/test/coverage-import.test.ts"
+    ],
+    "FR2063": [
+      "packages/proofmesh/test/coverage-import.test.ts"
+    ],
+    "FR2064": [
+      "packages/proofmesh/test/coverage-import.test.ts"
+    ],
+    "FR2065": [
+      "packages/proofmesh/test/coverage-import.test.ts"
+    ],
+    "FR2066": [
+      "packages/proofmesh/test/coverage-import.test.ts"
+    ],
+    "FR2067": [
+      "policy/check-traceability.mjs"
     ]
   },
   "manual": {

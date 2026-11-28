@@ -716,6 +716,19 @@ From #30 (owner decision, option A): no native data-flow analysis. Proofmesh imp
 - FR1904: MUST mark a finding `stale: sarif_stale:<name>` while its file's content in the asked snapshot differs from the hash recorded at import, and say so in the limitations, until a new SARIF file is imported.
 - FR1905: MUST run no analyser and bundle none: importing a SARIF file reads it and nothing else.
 
+### Coverage reports beside static test reach
+
+From #241. Static test reach says which tests could reach a symbol; a coverage report a test run wrote says what ran. Proofmesh imports the report and runs no test. The tests are in `packages/proofmesh/test/coverage-import.test.ts`, on `fixtures/coverage`.
+
+- FR2060: MUST provide `proofmesh observe import <repository> <file> --format lcov|cobertura|jacoco|go-cover [--source NAME] [--test NAME] [--strip-prefix P]`, refusing a file that is not a report of its format with nothing imported, and reporting the files matched, the files not in the snapshot, the ambiguous ones and the lines covered; and MUST let `proofmesh observe validate` take the same formats. A report path is matched to the snapshot path it equals, else, after `--strip-prefix` is stripped, to the one indexed path that ends with it or that it ends with, the longest shared suffix winning; a path two indexed paths match equally is not matched and is listed. A report of the same source replaces the earlier one; with `--test` the report is that test's and replaces only that test's lines in the source.
+- FR2061: MUST store coverage per file and line with the file's content hash in the snapshot at import, and treat it as `stale` for a file whose content hash in the queried snapshot differs; stale coverage sets no status.
+- FR2062: MUST attach each executable line to the innermost symbol holding it, as `get_symbols_at` resolves it, or the file's module; a file's module asked for as the subject holds every line of the file. A symbol is executed when at least one of its lines has a hit.
+- FR2063: MUST answer `coverage` (`executed`, `lines_covered`, `lines_total`, `source`, `format`, `window`, `stale`, `at`) in `find_tests` and in `get_symbol`'s full envelope when an import covers the subject's file, from the newest import of that file that is not stale (the newest stale one, with `executed` null, when all are); say `executed by coverage <source>` (or `not executed by coverage`, `coverage stale`) in `find_tests`' lean header; and list each test the report names as executing the subject (LCOV `TN:` records, or `--test`) that is one test symbol of the snapshot and no static chain lists, with `evidence: coverage`, depth 1 and no chain, removing none.
+- FR2064: MUST give an `impact_completeness` dependent the status `covered` when no static test reaches it and coverage shows it executed, with the report's source and lines, and count it as `totals.covered` beside `changed`, `tested` and `neither`, where `neither` is then neither changed, statically tested nor covered; and `proofmesh completeness` MUST exit as if `covered` were tested unless `--static-only` is given.
+- FR2065: MUST NOT change a relationship's `basis` or add a relationship because of coverage (FR189).
+- FR2066: MUST list, in `workspace_status`, each coverage import with its source, format, import time, window, files matched and stale files. With no import, `workspace_status`, `find_tests`, `get_symbol` and `impact_completeness` MUST answer as they did before coverage could be imported.
+- FR2067: MUST trace each of FR2060 to FR2066 in `policy/traceability.json` and state it here (CONTRIBUTING.md).
+
 ### Impact completeness
 
 - FR108: MUST provide `impact_completeness` with `base`, a commit-ish, optional `head` (omitted, the working tree), `depth` (default 1, at most 5), `include_tests` and the usual limits, and the CLI `proofmesh completeness <repository> <base>[..<head>] [--depth N] [--json]`.

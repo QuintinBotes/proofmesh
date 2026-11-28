@@ -9,6 +9,7 @@ import { liveLocks, lockHolder, ownerOf } from './index-lock.js'
 import { schemasDir } from '../core/paths.js'
 import { readSql } from '../core/schemas.js'
 import type { Finding, Unattached } from '../sarif/read.js'
+import type { Unmatched } from '../coverage/read.js'
 
 export type RepositoryRow = { id: string; root: string; name: string; created_at: string }
 export type SnapshotRow = {
@@ -28,6 +29,8 @@ export type ScipRun = { indexer: string; version: string; digest: string; grant_
 export type ScipIndexRecord = { name: string; path: string; sha256: string; tool: string; files: Record<string, { hash: string; language: string }>; added_by: string; added_at: string; run: ScipRun | null }
 /** A SARIF file a person imported (#30): its findings and the results left unattached, and the hash of each file a finding is in, as the tree stood then. */
 export type SarifImportRecord = { name: string; path: string; sha256: string; tools: string[]; findings: Finding[]; unattached: Unattached[]; files: Record<string, string>; added_by: string; added_at: string }
+/** A coverage report a person imported (#241): per matched snapshot path, the file's hash in the snapshot then, its executable lines and the lines each test hit ('' when the report names no test). */
+export type CoverageImportRecord = { source: string; format: string; path: string; sha256: string; window: { from: string; to: string }; files: Record<string, { hash: string; lines: number[]; tests: Record<string, number[]> }>; unmatched: Unmatched[]; imported_by: string; imported_at: string }
 export type LinkFileRecord = { id: string; workspace: string; digest: string; members: Array<{ repository_id: string; snapshot_id: string }>; sealed_at: string }
 export type Observation = { source: string; window_from: string; window_to: string; subject_kind: 'endpoint' | 'table' | 'channel'; subject_name: string; metric: string; value: number; imported_by: string; imported_at: string }
 export type PropertyRead = { source: string; window_from: string; window_to: string; endpoint: string; entity: string; property: string; reads: number; read_kind: 'orm' | 'application'; declaring_type: string | null; calls: number | null; callers: string | null; imported_by: string; imported_at: string }
@@ -536,6 +539,20 @@ export class Catalog {
   sarifImports(repositoryId: string): SarifImportRecord[] {
     return (this.db.prepare('select * from sarif_import where repository_id = ? order by name').all(repositoryId) as Array<Record<string, string>>).map((r) => ({
       name: r.name!, path: r.path!, sha256: r.sha256!, tools: JSON.parse(r.tools!), findings: JSON.parse(r.findings!), unattached: JSON.parse(r.unattached!), files: JSON.parse(r.files!), added_by: r.added_by!, added_at: r.added_at!,
+    }))
+  }
+
+  /** Importing a coverage report for a repository; only the CLI calls this, for a person. A report of the same source again replaces it. */
+  addCoverage(repositoryId: string, c: Omit<CoverageImportRecord, 'imported_by' | 'imported_at'>, importedBy: string): CoverageImportRecord {
+    this.db.prepare(`insert or replace into coverage_import (repository_id, source, format, path, sha256, window_from, window_to, files, unmatched, imported_by, imported_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(repositoryId, c.source, c.format, c.path, c.sha256, c.window.from, c.window.to, JSON.stringify(c.files), JSON.stringify(c.unmatched), importedBy, now())
+    return this.coverageImports(repositoryId).find((x) => x.source === c.source)!
+  }
+
+  /** Every coverage import of a repository, by source. */
+  coverageImports(repositoryId: string): CoverageImportRecord[] {
+    return (this.db.prepare('select * from coverage_import where repository_id = ? order by source').all(repositoryId) as Array<Record<string, string>>).map((r) => ({
+      source: r.source!, format: r.format!, path: r.path!, sha256: r.sha256!, window: { from: r.window_from!, to: r.window_to! }, files: JSON.parse(r.files!), unmatched: JSON.parse(r.unmatched!), imported_by: r.imported_by!, imported_at: r.imported_at!,
     }))
   }
 
