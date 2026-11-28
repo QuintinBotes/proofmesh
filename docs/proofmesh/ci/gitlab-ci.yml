@@ -10,21 +10,25 @@ proofmesh-impact:
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
   variables:
-    GIT_DEPTH: 0
+    GIT_DEPTH: "0"
     PROOFMESH_REF: main # pin a release tag or commit
   cache:
     key: proofmesh-$CI_MERGE_REQUEST_DIFF_BASE_SHA
     paths:
       - .proofmesh-ci/
   script:
-    - git clone --depth 1 --branch "$PROOFMESH_REF" https://github.com/QuintinBotes/proofmesh.git "$CI_BUILDS_DIR/proofmesh-tool"
-    - (cd "$CI_BUILDS_DIR/proofmesh-tool" && corepack enable && pnpm install --frozen-lockfile && pnpm build)
-    - pm() { node "$CI_BUILDS_DIR/proofmesh-tool/packages/proofmesh/dist/cli.mjs" --data-dir "$CI_PROJECT_DIR/.proofmesh-ci" "$@"; }
+    - tool_dir=$(mktemp -d)
+    - trap 'rm -rf "$tool_dir"' EXIT
+    - git -C "$tool_dir" init -q
+    - git -C "$tool_dir" fetch --depth 1 https://github.com/QuintinBotes/proofmesh.git "$PROOFMESH_REF"
+    - git -C "$tool_dir" checkout -q --detach FETCH_HEAD
+    - (cd "$tool_dir" && corepack enable && pnpm install --frozen-lockfile && pnpm build)
+    - pm() { node "$tool_dir/packages/proofmesh/dist/cli.mjs" --data-dir "$CI_PROJECT_DIR/.proofmesh-ci" "$@"; }
     - pm init && pm repo add "$CI_PROJECT_DIR"
     # Exit 1 means a dependent is neither changed nor tested: reported, not a failure of the job.
     - pm completeness "$CI_PROJECT_DIR" "$CI_MERGE_REQUEST_DIFF_BASE_SHA..$CI_COMMIT_SHA" --format markdown > proofmesh-report.md || [ $? -eq 1 ]
     # Exit 3 means the list may miss tests; run the full suite then.
-    - pm tests "$CI_PROJECT_DIR" --changed "$CI_MERGE_REQUEST_DIFF_BASE_SHA..$CI_COMMIT_SHA" > proofmesh-tests.txt || echo "the test list may be incomplete; run the full suite"
+    - pm tests "$CI_PROJECT_DIR" --changed "$CI_MERGE_REQUEST_DIFF_BASE_SHA..$CI_COMMIT_SHA" > proofmesh-tests.txt || [ $? -eq 3 ]
     - |
       if [ -n "$PROOFMESH_NOTE_TOKEN" ]; then
         node -e 'process.stdout.write(JSON.stringify({ body: require("fs").readFileSync("proofmesh-report.md", "utf8") }))' > proofmesh-note.json
