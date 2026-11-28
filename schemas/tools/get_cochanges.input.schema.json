@@ -1,0 +1,120 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "tools/get_cochanges.input.schema.json",
+  "title": "get_cochanges input",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "repository_id": {
+      "type": "string",
+      "pattern": "^repo_[0-9a-z]+$"
+    },
+    "snapshot_id": {
+      "type": "string",
+      "pattern": "^snap_[0-9a-z]+$",
+      "description": "Default is the repository's current snapshot; its commit ends the window."
+    },
+    "paths": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "maxItems": 100,
+      "description": "Subject files, repository-relative: any file of the snapshot, analysed or not."
+    },
+    "subject_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "maxItems": 100,
+      "description": "Subject symbols or files; a symbol stands for its file."
+    },
+    "window": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "days"
+          ],
+          "properties": {
+            "days": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 36500
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "commits"
+          ],
+          "properties": {
+            "commits": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 10000
+            }
+          }
+        }
+      ],
+      "description": "The commits read, back from the snapshot's commit: a number of commits, or of days before that commit's date. Default { days: 365 }; at most 10,000 commits are read either way."
+    },
+    "min_shared": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Least commits a pair shares to be listed; default 3."
+    },
+    "min_degree": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Least degree to be listed; default 0.3."
+    },
+    "max_files_per_commit": {
+      "type": "integer",
+      "minimum": 2,
+      "description": "A commit touching more files than this (a formatter run, a licence header) forms no pairs; default 50."
+    },
+    "only_unlinked": {
+      "type": "boolean",
+      "description": "Leave out partners a relationship already joins to the subject."
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "timeout_ms": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_rows": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_depth": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "envelope": {
+      "enum": [
+        "full",
+        "compact",
+        "lean"
+      ],
+      "description": "lean (the default over MCP): a row `<path> shared=<n> degree=<d> [linked] [test]` per partner, with `of=<subject>` when there are several subjects, then `# ` lines for the limitations."
+    }
+  },
+  "description": "Files that changed in the same commits as the subject files, from the repository's local git history, though no import, call or reference need link them (a migration and its model, a serializer and its client). Per subject, partners ordered by degree, then shared, then path; degree = shared / min(subject_commits, partner_commits) over the window, which ends at the snapshot's commit. Each row says linked (a resolved or candidate relationship joins the two files, either direction) and test. Co-change is not a relationship: rows carry no basis and no traversal tool follows them. impact_completeness takes include_cochanges for the partners a diff leaves unchanged."
+}

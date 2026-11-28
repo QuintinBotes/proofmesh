@@ -436,6 +436,73 @@
           }
         }
       }
+    },
+    "cochange": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "shared",
+          "subject_commits",
+          "partner_commits",
+          "degree",
+          "linked",
+          "relationship_types",
+          "test",
+          "of",
+          "status"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "shared": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Commits of the window that change both files."
+          },
+          "subject_commits": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "partner_commits": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "degree": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "shared / min(subject_commits, partner_commits), to two decimals."
+          },
+          "linked": {
+            "type": "boolean",
+            "description": "Whether a resolved or candidate relationship of the snapshot joins the two files, either direction, at depth 1."
+          },
+          "relationship_types": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The types of those relationships; empty when not linked."
+          },
+          "test": {
+            "type": "boolean",
+            "description": "Whether the partner is test code, by file convention and project naming."
+          },
+          "of": {
+            "type": "string",
+            "description": "The changed file it usually changes with."
+          },
+          "status": {
+            "const": "not_changed",
+            "description": "The diff does not change it."
+          }
+        }
+      },
+      "description": "With include_cochanges: the partners of the changed files that the diff does not change, by degree, then shared, then path. Co-change is not a relationship, so these are not dependents and no total counts them."
     }
   }
 }

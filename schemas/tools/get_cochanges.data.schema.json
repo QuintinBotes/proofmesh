@@ -1,0 +1,189 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "tools/get_cochanges.data.schema.json",
+  "title": "get_cochanges data",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "subjects",
+    "history",
+    "thresholds"
+  ],
+  "properties": {
+    "subjects": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "commits",
+          "partners"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "commits": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Commits of the window that change the subject."
+          },
+          "partners": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "path",
+                "shared",
+                "subject_commits",
+                "partner_commits",
+                "degree",
+                "linked",
+                "relationship_types",
+                "test"
+              ],
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "shared": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "description": "Commits of the window that change both files."
+                },
+                "subject_commits": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "partner_commits": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "degree": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1,
+                  "description": "shared / min(subject_commits, partner_commits), to two decimals."
+                },
+                "linked": {
+                  "type": "boolean",
+                  "description": "Whether a resolved or candidate relationship of the snapshot joins the two files, either direction, at depth 1."
+                },
+                "relationship_types": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "The types of those relationships; empty when not linked."
+                },
+                "test": {
+                  "type": "boolean",
+                  "description": "Whether the partner is test code, by file convention and project naming."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "history": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "available",
+        "commit",
+        "window",
+        "commits_read",
+        "bulk_commits",
+        "shallow",
+        "capped"
+      ],
+      "properties": {
+        "available": {
+          "type": "boolean",
+          "description": "false when the root is not a git working tree or lacks the snapshot's commit (no_history in limitations)."
+        },
+        "commit": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The snapshot's commit, where the window ends."
+        },
+        "window": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "days"
+              ],
+              "properties": {
+                "days": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 36500
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "commits"
+              ],
+              "properties": {
+                "commits": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 10000
+                }
+              }
+            }
+          ]
+        },
+        "commits_read": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Commits of the window read, merges left out."
+        },
+        "bulk_commits": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Commits touching more than max_files_per_commit files, which formed no pairs."
+        },
+        "shallow": {
+          "type": "boolean",
+          "description": "The repository is a shallow clone (history_shallow in limitations)."
+        },
+        "capped": {
+          "type": "boolean",
+          "description": "The window held more than the 10,000 commits read; the oldest were left out."
+        }
+      }
+    },
+    "thresholds": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "min_shared",
+        "min_degree",
+        "max_files_per_commit"
+      ],
+      "properties": {
+        "min_shared": {
+          "type": "integer"
+        },
+        "min_degree": {
+          "type": "number"
+        },
+        "max_files_per_commit": {
+          "type": "integer"
+        }
+      }
+    }
+  },
+  "description": "Each subject file's co-change partners from git history (FR2020 to FR2022)."
+}
