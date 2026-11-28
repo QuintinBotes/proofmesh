@@ -1,0 +1,23 @@
+{
+  "go": {
+    "repository": "https://github.com/spf13/cobra.git",
+    "commit": "e94f6d0dd9a5e5738dca6bce03c4b1207ffbc0ec",
+    "tag": "v1.8.1",
+    "license": "Apache-2.0",
+    "license_file": "LICENSE.txt",
+    "image": "golang@sha256:1a6d4452c65dea36aac2e2d606b01b4a029ec90cc1ae53890540ce6173ea77ac",
+    "platform": "linux/arm64",
+    "tools": {
+      "scip-go": {
+        "url": "https://github.com/scip-code/scip-go/releases/download/v0.2.9/scip-go-linux-arm64.tar.gz",
+        "sha256": "81a196420b1ee64a8820a59287f4bb9cab1849bc3d4e13c97a3130f75d8540fd",
+        "binary_sha256": "cac42ff124a9334653e1efb15b8074b8752c749dc22f94839671dbce01c115ec"
+      },
+      "scip": {
+        "url": "https://github.com/scip-code/scip/releases/download/v0.10.0/scip-linux-arm64.tar.gz",
+        "sha256": "6ab677dc2c4bf2955975d0530766152e45daaa988f9404068d8adecacd0bb24c",
+        "binary_sha256": "2e808bcfc73711f1ab598412ac6ec6f7c68c2c3c07e02f63b05221a2250a357e"
+      }
+    }
+  }
+}
