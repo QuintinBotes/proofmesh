@@ -2612,6 +2612,9 @@
     "FR3000": [
       "packages/proofmesh/test/producer.test.ts"
     ],
+    "FR3007": [
+      "packages/proofmesh/test/ts-reference-owners.test.ts"
+    ],
     "FR3006": [
       "packages/proofmesh/test/graph-query.test.ts"
     ],

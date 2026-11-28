@@ -72,6 +72,16 @@ function register(d) {
   if (declId.has(d)) return declId.get(d)
   const sf = d.getSourceFile()
   if (!inRepo(sf.fileName)) return null
+  // The checker exposes one symbol for an overload set. Keep the implementation identity or the first ambient signature.
+  if (d.name && (ts.isFunctionDeclaration(d) || ts.isMethodDeclaration(d) || ts.isMethodSignature(d)) && !d.body) {
+    const siblings = checker.getSymbolAtLocation(d.name)?.declarations?.filter(s => s.parent === d.parent && s.kind === d.kind) ?? []
+    const main = siblings.find(s => s.body) ?? siblings[0]
+    if (main && main !== d) {
+      const id = register(main)
+      declId.set(d, id)
+      return id
+    }
+  }
   const kind = kindOf(d)
   const name = nameOfDecl(d)
   if (!kind || !name) return null
@@ -97,16 +107,24 @@ function targetOf(sym) {
   const d = sym?.valueDeclaration ?? sym?.declarations?.[0]
   return d ? register(d) : null
 }
-// The named symbol whose body holds `node`: the nearest function-like, or variable/property holding a function,
-// skipping anonymous callbacks; module scope when none (the file itself).
+// Attribute use to its named declaration. Class/interface member annotations belong to the enclosing type,
+// property initializers to the property, and expressions directly in a file to the module.
 function enclosing(node) {
-  for (let p = node.parent; p; p = p.parent) {
+  for (let child = node, p = node.parent; p; child = p, p = p.parent) {
     if (isFnLike(p)) { const id = register(p); if (id) return id }
     if ((ts.isArrowFunction(p) || ts.isFunctionExpression(p)) && p.parent) {
       const h = p.parent
       if ((ts.isVariableDeclaration(h) || ts.isPropertyDeclaration(h) || ts.isPropertyAssignment(h)) && h.initializer === p) { const id = register(h); if (id) return id }
     }
-    if (ts.isPropertyDeclaration(p) && p.initializer) { const id = register(p); if (id) return id }
+    if (ts.isPropertySignature(p) && p.type === child && ts.isFunctionTypeNode(child)) {
+      const id = register(p)
+      if (id) return id
+    }
+    if ((ts.isPropertyDeclaration(p) && p.initializer === child) || ts.isClassDeclaration(p) || ts.isInterfaceDeclaration(p) ||
+        ts.isTypeAliasDeclaration(p) || ts.isEnumDeclaration(p) || ts.isVariableDeclaration(p)) {
+      const id = register(p)
+      if (id) return id
+    }
     if (ts.isSourceFile(p)) return `${rel(p.fileName)}#<module>@0`
   }
   return null
