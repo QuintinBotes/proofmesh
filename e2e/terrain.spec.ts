@@ -131,7 +131,7 @@ test.describe('FR1220 the TypeORM sample draws the same map everywhere', () => {
         const context = await browser.newContext()
         const page = await context.newPage()
         page.on('pageerror', (e) => errors.push(e.message))
-        const response = page.waitForResponse((r) => r.url().endsWith('/api/v1/galaxy'))
+        const response = page.waitForResponse((r) => /\/api\/v1\/galaxy\/v\d+\/[\w-]+$/.test(r.url()))
         await page.goto(v.launchUrl)
         received.push(read(await (await response).body()))
         await expect(page.getByTestId('conclusion')).toContainText('symbols in', { timeout: 60000 })

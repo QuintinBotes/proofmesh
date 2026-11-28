@@ -40,14 +40,14 @@ export function layoutPositions(items: Placed[], cells?: LayoutCell[]): Uint16Ar
     if (c.items.length) {
       // Overloads share a name, so declaration order breaks the tie, never an id or a hash.
       const order = c.items.slice().sort((a, b) => { const p = items[a]!, r = items[b]!; return p.name < r.name ? -1 : p.name > r.name ? 1 : p.line - r.line || p.byte - r.byte || a - b })
-      strips(order.map(() => 1), depth % 2 === 0, x, y, w, h, (k, cx, cy, cw, ch) => { out[order[k]! * 2] = q(cx + cw / 2); out[order[k]! * 2 + 1] = q(cy + ch / 2) })
+      strips(order.map(() => 1), false, depth % 2 === 0, x, y, w, h, (k, cx, cy, cw, ch) => { out[order[k]! * 2] = q(cx + cw / 2); out[order[k]! * 2 + 1] = q(cy + ch / 2) })
       return
     }
     const dirs = [...c.dirs.values()].sort(byName), files = [...c.files.values()].sort(byName)
     // A directory's own files sit together after its subdirectories, as one more cell, so a file added never reorders them.
     const own = { ...cell(''), files: c.files, weight: files.reduce((n, f) => n + f.weight, 0) }
     const kids = dirs.length && files.length ? [...dirs, own] : [...dirs, ...files]
-    strips(kids.map((k) => k.weight), depth % 2 === 0, x, y, w, h, (k, cx, cy, cw, ch) => {
+    strips(kids.map((k) => k.weight), dirs.length > 0, depth % 2 === 0, x, y, w, h, (k, cx, cy, cw, ch) => {
       const m = Math.min(cw, ch) * MARGIN
       place(kids[k]!, depth + 1, cx + m, cy + m, cw - 2 * m, ch - 2 * m, me)
     })
@@ -57,15 +57,21 @@ export function layoutPositions(items: Placed[], cells?: LayoutCell[]): Uint16Ar
 }
 
 /**
- * Ordered strips: items keep their order in strips (rows, or columns), the square root of their count of them, and each
- * item goes in the strip its weight's midpoint falls in. The count need not be whole, so neither a small change of weight
- * nor one more item reflows the rest: at most a boundary item moves to the next strip, and the picture stays put.
+ * Ordered strips: items keep their order in strips (rows, or columns), and each item goes in the strip its weight's midpoint
+ * falls in, so a small change of weight or one more item moves at most a boundary item to the next strip (FR2621).
+ * - A directory's children (subdirectories, and its own files as one) take a whole number of strips, the square root of
+ *   their count rounded, so no strip is born thin: a fractional count starts its last strip with almost no share, and a
+ *   directory there is a sliver whose files jump far when its strips re-break (TypeORM's src/util, a 42:1 column, #275).
+ *   The price: when a child added or removed moves that rounded count, the directory's strips are laid out anew.
+ * - Files and symbols take about one item's thickness each: the square root of their count times the cell's length across
+ *   the strips over its length along them, that ratio rounded to a power of two. A re-broken strip then moves an item by
+ *   about its own size, and a cell whose items did not change keeps its strips unless its shape doubles or halves.
  */
-function strips(weights: number[], rows: boolean, x: number, y: number, w: number, h: number, put: (i: number, x: number, y: number, w: number, h: number) => void): void {
+function strips(weights: number[], whole: boolean, rows: boolean, x: number, y: number, w: number, h: number, put: (i: number, x: number, y: number, w: number, h: number) => void): void {
   let total = 0
   for (const v of weights) total += v
   const length = rows ? w : h, across = rows ? h : w
-  const k = Math.sqrt(weights.length)
+  const k = whole ? Math.max(1, Math.round(Math.sqrt(weights.length))) : Math.sqrt(weights.length * powerOfTwo(across / length))
   const strip = new Int32Array(weights.length)
   let before = 0
   weights.forEach((v, i) => { strip[i] = Math.floor((k * (before + v / 2)) / total); before += v })
@@ -85,6 +91,14 @@ function strips(weights: number[], rows: boolean, x: number, y: number, w: numbe
     offset += t
     at = end
   }
+}
+
+/** r rounded to the nearest power of two on a log scale, by exact comparisons rather than Math.log2, which IEEE 754 does not pin. */
+export function powerOfTwo(r: number): number {
+  let p = 1
+  while (r * r >= 2 * p * p) p *= 2
+  while (r * r < (p * p) / 2) p /= 2
+  return p
 }
 
 /** The cells as payload sections: each box as x, y, width and height quantised to 16 bits like positions, the parent, the symbol count and the segment names joined by newlines. */

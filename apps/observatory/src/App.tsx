@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { callTool, establishSession, fetchBundle, fetchGalaxy, fetchWorkspaces, galaxySymbol, listSnapshots, replaying, setReplay, setRepository, ToolError, type Bundle, type SnapshotInfo, type Workspace } from './api'
+import { callTool, establishSession, fetchBundle, fetchGalaxy, fetchWorkspaces, galaxySymbol, listSnapshots, loadGalaxy, replaying, setReplay, setRepository, ToolError, type Bundle, type SnapshotInfo, type Workspace } from './api'
 import { DiffView } from './DiffView'
+import { ChangeControls, ChangeMarks, ChangePanel, loadReview, testsOf, type Review } from './ChangeReview'
+import { gate, parseRange, rangeText, rowTitle, rowWords, sideText, summaryText, type Range, type Row } from './changeModel'
 import { overlay as diffOverlay, type CompareData } from './diff'
-import { Terrain } from './Terrain'
 import { TimeStrip } from './TimeStrip'
 import { linked, marks as timeMarks, neighbour, stepCounts } from './time'
 import { coverageOf, drawnStrokes, pairText, terrainOf, terrainSummary, type Pair } from './terrainModel'
 import { ClaimsView } from './ClaimsView'
-import { areaFog, areaLabel, legendAreas, matchIndices, parseGalaxy, rankMatches, shortName, type GalaxyData } from './galaxyData'
-import { GraphView } from './GraphView'
+import { areaFog, areaLabel, legendAreas, matchIndices, rankMatches, shortName, type GalaxyData } from './galaxyData'
 import { Palette, type Command } from './Palette'
 import { toNeighbourhood, type RelationshipsEnvelope } from './explore'
 import { appendSide, CARD_ROWS, cardHood, declarationEvidence, rowEvidence, type Card, type Evidence } from './card'
@@ -16,9 +16,12 @@ import { ProofLens, type Chain } from './ProofLens'
 import { defaultSelection, evidenceFor, LINK_WORDS, pairs, RELATION_COLOURS, RELATION_WORDS, relations, toEcosystem, type Ecosystem, type Relation } from './ecosystem'
 import { FRAMEWORK_TYPES, glyph, toScene, type TraceEnvelope } from './scene'
 import { visible } from './visible'
+import { GraphView, Terrain } from './views'
+import { VirtualTable } from './virtual'
 import { share } from './share'
 import { plural } from './plural'
 import { caveatLines, terrainSvg, CONTAINMENT, NO_MEANING, offlineHtml, pngWithText, sceneSvg, sceneTable, type Caveats, type Source } from './exporting'
+
 
 type Sym = { id: string; kind: string; name: string; qualified_name: string; path: string; start_line: number; signature: string | null }
 type Hub = { id: string; kind: string; name: string; qualified_name: string; inbound: number }
@@ -102,13 +105,20 @@ export function App() {
   const [target, setTarget] = useState<Sym | null>(null)
   const [depth, setDepth] = useState(6)
   const [followFramework, setFollowFramework] = useState(false)
-  const [mode, setMode] = useState<Mode>(() => (focusFromUrl() ? 'explore' : 'terrain'))
+  const [mode, setMode] = useState<Mode>(() => (focusFromUrl() ? 'explore' : param('change') ? 'diff' : 'terrain'))
   // Replay (FR010): the published snapshots, and the one every query is pinned to when it is not the current one.
   const [snapshots, setSnapshots] = useState<SnapshotInfo[]>([])
   const [replay, setReplayState] = useState<string | null>(null)
   // Diff (FR019): the comparison shown, and its overlay on the Galaxy while the Galaxy shows its head snapshot.
   const [diff, setDiff] = useState<{ data: CompareData; truncated: boolean } | null>(null)
   const [diffBase, setDiffBase] = useState('')
+  // Change review (FR1810): Diff between two commits, on the Terrain; `?change=` opens it (FR1812). The row opened holds find_tests' answer once it comes.
+  const [diffSource, setDiffSource] = useState<'commits' | 'snapshots'>(() => (param('change') ? 'commits' : 'snapshots'))
+  const [review, setReview] = useState<Review | null>(null)
+  const [reviewAsk, setReviewAsk] = useState<{ range: Range | null; depth: number }>(() => ({ range: parseRange(param('change')), depth: Number(param('depth')) || 1 }))
+  const [reviewPending, setReviewPending] = useState<string | null>(null)
+  const [reviewRow, setReviewRow] = useState<{ row: Row; tests: Awaited<ReturnType<typeof testsOf>> | null | Error } | null>(null)
+  const reviewTerrain = useMemo(() => (review ? { ...review.terrain, pairs: [] } : null), [review])
   const [workspaces, setWorkspaces] = useState<Workspace[] | null>(null)
   const [workspace, setWorkspace] = useState<string>('')
   const [ecosystem, setEcosystem] = useState<Ecosystem | null>(null)
@@ -186,6 +196,25 @@ export function App() {
   const report = useCallback((e: unknown) => {
     setError(e instanceof ToolError && e.status === 401 ? 'No valid session: the link expired (links last 10 minutes), was already used, or the server restarted. Run "proofmesh view" and open the new link it prints.' : String((e as Error)?.message ?? e))
   }, [])
+
+  /** Opens a Change review row: its chain is in the row already; its tests are one find_tests request (FR1811). */
+  const openReviewRow = useCallback((row: Row) => {
+    setReviewRow({ row, tests: null })
+    testsOf(row).then((tests) => setReviewRow((now) => (now?.row === row ? { row, tests } : now)), (e: Error) => setReviewRow((now) => (now?.row === row ? { row, tests: e } : now)))
+  }, [])
+  /** Reviews a range at a depth; push adds `?change=` to the history; open names a row's stable key to open once it loads (FR1812). */
+  const reviewChange = useCallback(async (range: Range, depth: number, push = true, open?: string | null) => {
+    setReviewAsk({ range, depth }); setReviewRow(null); setDiffSource('commits'); setMode('diff')
+    if (push) window.history.pushState(null, '', `?change=${encodeURIComponent(rangeText(range))}${depth !== 1 ? `&depth=${depth}` : ''}`)
+    setLoading(true)
+    try {
+      const r = await loadReview(range, depth, setReviewPending)
+      setReview(r)
+      setError(null)
+      const hit = open ? r.rows.find((x) => (x.dependent ? x.dependent.key : x.changed.key) === open) : undefined
+      if (hit) openReviewRow(hit)
+    } catch (e) { setReview(null); report(e) } finally { setReviewPending(null); setLoading(false); setAnswered((n) => n + 1) }
+  }, [report, openReviewRow])
 
   /** A path from the lens's focus to a picked symbol, at the chosen depth, following framework relationships on request (FR1185, FR1300). */
   const traceFrom = async (to: Sym) => {
@@ -338,7 +367,7 @@ export function App() {
       ? establishSession().then(() => { const { w, r } = deep()!; loadEcosystem(w, false); return drillInto(r, false) }).catch(report)
       : establishSession()
       .then(() => callTool('workspace_status', { limits: { max_rows: 1 } }))
-      .then((s) => { setStatus(s); setError(null); listSnapshots().then(setSnapshots).catch(report); const f = focusFromUrl(); if (f) loadFocus(f, false); else setAnswered((n) => n + 1) })
+      .then((s) => { setStatus(s); setError(null); listSnapshots().then(setSnapshots).catch(report); const f = focusFromUrl(), c = parseRange(param('change')); if (f) loadFocus(f, false); else if (c) reviewChange(c, Number(param('depth')) || 1, false, param('open')); else setAnswered((n) => n + 1) })
       // Several repositories registered: there is no single one to show until a person picks a workspace member.
       .catch((e) => { if (e instanceof ToolError && e.code === 'INVALID_ARGUMENT' && /repository_id is required/.test(e.message)) { setMode('ecosystem'); setError(null) } else report(e) })
     const onPop = () => {
@@ -346,6 +375,7 @@ export function App() {
       if (w !== null && r) { setWorkspace(w); drillInto(r, false) }
       else if (w !== null) { setMode('ecosystem'); if (ecosystemRef.current?.workspace.name !== w) loadEcosystem(w, false) }
       else if (f) loadFocus(f, false)
+      else if (parseRange(param('change'))) reviewChange(parseRange(param('change'))!, Number(param('depth')) || 1, false)
       else { setQuery(param('q') ?? ''); setMode('terrain') }
     }
     connect()
@@ -353,7 +383,7 @@ export function App() {
     window.addEventListener('hashchange', connect)
     window.addEventListener('popstate', onPop)
     return () => { window.removeEventListener('hashchange', connect); window.removeEventListener('popstate', onPop) }
-  }, [reducedMotion, report, loadFocus, drillInto, loadEcosystem])
+  }, [reducedMotion, report, loadFocus, drillInto, loadEcosystem, reviewChange])
   useEffect(() => {
     // The palette searches the Terrain's names, so opening it loads them in any view.
     if ((mode !== 'terrain' && !palette) || !status || galaxyAsked.current) return
@@ -361,11 +391,14 @@ export function App() {
     const id = status.snapshot.id as string
     wanted.current.galaxy = id
     setLoading(true)
-    // The galaxy shown asks as it always has, pinned by Replay or not; a response for a snapshot no longer wanted is kept, not shown.
-    galaxyOf(id, () => fetchGalaxy()).then((g) => { if (wanted.current.galaxy === id) setGalaxy(g); setError(null) }).catch(report).finally(() => { setLoading(false); setAnswered((n) => n + 1) })
+    // The Terrain's code comes while its data does.
+    if (mode === 'terrain') void Terrain.preload()
+    // The galaxy shown is asked for by its snapshot's address (FR1453), pinned by Replay or not; a response for a snapshot no longer wanted is kept, not shown.
+    galaxyOf(id).then((g) => { if (wanted.current.galaxy === id) setGalaxy(g); setError(null) }).catch(report).finally(() => { setLoading(false); setAnswered((n) => n + 1) })
   }, [mode, palette, status, report])
   useEffect(() => { const id = status?.snapshot?.id; if (id) shots.current.set(id, { ...shots.current.get(id), status }) }, [status])
   const galaxyMatches = useMemo(() => (galaxy && mode === 'terrain' ? matchIndices(galaxy, query) : []), [galaxy, mode, query])
+  const rankedMatches = useMemo(() => (galaxy && (tableView || noWebGl) ? rankMatches(galaxy, galaxyMatches, query) : []), [galaxy, galaxyMatches, query, tableView, noWebGl])
   const terrain = useMemo(() => (galaxy ? terrainOf(galaxy) : null), [galaxy])
   const strokes = useMemo(() => (terrain ? drawnStrokes(terrain.pairs, hoverArea) : []), [terrain, hoverArea])
   // A pair drawn by either stroke, once, in the order drawn: the bundles the keyboard and assistive tech can open (FR067).
@@ -409,7 +442,7 @@ export function App() {
   const galaxyOf = (id: string, ask = () => fetchGalaxy(id)): Promise<GalaxyData> => {
     const held = shots.current.get(id) ?? {}
     shots.current.set(id, held)
-    return (held.galaxy ??= ask().then(parseGalaxy).catch((e) => { delete held.galaxy; throw e }))
+    return (held.galaxy ??= ask().then(loadGalaxy).catch((e) => { delete held.galaxy; throw e }))
   }
   const shownId = replay ?? current?.id ?? ''
   /** Time (FR1761, FR1762): pins a snapshot and draws the step from the one just older, compared once. */
@@ -448,6 +481,18 @@ export function App() {
 
   /** What an export of the current view draws and carries inside it (FR064); source only with consent (FR052). */
   const exportable = useMemo(() => {
+    // Change review's export: the head's map with the marked symbols, every row, and the range, gate and limits in its caption (FR1816).
+    if (status && mode === 'diff' && diffSource === 'commits' && review) {
+      const t = review.data.totals
+      const caveats: Caveats = {
+        view: 'Change review', repository: status.data.repository.name, snapshotId: review.data.head.snapshot_id ?? '', analysisMode: status.snapshot.analysis_mode,
+        scope: `change ${sideText(review.data.base)}..${sideText(review.data.head)} at depth ${review.depth}: ${summaryText(t)}; gate ${gate(t).text}`,
+        limits: [...review.limitations, ...(review.unplaced ? [`${plural(review.unplaced, 'row')} with no place on the map`] : [])], coverage: [],
+      }
+      // The head's map as drawn, with the symbols the rows mark picked out; the table says what each mark is.
+      const marked = [...new Set(review.marks.flatMap((m) => ('point' in m && !m.base ? [m.point] : [])))]
+      return { caveats, source: null, svg: () => terrainSvg(review.head, review.terrain, [], marked, caveats, null), table: { head: ['row', 'status', 'test or chain'], rows: review.rows.map((r) => [rowTitle(r), r.dependent ? r.dependent.status : r.changed.change, rowWords(r)]) } }
+    }
     if (!status || mode === 'claims' || (mode === 'terrain' ? !galaxy : !scene)) return null
     const file = evidence?.facts.find(([k]) => k === 'file')?.[1]
     const at = file ? /^(.*):(\d+)/.exec(file) : null
@@ -473,16 +518,17 @@ export function App() {
         const f = areaFog(a)
         return { name: a.name, count: a.count, ...(searching ? { matches: counts.get(i) ?? 0 } : {}), ...(f.haze || f.excluded || coverageOf(a).hatched ? { fog: coverageOf(a).text } : {}) }
       })
-      return { caveats, source, svg: terrainSvg(galaxy!, terrain!, strokes, searching ? galaxyMatches : null, caveats, source), table: { head: ['area', 'symbols', 'matches', 'coverage'], rows: areas.map((a) => [a.name, String(a.count), a.matches === undefined ? '' : String(a.matches), a.fog ?? 'complete']) } }
+      // The drawing is built when it is exported: at 250,000 symbols building it on every load was a long task of its own (#208).
+      return { caveats, source, svg: () => terrainSvg(galaxy!, terrain!, strokes, searching ? galaxyMatches : null, caveats, source), table: { head: ['area', 'symbols', 'matches', 'coverage'], rows: areas.map((a) => [a.name, String(a.count), a.matches === undefined ? '' : String(a.matches), a.fog ?? 'complete']) } }
     }
-    return { caveats, source, svg: sceneSvg(scene!, caveats, source), table: sceneTable(scene!) }
-  }, [status, mode, galaxy, scene, tracing, evidence, includeSource, query, focus, galaxyMatches, drawnPairs, terrain, strokes])
+    return { caveats, source, svg: () => sceneSvg(scene!, caveats, source), table: sceneTable(scene!) }
+  }, [status, mode, galaxy, scene, tracing, evidence, includeSource, query, focus, galaxyMatches, drawnPairs, terrain, strokes, diffSource, review])
   const fileStem = exportable ? `proofmesh-${exportable.caveats.view.toLowerCase().replace(/\W+/g, '-')}-${exportable.caveats.snapshotId}` : ''
-  const exportPage = () => { if (exportable) download(`${fileStem}.html`, new Blob([offlineHtml(exportable.svg, exportable.caveats, exportable.table, exportable.source)], { type: 'text/html' })) }
+  const exportPage = () => { if (exportable) download(`${fileStem}.html`, new Blob([offlineHtml(exportable.svg(), exportable.caveats, exportable.table, exportable.source)], { type: 'text/html' })) }
   const exportImage = async () => {
     if (!exportable) return
     try {
-      const png = pngWithText(await svgToPng(exportable.svg), 'proofmesh:caveats', caveatLines(exportable.caveats, exportable.source).join('\n'))
+      const png = pngWithText(await svgToPng(exportable.svg()), 'proofmesh:caveats', caveatLines(exportable.caveats, exportable.source).join('\n'))
       download(`${fileStem}.png`, new Blob([png as BlobPart], { type: 'image/png' }))
     } catch (e) { report(e) }
   }
@@ -632,6 +678,15 @@ export function App() {
               </div>
             )}
           </>
+        ) : mode === 'diff' ? (
+          <>
+            <div className="switch" role="group" aria-label="Diff of">
+              <button type="button" aria-pressed={diffSource === 'commits'} onClick={() => setDiffSource('commits')}>Commits</button>
+              <button type="button" aria-pressed={diffSource === 'snapshots'} onClick={() => setDiffSource('snapshots')}>Snapshots</button>
+            </div>
+            {diffSource === 'commits' && <ChangeControls key={reviewAsk.range ? rangeText(reviewAsk.range) : ''} review={review} range={reviewAsk.range} depth={reviewAsk.depth} pending={reviewPending} open={reviewRow?.row.id ?? null}
+              onReview={(r, d) => void reviewChange(r, d)} onOpen={openReviewRow} />}
+          </>
         ) : null}
         {cov && (
           <details className="snapshot">
@@ -663,7 +718,11 @@ export function App() {
         )}
         {noWebGl && <div className="notice" role="status">WebGL is not available here, so Observatory shows the table view.</div>}
         {mode === 'claims' && <ClaimsView onError={report} galaxy={galaxy} terrain={terrain} snapshotId={replay ?? current?.id ?? null} map={!noWebGl && !tableView} onWebGlFailure={() => setNoWebGl(true)} />}
-        {mode === 'diff' && (
+        {mode === 'diff' && diffSource === 'commits' && review && reviewTerrain && !noWebGl && <Terrain data={review.head} terrain={reviewTerrain} query="" focusArea={null} hoverArea={hoverArea}
+          onOpen={(i) => { const m = review.marks.find((x) => 'point' in x && !x.base && x.point === i); if (m) openReviewRow(m.row) }} onHoverArea={setHoverArea} onBundle={() => undefined} onClear={() => undefined} onWebGlFailure={() => setNoWebGl(true)}
+          drawOver={(v) => <ChangeMarks review={review} view={v} open={reviewRow?.row.id ?? null} onOpen={openReviewRow} />} />}
+        {mode === 'diff' && diffSource === 'commits' && !review && !loading && <p className="hint">Name a base and a head commit on the left to see what the change reaches: every caller, implementer and importer of each changed symbol, and whether the diff or a test covers it.</p>}
+        {mode === 'diff' && diffSource === 'snapshots' && (
           <>
             <div className="diff-filters" role="group" aria-label="Compare">
               <label>Base <select className="snapshots" id="diff-base" value={diffBase} onChange={(e) => setDiffBase(e.target.value)}>
@@ -683,32 +742,28 @@ export function App() {
         {mode === 'terrain' && galaxyOverlay && <p className="dim diff-legend" role="note"><span><i className="sw added" />added since {diff!.data.base.snapshot_id.slice(0, 13)}</span><span><i className="sw changed" />changed</span><span>removed symbols are in the Diff table</span><span><kbd>d</kbd> hides this overlay</span></p>}
         {mode === 'terrain' && galaxy && terrain && (tableView || noWebGl) && (
           <section className="table-view" aria-label="Terrain table">
-            <table>
-              <caption>{query.trim().length >= 2 ? `Symbols matching “${query.trim()}”${galaxyMatches.length > 200 ? ', first 200' : ''}` : 'Areas'}</caption>
-              {query.trim().length >= 2 ? (
+            {query.trim().length >= 2 ? (
+              <VirtualTable count={rankedMatches.length} columns={4} caption={`Symbols matching “${query.trim()}”: ${plural(rankedMatches.length, 'symbol')}`}
+                head={<thead><tr><th>Name</th><th>Kind</th><th>Qualified name</th><th /></tr></thead>}
+                row={(k) => { const i = rankedMatches[k]!; return <tr key={i}><td>{visible(shortName(galaxy.names[i]!))}</td><td>{galaxy.kinds[galaxy.kind[i]!]}</td><td>{visible(galaxy.names[i]!)}</td><td><button type="button" onClick={() => openPoint(i)}>Explore</button></td></tr> }} />
+            ) : (
+              <table>
+                <caption>Areas</caption>
+                <thead><tr><th>Area</th><th>Symbols</th><th>Files analysed</th><th>Not analysed</th><th>Excluded</th><th>Unresolved calls</th><th>Why not analysed</th><th>Coverage</th><th /></tr></thead>
                 <tbody>
-                  {rankMatches(galaxy, galaxyMatches, query).slice(0, 200).map((i) => (
-                    <tr key={i}><td>{visible(shortName(galaxy.names[i]!))}</td><td>{galaxy.kinds[galaxy.kind[i]!]}</td><td>{visible(galaxy.names[i]!)}</td><td><button type="button" onClick={() => openPoint(i)}>Explore</button></td></tr>
+                  {galaxy.areas.map((a, i) => (
+                    <tr key={a.name}>
+                      <td>{visible(a.name)}</td><td>{a.count.toLocaleString('en')}</td><td>{a.files.indexed.toLocaleString('en')}</td>
+                      <td>{areaFog(a).unanalysed.toLocaleString('en')}</td><td>{a.files.excluded.toLocaleString('en')}</td>
+                      <td>{a.calls.sites ? `${share(a.calls.unresolved, a.calls.sites)} of ${a.calls.sites.toLocaleString('en')}` : 'no call sites'}</td>
+                      <td>{visible(a.gaps.map(([reason, n]) => `${reason} ${n.toLocaleString('en')}`).join(', '))}</td>
+                      <td>{[coverageOf(a).hatched ? 'hatched: calls unresolved' : '', coverageOf(a).ghost || !a.count ? 'ghost: files not analysed' : ''].filter(Boolean).join('; ') || 'complete'}</td>
+                      <td>{a.count > 0 && <button type="button" onClick={() => { setGalaxyArea(i); setTableView(false) }}>Show</button>}</td>
+                    </tr>
                   ))}
                 </tbody>
-              ) : (
-                <>
-                  <thead><tr><th>Area</th><th>Symbols</th><th>Files analysed</th><th>Not analysed</th><th>Excluded</th><th>Unresolved calls</th><th>Why not analysed</th><th>Coverage</th><th /></tr></thead>
-                  <tbody>
-                    {galaxy.areas.map((a, i) => (
-                      <tr key={a.name}>
-                        <td>{visible(a.name)}</td><td>{a.count.toLocaleString('en')}</td><td>{a.files.indexed.toLocaleString('en')}</td>
-                        <td>{areaFog(a).unanalysed.toLocaleString('en')}</td><td>{a.files.excluded.toLocaleString('en')}</td>
-                        <td>{a.calls.sites ? `${share(a.calls.unresolved, a.calls.sites)} of ${a.calls.sites.toLocaleString('en')}` : 'no call sites'}</td>
-                        <td>{visible(a.gaps.map(([reason, n]) => `${reason} ${n.toLocaleString('en')}`).join(', '))}</td>
-                        <td>{[coverageOf(a).hatched ? 'hatched: calls unresolved' : '', coverageOf(a).ghost || !a.count ? 'ghost: files not analysed' : ''].filter(Boolean).join('; ') || 'complete'}</td>
-                        <td>{a.count > 0 && <button type="button" onClick={() => { setGalaxyArea(i); setTableView(false) }}>Show</button>}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </>
-              )}
-            </table>
+              </table>
+            )}
             {query.trim().length < 2 && (
               <table>
                 <caption>Bundles between areas</caption>
@@ -852,6 +907,7 @@ export function App() {
           ))}
         </aside>
       )}
+      {mode === 'diff' && diffSource === 'commits' && reviewRow && !evidence && <ChangePanel row={reviewRow.row} tests={reviewRow.tests} onClose={() => setReviewRow(null)} />}
       {evidence && (
         <aside className="right" aria-label="Evidence" tabIndex={-1} ref={evidencePanel}>
           <button type="button" className="close" aria-label="Close evidence" onClick={() => setEvidence(null)}>×</button>
@@ -869,6 +925,7 @@ export function App() {
         {mode === 'ecosystem' && <div className="dim">Each node is a repository, sized by its symbols; a label ending “newer snapshot exists” was linked from a snapshot that is no longer its current one. Lines are links between repositories, thicker for more; an amber line has candidates only. Short amber stubs are client facts that matched nothing in the workspace. Click a repository to see its links and colour the others by their relation to it; open it from there.
           <div>{(Object.keys(RELATION_COLOURS) as Relation[]).map((r) => <span key={r}><span className="sw" style={{ background: RELATION_COLOURS[r] }} /> {RELATION_WORDS[r]} </span>)}</div></div>}
         {mode === 'explore' && <div className="dim">Callers on the left, callees on the right, each at its call site and marked observed, inferred or unresolved in words. Click a row to read its call site; double-click it, or press f, to explore from it. Back returns to the previous symbol. Path to traces a path from the focus: each hop at its call site, the path labelled by its weakest hop, or where the search stopped.</div>}
+        {mode === 'diff' && diffSource === 'commits' && review && <div className="dim">Each changed, added and removed symbol is drawn where it always is; each dependent is ringed by its status in impact_completeness, solid changed, double tested, dashed neither, and the list on the left says each in words. Click a mark or a row for its chain and tests. {CONTAINMENT}</div>}
         {mode !== 'claims' && mode !== 'diff' && <div className="dim">{mode === 'terrain' ? CONTAINMENT : NO_MEANING}</div>}
         {exportable && (
           <div className="export" role="group" aria-label="Export this view">
@@ -880,7 +937,7 @@ export function App() {
       </section>
       {palette && <Palette commands={commands} galaxy={galaxy} noRepository={!status} onClose={() => setPalette(false)}
         onSymbol={(i) => { focusEvidence.current = true; void openPoint(i) }} onFile={openFile} />}
-      <footer className="bottom" aria-live="polite" aria-busy={loading} data-answered={answered} data-testid="conclusion">{loading ? 'Loading…' : mode === 'terrain' ? (galaxy && terrain ? (query.trim().length === 1 ? 'Type at least two characters to search.' : query.trim().length >= 2 ? `“${query.trim()}”: showing the ${plural(galaxyMatches.length, 'matching symbol')}; click one to explore it.` : galaxyArea !== null ? `${galaxy.areas[galaxyArea]!.name}: ${plural(galaxy.areas[galaxyArea]!.count, 'symbol')}. Click a point to explore it.` : terrainSummary(galaxy, terrain.pairs, drawnPairs.length)) : '') : scene ? scene.conclusion : ''}</footer>
+      <footer className="bottom" aria-live="polite" aria-busy={loading} data-answered={answered} data-testid="conclusion">{loading ? 'Loading…' : mode === 'diff' && diffSource === 'commits' && review ? `Change review ${sideText(review.data.base)}..${sideText(review.data.head)}: ${summaryText(review.data.totals)}. Gate ${gate(review.data.totals).text}.` : mode === 'terrain' ? (galaxy && terrain ? (query.trim().length === 1 ? 'Type at least two characters to search.' : query.trim().length >= 2 ? `“${query.trim()}”: showing the ${plural(galaxyMatches.length, 'matching symbol')}; click one to explore it.` : galaxyArea !== null ? `${galaxy.areas[galaxyArea]!.name}: ${plural(galaxy.areas[galaxyArea]!.count, 'symbol')}. Click a point to explore it.` : terrainSummary(galaxy, terrain.pairs, drawnPairs.length)) : '') : scene ? scene.conclusion : ''}</footer>
     </div>
   )
 }

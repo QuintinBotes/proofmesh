@@ -9,6 +9,8 @@ import { leanName, leanRow, quote } from './lean.js'
 import { innermost } from './symbol-at.js'
 import { hasRoles, parseRoles, type Roles } from './tests.js'
 import { EXECUTING, importedNames, testReach } from './test-reach.js'
+import { coverageOf, type Coverage } from './coverage.js'
+import type { CoverageImportRecord } from '../meshstore/catalog.js'
 
 /** Changed line ranges by path, on one side of a diff. */
 type Ranges = Map<string, Array<[number, number]>>
@@ -21,8 +23,10 @@ export type Diff = { head: Ranges; base: Ranges; renamed: Map<string, string>; g
 type Snap = { db: Database.Database; id: string; ranges: Ranges }
 type Sym = { id: string; stable_key: string; kind: string; name: string; qualified_name: string; path: string; file_id: string; start_line: number; end_line: number }
 type Test = { key?: string; name: string; path: string; line: number; evidence: string; depth: number; basis: Basis; changed: boolean }
-/** A caller, implementer, overrider, subclass, reference or importer of a changed symbol, with its status. */
-export type Dependent = { id: string; key?: string; name: string; path: string; line: number; relation: string; via: string | null; basis: Basis; status: 'changed' | 'tested' | 'neither'; test: Test | null }
+/** One hop of a dependent's chain: a symbol or file at its site of the next hop, by that relationship's assertion; the last hop is the changed symbol at its declaration. */
+export type Hop = { name: string; key?: string; path: string; line: number; assertion_id?: string }
+/** A caller, implementer, overrider, subclass, reference or importer of a changed symbol, with its status and the chain that reaches it (FR1811). */
+export type Dependent = { id: string; key?: string; name: string; path: string; line: number; relation: string; via: string | null; basis: Basis; status: 'changed' | 'tested' | 'covered' | 'neither'; test: Test | null; chain: Hop[]; coverage?: Pick<Coverage, 'source' | 'lines_covered' | 'lines_total' | 'at'> }
 /** A symbol the diff changed, with its status and dependents. */
 export type Changed = { id: string; key: string; name: string; path: string; line: number; change: 'added' | 'modified' | 'deleted'; status: 'tested' | 'neither'; test: Test | null; dependents: Dependent[] }
 
@@ -131,14 +135,14 @@ export function changedSymbols(head: Snap, base: Snap, diff: Diff, read: (db: Da
 }
 
 /** The project that contains a file, by its module symbol, for recognising test code by project naming. */
-const projectOf = (db: Database.Database, fileId: string) => (db.prepare("select p.qualified_name as q from assertion a join symbol p on p.id = a.source_id join symbol m on m.id = a.target_id where a.type = 'contains' and p.kind = 'project' and m.file_id = ? limit 1").get(fileId) as { q: string } | undefined)?.q ?? null
+export const projectOf = (db: Database.Database, fileId: string) => (db.prepare("select p.qualified_name as q from assertion a join symbol p on p.id = a.source_id join symbol m on m.id = a.target_id where a.type = 'contains' and p.kind = 'project' and m.file_id = ? limit 1").get(fileId) as { q: string } | undefined)?.q ?? null
 /** Whether a symbol is in test code, by its path and project naming. */
 /** A symbol's roles, where the snapshot holds them. */
 const rolesOf = (db: Database.Database, id: string): string[] | null => (hasRoles(db) ? parseRoles((db.prepare('select roles from symbol where id = ?').get(id) as { roles: string | null } | undefined)?.roles) : null)
 export const inTestCode = (db: Database.Database, s: { id?: string; path: string; file_id: string }, isTest: (path: string, project: string | null, roles?: Roles) => boolean) => isTest(s.path, projectOf(db, s.file_id), s.id ? rolesOf(db, s.id) : null)
 
-/** What `complete` needs: both sides, the depth, whether test code counts, and readers for file and object text. */
-export type Options = { head: Snap; base: Snap; depth: number; includeTests: boolean; isTest: (path: string, project: string | null, roles?: Roles) => boolean; read: (db: Database.Database, path: string) => string | undefined; readHash: (hash: string) => Buffer | undefined; maxDepth: number; include?: unknown }
+/** What `complete` needs: both sides, the depth, whether test code counts, readers for file and object text, and the coverage imports. */
+export type Options = { head: Snap; base: Snap; depth: number; includeTests: boolean; isTest: (path: string, project: string | null, roles?: Roles) => boolean; read: (db: Database.Database, path: string) => string | undefined; readHash: (hash: string) => Buffer | undefined; maxDepth: number; include?: unknown; coverage?: CoverageImportRecord[] }
 
 /**
  * One changed symbol with its dependents (FR111) and every status (FR112): callers (dispatch included, via the member called), implementers,
@@ -176,39 +180,48 @@ export function complete(c: { sym: Sym; change: Changed['change']; snap: Snap },
     const own = symbol.get(t.id) as Sym | undefined
     return { ...(own ? { key: own.stable_key } : {}), name: leanName(t), path: t.path, line: t.line, evidence: t.evidence, depth: t.depth, basis: t.basis, changed: !!own && changedIn(own) }
   }
-  const statusOf = (changed: boolean, ids: string[], files: string[]): Pick<Dependent, 'status' | 'test'> => {
+  const statusOf = (changed: boolean, ids: string[], files: string[]): Pick<Dependent, 'status' | 'test' | 'coverage'> => {
     if (changed) return { status: 'changed', test: null }
     const test = nearest(ids, files)
-    return { status: test ? 'tested' : 'neither', test }
+    if (test) return { status: 'tested', test }
+    // Covered only where no test reaches it statically, by a report that is not stale (FR2064).
+    const cov = o.coverage?.length ? coverageOf(db, o.coverage, ids) : null
+    return cov?.executed ? { status: 'covered', test: null, coverage: { source: cov.source, lines_covered: cov.lines_covered, lines_total: cov.lines_total, at: cov.at } } : { status: 'neither', test: null }
   }
 
   // One row per dependent and relation, at its first site.
   const rows = new Map<string, Dependent>()
-  const keep = (s: Sym, relation: string, assertion: string, via: string | null, basis: Basis) => {
+  // The chain ends at the changed symbol's declaration; each row's chain is its own hop, then the hops of what it reaches the change through.
+  const decl: Hop = { name: leanName(c.sym), key: c.sym.stable_key, path: c.sym.path, line: c.sym.start_line }
+  const keep = (s: Sym, relation: string, assertion: string, via: string | null, basis: Basis, rest: Hop[] = [decl]) => {
     if (s.id === c.sym.id || (!o.includeTests && testCode(s))) return
     const key = `${s.id}\u0000${relation}`, at = site.get(assertion) as { path: string; line: number }
     const had = rows.get(key)
     // A dependent an observed chain reaches is observed: that chain's row replaces an inferred one (FR184).
     if (had && !(had.basis === 'inferred' && basis === 'observed') && (had.basis !== basis || had.path < at.path || (had.path === at.path && had.line <= at.line))) return
-    rows.set(key, { id: s.id, key: s.stable_key, name: leanName(s), path: at.path, line: at.line, relation, via, basis, status: 'neither', test: null })
+    rows.set(key, { id: s.id, key: s.stable_key, name: leanName(s), path: at.path, line: at.line, relation, via, basis, status: 'neither', test: null, chain: [{ name: leanName(s), key: s.stable_key, path: at.path, line: at.line, assertion_id: assertion }, ...rest] })
   }
   // Every member above the changed one, at any distance, whose calls may dispatch to it.
-  const above = db.prepare(`select e.dst, ${inferredSql()} as inferred from edge e join assertion a on a.id = e.assertion_id where e.src = ? and e.type in ('implements', 'overrides') and e.resolution = 'resolved'`)
-  // Each is inferred unless some chain of observed implements and overrides hops reaches it.
-  const up = new Map<string, boolean>()
-  for (const q: Array<[string, boolean]> = [[c.sym.id, false]]; q.length;) {
-    const [at, inferred] = q.pop()!
-    for (const r of above.all(at) as Array<{ dst: string; inferred: number }>) {
+  const above = db.prepare(`select e.dst, e.assertion_id, ${inferredSql()} as inferred from edge e join assertion a on a.id = e.assertion_id where e.src = ? and e.type in ('implements', 'overrides') and e.resolution = 'resolved'`)
+  // Each is inferred unless some chain of observed implements and overrides hops reaches it; each keeps the hops from it down to the change.
+  const up = new Map<string, boolean>(), down = new Map<string, Hop[]>()
+  for (const q: Array<[string, boolean, Hop[]]> = [[c.sym.id, false, [decl]]]; q.length;) {
+    const [at, inferred, hops] = q.pop()!
+    for (const r of above.all(at) as Array<{ dst: string; assertion_id: string; inferred: number }>) {
       const through = inferred || !!r.inferred
       if (up.get(r.dst) === false || up.get(r.dst) === through) continue
       up.set(r.dst, through)
-      q.push([r.dst, through])
+      // The member above, at the site where the one below implements or overrides it.
+      const m = symbol.get(r.dst) as Sym, at2 = site.get(r.assertion_id) as { path: string; line: number }
+      const chain = [{ name: leanName(m), key: m.stable_key, path: at2.path, line: at2.line, assertion_id: r.assertion_id }, ...hops]
+      down.set(r.dst, chain)
+      q.push([r.dst, through, chain])
     }
   }
   for (const e of inbound(c.sym.id, ['calls', 'implements', 'overrides', 'inherits', 'references'])) { const s = symbol.get(e.src) as Sym | undefined; if (s) keep(s, e.type, e.assertion_id, null, e.inferred ? 'inferred' : 'observed') }
   for (const [m, inferred] of up) {
     const via = leanName(symbol.get(m) as Sym)
-    for (const e of inbound(m, ['calls'])) { const s = symbol.get(e.src) as Sym | undefined; if (s) keep(s, 'calls', e.assertion_id, via, inferred || e.inferred ? 'inferred' : 'observed') }
+    for (const e of inbound(m, ['calls'])) { const s = symbol.get(e.src) as Sym | undefined; if (s) keep(s, 'calls', e.assertion_id, via, inferred || e.inferred ? 'inferred' : 'observed', down.get(m)) }
   }
   // Callers of callers, breadth first, each at its shortest depth.
   let frontier = [...rows.values()].filter((r) => r.relation === 'calls')
@@ -219,7 +232,7 @@ export function complete(c: { sym: Sym; change: Changed['change']; snap: Snap },
         const s = symbol.get(e.src) as Sym | undefined
         const basis: Basis = f.basis === 'inferred' || e.inferred ? 'inferred' : 'observed'
         if (!s || (rows.has(`${s.id}\u0000calls`) && !(rows.get(`${s.id}\u0000calls`)!.basis === 'inferred' && basis === 'observed'))) continue
-        keep(s, 'calls', e.assertion_id, f.name, basis)
+        keep(s, 'calls', e.assertion_id, f.name, basis, f.chain)
         const added = rows.get(`${s.id}\u0000calls`)
         if (added) next.push(added)
       }
@@ -238,7 +251,8 @@ export function complete(c: { sym: Sym; change: Changed['change']; snap: Snap },
       if (!module && !names.some((n) => n === '*' || n === name)) continue
       const at = site.get(i.id) as { path: string; line: number }, had = rows.get(`${i.file}\u0000imports`)
       if (had && had.line <= at.line) continue
-      rows.set(`${i.file}\u0000imports`, { id: i.file, name: i.path.slice(i.path.lastIndexOf('/') + 1), path: at.path, line: at.line, relation: 'imports', via: null, basis: basisOf(i)!, status: 'neither', test: null })
+      const fileName = i.path.slice(i.path.lastIndexOf('/') + 1)
+      rows.set(`${i.file}\u0000imports`, { id: i.file, name: fileName, path: at.path, line: at.line, relation: 'imports', via: null, basis: basisOf(i)!, status: 'neither', test: null, chain: [{ name: fileName, path: at.path, line: at.line, assertion_id: i.id }, decl] })
     }
   }
 
@@ -256,9 +270,9 @@ export function complete(c: { sym: Sym; change: Changed['change']; snap: Snap },
   return { changed: { id: c.sym.id, key: c.sym.stable_key, name: leanName(c.sym), path: c.sym.path, line: c.sym.start_line, change: c.change, status: test ? 'tested' : 'neither', test, dependents }, stopped, unfollowed: [...unfollowed], follow, sites }
 }
 
-const statusText = (s: { status: string; test: Test | null }) => s.test
+const statusText = (s: { status: string; test: Test | null; coverage?: { source: string } }) => s.test
   ? `tested: ${quote(s.test.name)} ${quote(s.test.path)}:${s.test.line} ${s.test.evidence} depth=${s.test.depth}${s.test.changed ? ' (test changed)' : ''}`
-  : s.status
+  : s.coverage ? `${s.status} coverage=${quote(s.coverage.source)}` : s.status
 
 /** The text form of scenario 1: each changed symbol, then its dependents indented (FR113). */
 export function completenessRows(changed: Changed[]): string[] {
@@ -269,5 +283,5 @@ export function completenessRows(changed: Changed[]): string[] {
 }
 
 /** The `summary:` line of the lean answer (FR113). */
-export const summaryLine = (t: { changed_symbols: number; dependents: number; changed: number; tested: number; neither: number; by_basis: { inferred: number } }) =>
-  `summary: ${t.changed_symbols} changed symbol${t.changed_symbols === 1 ? '' : 's'}; ${t.dependents} dependent${t.dependents === 1 ? '' : 's'}: ${t.changed} changed, ${t.tested} tested, ${t.neither} neither${t.by_basis.inferred ? `; ${t.by_basis.inferred} inferred` : ''}`
+export const summaryLine = (t: { changed_symbols: number; dependents: number; changed: number; tested: number; covered?: number; neither: number; by_basis: { inferred: number } }) =>
+  `summary: ${t.changed_symbols} changed symbol${t.changed_symbols === 1 ? '' : 's'}; ${t.dependents} dependent${t.dependents === 1 ? '' : 's'}: ${t.changed} changed, ${t.tested} tested, ${t.covered === undefined ? '' : `${t.covered} covered, `}${t.neither} neither${t.by_basis.inferred ? `; ${t.by_basis.inferred} inferred` : ''}`

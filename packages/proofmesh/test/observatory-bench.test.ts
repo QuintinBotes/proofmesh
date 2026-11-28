@@ -66,9 +66,9 @@ describe('FR1160 to FR1169 the Observatory benchmark measures what a reader wait
     expect(res.cold.symbol_to_evidence_requests.median).toBeGreaterThanOrEqual(1)
     for (const type of ['script', 'stylesheet', 'api']) expect(res.bytes_total[type]).toMatchObject({ raw: expect.any(Number), gzip: expect.any(Number), transferred: expect.any(Number) })
     expect(res.bytes_total.script.raw).toBeGreaterThan(res.bytes_total.script.gzip)
-    expect(res.bytes.some((b: { url: string }) => b.url === '/api/v1/galaxy')).toBe(true)
+    expect(res.bytes.some((b: { url: string }) => b.url === '/api/v1/galaxy/v6/:snapshot')).toBe(true)
     expect(JSON.stringify(res)).not.toMatch(/#t=|pm_session/)
-    expect(res.calls.map((c: { call: string }) => c.call)).toEqual(expect.arrayContaining(['/api/v1/galaxy', '/api/v1/galaxy/symbol']))
+    expect(res.calls.map((c: { call: string }) => c.call)).toEqual(expect.arrayContaining(['/api/v1/galaxy/v6/:snapshot', '/api/v1/galaxy/symbol']))
     // FR1163: same snapshot in two fresh profiles, and A followed by B, snapshot-b.mjs's commit touching four files (one of them new).
     for (const s of [res.stability.same_snapshot, res.stability.a_to_b]) expect(s).toMatchObject({ shared: expect.any(Number), median: expect.any(Number), p90: expect.any(Number), max: expect.any(Number), moved_2pct: expect.any(Number), moved_5pct: expect.any(Number) })
     expect(res.stability.a_to_b.files).toHaveLength(4)
@@ -140,6 +140,14 @@ describe('FR1160 to FR1169 the Observatory benchmark measures what a reader wait
     const md = markdown({ ...result(0.02), measured_at: '2026-11-27T00:00:00Z', fixture: { name: 'f' }, machine: { hardware: 'h', load_avg_start: [1, 2, 3], load_avg_end: [1, 2, 3] }, browser: { version: '1', build: 'b' }, webgl_renderer: 'w', runs: 3, first_run: {} }, checkBudgets(result(0.02), budgets))
     expect(md).toMatch(/^\| Shared symbols moved more than 2% of the map's width, A then B \(share\) \| 0\.02 \|.*\| 0\.01 \(gpu\) \| ≤ 1% \(#48 SC-001\) \| over budget \|$/m)
     expect(md).toMatch(/^\| Time, a step between two loaded snapshots \| 87 ms \|.*\| 300 ms \(gpu\) \| ≤ 300 ms \(#48 SC-002\) \| within \|$/m)
+  })
+
+  it('FR2620 the farthest a shared symbol moves from A to B is budgeted at 2% of the width: #275\'s 16% fails the check', async () => {
+    const { checkBudgets } = await lib()
+    const budgets = JSON.parse(fs.readFileSync(path.join(ROOT, 'bench', 'observatory', 'budgets.json'), 'utf8')).budgets
+    const row = (max: number) => checkBudgets({ software_renderer: false, stability: { a_to_b: { max } } }, budgets).find((b: { key: string }) => b.key === 'stability.a_to_b.max')
+    expect(row(0.0177)).toMatchObject({ median: 0.0177, budget: 0.02, over: false })
+    expect(row(0.1624)).toMatchObject({ median: 0.1624, budget: 0.02, over: true })
   })
 
   it('FR1166 the main thread is read from long tasks: blocking time and the quiet window that ends it', async () => {

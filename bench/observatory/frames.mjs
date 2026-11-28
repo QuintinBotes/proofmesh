@@ -82,7 +82,7 @@ async function startView() {
 }
 
 // A synthetic galaxy replaces the indexed fixture's in the server's cache; its points map to the fixture's real symbol ids.
-// The cache's file names (galaxy-v5-<snapshot>) follow packages/proofmesh/src/query/galaxy.ts, whose format retires older payloads.
+// The cache's file names (galaxy-v6-<snapshot>) follow packages/proofmesh/src/query/galaxy.ts, whose format retires older payloads.
 let evidenceNames = null
 if (fixtureName === 'synthetic') {
   const v = await startView()
@@ -91,14 +91,14 @@ if (fixtureName === 'synthetic') {
   const g = cookie && await fetch(`${v.origin}/api/v1/galaxy`, { method: 'POST', headers: { Origin: v.origin, Cookie: cookie, 'Content-Type': 'application/json' }, body: '{}' })
   v.stop()
   if (!g?.ok) fail(`could not build the fixture's galaxy (${g?.status ?? session.status})`)
-  const cache = path.join(dataDir, 'cache'), idsFile = fs.readdirSync(cache).find((f) => /^galaxy-v5-.*\.ids\.json$/.test(f))
-  const snapshotId = /^galaxy-v5-(.*)\.ids\.json$/.exec(idsFile)[1]
+  const cache = path.join(dataDir, 'cache'), idsFile = fs.readdirSync(cache).find((f) => /^galaxy-v6-.*\.ids\.json$/.test(f))
+  const snapshotId = /^galaxy-v6-(.*)\.ids\.json$/.exec(idsFile)[1]
   // Evidence opens the synthetic point that maps to the fixture's best method, so its Explore view has edges.
   const real = evidencePoints(cachedGalaxy())
   const t0 = performance.now()
   const syn = generateGalaxy({ nodes: NODES, seed: SEED, snapshotId, ids: JSON.parse(fs.readFileSync(path.join(cache, idsFile), 'utf8')) })
   fs.writeFileSync(path.join(cache, idsFile), JSON.stringify(syn.ids))
-  fs.writeFileSync(path.join(cache, `galaxy-v5-${snapshotId}.bin.gz`), syn.gz)
+  fs.writeFileSync(path.join(cache, `galaxy-v6-${snapshotId}.bin.gz`), syn.gz)
   Object.assign(fixture, { nodes: NODES, seed: SEED, links: syn.links, galaxy_sha256: crypto.createHash('sha256').update(syn.gz).digest('hex'), generated_ms: Math.round(performance.now() - t0) })
   const names = cachedGalaxy().names
   const mapped = real.filter((i) => i < NODES && alone(names, i))
@@ -147,19 +147,22 @@ async function loadMetrics(page, cdp, pid) {
   }
 }
 
+/** A snapshot's Galaxy address (FR1453) with its snapshot id left out, so the tables name the route once. */
+const route = (pathname) => pathname.replace(/^(\/api\/v1\/galaxy\/v\d+\/)[\w-]+$/, '$1:snapshot')
 /**
- * The layout the page receives: the Galaxy payload fetched again in the page, with the request body the Galaxy itself sent, so it
- * names the same repository and snapshot. Its key is the snapshot id; positions are x, y pairs and names the symbols' names (#44).
+ * The layout the page receives: the Galaxy payload at the address the page itself fetched last, so it is the same repository and
+ * snapshot. Its key is the snapshot id; positions are x, y pairs and names the symbols' names (#44).
  */
-async function shownLayout(page, body, notKey) {
+async function shownLayout(page, notKey) {
   for (let i = 0; i < 100; i++) {
-    const l = await page.evaluate(async (body) => {
-      const r = await fetch('/api/v1/galaxy', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body })
-      if (!r.ok) return null
+    const l = await page.evaluate(async () => {
+      const at = performance.getEntriesByType('resource').map((e) => e.name).filter((n) => /\/api\/v1\/galaxy\/v\d+\/[\w-]+$/.test(n)).at(-1)
+      const r = at && await fetch(at, { credentials: 'same-origin' })
+      if (!r?.ok) return null
       const buf = await r.arrayBuffer(), hl = new DataView(buf).getUint32(0, true), h = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, 4, hl)))
       const base = 4 + hl + ((4 - ((4 + hl) % 4)) % 4)
       return { key: h.snapshot_id, positions: Array.from(new Uint16Array(buf, base + h.offsets.positions, h.nodes * 2)), names: new TextDecoder().decode(new Uint8Array(buf, base + h.offsets.names, h.names_bytes)).split('\n') }
-    }, body)
+    })
     if (l && l.key !== notKey) return l
     await page.waitForTimeout(100)
   }
@@ -185,7 +188,7 @@ const timedClick = (page, find, ready, arg) => page.evaluate(async ({ find, read
 }, { find: find.toString(), ready: ready.toString(), arg })
 /** The galaxy of a snapshot (or the only one) in the server's cache: the name, degree and kind of each point. */
 function cachedGalaxy(snapshotId) {
-  const file = snapshotId ? `galaxy-v5-${snapshotId}.bin.gz` : fs.readdirSync(path.join(dataDir, 'cache')).find((f) => /^galaxy-v5-.*\.bin\.gz$/.test(f))
+  const file = snapshotId ? `galaxy-v6-${snapshotId}.bin.gz` : fs.readdirSync(path.join(dataDir, 'cache')).find((f) => /^galaxy-v6-.*\.bin\.gz$/.test(f))
   const buf = zlib.gunzipSync(fs.readFileSync(path.join(dataDir, 'cache', file)))
   const hl = buf.readUInt32LE(0), h = JSON.parse(buf.subarray(4, 4 + hl).toString('utf8')), base = 4 + hl + ((4 - ((4 + hl) % 4)) % 4)
   return {
@@ -212,11 +215,11 @@ const responses = (page) => {
     const sizes = await res.request().sizes().catch(() => null)
     const transferred = sizes && sizes.responseBodySize + sizes.responseHeadersSize
     const body = await res.body().catch(() => null)
-    if (body) return list.push({ url: u.pathname, type: kind, raw: body.length, gzip: zlib.gzipSync(body).length, transferred })
+    if (body) return list.push({ url: route(u.pathname), type: kind, raw: body.length, gzip: zlib.gzipSync(body).length, transferred })
     // A body larger than the browser's network buffer (the galaxy at 250,000 symbols) cannot be read back: its decoded size comes
     // from resource timing, and its gzip size is the size sent when it was sent gzipped.
     const raw = await page.evaluate((url) => performance.getEntriesByName(url).at(-1)?.decodedBodySize ?? null, res.url()).catch(() => null)
-    list.push({ url: u.pathname, type: kind, raw, gzip: res.headers()['content-encoding'] === 'gzip' ? sizes?.responseBodySize ?? null : null, transferred })
+    list.push({ url: route(u.pathname), type: kind, raw, gzip: res.headers()['content-encoding'] === 'gzip' ? sizes?.responseBodySize ?? null : null, transferred })
   })
   return list
 }
@@ -228,7 +231,6 @@ async function coldRun(i, { keepFor } = {}) {
   const context = await browser.newContext({ viewport: VIEWPORT, deviceScaleFactor: 1 })
   await context.addInitScript(INIT)
   const page = await context.newPage()
-  const galaxyRequest = page.waitForRequest((r) => new URL(r.url()).pathname === '/api/v1/galaxy', { timeout: 900000 })
   // A page error means the view is broken; stop at once rather than wait out a timeout.
   page.on('pageerror', (e) => { console.error(`page error: ${e.message}`); server.close().finally(() => process.exit(1)) })
   const cdp = await context.newCDPSession(page)
@@ -239,8 +241,7 @@ async function coldRun(i, { keepFor } = {}) {
   const run = await loadMetrics(page, cdp, server.process().pid)
   const loadBytes = [...bytes]
   const summary = (await page.getByTestId('conclusion').textContent()).trim()
-  const galaxyBody = (await galaxyRequest).postData() ?? '{}'
-  const layout = await shownLayout(page, galaxyBody)
+  const layout = await shownLayout(page)
   const renderer = await page.evaluate(() => {
     const gl = document.createElement('canvas').getContext('webgl2') ?? document.createElement('canvas').getContext('webgl')
     const ext = gl?.getExtension('WEBGL_debug_renderer_info')
@@ -330,7 +331,7 @@ async function coldRun(i, { keepFor } = {}) {
   const edge = await timedClick(page, () => document.querySelector('[aria-label="Proof lens"] [role=listbox][aria-label=Callees] [role=option]') ?? document.querySelector('[aria-label="Proof lens"] [role=listbox][aria-label=Callers] [role=option]'),
     () => document.querySelector('[data-testid=cited]')?.textContent)
   await page.getByLabel('Search').fill('')
-  const calls = await page.evaluate(() => performance.getEntriesByType('resource').filter((e) => e.name.includes('/api/')).map((e) => ({ call: new URL(e.name).pathname, ms: e.duration })))
+  const calls = (await page.evaluate(() => performance.getEntriesByType('resource').filter((e) => e.name.includes('/api/')).map((e) => ({ call: new URL(e.name).pathname, ms: e.duration })))).map((c) => ({ ...c, call: route(c.call) }))
   Object.assign(run, {
     frame_idle_p50_ms: pct(idle, 0.5), frame_idle_p95_ms: pct(idle, 0.95), frame_idle_max_ms: pct(idle, 1),
     frame_pan_zoom_p50_ms: pct(panZoom, 0.5), frame_pan_zoom_p95_ms: pct(panZoom, 0.95), frame_pan_zoom_max_ms: pct(panZoom, 1),
@@ -347,7 +348,7 @@ async function coldRun(i, { keepFor } = {}) {
   const galaxyUrl = v.origin + (workspace && repository ? new URL(v.url).search : '/')
   await page.goto(galaxyUrl)
   const warm = await loadMetrics(page, cdp, server.process().pid)
-  const result = { run, warm, layout, galaxyBody, renderer, summary, bytes: loadBytes, calls, browserVersion: browser.version(), symbol: evidenceNames.join(', '), galaxyUrl }
+  const result = { run, warm, layout, renderer, summary, bytes: loadBytes, calls, browserVersion: browser.version(), symbol: evidenceNames.join(', '), galaxyUrl }
   if (keepFor) { result.keep = { page, close: async () => { await server.close(); v.stop() } }; return result }
   await server.close()
   v.stop()
@@ -374,7 +375,7 @@ if (last.keep) {
   const page = last.keep.page
   await page.goto(last.galaxyUrl)
   await page.waitForFunction(() => window.__obs?.marks.settled, null, { timeout: 900000, polling: 100 })
-  const b = await shownLayout(page, last.galaxyBody, last.layout.key)
+  const b = await shownLayout(page, last.layout.key)
   stability.a_to_b = { ...displacement(last.layout, b), files, added: SNAPSHOT_B.added, removed: SNAPSHOT_B.removed, changed: SNAPSHOT_B.changed }
   // Time (#48 SC-002): from B, step to A and back once, so both are loaded and compared; then time ] from A to B drawn with its marks.
   const step = (key, id) => page.evaluate(({ key, id }) => new Promise((resolve) => {

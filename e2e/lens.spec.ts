@@ -31,7 +31,7 @@ test.describe('the Proof lens on the invoicing fixture', () => {
   test.beforeEach(async () => { view = await startView() })
   test.afterEach(() => view?.stop())
 
-  test('FR1180 SC-002 opening a symbol makes exactly one request and shows its callers, callees and verified declaration', async ({ page }) => {
+  test('FR1180 FR2650 SC-002 opening a symbol makes exactly one request and shows its callers, callees and verified declaration', async ({ page }) => {
     await page.goto(view.launchUrl)
     await expect(page.getByTestId('conclusion')).toContainText('symbols in', { timeout: 60000 })
     await page.getByRole('tab', { name: 'Explore' }).click()
@@ -52,11 +52,18 @@ test.describe('the Proof lens on the invoicing fixture', () => {
     await expect(lens.getByRole('listbox', { name: 'Callees' }).getByRole('option').filter({ hasText: 'Array.reduce' })).toContainText(/packages\/billing\/src\/invoice\.ts:8.*observed · external/)
     await expect(page.getByRole('complementary', { name: 'Evidence' })).toContainText('integrity: ✓ verified')
 
-    // Opening a row inside the lens asks the server nothing: the card holds its evidence.
+    // Opening a row inside the lens asks the server nothing: the card holds its evidence. The pointer resting on the row prefetches
+    // that row's card after 80 ms (FR1186), so wait for that one first; a request the click made would then be a third (#277).
+    const asked: string[] = []
+    page.on('request', (r) => { if (r.url().endsWith('/api/v1/tools/get_symbol_card')) asked.push(JSON.parse(r.postData()!).symbol_id) })
+    await callers.first().hover()
+    await expect.poll(() => seen).toEqual(['get_symbol_card', 'get_symbol_card'])
     await callers.first().click()
     await expect(page.getByTestId('cited')).toHaveText('invoiceTotal(request.lines, "EUR")')
     await expect(page.getByTestId('evidence-text')).toHaveText('  return invoiceTotal(request.lines, "EUR");')
-    expect(seen).toEqual(['get_symbol_card'])
+    expect(seen).toEqual(['get_symbol_card', 'get_symbol_card'])
+    expect(asked).toHaveLength(1)
+    expect(asked[0]).not.toBe(new URL(page.url()).searchParams.get('focus'))
   })
 
   test('FR1180 a Terrain search result opens with one request: its point brings its card', async ({ page }) => {

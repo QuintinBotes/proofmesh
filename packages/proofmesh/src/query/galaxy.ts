@@ -32,8 +32,8 @@ export type GalaxyHeader = {
   offsets: { links: number; degree: number; area: number; kind: number; positions: number; names: number; cell_rects: number; cell_parent: number; cell_count: number; cell_names: number }; names_bytes: number; cell_names_bytes: number
 }
 
-/** Format 4 added each symbol's position (FR1221); format 5 areas of two directories, the cells and the bundles (FR1401, FR1402). Bump it when a section or the layout changes, so cached payloads are rebuilt. */
-export const GALAXY_FORMAT = 5
+/** Format 4 added each symbol's position (FR1221); format 5 areas of two directories, the cells and the bundles (FR1401, FR1402); format 6 the strips that hold a file's place when its directory gains a file (FR2621). Bump it when a section or the layout changes, so cached payloads are rebuilt. */
+export const GALAXY_FORMAT = 6
 const memo = new Map<string, { gz: Buffer; ids: string[] }>()
 
 export function areaOf(path: string, depth = 3): string {
@@ -84,6 +84,22 @@ export function galaxyBundle(dataDir: string, opts: Scope, from: string, to: str
       }))
       const inferred = all.filter((r) => r.inferred).length
       return { from, to, total: all.length, by_basis: { observed: all.length - inferred, inferred }, rows, next_offset: page.offset + page.limit < all.length ? page.offset + page.limit : null }
+    } finally { db.close() }
+  } finally { catalog.close() }
+}
+
+const pointOf = new WeakMap<string[], Map<string, number>>()
+/** The Galaxy point of each stable key in a snapshot, or -1 for a key with no point there (a file module, or none of its symbols), so Change review marks a tool's rows on the map (FR1813). */
+export function galaxyPoints(dataDir: string, opts: Scope, keys: string[]): number[] {
+  const { ids } = galaxyFor(dataDir, opts)
+  let index = pointOf.get(ids)
+  if (!index) pointOf.set(ids, (index = new Map(ids.map((id, i) => [id, i]))))
+  const catalog = Catalog.open(dataDir)
+  try {
+    const db = openSnapshot(catalog, snapshotOf(catalog, opts))
+    try {
+      const idOf = db.prepare('select id from symbol where stable_key = ?').pluck()
+      return keys.map((k) => index.get(idOf.get(k) as string) ?? -1)
     } finally { db.close() }
   } finally { catalog.close() }
 }
