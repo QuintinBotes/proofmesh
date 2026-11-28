@@ -2195,6 +2195,9 @@
     "FR1186": [
       "e2e/lens.spec.ts"
     ],
+    "FR2650": [
+      "e2e/lens.spec.ts"
+    ],
     "FR1260": [
       "packages/proofmesh/test/xrepo-symbols.test.ts"
     ],
