@@ -4,7 +4,7 @@ import os from 'node:os'
 import path from 'node:path'
 import AxeBuilder from '@axe-core/playwright'
 import { expect, test } from '@playwright/test'
-import { answered, CLI, openInLens, ROOT, startView } from './view'
+import { answered, CLI, openInLens, ROOT, serveView, startView } from './view'
 
 // compare_snapshots and the snapshot list are served from a recorded envelope, so the view is checked apart from the tool.
 const envelope = fs.readFileSync(path.join(ROOT, 'apps', 'observatory', 'test', 'fixtures', 'compare.json'), 'utf8')
@@ -82,5 +82,54 @@ test('FR1301 FR1302 after exploring a symbol, Diff draws no other view over its 
     // The head snapshot's declaration, with the changed body, is what the evidence panel shows.
     await expect(page.getByTestId('evidence-text')).toContainText('const rounded = Math.round(cents);')
     expect(seen).toEqual(['get_symbol_card'])
+  } finally { own.stop() }
+})
+
+test('FR3008 snapshot Diff returns to the same zoomed map and releases it for commit review', async ({ page }) => {
+  const own = await serveView(view.dataDir)
+  try {
+    await page.route('**/api/v1/snapshots', async (route) => {
+      const response = await route.fetch()
+      const data = await response.json()
+      data.snapshots.push({ ...data.snapshots[0], id: BASE, current: false })
+      await route.fulfill({ response, json: data })
+    })
+    await page.route('**/api/v1/tools/compare_snapshots', (route) => {
+      const result = JSON.parse(envelope)
+      result.data.head.snapshot_id = route.request().postDataJSON().snapshot_id
+      return route.fulfill({ json: result })
+    })
+    await page.goto(own.launchUrl)
+    const canvas = page.locator('.terrain[data-ready] canvas').first()
+    await expect(canvas).toBeVisible()
+    const original = await canvas.elementHandle()
+    const controls = page.getByRole('toolbar', { name: 'Terrain controls' })
+    const labels = page.locator('.terrain-label')
+    const positions = () => labels.evaluateAll((els) => els.map((el) => [el.getAttribute('title'), el.getAttribute('style')]))
+    await expect(labels.first()).toBeVisible()
+    const fit = await positions()
+    await controls.getByRole('button', { name: 'Zoom in' }).click()
+    await page.waitForTimeout(400) // The camera animates for 250 ms.
+    const zoomed = await positions()
+    expect(zoomed).not.toEqual(fit)
+
+    await page.getByRole('tab', { name: 'Diff' }).click()
+    await expect(page.getByRole('group', { name: 'Compare' })).toBeVisible()
+    await expect(controls).toHaveCount(0)
+    await expect(canvas).toBeHidden()
+    await page.locator('#diff-base').selectOption(BASE)
+    await answered(page, () => page.getByRole('button', { name: 'Compare' }).click())
+    await page.getByRole('tab', { name: 'Terrain' }).click()
+    await expect(controls).toBeVisible()
+    expect(await canvas.evaluate((el, old) => el === old, original)).toBe(true)
+    await expect(page.locator('.diff-legend')).toBeVisible()
+    expect(await positions()).toEqual(zoomed)
+
+    await page.getByRole('tab', { name: 'Diff' }).click()
+    await page.getByRole('button', { name: 'Commits', exact: true }).click()
+    await expect(page.locator('.terrain')).toHaveCount(0)
+    await page.getByRole('button', { name: 'Snapshots', exact: true }).click()
+    await expect(page.getByRole('group', { name: 'Compare' })).toBeVisible()
+    await expect(page.locator('.terrain')).toHaveCount(0)
   } finally { own.stop() }
 })
