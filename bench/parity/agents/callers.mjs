@@ -21,18 +21,34 @@ function nexusRows(result) {
   return rows
 }
 
-const quote = s => "'" + s.replaceAll('\\', '\\\\').replaceAll("'", "\\'") + "'"
+export const quote = s => "'" + s.replaceAll('\\', '\\\\').replaceAll("'", "\\'") + "'"
+
+export function graphQuery(tool, call, project) {
+  const cbm = tool === 'codebase-memory-mcp'
+  return async function query(statement) {
+    if (!cbm) return { rows: nexusRows(await call('cypher', { repo: 'parity', statement })), truncated: false }
+    const r = await call('query_graph', { project, query: statement, format: 'json', max_rows: 1000 })
+    if (!Array.isArray(r.rows)) throw new Error('Codebase-Memory returned no Cypher rows')
+    return { rows: r.rows, truncated: !!(r.has_more || r.truncated) }
+  }
+}
+
+export async function gortexSymbol({ file, qname }, call) {
+  const found = await call('search', { operation: 'symbols', query: last(qname), options: { path: file, limit: 100 }, output: { format: 'json' } })
+  if (!Array.isArray(found.results)) throw new Error('Gortex symbol search returned no results array')
+  const matches = found.results.filter(n => n.file_path === file && n.name === last(qname))
+  const exact = matches.find(n => n.id.endsWith('::' + qname))
+  const target = exact ?? (matches.length === 1 ? matches[0] : null)
+  if (!target) return { status: matches.length || found.truncated ? 'ambiguous_target' : 'target_missing', reason: `Gortex search returned ${matches.length} matching declarations in ${file}` }
+  return { symbol: target.id }
+}
 
 export async function directCallers(tool, q, call, project) {
   const { file, qname } = q.target
   if (tool === 'gortex') {
-    const found = await call('search', { operation: 'symbols', query: last(qname), options: { path: file, limit: 100 }, output: { format: 'json' } })
-    if (!Array.isArray(found.results)) throw new Error('Gortex symbol search returned no results array')
-    const matches = found.results.filter(n => n.file_path === file && n.name === last(qname))
-    const exact = matches.find(n => n.id.endsWith('::' + qname))
-    const target = exact ?? (matches.length === 1 ? matches[0] : null)
-    if (!target) return { status: matches.length || found.truncated ? 'ambiguous_target' : 'target_missing', reason: `Gortex search returned ${matches.length} matching declarations in ${file}` }
-    const symbol = target.id
+    const resolved = await gortexSymbol(q.target, call)
+    if (!resolved.symbol) return resolved
+    const { symbol } = resolved
     const graph = await call('relations', { operation: 'callers', target: { symbol }, options: { depth: 1, limit: 1000 }, output: { format: 'json' } })
     if (!Array.isArray(graph.nodes) || !Array.isArray(graph.edges)) throw new Error('Gortex returned no graph')
     if (!graph.nodes.some(n => n.id === symbol)) return { status: 'target_missing', reason: graph.caveat?.message ?? 'Target absent from graph' }
@@ -42,18 +58,13 @@ export async function directCallers(tool, q, call, project) {
       if (!from) throw new Error('Caller edge has no source node')
       return { file: from.file_path, caller: from.name, site: e.line > 0 ? e.file_path + ':' + e.line : null }
     })
-    return { status: 'answered', facts, truncated: !!graph.truncated }
+    return { status: 'answered', facts, truncated: !!(graph.truncated || graph._truncated_by_budget) }
   }
 
   const cbm = tool === 'codebase-memory-mcp'
   const field = cbm ? 'file_path' : 'filePath'
   const target = `b.${field} = ${quote(file)} AND b.name = ${quote(last(qname))}`
-  async function query(statement) {
-    if (!cbm) return { rows: nexusRows(await call('cypher', { repo: 'parity', statement })), truncated: false }
-    const r = await call('query_graph', { project, query: statement, format: 'json', max_rows: 1000 })
-    if (!Array.isArray(r.rows)) throw new Error('Codebase-Memory returned no Cypher rows')
-    return { rows: r.rows, truncated: !!(r.has_more || r.truncated) }
-  }
+  const query = graphQuery(tool, call, project)
   const matches = await query(`MATCH (b) WHERE ${target} RETURN b.${cbm ? 'qualified_name' : 'id'} AS identity`)
   if (matches.rows.length !== 1) return { status: matches.rows.length ? 'ambiguous_target' : 'target_missing', reason: `${matches.rows.length} matching declarations in ${file}` }
   const relation = cbm ? 'CALLS' : 'CodeRelation'

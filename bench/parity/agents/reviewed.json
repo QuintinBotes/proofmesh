@@ -5,6 +5,10 @@
   "questions": {
     "Q1": {"site": "src/decorator/entity/Entity.ts:34", "source": "getMetadataArgsStorage().tables.push({", "caller": "src/decorator/entity/Entity.ts::Entity"},
     "Q2": {"site": "src/query-builder/QueryBuilder.ts:657", "source": "metadata: this.connection.getMetadata(entityTarget),", "caller": "src/query-builder/QueryBuilder.ts::createFromAlias"},
-    "Q3": {"site": "src/query-builder/QueryBuilder.ts:561", "source": "return this.connection.driver.escape(name)", "caller": "src/query-builder/QueryBuilder.ts::escape", "excluded_site": "src/query-builder/QueryBuilder.ts:930", "excluded_source": "const name = this.escape(column.databaseName)"}
+    "Q3": {"site": "src/query-builder/QueryBuilder.ts:561", "source": "return this.connection.driver.escape(name)", "caller": "src/query-builder/QueryBuilder.ts::escape", "excluded_site": "src/query-builder/QueryBuilder.ts:930", "excluded_source": "const name = this.escape(column.databaseName)"},
+    "Q4": {"site": "src/driver/oracle/OracleDriver.ts:35", "source": "export class OracleDriver implements Driver {", "item": "src/driver/oracle/OracleDriver.ts::OracleDriver"},
+    "Q5": {"site": "src/error/AlreadyHasActiveConnectionError.ts:1", "source": "import { TypeORMError } from \"./TypeORMError\"", "item": "src/error/AlreadyHasActiveConnectionError.ts"},
+    "Q7": {"site": "src/naming-strategy/DefaultNamingStrategy.ts:159", "source": "return camelCase(relationName + \"_\" + referencedColumnName)", "item": "src/naming-strategy/DefaultNamingStrategy.ts::joinColumnName"},
+    "Q9": {"site": "src/cache/DbQueryResultCache.ts:224", "source": "let insertedValues: ObjectLiteral = options", "item": "src/cache/DbQueryResultCache.ts"}
   }
 }

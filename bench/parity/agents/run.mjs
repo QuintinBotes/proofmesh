@@ -8,6 +8,7 @@ import { encode } from 'gpt-tokenizer/encoding/o200k_base'
 import { makeTruth } from '../../graph-bench/lib.mjs'
 import { McpClient } from '../../graph-bench/mcp-client.mjs'
 import { directCallers, payload, pins } from './callers.mjs'
+import { relatedItems } from './relations.mjs'
 
 const here = import.meta.dirname
 const source = execFileSync('sh', [path.resolve(here, '../fixture.sh')], { encoding: 'utf8' }).trim()
@@ -50,7 +51,13 @@ function oracle() {
   const expected = {}
   for (const q of suite) {
     const t = compiler.truthFor(q), audit = reviewed.questions[q.id]
-    if (sourceLine(fixture, audit.site) !== audit.source || !t.pairs.has(audit.caller + ' ' + audit.site)) throw new Error('Reviewed positive disagrees with fixture: ' + q.id)
+    if (sourceLine(fixture, audit.site) !== audit.source) throw new Error('Reviewed source changed: ' + q.id)
+    if (q.kind !== 'callers') {
+      if (!t.items.has(audit.item)) throw new Error('Reviewed relationship disagrees with fixture: ' + q.id)
+      expected[q.id] = { items: sorted(t.items) }
+      continue
+    }
+    if (!t.pairs.has(audit.caller + ' ' + audit.site)) throw new Error('Reviewed positive disagrees with fixture: ' + q.id)
     if (audit.excluded_site && (t.sites.has(audit.excluded_site) || sourceLine(fixture, audit.excluded_site) !== audit.excluded_source)) throw new Error('Reviewed negative disagrees with fixture: ' + q.id)
     expected[q.id] = { callers: sorted(t.items), sites: sorted(t.sites), pairs: sorted(t.pairs) }
   }
@@ -156,13 +163,15 @@ async function measure(tool, expected) {
     async function run(q) {
       const messages = []
       const before = performance.now()
-      const answer = await directCallers(tool, q, async (name, args) => {
+      const retrieve = q.kind === 'callers' ? directCallers : relatedItems
+      const answer = await retrieve(tool, q, async (name, args) => {
         const input = { name, arguments: args }
         const r = await client.request('tools/call', input)
         messages.push({ input, reply: r })
         return payload(r)
       }, repo)
       const ms = performance.now() - before
+      if (q.kind !== 'callers') return { ...answer, items: sorted(answer.items ?? []), messages, ms }
       const facts = answer.facts ?? []
       return { ...answer, facts: undefined, callers: sorted(facts.map(f => f.file + '::' + f.caller)), sites: sorted(facts.map(f => f.site).filter(Boolean)),
         pairs: sorted(facts.filter(f => f.site).map(f => f.file + '::' + f.caller + ' ' + f.site)), messages, ms }
@@ -173,20 +182,31 @@ async function measure(tool, expected) {
         const warmup = await run(q)
         for (let i = 0; i < runs; i++) trials.push(await run(q))
         const first = trials[0]
-        const semantic = t => JSON.stringify([t.status, t.truncated, t.callers, t.pairs, t.sites])
+        const semantic = t => JSON.stringify([t.status, t.truncated, t.callers, t.pairs, t.sites, t.items])
         if ([warmup, ...trials].some(t => semantic(t) !== semantic(first))) throw new Error('Repeated retrieval changed the semantic result')
         const costs = first.messages.map(m => cost(m.reply.result))
         const audit = reviewed.questions[q.id]
         const score = {
           status: first.status, reason: first.reason ?? first.site_limitation, truncated: first.truncated ?? false,
-          callers: diff(expected[q.id].callers, first.callers), sites: diff(expected[q.id].sites, first.sites), pairs: diff(expected[q.id].pairs, first.pairs),
-          audit: { caller_found: first.callers.includes(audit.caller), site_found: first.pairs.includes(audit.caller + ' ' + audit.site), source: audit.source },
           warm_ms: trials.map(t => Math.round(t.ms * 10) / 10), bytes: costs.reduce((s, c) => s + c.bytes, 0), tokens: costs.reduce((s, c) => s + c.tokens, 0),
         }
-        score.exact_site_answer = first.status === 'answered' && !score.truncated && score.pairs.correct === score.pairs.expected && score.pairs.correct === score.pairs.returned
+        // Each class has its own answer contract: comparing costs requires every expected fact with no extras.
+        const fields = q.kind === 'callers' ? ['callers', 'sites', 'pairs'] : ['items']
+        const raw = { calls: first.messages }
+        for (const field of fields) {
+          score[field] = diff(expected[q.id][field], first[field])
+          raw[field] = first[field]
+        }
+        score.exact_answer = first.status === 'answered' && !score.truncated && fields.every(field => !score[field].missing.length && !score[field].extra.length)
+        if (q.kind === 'callers') {
+          score.exact_site_answer = score.exact_answer
+          score.audit = { caller_found: first.callers.includes(audit.caller), site_found: first.pairs.includes(audit.caller + ' ' + audit.site), source: audit.source }
+        } else {
+          score.audit = { site: audit.site, source: audit.source, item: audit.item, item_found: first.items.includes(audit.item) }
+        }
         score.p50_ms = quantile(score.warm_ms, .5); score.p95_ms = quantile(score.warm_ms, .95)
         row.questions[q.id] = score
-        save(tool + '-' + q.id + '.json', { calls: first.messages, callers: first.callers, sites: first.sites, pairs: first.pairs })
+        save(tool + '-' + q.id + '.json', raw)
       } catch (e) { row.questions[q.id] = { status: 'retrieval_failed', reason: e.message } }
     }
     const audit = reviewed.questions.Q1
@@ -213,18 +233,23 @@ try {
     console.log(tool, results.tools[tool].reason ?? 'finished')
   }
   save('results.json', results)
-  const lines = ['# Direct callers on TypeORM', '', `Fixture ${commit}. ${runs} warm queries per target. Complete MCP reply costs use o200k_base.`, '',
+  const lines = ['# Graph queries on TypeORM', '', `Fixture ${commit}. ${runs} warm queries per target. Complete MCP reply costs use o200k_base.`, '',
     '| Tool | Question | Correct / returned / expected callers | Correct / returned / expected sites | p50 / p95 ms | Bytes | Tokens |', '|---|---|---|---|---|---|---|']
   const ratio = x => `${x.correct}/${x.returned}/${x.expected}`
-  for (const [tool, data] of Object.entries(results.tools)) for (const q of suite) {
+  for (const [tool, data] of Object.entries(results.tools)) for (const q of suite.filter(q => q.kind === 'callers')) {
     const a = data.questions?.[q.id]
     lines.push(a?.callers ? `| ${tool} | ${q.id} (${a.status}) | ${ratio(a.callers)} | ${ratio(a.sites)} | ${a.p50_ms} / ${a.p95_ms} | ${a.bytes} | ${a.tokens} |` : `| ${tool} | ${q.id} | ${a?.reason ?? data.reason} | — | — | — | — |`)
+  }
+  lines.push('', '## Relationship queries', '', '| Tool | Question | Correct / returned / expected items | Exact | p50 / p95 ms | Bytes | Tokens |', '|---|---|---|---|---|---|---|')
+  for (const [tool, data] of Object.entries(results.tools)) for (const q of suite.filter(q => q.kind !== 'callers')) {
+    const a = data.questions?.[q.id]
+    lines.push(a?.items ? `| ${tool} | ${q.id} ${q.kind} (${a.status}) | ${ratio(a.items)} | ${a.exact_answer} | ${a.p50_ms} / ${a.p95_ms} | ${a.bytes} | ${a.tokens} |` : `| ${tool} | ${q.id} | ${a?.reason ?? data.reason} | — | — | — | — |`)
   }
   lines.push('', '## Index and discovery costs', '', '| Tool | Index to ready (ms) | Sampled peak RSS (MiB) | Listed tools | Schema bytes | Schema tokens |', '|---|---:|---:|---:|---:|---:|')
   for (const [tool, r] of Object.entries(results.tools)) if (r.discovery) lines.push(`| ${tool} | ${r.cold_ms} | ${r.peak_rss_kib ? (r.peak_rss_kib / 1024).toFixed(1) : 'unavailable'} | ${r.discovery.tools} | ${r.discovery.bytes} | ${r.discovery.tokens} |`)
   lines.push('', '## Source audit', '', 'A saved edit moved the Q1 call in Entity.ts from line 34 to 35 immediately before the stale-source query.', '', '| Tool | Q1 caller matched | Q1 caller and site matched | Old line returned after edit | New line returned after edit |', '|---|---|---|---|---|')
   for (const [tool, r] of Object.entries(results.tools)) if (r.stale) lines.push(`| ${tool} | ${r.questions.Q1?.audit?.caller_found ?? 'unknown'} | ${r.questions.Q1?.audit?.site_found ?? 'unknown'} | ${r.stale.old_site_returned} | ${r.stale.moved_site_returned} |`)
-  lines.push('', 'Only a complete, exact caller-and-site answer qualifies for an answer-cost comparison. Raw replies, commands and every missing or extra site are in the JSON files.', '', `Question classes pending adapter coverage: ${results.pending.join(', ')}.`)
+  lines.push('', 'Only exact, untruncated answers qualify for comparing costs within a question. Direct-caller questions also require exact caller/site pairs. The JSON files contain the raw replies, commands, audits and every missing or extra fact.', '', `Question classes pending adapter coverage: ${results.pending.join(', ')}.`)
   fs.writeFileSync(path.join(out, 'report.md'), lines.join('\n') + '\n')
   console.log(path.join(out, 'report.md'))
 } finally { fs.rmSync(work, { recursive: true, force: true }) }

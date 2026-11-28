@@ -38,3 +38,48 @@ it('FR3005 distinguishes a missing declaration from a returned empty caller set'
   let n = 0
   expect(await callers('codebase-memory-mcp', q, async () => ++n === 1 ? { rows: [['method']] } : { rows: [] })).toMatchObject({ status: 'answered', facts: [] })
 })
+
+const relationships = async () => (await import(pathToFileURL(path.join(ROOT, 'bench/parity/agents/relations.mjs')).href)).relatedItems
+
+it('FR3005 counts files that use a type outside its own declaration and an import clause', async () => {
+  const query = { kind: 'type_users', target: { file: 'src/T.ts', qname: 'T' } }
+  const call = async (tool: string) => tool === 'search' ? { results: [{ id: 'src/T.ts::T', name: 'T', file_path: 'src/T.ts' }] } : {
+    groups: [
+      { file: 'src/T.ts', uses: [{ context: 'field' }] },
+      { file: 'src/barrel.ts', uses: [{ context: 'import' }] },
+      { file: 'src/use.ts', uses: [{ context: 'import' }, { context: 'parameter_type' }] },
+    ], file_count: 3, _truncated_by_budget: true,
+  }
+  expect(await (await relationships())('gortex', query, call)).toEqual({ status: 'answered', items: ['src/use.ts'], truncated: true })
+})
+
+it('FR3005 walks native caller identities to the requested depth and excludes a cycle back to the target', async () => {
+  const responses = [
+    [['target']],
+    [['src/a.ts', 'get', 'a'], ['src/b.ts', 'get', 'b']],
+    [['src/c.ts', 'outer', 'c'], ['src/t.ts', 'start', 'target']],
+  ]
+  const statements: string[] = []
+  const call = async (_tool: string, args: { query: string }) => {
+    statements.push(args.query)
+    return { rows: responses.shift() }
+  }
+  const query = { kind: 'transitive_callers', depth: 2, target: { file: 'src/t.ts', qname: 'start' } }
+  expect(await (await relationships())('codebase-memory-mcp', query, call, 'repo')).toEqual({
+    status: 'answered', items: ['src/a.ts::get', 'src/b.ts::get', 'src/c.ts::outer'], truncated: false,
+  })
+  expect(statements).toHaveLength(3)
+  expect(statements[2]).toContain("b.qualified_name = 'a' OR b.qualified_name = 'b'")
+})
+
+it('FR3005 counts direct import edges to the requested file even when the tool includes unrelated edges', async () => {
+  const file = 'src/T.ts', other = 'src/user.ts'
+  const query = { kind: 'importers', target: { file } }
+  const call = async () => ({
+    nodes: [file, other].map(id => ({ id, file_path: id })), edges: [
+      { kind: 'imports', from: other, to: file }, { kind: 'references', from: 'not-an-import', to: file },
+      { kind: 'imports', from: 'not-direct', to: other },
+    ],
+  })
+  expect(await (await relationships())('gortex', query, call)).toEqual({ status: 'answered', items: [other], truncated: false })
+})

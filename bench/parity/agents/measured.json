@@ -1,7 +1,10 @@
 {
   "commit": "3d55188c0dd1256f520143379ecf97f45e71acba",
+  "src_tree": "068305c0f24bd6c23c554ecb7c503558bf9fda05",
+  "tsconfig_blob": "58c7ea0619f67cfd43a01d252c6df75e097b709a",
   "runs": 5,
   "host": "darwin/arm64",
+  "node": "v26.13.1",
   "tokenizer": "o200k_base (gpt-tokenizer 4.1.2)",
   "tools": {
     "gortex": {
@@ -21,6 +24,15 @@
         "Q1": {
           "status": "answered",
           "truncated": false,
+          "warm_ms": [
+            1284.4,
+            1284.2,
+            1284.8,
+            1273.5,
+            1260.1
+          ],
+          "bytes": 54678,
+          "tokens": 13915,
           "callers": {
             "correct": 48,
             "expected": 48,
@@ -56,27 +68,28 @@
             ],
             "extra": []
           },
+          "exact_answer": false,
+          "exact_site_answer": false,
           "audit": {
             "caller_found": true,
             "site_found": true,
             "source": "getMetadataArgsStorage().tables.push({"
           },
-          "warm_ms": [
-            1207.4,
-            1219.4,
-            1226.6,
-            1221.9,
-            1223
-          ],
-          "bytes": 54678,
-          "tokens": 13915,
-          "exact_site_answer": false,
-          "p50_ms": 1221.9,
-          "p95_ms": 1226.6
+          "p50_ms": 1284.2,
+          "p95_ms": 1284.8
         },
         "Q2": {
           "status": "answered",
           "truncated": false,
+          "warm_ms": [
+            1857,
+            1903.3,
+            1861.2,
+            1882.7,
+            1910.1
+          ],
+          "bytes": 34840,
+          "tokens": 8571,
           "callers": {
             "correct": 29,
             "expected": 78,
@@ -258,28 +271,29 @@
             ],
             "extra": []
           },
+          "exact_answer": false,
+          "exact_site_answer": false,
           "audit": {
             "caller_found": false,
             "site_found": false,
             "source": "metadata: this.connection.getMetadata(entityTarget),"
           },
-          "warm_ms": [
-            1788.3,
-            1790.7,
-            1789.9,
-            1791.4,
-            1782.8
-          ],
-          "bytes": 34840,
-          "tokens": 8571,
-          "exact_site_answer": false,
-          "p50_ms": 1789.9,
-          "p95_ms": 1791.4
+          "p50_ms": 1882.7,
+          "p95_ms": 1910.1
         },
         "Q3": {
           "status": "target_missing",
           "reason": "Gortex search returned 0 matching declarations in src/driver/Driver.ts",
           "truncated": false,
+          "warm_ms": [
+            10.1,
+            9.8,
+            9.8,
+            9.6,
+            9.7
+          ],
+          "bytes": 4995,
+          "tokens": 1120,
           "callers": {
             "correct": 0,
             "expected": 18,
@@ -360,29 +374,144 @@
             ],
             "extra": []
           },
+          "exact_answer": false,
+          "exact_site_answer": false,
           "audit": {
             "caller_found": false,
             "site_found": false,
             "source": "return this.connection.driver.escape(name)"
           },
+          "p50_ms": 9.8,
+          "p95_ms": 10.1
+        },
+        "Q4": {
+          "status": "answered",
+          "truncated": false,
           "warm_ms": [
-            9.2,
-            8.8,
-            9,
-            9.2,
-            9.1
+            5.1,
+            4.3,
+            4.1,
+            4.1,
+            4
           ],
-          "bytes": 4995,
-          "tokens": 1120,
-          "exact_site_answer": false,
-          "p50_ms": 9.1,
-          "p95_ms": 9.2
+          "bytes": 7435,
+          "tokens": 1837,
+          "items": {
+            "correct": 11,
+            "expected": 12,
+            "returned": 11,
+            "missing": [
+              "src/driver/sqlite-abstract/AbstractSqliteDriver.ts::AbstractSqliteDriver"
+            ],
+            "extra": []
+          },
+          "exact_answer": false,
+          "audit": {
+            "site": "src/driver/oracle/OracleDriver.ts:35",
+            "source": "export class OracleDriver implements Driver {",
+            "item": "src/driver/oracle/OracleDriver.ts::OracleDriver",
+            "item_found": true
+          },
+          "p50_ms": 4.1,
+          "p95_ms": 5.1
+        },
+        "Q5": {
+          "status": "answered",
+          "truncated": false,
+          "warm_ms": [
+            2239.9,
+            2272.8,
+            2311.5,
+            2293.4,
+            2293.4
+          ],
+          "bytes": 76235,
+          "tokens": 19573,
+          "items": {
+            "correct": 71,
+            "expected": 72,
+            "returned": 71,
+            "missing": [
+              "src/error/index.ts"
+            ],
+            "extra": []
+          },
+          "exact_answer": false,
+          "audit": {
+            "site": "src/error/AlreadyHasActiveConnectionError.ts:1",
+            "source": "import { TypeORMError } from \"./TypeORMError\"",
+            "item": "src/error/AlreadyHasActiveConnectionError.ts",
+            "item_found": true
+          },
+          "p50_ms": 2293.4,
+          "p95_ms": 2311.5
+        },
+        "Q7": {
+          "status": "answered",
+          "truncated": false,
+          "warm_ms": [
+            490.4,
+            483.1,
+            483,
+            480.6,
+            483.2
+          ],
+          "bytes": 16950,
+          "tokens": 4040,
+          "items": {
+            "correct": 9,
+            "expected": 11,
+            "returned": 9,
+            "missing": [
+              "src/naming-strategy/DefaultNamingStrategy.ts::joinTableInverseColumnName",
+              "src/naming-strategy/LegacyOracleNamingStrategy.ts::columnName"
+            ],
+            "extra": []
+          },
+          "exact_answer": false,
+          "audit": {
+            "site": "src/naming-strategy/DefaultNamingStrategy.ts:159",
+            "source": "return camelCase(relationName + \"_\" + referencedColumnName)",
+            "item": "src/naming-strategy/DefaultNamingStrategy.ts::joinColumnName",
+            "item_found": true
+          },
+          "p50_ms": 483.1,
+          "p95_ms": 490.4
+        },
+        "Q9": {
+          "status": "answered",
+          "truncated": false,
+          "warm_ms": [
+            20,
+            18.8,
+            18.2,
+            19.2,
+            19.9
+          ],
+          "bytes": 218915,
+          "tokens": 50514,
+          "items": {
+            "correct": 85,
+            "expected": 85,
+            "returned": 85,
+            "missing": [],
+            "extra": []
+          },
+          "exact_answer": true,
+          "audit": {
+            "site": "src/cache/DbQueryResultCache.ts:224",
+            "source": "let insertedValues: ObjectLiteral = options",
+            "item": "src/cache/DbQueryResultCache.ts",
+            "item_found": true
+          },
+          "p50_ms": 19.2,
+          "p95_ms": 20
         }
       },
       "reported_version": "gortex v0.64.11+c7abb9b\n  commit:  c7abb9b\n  built:   2026-10-26T21:24:14Z\n  go:      go1.27.3\n  os/arch: darwin/arm64",
       "profile": "embedded MCP, default facade; semantic enrichment and embeddings off",
-      "cold_ms": 2732,
-      "peak_rss_kib": 1210768,
+      "cold_ms": 2726,
+      "peak_rss_kib": 1295104,
       "discovery": {
         "tools": 21,
         "bytes": 15200,
@@ -422,6 +551,15 @@
           "status": "answered",
           "reason": "CodeRelation.CALLS has no call-site line property",
           "truncated": false,
+          "warm_ms": [
+            7.6,
+            6.7,
+            6.2,
+            6,
+            5.9
+          ],
+          "bytes": 3389,
+          "tokens": 936,
           "callers": {
             "correct": 48,
             "expected": 48,
@@ -553,28 +691,29 @@
             ],
             "extra": []
           },
+          "exact_answer": false,
+          "exact_site_answer": false,
           "audit": {
             "caller_found": true,
             "site_found": false,
             "source": "getMetadataArgsStorage().tables.push({"
           },
-          "warm_ms": [
-            7.5,
-            6.9,
-            6.1,
-            5.7,
-            5.6
-          ],
-          "bytes": 3389,
-          "tokens": 936,
-          "exact_site_answer": false,
-          "p50_ms": 6.1,
-          "p95_ms": 7.5
+          "p50_ms": 6.2,
+          "p95_ms": 7.6
         },
         "Q2": {
           "status": "answered",
           "reason": "CodeRelation.CALLS has no call-site line property",
           "truncated": false,
+          "warm_ms": [
+            5.8,
+            6,
+            5.8,
+            5.7,
+            4.5
+          ],
+          "bytes": 5553,
+          "tokens": 1438,
           "callers": {
             "correct": 78,
             "expected": 78,
@@ -764,28 +903,29 @@
             ],
             "extra": []
           },
+          "exact_answer": false,
+          "exact_site_answer": false,
           "audit": {
             "caller_found": true,
             "site_found": false,
             "source": "metadata: this.connection.getMetadata(entityTarget),"
           },
-          "warm_ms": [
-            4.1,
-            5.9,
-            5.7,
-            7.1,
-            5.9
-          ],
-          "bytes": 5553,
-          "tokens": 1438,
-          "exact_site_answer": false,
-          "p50_ms": 5.9,
-          "p95_ms": 7.1
+          "p50_ms": 5.8,
+          "p95_ms": 6
         },
         "Q3": {
           "status": "answered",
           "reason": "CodeRelation.CALLS has no call-site line property",
           "truncated": false,
+          "warm_ms": [
+            6,
+            7,
+            5.2,
+            5.1,
+            5
+          ],
+          "bytes": 1086,
+          "tokens": 313,
           "callers": {
             "correct": 6,
             "expected": 18,
@@ -864,29 +1004,233 @@
             ],
             "extra": []
           },
+          "exact_answer": false,
+          "exact_site_answer": false,
           "audit": {
             "caller_found": true,
             "site_found": false,
             "source": "return this.connection.driver.escape(name)"
           },
+          "p50_ms": 5.2,
+          "p95_ms": 7
+        },
+        "Q4": {
+          "status": "answered",
+          "truncated": false,
           "warm_ms": [
-            3.7,
-            5,
-            3.4,
-            3.3,
+            5.3,
+            5.2,
+            3.6,
+            5.1,
             5
           ],
-          "bytes": 1086,
-          "tokens": 313,
-          "exact_site_answer": false,
-          "p50_ms": 3.7,
+          "bytes": 1338,
+          "tokens": 406,
+          "items": {
+            "correct": 12,
+            "expected": 12,
+            "returned": 12,
+            "missing": [],
+            "extra": []
+          },
+          "exact_answer": true,
+          "audit": {
+            "site": "src/driver/oracle/OracleDriver.ts:35",
+            "source": "export class OracleDriver implements Driver {",
+            "item": "src/driver/oracle/OracleDriver.ts::OracleDriver",
+            "item_found": true
+          },
+          "p50_ms": 5.1,
+          "p95_ms": 5.3
+        },
+        "Q5": {
+          "status": "answered",
+          "truncated": false,
+          "warm_ms": [
+            4.9,
+            5,
+            5,
+            5.1,
+            4.9
+          ],
+          "bytes": 3970,
+          "tokens": 1100,
+          "items": {
+            "correct": 70,
+            "expected": 72,
+            "returned": 70,
+            "missing": [
+              "src/cache/QueryResultCacheFactory.ts",
+              "src/cache/RedisQueryResultCache.ts"
+            ],
+            "extra": []
+          },
+          "exact_answer": false,
+          "audit": {
+            "site": "src/error/AlreadyHasActiveConnectionError.ts:1",
+            "source": "import { TypeORMError } from \"./TypeORMError\"",
+            "item": "src/error/AlreadyHasActiveConnectionError.ts",
+            "item_found": true
+          },
+          "p50_ms": 5,
+          "p95_ms": 5.1
+        },
+        "Q7": {
+          "status": "answered",
+          "truncated": false,
+          "warm_ms": [
+            14.2,
+            12.9,
+            14.1,
+            12.7,
+            14.2
+          ],
+          "bytes": 4393,
+          "tokens": 1126,
+          "items": {
+            "correct": 11,
+            "expected": 11,
+            "returned": 17,
+            "missing": [],
+            "extra": [
+              "src/metadata-builder/EntityMetadataBuilder.ts::build",
+              "src/metadata-builder/JunctionEntityMetadataBuilder.ts::build",
+              "src/metadata-builder/RelationJoinColumnBuilder.ts::build",
+              "src/metadata-builder/RelationJoinColumnBuilder.ts::collectColumns",
+              "src/metadata/ColumnMetadata.ts::build",
+              "src/metadata/ColumnMetadata.ts::buildDatabaseName"
+            ]
+          },
+          "exact_answer": false,
+          "audit": {
+            "site": "src/naming-strategy/DefaultNamingStrategy.ts:159",
+            "source": "return camelCase(relationName + \"_\" + referencedColumnName)",
+            "item": "src/naming-strategy/DefaultNamingStrategy.ts::joinColumnName",
+            "item_found": true
+          },
+          "p50_ms": 14.1,
+          "p95_ms": 14.2
+        },
+        "Q9": {
+          "status": "answered",
+          "truncated": false,
+          "warm_ms": [
+            4.9,
+            4.9,
+            5,
+            4.8,
+            3.1
+          ],
+          "bytes": 517,
+          "tokens": 155,
+          "items": {
+            "correct": 0,
+            "expected": 85,
+            "returned": 0,
+            "missing": [
+              "src/cache/DbQueryResultCache.ts",
+              "src/data-source/DataSource.ts",
+              "src/driver/Driver.ts",
+              "src/driver/aurora-mysql/AuroraMysqlDriver.ts",
+              "src/driver/aurora-mysql/AuroraMysqlQueryRunner.ts",
+              "src/driver/capacitor/CapacitorQueryRunner.ts",
+              "src/driver/cockroachdb/CockroachDriver.ts",
+              "src/driver/cockroachdb/CockroachQueryRunner.ts",
+              "src/driver/cordova/CordovaQueryRunner.ts",
+              "src/driver/mongodb/MongoDriver.ts",
+              "src/driver/mysql/MysqlDriver.ts",
+              "src/driver/mysql/MysqlQueryRunner.ts",
+              "src/driver/nativescript/NativescriptQueryRunner.ts",
+              "src/driver/oracle/OracleDriver.ts",
+              "src/driver/oracle/OracleQueryRunner.ts",
+              "src/driver/postgres/PostgresDriver.ts",
+              "src/driver/postgres/PostgresQueryRunner.ts",
+              "src/driver/react-native/ReactNativeDriver.ts",
+              "src/driver/react-native/ReactNativeQueryRunner.ts",
+              "src/driver/sap/SapDriver.ts",
+              "src/driver/sap/SapQueryRunner.ts",
+              "src/driver/spanner/SpannerDriver.ts",
+              "src/driver/spanner/SpannerQueryRunner.ts",
+              "src/driver/sqlite-abstract/AbstractSqliteDriver.ts",
+              "src/driver/sqlite-abstract/AbstractSqliteQueryRunner.ts",
+              "src/driver/sqljs/SqljsDriver.ts",
+              "src/driver/sqlserver/SqlServerDriver.ts",
+              "src/driver/sqlserver/SqlServerQueryRunner.ts",
+              "src/entity-manager/EntityManager.ts",
+              "src/entity-manager/MongoEntityManager.ts",
+              "src/error/CannotCreateEntityIdMapError.ts",
+              "src/find-options/FindOperator.ts",
+              "src/find-options/FindOptionsUtils.ts",
+              "src/find-options/mongodb/MongoFindOneOptions.ts",
+              "src/find-options/operator/Raw.ts",
+              "src/globals.ts",
+              "src/metadata/ColumnMetadata.ts",
+              "src/metadata/EntityListenerMetadata.ts",
+              "src/metadata/EntityMetadata.ts",
+              "src/metadata/RelationIdMetadata.ts",
+              "src/metadata/RelationMetadata.ts",
+              "src/migration/MigrationExecutor.ts",
+              "src/persistence/EntityPersistExecutor.ts",
+              "src/persistence/Subject.ts",
+              "src/persistence/SubjectChangedColumnsComputer.ts",
+              "src/persistence/SubjectDatabaseEntityLoader.ts",
+              "src/persistence/SubjectExecutor.ts",
+              "src/persistence/subject-builder/CascadesSubjectBuilder.ts",
+              "src/persistence/subject-builder/ManyToManySubjectBuilder.ts",
+              "src/persistence/subject-builder/OneToManySubjectBuilder.ts",
+              "src/persistence/subject-builder/OneToOneInverseSideSubjectBuilder.ts",
+              "src/persistence/tree/ClosureSubjectExecutor.ts",
+              "src/persistence/tree/MaterializedPathSubjectExecutor.ts",
+              "src/persistence/tree/NestedSetSubjectExecutor.ts",
+              "src/query-builder/DeleteQueryBuilder.ts",
+              "src/query-builder/InsertQueryBuilder.ts",
+              "src/query-builder/QueryBuilder.ts",
+              "src/query-builder/QueryExpressionMap.ts",
+              "src/query-builder/QueryPartialEntity.ts",
+              "src/query-builder/RelationIdLoader.ts",
+              "src/query-builder/RelationLoader.ts",
+              "src/query-builder/RelationQueryBuilder.ts",
+              "src/query-builder/RelationRemover.ts",
+              "src/query-builder/RelationUpdater.ts",
+              "src/query-builder/ReturningResultsEntityUpdator.ts",
+              "src/query-builder/SelectQueryBuilder.ts",
+              "src/query-builder/SoftDeleteQueryBuilder.ts",
+              "src/query-builder/UpdateQueryBuilder.ts",
+              "src/query-builder/WhereExpressionBuilder.ts",
+              "src/query-builder/relation-id/RelationIdLoader.ts",
+              "src/query-builder/result/InsertResult.ts",
+              "src/query-builder/result/UpdateResult.ts",
+              "src/query-builder/transformer/DocumentToEntityTransformer.ts",
+              "src/query-builder/transformer/PlainObjectToDatabaseEntityTransformer.ts",
+              "src/query-builder/transformer/PlainObjectToNewEntityTransformer.ts",
+              "src/query-builder/transformer/RawSqlResultsToEntityTransformer.ts",
+              "src/query-runner/QueryRunner.ts",
+              "src/repository/AbstractRepository.ts",
+              "src/repository/MongoRepository.ts",
+              "src/repository/Repository.ts",
+              "src/repository/TreeRepository.ts",
+              "src/subscriber/Broadcaster.ts",
+              "src/subscriber/event/InsertEvent.ts",
+              "src/subscriber/event/UpdateEvent.ts",
+              "src/util/OrmUtils.ts"
+            ],
+            "extra": []
+          },
+          "exact_answer": false,
+          "audit": {
+            "site": "src/cache/DbQueryResultCache.ts:224",
+            "source": "let insertedValues: ObjectLiteral = options",
+            "item": "src/cache/DbQueryResultCache.ts",
+            "item_found": false
+          },
+          "p50_ms": 4.9,
           "p95_ms": 5
         }
       },
       "reported_version": "1.6.12",
       "profile": "local syntax graph; no FTS or embeddings",
-      "cold_ms": 8003,
-      "peak_rss_kib": 1904224,
+      "cold_ms": 7889,
+      "peak_rss_kib": 1892800,
       "discovery": {
         "tools": 17,
         "bytes": 70227,
@@ -921,6 +1265,15 @@
         "Q1": {
           "status": "answered",
           "truncated": false,
+          "warm_ms": [
+            29.1,
+            28.8,
+            32.2,
+            32.2,
+            32.5
+          ],
+          "bytes": 7146,
+          "tokens": 1843,
           "callers": {
             "correct": 48,
             "expected": 48,
@@ -956,27 +1309,28 @@
             ],
             "extra": []
           },
+          "exact_answer": false,
+          "exact_site_answer": false,
           "audit": {
             "caller_found": true,
             "site_found": true,
             "source": "getMetadataArgsStorage().tables.push({"
           },
-          "warm_ms": [
-            30.7,
-            29.7,
-            34.5,
-            37.9,
-            33.6
-          ],
-          "bytes": 7146,
-          "tokens": 1843,
-          "exact_site_answer": false,
-          "p50_ms": 33.6,
-          "p95_ms": 37.9
+          "p50_ms": 32.2,
+          "p95_ms": 32.5
         },
         "Q2": {
           "status": "answered",
           "truncated": false,
+          "warm_ms": [
+            31.8,
+            32,
+            30.4,
+            32.2,
+            31
+          ],
+          "bytes": 1248,
+          "tokens": 355,
           "callers": {
             "correct": 2,
             "expected": 78,
@@ -1239,28 +1593,29 @@
             ],
             "extra": []
           },
+          "exact_answer": false,
+          "exact_site_answer": false,
           "audit": {
             "caller_found": false,
             "site_found": false,
             "source": "metadata: this.connection.getMetadata(entityTarget),"
           },
-          "warm_ms": [
-            34,
-            36.8,
-            38.4,
-            35,
-            33.5
-          ],
-          "bytes": 1248,
-          "tokens": 355,
-          "exact_site_answer": false,
-          "p50_ms": 35,
-          "p95_ms": 38.4
+          "p50_ms": 31.8,
+          "p95_ms": 32.2
         },
         "Q3": {
           "status": "target_missing",
           "reason": "0 matching declarations in src/driver/Driver.ts",
           "truncated": false,
+          "warm_ms": [
+            16.7,
+            14.7,
+            16.6,
+            15.1,
+            16.1
+          ],
+          "bytes": 524,
+          "tokens": 129,
           "callers": {
             "correct": 0,
             "expected": 18,
@@ -1341,29 +1696,137 @@
             ],
             "extra": []
           },
+          "exact_answer": false,
+          "exact_site_answer": false,
           "audit": {
             "caller_found": false,
             "site_found": false,
             "source": "return this.connection.driver.escape(name)"
           },
+          "p50_ms": 16.1,
+          "p95_ms": 16.7
+        },
+        "Q4": {
+          "status": "answered",
+          "truncated": false,
           "warm_ms": [
-            18.8,
-            18.7,
-            15.7,
-            17.4,
-            15.9
+            29.6,
+            31.2,
+            31,
+            31.5,
+            30
           ],
-          "bytes": 524,
-          "tokens": 129,
-          "exact_site_answer": false,
-          "p50_ms": 17.4,
-          "p95_ms": 18.8
+          "bytes": 2436,
+          "tokens": 691,
+          "items": {
+            "correct": 12,
+            "expected": 12,
+            "returned": 12,
+            "missing": [],
+            "extra": []
+          },
+          "exact_answer": true,
+          "audit": {
+            "site": "src/driver/oracle/OracleDriver.ts:35",
+            "source": "export class OracleDriver implements Driver {",
+            "item": "src/driver/oracle/OracleDriver.ts::OracleDriver",
+            "item_found": true
+          },
+          "p50_ms": 31,
+          "p95_ms": 31.5
+        },
+        "Q5": {
+          "status": "answered",
+          "truncated": false,
+          "warm_ms": [
+            29.7,
+            28.5,
+            28.2,
+            28.8,
+            27
+          ],
+          "bytes": 7768,
+          "tokens": 1959,
+          "items": {
+            "correct": 72,
+            "expected": 72,
+            "returned": 72,
+            "missing": [],
+            "extra": []
+          },
+          "exact_answer": true,
+          "audit": {
+            "site": "src/error/AlreadyHasActiveConnectionError.ts:1",
+            "source": "import { TypeORMError } from \"./TypeORMError\"",
+            "item": "src/error/AlreadyHasActiveConnectionError.ts",
+            "item_found": true
+          },
+          "p50_ms": 28.5,
+          "p95_ms": 29.7
+        },
+        "Q7": {
+          "status": "answered",
+          "truncated": false,
+          "warm_ms": [
+            79.9,
+            78.6,
+            78.9,
+            79.9,
+            78.9
+          ],
+          "bytes": 7394,
+          "tokens": 2103,
+          "items": {
+            "correct": 11,
+            "expected": 11,
+            "returned": 11,
+            "missing": [],
+            "extra": []
+          },
+          "exact_answer": true,
+          "audit": {
+            "site": "src/naming-strategy/DefaultNamingStrategy.ts:159",
+            "source": "return camelCase(relationName + \"_\" + referencedColumnName)",
+            "item": "src/naming-strategy/DefaultNamingStrategy.ts::joinColumnName",
+            "item_found": true
+          },
+          "p50_ms": 78.9,
+          "p95_ms": 79.9
+        },
+        "Q9": {
+          "status": "answered",
+          "truncated": false,
+          "warm_ms": [
+            30.1,
+            32.8,
+            33.2,
+            29.8,
+            31.4
+          ],
+          "bytes": 8768,
+          "tokens": 2276,
+          "items": {
+            "correct": 85,
+            "expected": 85,
+            "returned": 85,
+            "missing": [],
+            "extra": []
+          },
+          "exact_answer": true,
+          "audit": {
+            "site": "src/cache/DbQueryResultCache.ts:224",
+            "source": "let insertedValues: ObjectLiteral = options",
+            "item": "src/cache/DbQueryResultCache.ts",
+            "item_found": true
+          },
+          "p50_ms": 31.4,
+          "p95_ms": 33.2
         }
       },
       "reported_version": "codebase-memory-mcp 0.12.1",
       "profile": "default MCP; local indexing, cross-language LSP disabled",
-      "cold_ms": 2622,
-      "peak_rss_kib": 109888,
+      "cold_ms": 2686,
+      "peak_rss_kib": 119920,
       "discovery": {
         "tools": 17,
         "bytes": 20824,
@@ -1381,19 +1844,12 @@
     }
   },
   "pending": [
-    "Q4",
-    "Q5",
     "Q6",
-    "Q7",
     "Q8",
-    "Q9",
     "Q10",
     "Q11",
     "Q12",
     "Q13"
   ],
-  "measured": "2026-11-28",
-  "node": "v26.13.1",
-  "src_tree": "068305c0f24bd6c23c554ecb7c503558bf9fda05",
-  "tsconfig_blob": "58c7ea0619f67cfd43a01d252c6df75e097b709a"
+  "measured": "2026-11-28"
 }

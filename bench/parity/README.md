@@ -300,4 +300,4 @@ Bold cells differ by more than one point; the scorer was not changed to close th
 
 ## Gortex, GitNexus and Codebase-Memory
 
-Run `node bench/parity/agents/run.mjs` for the direct-caller questions Q1–Q3. The command builds the pinned fixture if necessary and prints the path to the report. The first three questions cover a cross-module function, an instance method and interface dispatch. The other ten questions await comparator coverage. [Method and tool versions](agents/README.md) · [Measured results](agents/measured.md)
+Run `node bench/parity/agents/run.mjs` for the direct-caller questions Q1–Q3 and the relationship queries Q4, Q5, Q7 and Q9. The command builds the pinned fixture if necessary and prints the path to the report. The first three questions cover a cross-module function, an instance method and interface dispatch. The four relationship queries count implementations of an interface, files importing a module, callers up to three hops away and files using a type. Six questions await comparator coverage. [Method and tool versions](agents/README.md) · [Measured results](agents/measured.md)
