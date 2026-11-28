@@ -465,6 +465,7 @@ Acceptance: CI runs my pull request without secrets or release credentials; lice
 - FR390: MUST give `get_property_reads` with an `endpoint` a `static_analysis` status beside its lists: `ran` when the walk from the endpoint finished, `cut_by_depth` or `cut_by_rows` when it stopped at `max_depth` or at its node cap, `not_available_in_mode` when the snapshot has no such endpoint and an adapter fell back to the syntax tier (which records no endpoints and no property reads), with a limitation naming the adapter, its files and the reason, and `no_endpoint` when the snapshot has no such endpoint otherwise; null without an endpoint.
 - FR391: MUST, when the walk is cut by `max_depth`, still return the static reads found within the depth, count in `static_bound.not_visited` the symbols one hop past the cut that were not visited, and say both in a limitation.
 - FR392: MUST, when no imported run observed property reads for the endpoint or entity asked, say so in the tool's first limitation, naming them, so empty observed lists do not read as no reads.
+- FR1700: MUST, when no imported run observed property reads for the endpoint or entity asked, leave out of `get_property_reads` the observation-window note and the read_kind note, since the FR392 sentence already says the observed lists are empty and why, and keep both whenever an import observed a read (#235).
 
 ### Tool profiles (#26)
 
