@@ -2310,6 +2310,52 @@
     "FR966": [
       "packages/proofmesh/test/parity-bench.test.ts"
     ],
+    "FR1940": [
+      "packages/proofmesh/test/query-subjects.test.ts"
+    ],
+    "FR1941": [
+      "packages/proofmesh/test/query-subjects.test.ts"
+    ],
+    "FR1942": [
+      "packages/proofmesh/test/query-subjects.test.ts"
+    ],
+    "FR1943": [
+      "packages/proofmesh/test/query-subjects.test.ts"
+    ],
+    "FR1944": [
+      "packages/proofmesh/test/query-subjects.test.ts"
+    ],
+    "FR1945": [
+      "packages/proofmesh/test/query-subjects.test.ts"
+    ],
+    "FR1950": [
+      "e2e/claims-trace.spec.ts"
+    ],
+    "FR1952": [
+      "e2e/claims-trace.spec.ts"
+    ],
+    "FR1955": [
+      "e2e/claims-trace.spec.ts"
+    ],
+    "FR1957": [
+      "e2e/claims-trace.spec.ts"
+    ],
+    "FR1951": [
+      "e2e/claims-trace.spec.ts",
+      "apps/observatory/test/claims.test.ts"
+    ],
+    "FR1953": [
+      "e2e/claims-trace.spec.ts",
+      "apps/observatory/test/claims.test.ts"
+    ],
+    "FR1954": [
+      "e2e/claims-trace.spec.ts",
+      "apps/observatory/test/claims.test.ts"
+    ],
+    "FR1956": [
+      "e2e/claims-trace.spec.ts",
+      "apps/observatory/test/claims.test.ts"
+    ],
     "FR1760": [
       "packages/proofmesh/test/observatory-parity.test.ts",
       "e2e/time.spec.ts"
@@ -2375,6 +2421,27 @@
     ],
     "FR2147": [
       "policy/check-traceability.mjs"
+    ],
+    "FR2020": [
+      "packages/proofmesh/test/cochanges.test.ts"
+    ],
+    "FR2021": [
+      "packages/proofmesh/test/cochanges.test.ts"
+    ],
+    "FR2022": [
+      "packages/proofmesh/test/cochanges.test.ts"
+    ],
+    "FR2023": [
+      "packages/proofmesh/test/cochanges.test.ts"
+    ],
+    "FR2024": [
+      "packages/proofmesh/test/cochanges.test.ts"
+    ],
+    "FR2025": [
+      "packages/proofmesh/test/cochanges.test.ts"
+    ],
+    "FR2026": [
+      "packages/proofmesh/test/cochanges.test.ts"
     ]
   },
   "manual": {

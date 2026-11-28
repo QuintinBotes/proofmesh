@@ -4,7 +4,7 @@
 export interface Envelope {
 schema_version: "0.1"
 query_id: string
-tool: ("workspace_status" | "list_repositories" | "list_snapshots" | "list_workspaces" | "find_symbols" | "get_symbol" | "get_relationships" | "trace_paths" | "read_evidence" | "get_overview" | "analyze_impact" | "find_tests" | "search_sources" | "get_memory" | "verify_claim" | "request_index" | "get_job" | "get_claims" | "save_memory" | "get_table_reach" | "get_property_reads" | "get_external_usage" | "find_query_source" | "compare_snapshots" | "list_queries" | "get_ecosystem" | "prepare_verification" | "get_verification" | "impact_completeness" | "get_symbols_at" | "get_session_trail" | "find_stale_mentions" | "find_unused" | "find_cycles" | "find_entry_points" | "find_hubs" | "get_context_map" | "plan_rename" | "plan_move" | "search_structure" | "search_concepts" | "get_symbol_card" | "query_graph" | "get_findings")
+tool: ("workspace_status" | "list_repositories" | "list_snapshots" | "list_workspaces" | "find_symbols" | "get_symbol" | "get_relationships" | "trace_paths" | "read_evidence" | "get_overview" | "analyze_impact" | "find_tests" | "search_sources" | "get_memory" | "verify_claim" | "request_index" | "get_job" | "get_claims" | "save_memory" | "get_table_reach" | "get_property_reads" | "get_external_usage" | "find_query_source" | "compare_snapshots" | "list_queries" | "get_ecosystem" | "prepare_verification" | "get_verification" | "impact_completeness" | "get_symbols_at" | "get_session_trail" | "find_stale_mentions" | "find_unused" | "find_cycles" | "find_entry_points" | "find_hubs" | "get_context_map" | "plan_rename" | "plan_move" | "search_structure" | "search_concepts" | "get_symbol_card" | "query_graph" | "get_findings" | "get_cochanges")
 /**
  * The sealed snapshot or link file that answered; null for a catalog tool, which answers from the list of registered repositories.
  */
@@ -1280,6 +1280,139 @@ freshness?: ("snapshot" | "strict")
 envelope?: ("full" | "compact")
 }
 
+/**
+ * Each subject file's co-change partners from git history (FR2020 to FR2022).
+ */
+export interface GetCochangesData {
+subjects: {
+path: string
+/**
+ * Commits of the window that change the subject.
+ */
+commits: number
+partners: {
+path: string
+/**
+ * Commits of the window that change both files.
+ */
+shared: number
+subject_commits: number
+partner_commits: number
+/**
+ * shared / min(subject_commits, partner_commits), to two decimals.
+ */
+degree: number
+/**
+ * Whether a resolved or candidate relationship of the snapshot joins the two files, either direction, at depth 1.
+ */
+linked: boolean
+/**
+ * The types of those relationships; empty when not linked.
+ */
+relationship_types: string[]
+/**
+ * Whether the partner is test code, by file convention and project naming.
+ */
+test: boolean
+}[]
+}[]
+history: {
+/**
+ * false when the root is not a git working tree or lacks the snapshot's commit (no_history in limitations).
+ */
+available: boolean
+/**
+ * The snapshot's commit, where the window ends.
+ */
+commit: (string | null)
+window: ({
+days: number
+} | {
+commits: number
+})
+/**
+ * Commits of the window read, merges left out.
+ */
+commits_read: number
+/**
+ * Commits touching more than max_files_per_commit files, which formed no pairs.
+ */
+bulk_commits: number
+/**
+ * The repository is a shallow clone (history_shallow in limitations).
+ */
+shallow: boolean
+/**
+ * The window held more than the 10,000 commits read; the oldest were left out.
+ */
+capped: boolean
+}
+thresholds: {
+min_shared: number
+min_degree: number
+max_files_per_commit: number
+}
+}
+
+/**
+ * Files that changed in the same commits as the subject files, from the repository's local git history, though no import, call or reference need link them (a migration and its model, a serializer and its client). Per subject, partners ordered by degree, then shared, then path; degree = shared / min(subject_commits, partner_commits) over the window, which ends at the snapshot's commit. Each row says linked (a resolved or candidate relationship joins the two files, either direction) and test. Co-change is not a relationship: rows carry no basis and no traversal tool follows them. impact_completeness takes include_cochanges for the partners a diff leaves unchanged.
+ */
+export interface GetCochangesInput {
+repository_id?: string
+/**
+ * Default is the repository's current snapshot; its commit ends the window.
+ */
+snapshot_id?: string
+/**
+ * Subject files, repository-relative: any file of the snapshot, analysed or not.
+ * 
+ * @minItems 1
+ * @maxItems 100
+ */
+paths?: [string, ...(string)[]]
+/**
+ * Subject symbols or files; a symbol stands for its file.
+ * 
+ * @minItems 1
+ * @maxItems 100
+ */
+subject_ids?: [string, ...(string)[]]
+/**
+ * The commits read, back from the snapshot's commit: a number of commits, or of days before that commit's date. Default { days: 365 }; at most 10,000 commits are read either way.
+ */
+window?: ({
+days: number
+} | {
+commits: number
+})
+/**
+ * Least commits a pair shares to be listed; default 3.
+ */
+min_shared?: number
+/**
+ * Least degree to be listed; default 0.3.
+ */
+min_degree?: number
+/**
+ * A commit touching more files than this (a formatter run, a licence header) forms no pairs; default 50.
+ */
+max_files_per_commit?: number
+/**
+ * Leave out partners a relationship already joins to the subject.
+ */
+only_unlinked?: boolean
+limits?: {
+timeout_ms?: number
+max_rows?: number
+max_bytes?: number
+max_depth?: number
+}
+/**
+ * lean (the default over MCP): a row `<path> shared=<n> degree=<d> [linked] [test]` per partner, with `of=<subject>` when there are several subjects, then `# ` lines for the limitations.
+ */
+envelope?: ("full" | "compact" | "lean")
+}
+
 export interface GetContextMapData {
 rows: {
 /**
@@ -2234,7 +2367,7 @@ include_workspace?: boolean
 export interface GetSessionTrailData {
 session_id: string
 /**
- * Whether the trail is being recorded for this repository now (proofmesh trail on).
+ * Whether the trail is being recorded for this repository now (proofmesh trail on): the Claude Code plugin's entries, and the subjects of each proofmesh mcp query.
  */
 recording: boolean
 /**
@@ -2260,6 +2393,14 @@ agent_id?: string
  */
 outcome: ("ok" | "failed")
 generated?: boolean
+/**
+ * The query proofmesh mcp recorded this subject of; its entries share it, one a subject.
+ */
+query_id?: string
+/**
+ * The snapshot the query read, whose symbol id this is: the base side for compare_snapshots.
+ */
+snapshot_id?: string
 }[]
 changed: {
 id: string
@@ -2301,11 +2442,27 @@ line: number
 depth: number
 generated?: boolean
 }[]
+/**
+ * Dependents a successful opened entry names, by file or symbol: with never_seen and searched_only, every dependent once.
+ */
+opened: {
+id: string
+kind: string
+name: string
+qualified_name: string
+/**
+ * The file of the use that reaches the changed symbol: the call, import or reference site.
+ */
+path: string
+line: number
+depth: number
+generated?: boolean
+}[]
 }[]
 }
 
 /**
- * The session trail of one Claude Code session in this repository, recorded by the Proofmesh plugin only where a person ran proofmesh trail on: what the session searched, opened, changed and claimed, in order, each a repository-relative path or a symbol id with the tool and the time, never source text. For each symbol declared in a file it changed, the dependents (analyze_impact) whose file no successful opened entry names, split into searched_only (under a path a search covered) and never_seen.
+ * The session trail of one session in this repository, recorded only where a person ran proofmesh trail on: what a Claude Code session searched, opened, changed and claimed (recorded by the Proofmesh plugin), or the subjects of each query of a proofmesh mcp session (list_queries names its session_id), in order, each a repository-relative path or a symbol id with the tool and the time, never source text. For each symbol declared in a file it changed, or that a diff it asked for (compare_snapshots) removed or changed, the dependents (analyze_impact) that no successful opened entry names, split into searched_only (under a path a search covered, or found by a search) and never_seen.
  */
 export interface GetSessionTrailInput {
 /**
@@ -2317,7 +2474,7 @@ repository_id?: string
  */
 snapshot_id?: (string | null)
 /**
- * Claude Code's session id (the transcript file's name); /pm-trail passes the current session's.
+ * Claude Code's session id (the transcript file's name; /pm-trail passes the current session's), or a proofmesh mcp session's id (mcp_...).
  */
 session_id: string
 limits?: {
@@ -3184,6 +3341,42 @@ observed: number
 inferred: number
 }
 }
+/**
+ * With include_cochanges: the partners of the changed files that the diff does not change, by degree, then shared, then path. Co-change is not a relationship, so these are not dependents and no total counts them.
+ */
+cochange?: {
+path: string
+/**
+ * Commits of the window that change both files.
+ */
+shared: number
+subject_commits: number
+partner_commits: number
+/**
+ * shared / min(subject_commits, partner_commits), to two decimals.
+ */
+degree: number
+/**
+ * Whether a resolved or candidate relationship of the snapshot joins the two files, either direction, at depth 1.
+ */
+linked: boolean
+/**
+ * The types of those relationships; empty when not linked.
+ */
+relationship_types: string[]
+/**
+ * Whether the partner is test code, by file convention and project naming.
+ */
+test: boolean
+/**
+ * The changed file it usually changes with.
+ */
+of: string
+/**
+ * The diff does not change it.
+ */
+status: "not_changed"
+}[]
 }
 
 /**
@@ -3228,6 +3421,10 @@ cursor?: string
  * Whether the walk follows candidate edges: a call site that binds one candidate, or an ambiguous one of at most five. true follows them, false never does, auto (the default) follows them when every subject's file was analysed by the syntax tier alone. Every row reached through one is inferred; a site with more than five candidates is never followed.
  */
 include_inferred?: (boolean | "auto")
+/**
+ * Also list, in cochange, the files that usually change with the changed files (get_cochanges' default thresholds, history up to base) that the diff does not change. Default false; no other field changes.
+ */
+include_cochanges?: boolean
 }
 
 export interface ListQueriesData {
@@ -3289,6 +3486,10 @@ requested_at: string
 duration_ms: number
 truncated: boolean
 input_hash: string
+/**
+ * The proofmesh mcp session whose query this was, where its subjects were recorded (proofmesh trail on); get_session_trail lists them.
+ */
+session_id?: string
 }[]
 }
 
