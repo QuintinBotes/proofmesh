@@ -16,6 +16,7 @@ type Ref = { symbol: string } | { file: string } | { external: { module: string;
 let workspace = ''
 /** The repository itself, read only for installed packages under node_modules: external inputs (A2), never sources. */
 let repoRoot = ''
+let capturedOnly = false
 let externalInputs: string[] = []
 let files: Array<{ path: string; language: string }> = []
 /** One program per project configuration; `program` and `checker` are those of the project whose file is being read. */
@@ -95,6 +96,25 @@ const readsInstalled = {
   directoryExists: (p: string) => ts.sys.directoryExists(installedPath(p) ?? p),
   getDirectories: (p: string) => ts.sys.getDirectories(installedPath(p) ?? p),
 }
+// A session edit is reconstructed from sealed blobs. Config paths, triple-slash references and module resolution
+// must all see the same files, even when a compiler option names a directory outside the project.
+const libDir = path.dirname(ts.getDefaultLibFilePath({}))
+function compilerReads() {
+  if (!capturedOnly) return readsInstalled
+  const allowed = (p: string) => {
+    const absolute = path.resolve(p)
+    return absolute === workspace || absolute.startsWith(workspace + path.sep) ||
+      absolute === libDir || (path.dirname(absolute) === libDir && /^lib[\w.-]*\.d\.ts$/.test(path.basename(absolute)))
+  }
+  return {
+    fileExists: (p: string) => allowed(p) && ts.sys.fileExists(p),
+    readFile: (p: string) => allowed(p) ? ts.sys.readFile(p) : undefined,
+    directoryExists: (p: string) => allowed(p) && ts.sys.directoryExists(p),
+    getDirectories: (p: string) => allowed(p) ? ts.sys.getDirectories(p) : [],
+    // buildProjects already supplies each project's complete list of captured roots.
+    readDirectory: () => [],
+  }
+}
 const noExt = (p: string) => p.replace(/\.[^./]+$/, '')
 
 /** 3 when the file as stored starts with a UTF-8 byte order mark, which ts.sys.readFile drops from the text. */
@@ -141,7 +161,7 @@ const declarationFiles = new Map<string, TS.SourceFile>()
 function createProject(rootNames: string[], options: TS.CompilerOptions): Project {
   delete options.plugins
   const host = ts.createCompilerHost(options)
-  Object.assign(host, readsInstalled, { realpath })
+  Object.assign(host, compilerReads(), { realpath })
   const getSourceFile = host.getSourceFile.bind(host)
   host.getSourceFile = (fileName, languageVersion, onError, shouldCreate) => {
     if (!fileName.endsWith('.d.ts')) return getSourceFile(fileName, languageVersion, onError, shouldCreate)
@@ -184,7 +204,7 @@ function resolveModule(spec: string, file: string, options: TS.CompilerOptions, 
  */
 function buildProjects(): void {
   process.chdir(workspace)
-  const parseHost = { ...ts.sys, ...readsInstalled }
+  const parseHost = { ...ts.sys, ...compilerReads() }
   const configs = files.map((f) => f.path).filter((p) => /^(tsconfig|jsconfig)\.json$/.test(path.posix.basename(p)))
   const dirOf = (c: string) => path.posix.dirname(c)
   const nearest = (p: string) => configs.filter((c) => dirOf(c) === '.' || p.startsWith(`${dirOf(c)}/`)).sort((a, b) => dirOf(b).length - dirOf(a).length || (a < b ? -1 : 1))[0] ?? ''
@@ -1354,7 +1374,8 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
   try {
     if (req.method === 'initialize') {
       workspace = req.params.workspace
-      repoRoot = req.params.repository_root ?? ''
+      capturedOnly = req.params.config?.captured_only === true
+      repoRoot = capturedOnly ? '' : req.params.repository_root ?? ''
       files = req.params.files
       // Built now, not at the first analyze, so the manifest lists exactly the packages the analysis reads.
       buildProjects()

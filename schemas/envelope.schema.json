@@ -580,6 +580,38 @@
         "lean"
       ],
       "description": "compact: the snapshot-wide parts an earlier answer from this snapshot gave are left out (coverage, unresolved reasons, standing limitations, requested limits); the query's own limits and limitations stay. Pass envelope full, or call workspace_status, to see them again. lean: the answer sent is the text rendered from this envelope; see the tool's envelope input."
+    },
+    "edit": {
+      "type": "object",
+      "description": "Private MCP editor view derived from the named sealed snapshot. The answer snapshot identifies the bytes for this revision.",
+      "additionalProperties": false,
+      "required": [
+        "base_snapshot_id",
+        "repository_id",
+        "path",
+        "base_hash",
+        "revision"
+      ],
+      "properties": {
+        "base_snapshot_id": {
+          "type": "string",
+          "pattern": "^snap_[0-9a-z]+$"
+        },
+        "repository_id": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "base_hash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
     }
   }
 }

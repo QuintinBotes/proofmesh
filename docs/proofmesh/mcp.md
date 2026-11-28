@@ -271,3 +271,13 @@ In the extra tool profile, `find_duplicates` lists groups with the same sealed, 
 Use `find_clusters` in the extra profile to find files connected by imports, calls, references, inheritance and implementation. Each cluster summary gives a representative path. Pass it back as `path` to see the members in internal-degree order and boundary edge counts grouped by the neighboring cluster ID. You can also start from a symbol's `key` or `subject_id`. Cohesion is the internal edge count divided by internal plus external edges.
 
 Observed links carry twice the weight of inferred links during clustering. Set `observed_only` to drop inferred links, `include_tests: false` to omit test files, or raise `resolution` above its default of 1 to favor smaller groups. Shared hubs appear under `shared`. Singleton groups are counted and can be listed with `include_singletons`. Repositories with fewer than 20 indexed files in scope form one group. With `include_clusters: true`, each `get_overview` child lists its default cluster IDs and labels. A directory can span several clusters.
+
+## Query an unsaved TypeScript edit
+
+Start a dedicated stdio connection with `proofmesh mcp --editor`. Call `apply_edit` with the base `snapshot_id`, repository-relative `path`, the file's `base_hash` (its `read_evidence.object_hash`), and the complete unsaved `content` string. A stale hash returns `STALE_INPUT` with the expected hash. The last successful revision stays active if a replacement fails.
+
+On that connection, `find_symbols`, `get_symbols_at`, `get_symbol`, `get_symbol_card`, `get_relationships`, `trace_paths`, `find_tests`, `analyze_impact` and `read_evidence` query the edited graph. For example, look up a callee by name and path with `get_relationships`, then pass its returned evidence IDs to `read_evidence` on the same connection. Both answers carry the edited snapshot ID. JSON answers also carry the base snapshot, repository, path, hash and revision under `edit`. Lean answers identify the base and revision in their limitations.
+
+The session rebuilds the captured TypeScript project in a private directory, including JavaScript sources, single-file components and captured project configuration. The compiler can read its bundled library declarations. Installed dependencies, other language tiers and workspace-wide links are outside this view. Each successful replacement creates a new revision. Re-query symbol and evidence IDs for that revision.
+
+Call `discard_edit` before editing another path or base. Discard and disconnect release the private graph. Other clients continue querying their own snapshots throughout. The HTTP transport is stateless and serves the published graph.

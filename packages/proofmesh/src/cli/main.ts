@@ -47,7 +47,7 @@ import { countLabel, duration, phaseLabel, progressReporter } from './progress.j
 
 export const VERSION = '0.1.0'
 const SNAPSHOT_USAGE = 'usage: proofmesh snapshot pin <id> | snapshot unpin <id> | snapshot export <repository> [--snapshot <id>] --out <file> | snapshot import <repository> <file>'
-const MCP_USAGE = 'mcp [--http [--port P]]           MCP server on stdio, or Streamable HTTP on loopback with a bearer token; [--tools P[,P]] lists tool profiles other than core (data, claims, extra, all, evidence)'
+const MCP_USAGE = 'mcp [--editor | --http [--port P]]           MCP server on stdio, or Streamable HTTP on loopback with a bearer token; [--tools P[,P]] lists tool profiles other than core (data, claims, extra, all, evidence)'
 const USAGE = `proofmesh ${VERSION}: a code graph that shows its work
 
 Usage: proofmesh [--data-dir DIR] <command>
@@ -687,13 +687,16 @@ export async function main(argv: string[]): Promise<number> {
         if (rest.includes('--help') || rest.includes('-h')) { console.log(`usage: proofmesh ${MCP_USAGE}`); return 0 }
         const opts = [...rest], profiles = toolProfiles(take(opts, '--tools'))
         Catalog.open(dataDir).close()
+        const editing = has(opts, '--editor')
+        if (editing && profiles.includes('evidence')) throw new ProofmeshError('INVALID_ARGUMENT', '--editor requires a graph tool profile such as core')
         if (opts.includes('--http')) {
+          if (editing) throw new ProofmeshError('INVALID_ARGUMENT', '--editor requires a dedicated stdio connection')
           const s = await serveHttp(dataDir, VERSION, Number(take(opts, '--port') ?? 7318), profiles)
           console.log(`MCP over Streamable HTTP: ${s.url}`)
           console.log(`Authorization: Bearer ${s.token}`)
           return await new Promise<number>(() => {})
         }
-        await serveStdio(dataDir, VERSION, profiles)
+        await serveStdio(dataDir, VERSION, profiles, editing)
         // A client stops a stdio server by closing stdin, a clean exit; the SDK's transport does not watch for it (#147).
         return await new Promise<number>((resolve, reject) => process.stdin.once('end', () => resolve(0)).once('error', reject))
       }
