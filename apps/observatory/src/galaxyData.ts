@@ -10,6 +10,10 @@ export type GalaxyData = {
   /** x, y per symbol, 0 to 65535 within the map's square frame, computed with the snapshot (FR1220). */
   positions: Uint16Array
   kinds: string[]; areas: GalaxyArea[]; names: string[]; files: string[]
+  /** The layout's cells, parents first (FR1401): x, y, width and height per cell in the frame's 0 to 65536, its parent (-1 for the root), symbols and path segment ('' for the root and for a directory's own files beside its subdirectories). */
+  cells: { rects: Uint16Array; parent: Int32Array; count: Uint32Array; names: string[] }
+  /** [from area, to area, type, basis (0 observed, 1 inferred), count] (FR1402); types index relTypes. */
+  bundles: Array<[number, number, number, number, number]>; relTypes: string[]
 }
 
 /** An unresolved share at or above this draws a ring round the area. */
@@ -39,6 +43,12 @@ export function parseGalaxy(buf: ArrayBuffer): GalaxyData {
     kind: new Uint8Array(buf, base + h.offsets.kind, h.nodes),
     positions: new Uint16Array(buf, base + h.offsets.positions, h.nodes * 2),
     names: h.nodes ? new TextDecoder().decode(new Uint8Array(buf, base + h.offsets.names, h.names_bytes)).split('\n') : [],
+    cells: {
+      rects: new Uint16Array(buf, base + h.offsets.cell_rects, h.cells * 4), parent: new Int32Array(buf, base + h.offsets.cell_parent, h.cells),
+      count: new Uint32Array(buf, base + h.offsets.cell_count, h.cells),
+      names: h.cells ? new TextDecoder().decode(new Uint8Array(buf, base + h.offsets.cell_names, h.cell_names_bytes)).split('\n') : [],
+    },
+    bundles: h.bundles, relTypes: h.relationship_types,
   }
 }
 
@@ -112,26 +122,4 @@ export function areaLabel(area: string): string {
   const parts = area.split('/')
   const last = parts.pop() ?? area
   return GENERIC.has(last) && parts.length ? `${parts.pop()}/${last}` : last
-}
-
-const SPACE = 4096
-
-/** The snapshot's positions in the graph's space, where the map's frame is SPACE wide. */
-export function graphPositions(d: GalaxyData): Float32Array {
-  const pos = new Float32Array(d.n * 2)
-  for (let i = 0; i < d.n * 2; i++) pos[i] = (d.positions[i]! / 65535) * SPACE
-  return pos
-}
-
-/** Label boxes as drawn: centred on their point, about 7.2 px per character plus padding, one line high. */
-const box = (l: { name: string; x: number; y: number }) => ({ half: l.name.length * 3.6 + 8, x: l.x, y: l.y })
-/** Keeps labels in order and drops any that would overlap one already kept, so names never pile up (B14). */
-export function placeLabels<T extends { name: string; x: number; y: number }>(candidates: T[]): T[] {
-  const placed: T[] = []
-  for (const c of candidates) {
-    const b = box(c)
-    if (placed.some((q) => { const p = box(q); return Math.abs(p.y - b.y) < 18 && Math.abs(p.x - b.x) < p.half + b.half })) continue
-    placed.push(c)
-  }
-  return placed
 }
