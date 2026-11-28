@@ -15,7 +15,7 @@ import zlib from 'node:zlib'
 import { chromium } from '@playwright/test'
 import { generateGalaxy } from './gen-galaxy.mjs'
 import { checkBudgets, isSoftwareRenderer, mainThread, markdown, pct, summarize, summarizeRuns } from './lib.mjs'
-import { displacement } from './stability.mjs'
+import { decodeLayout, displacement, identifyLayout } from './stability.mjs'
 import { SNAPSHOT_B, writeSnapshotB } from './snapshot-b.mjs'
 
 const HERE = import.meta.dirname, ROOT = path.resolve(HERE, '../..')
@@ -157,22 +157,20 @@ async function loadMetrics(page, cdp, pid) {
 const route = (pathname) => pathname.replace(/^(\/api\/v1\/galaxy\/v\d+\/)[\w-]+$/, '$1:snapshot')
 /**
  * The layout the page receives: the Galaxy payload at the address the page itself fetched last, so it is the same repository and
- * snapshot. Its key is the snapshot id; positions are x, y pairs and names the symbols' names (#44).
+ * snapshot. Positions are x, y pairs in snapshot-local point order (#44).
  */
 async function shownLayout(page, notKey) {
-  for (let i = 0; i < 100; i++) {
-    const l = await page.evaluate(async () => {
-      const at = performance.getEntriesByType('resource').map((e) => e.name).filter((n) => /\/api\/v1\/galaxy\/v\d+\/[\w-]+$/.test(n)).at(-1)
-      const r = at && await fetch(at, { credentials: 'same-origin', headers: { Accept: 'application/vnd.proofmesh.terrain' } })
-      if (!r?.ok) return null
-      const buf = await r.arrayBuffer(), hl = new DataView(buf).getUint32(0, true), h = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, 4, hl)))
-      const base = 4 + hl + ((4 - ((4 + hl) % 4)) % 4)
-      return { key: h.snapshot_id, positions: Array.from(new Uint16Array(buf, base + h.offsets.positions, h.nodes * 2)), names: new TextDecoder().decode(new Uint8Array(buf, base + h.offsets.names, h.names_bytes)).split('\n') }
-    })
-    if (l && l.key !== notKey) return l
-    await page.waitForTimeout(100)
-  }
-  throw new Error('the Galaxy sent no layout')
+  const ready = await page.waitForFunction(previous => {
+    const id = document.querySelector('.terrain[data-ready]')?.getAttribute('data-snapshot')
+    if (!id || id === previous) return null
+    const url = performance.getEntriesByType('resource').find(e => /\/api\/v1\/galaxy\/v\d+\//.test(e.name) && new URL(e.name).pathname.endsWith('/' + id))?.name
+    return url ? { id, url } : null
+  }, notKey, { timeout: 10000 })
+  const { id, url } = await ready.jsonValue()
+  await ready.dispose()
+  // Playwright shares the session cookie here. The diagnostic read stays outside the page's API and memory measurements.
+  const response = await page.request.get(url, { headers: { Accept: 'application/vnd.proofmesh.terrain' }, failOnStatusCode: true })
+  try { return decodeLayout(await response.body(), id) } finally { await response.dispose() }
 }
 
 // Frame times: every requestAnimationFrame interval for a while.
@@ -392,7 +390,7 @@ if (last.keep) {
   await page.goto(last.galaxyUrl)
   await page.waitForFunction(() => window.__obs?.marks.settled, null, { timeout: 900000, polling: 100 })
   const b = await shownLayout(page, last.layout.key)
-  stability.a_to_b = { ...displacement(last.layout, b), files, added: SNAPSHOT_B.added, removed: SNAPSHOT_B.removed, changed: SNAPSHOT_B.changed }
+  stability.a_to_b = { ...displacement(identifyLayout(dataDir, last.layout), identifyLayout(dataDir, b)), files, added: SNAPSHOT_B.added, removed: SNAPSHOT_B.removed, changed: SNAPSHOT_B.changed }
   // Time (#48 SC-002): from B, step to A and back once, so both are loaded and compared; then time ] from A to B drawn with its marks.
   const step = (key, id) => page.evaluate(({ key, id }) => new Promise((resolve) => {
     const t0 = performance.now()

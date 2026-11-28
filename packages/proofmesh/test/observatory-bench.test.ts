@@ -68,6 +68,8 @@ describe('FR1160 to FR1169 the Observatory benchmark measures what a reader wait
     for (const type of ['script', 'stylesheet', 'api']) expect(res.bytes_total[type]).toMatchObject({ raw: expect.any(Number), gzip: expect.any(Number), transferred: expect.any(Number) })
     expect(res.bytes_total.script.raw).toBeGreaterThan(res.bytes_total.script.gzip)
     expect(res.bytes.some((b: { url: string }) => b.url === '/api/v1/galaxy/v6/:snapshot')).toBe(true)
+    // The cold document and the fresh evidence document each read the layout once.
+    expect(res.calls.find((c: { call: string }) => c.call === '/api/v1/galaxy/v6/:snapshot').count).toBe(2)
     expect(JSON.stringify(res)).not.toMatch(/#t=|pm_session/)
     expect(res.calls.map((c: { call: string }) => c.call)).toEqual(expect.arrayContaining(['/api/v1/galaxy/v6/:snapshot', '/api/v1/galaxy/symbol']))
     // FR1163: same snapshot in two fresh profiles, and A followed by B, snapshot-b.mjs's commit touching four files (one of them new).
@@ -102,6 +104,7 @@ describe('FR1160 to FR1169 the Observatory benchmark measures what a reader wait
     const res = JSON.parse(fs.readFileSync(out, 'utf8'))
     expect(res.fixture).toMatchObject({ name: 'synthetic', nodes: 900, seed: 7, symbols: 900 })
     expect(res.fixture.galaxy_sha256).toMatch(/^[0-9a-f]{64}$/)
+    expect(res.stability.same_snapshot).toMatchObject({ shared: 900, max: 0 })
     expect(res.galaxy).toMatch(/^900 symbols in /)
     expect(res.cold.first_draw_ms.median).toEqual(expect.any(Number))
     expect(res.cold.symbol_to_evidence_ms.median).toEqual(expect.any(Number))
@@ -110,10 +113,15 @@ describe('FR1160 to FR1169 the Observatory benchmark measures what a reader wait
   it('FR1163 displacement is measured as a share of the fitted map width, for symbols present in both layouts', async () => {
     const { displacement } = await stability()
     // A is a 100-wide square of four points; B moves one shared point by 10 (10% of the width) and adds a point A lacks.
-    const a = { positions: [0, 0, 100, 0, 0, 100, 100, 100], names: [1, 2, 3, 4] }
-    const b = { positions: [0, 0, 100, 0, 0, 100, 90, 100, 50, 50], names: [1, 2, 3, 4, 5] }
+    const a = { positions: [0, 0, 100, 0, 0, 100, 100, 100], key: 'A', keys: [1, 2, 3, 4] }
+    const b = { positions: [0, 0, 100, 0, 0, 100, 90, 100, 50, 50], key: 'B', keys: [1, 2, 3, 4, 5] }
     expect(displacement(a, b)).toEqual({ shared: 4, median: 0, p90: 0.1, max: 0.1, moved_2pct: 0.25, moved_5pct: 0.25 })
-    expect(displacement(a, a)).toMatchObject({ max: 0, moved_2pct: 0 })
+    expect(displacement(a, a)).toMatchObject({ shared: 4, max: 0, moved_2pct: 0 })
+    // Two points shown as "run" exchange indices. One declaration moves, one is removed, one is added.
+    const old = { key: 'A', names: ['run', 'run', 'del'], positions: [0, 0, 100, 0, 100, 100], keys: ['a#run', 'b#run', 'del'] }
+    const next = { key: 'B', names: ['run', 'run', 'new'], positions: [90, 0, 0, 0, 100, 100], keys: ['b#run', 'a#run', 'new'] }
+    expect(displacement(old, next)).toMatchObject({ shared: 2, max: 0.1, moved_2pct: 0.5 })
+    expect(displacement(old, old)).toMatchObject({ shared: 3, max: 0 })
   })
 
   it('FR1164 FR1165 a value over its budget is marked and counted; a software renderer is checked against the software column', async () => {
