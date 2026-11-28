@@ -78,6 +78,11 @@
             ],
             "description": "inferred when the chain that reaches the test has an inferred hop; a test an all-observed chain also reaches is observed, with that chain."
           },
+          "findings": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "How many imported SARIF findings (get_findings) are on this symbol; absent when none are (#30)."
+          },
           "via": {
             "type": "string",
             "description": "For dispatch, the interface or base member the call resolved to."

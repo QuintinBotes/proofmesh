@@ -177,6 +177,13 @@ describe('FR055 Observatory is built only on what other clients can get: its non
     expect((await mcp('compare_snapshots', { base_snapshot_id: older!.id, snapshot_id: newer!.id })).data.symbols.added.map((x: { qualified_name: string }) => x.qualified_name)).toContain('packages/billing/src/invoice:invoiceCount')
   })
 
+  it('FR1760 list_snapshots gives each snapshot\'s symbols, relationships and unresolved relationships, counted as compare_snapshots counts each side, for the Time strip', async () => {
+    const [newer, older] = (await mcp('list_snapshots', { repository_id: repoId })).data.snapshots as Array<{ id: string; symbols: number; relationships: number; unresolved: number }>
+    const { base, head } = (await mcp('compare_snapshots', { base_snapshot_id: older!.id, snapshot_id: newer!.id })).data
+    expect([older, newer].map((x) => [x!.symbols, x!.relationships, x!.unresolved])).toEqual([base, head].map((x: { symbols: number; relationships: number; unresolved: number }) => [x.symbols, x.relationships, x.unresolved]))
+    expect(newer!.symbols).toBe(older!.symbols + 1)
+  })
+
   it('FR055 /api/workspaces: each workspace\'s members are the ones get_ecosystem returns, named as list_repositories names them, and the route is list_workspaces\' data', async () => {
     const workspaces = JSON.parse((await route('GET', '/api/workspaces')).toString()).workspaces as Array<{ name: string; members: Array<{ repository_id: string; name: string }> }>
     expect(workspaces).toEqual((await mcp('list_workspaces', {})).data.workspaces)

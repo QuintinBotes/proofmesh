@@ -31,8 +31,8 @@ export async function establishSession(): Promise<void> {
   if (!r.ok) throw new ToolError('UNAUTHORIZED', 'This launch link was already used or has expired. Run "proofmesh view" again.', r.status)
 }
 
-/** The whole snapshot as the binary Galaxy payload, of the snapshot named or else the pinned or current one; the browser undoes the gzip transfer encoding. */
-export async function fetchGalaxy(snapshotId: string | null = replay): Promise<ArrayBuffer> {
+/** The whole snapshot as the binary Galaxy payload, the pinned one unless another is named; the browser undoes the gzip transfer encoding. */
+export async function fetchGalaxy(snapshotId = replay): Promise<ArrayBuffer> {
   const r = await fetch('/api/v1/galaxy', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(scoped(snapshotId ? { snapshot_id: snapshotId } : {})) })
   if (!r.ok) { const body = await r.json().catch(() => ({})); throw new ToolError(body?.error?.code ?? 'INTERNAL_ERROR', body?.error?.message ?? `HTTP ${r.status}`, r.status) }
   return r.arrayBuffer()
@@ -72,7 +72,7 @@ export async function fetchBundle(from: string, to: string, offset: number): Pro
   return body as Bundle
 }
 
-export type SnapshotInfo = { id: string; published_at: string | null; analysis_mode: string; current: boolean; git: { available: boolean; reason?: string } | null }
+export type SnapshotInfo = { id: string; published_at: string | null; analysis_mode: string; current: boolean; git: { available: boolean; reason?: string } | null; symbols: number | null; relationships: number | null; unresolved: number | null }
 
 /** The repository's published snapshots, newest first, for Replay and Diff. */
 export async function listSnapshots(): Promise<SnapshotInfo[]> {

@@ -22,7 +22,10 @@
           "published_at",
           "analysis_mode",
           "current",
-          "git"
+          "git",
+          "symbols",
+          "relationships",
+          "unresolved"
         ],
         "properties": {
           "id": {
@@ -49,6 +52,27 @@
               {
                 "type": "object"
               }
+            ]
+          },
+          "symbols": {
+            "description": "Symbols in the snapshot, as compare_snapshots counts a side; null when its sealed file cannot be read.",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "relationships": {
+            "description": "Relationships in the snapshot, as compare_snapshots counts a side; null when its sealed file cannot be read.",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "unresolved": {
+            "description": "Relationships that are neither resolved nor resolved to an external symbol; null when its sealed file cannot be read.",
+            "type": [
+              "integer",
+              "null"
             ]
           }
         }

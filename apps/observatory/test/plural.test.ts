@@ -3,10 +3,10 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { toEcosystem, type Ecosystem } from '../src/ecosystem'
 import { toNeighbourhood, type Focus, type RelationshipsEnvelope } from '../src/explore'
-import { areasSvg } from '../src/exporting'
+import { terrainSvg } from '../src/exporting'
 import type { GalaxyData } from '../src/galaxyData'
 import { plural } from '../src/plural'
-import { terrainSummary, type Pair } from '../src/terrainModel'
+import { terrainOf, terrainSummary, type Pair } from '../src/terrainModel'
 
 describe('FR1210 a count of one is said with the singular noun', () => {
   it('plural says one in the singular and every other count in the plural, grouped by thousands', () => {
@@ -35,10 +35,16 @@ describe('FR1210 a count of one is said with the singular noun', () => {
     expect(toEcosystem({ ...data, members: [a!], links: [], boundaries }).conclusion).toMatch(/^shop: 1 repository, 0 linked pairs, 1 unresolved boundary\. /)
   })
 
-  it('a Terrain export of one area says one area and one match, also to a screen reader', () => {
-    const svg = areasSvg([{ name: 'src', count: 1, matches: 1 }], { view: 'Terrain', repository: 'r', snapshotId: 's', analysisMode: 'no_execution', scope: 'all', limits: [], coverage: [] }, null)
-    expect(svg).toContain('aria-label="Terrain: 1 area"')
-    expect(svg).toContain('>1 area, sized by their symbols</text>')
-    expect(svg).toContain('src · 1 · 1 match</text>')
+  it('a Terrain export of one area says one area, one symbol and one match, also to a screen reader', () => {
+    const none = { indexed: 0, unsupported: 0, excluded: 0, failed: 0, pending: 0 }
+    const g: GalaxyData = {
+      snapshotId: 's', n: 1, links: new Uint32Array(), degree: new Uint32Array(1), area: Uint16Array.from([0]), kind: new Uint8Array(1), positions: Uint16Array.from([100, 100]), kinds: ['function'], names: ['src/a:x'], files: [],
+      areas: [{ name: 'src', count: 1, files: { ...none, indexed: 1 }, calls: { sites: 0, unresolved: 0 }, gaps: [] }],
+      cells: { rects: Uint16Array.from([0, 0, 65535, 65535, 0, 0, 65535, 65535]), parent: Int32Array.from([-1, 0]), count: Uint32Array.from([1, 1]), names: ['', 'src'] }, bundles: [], relTypes: [],
+    }
+    const caveats = { view: 'Terrain', repository: 'r', snapshotId: 's', analysisMode: 'no_execution', scope: 'all', limits: [], coverage: [] }
+    expect(terrainSvg(g, terrainOf(g), [], null, caveats, null)).toContain('aria-label="Terrain: 1 area"')
+    expect(terrainSvg(g, terrainOf(g), [], null, caveats, null)).toContain(">1 symbol in 1 area, placed by the snapshot&#39;s path tree</text>")
+    expect(terrainSvg(g, terrainOf(g), [], [0], caveats, null)).toContain(">1 matching symbol of 1 symbol in 1 area, placed by the snapshot&#39;s path tree</text>")
   })
 })

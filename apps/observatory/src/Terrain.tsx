@@ -1,13 +1,14 @@
 import Graph from 'graphology'
 import Sigma from 'sigma'
 import { extremityArrow, layerDashed, layerFill, pathCurved, sdfCircle, sdfRectangle } from 'sigma/rendering'
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { ghostAreas, matchIndices, shortName, type GalaxyData } from './galaxyData'
 import { OVERLAY_RGB } from './diff'
-import { cellRect, coverageOf, drawnStrokes, FRAME, labels as labelsOf, pairText, symbolSide, type Label, type Pair, type Stroke, type Terrain as Model, type View } from './terrainModel'
+import { CELL, cellRect, coverageOf, drawnStrokes, FRAME, GHOST_SIDE, GHOST_Y, GHOSTS, ghostRect, labels as labelsOf, MATCH, POINT, STROKE, SYMBOL, pairText, symbolSide, type Label, type Pair, type Stroke, type Terrain as Model, type View } from './terrainModel'
 import { visible } from './visible'
 import { plural } from './plural'
 import { grid, points } from './points'
+import { UNDRAWN, type Mark } from './time'
 
 type Props = {
   data: GalaxyData; terrain: Model; query: string; focusArea: number | null; hoverArea: number | null; overlay?: Uint8Array | null
@@ -15,28 +16,24 @@ type Props = {
   /** A cell to bring into view, such as a file the palette opened; its key changes each time it is asked for. */
   show?: { cell: number; key: number } | null
   onWebGlFailure: () => void
-  /** Marks drawn over the cells for the current view, such as Change review's (FR1814). */
-  marks?: (view: View) => ReactNode
+  /** Time's marks for the step shown (FR1762): drawn over the map at any zoom; a point's own mark is said in its tooltip. */
+  marks?: Mark[] | null
+  /** A layer drawn over the cells for the current view, such as Change review's marks (FR1814). */
+  layer?: (view: View) => ReactNode
 }
 
 /** Symbols are drawn once their cell is this many pixels across (FR1404); before that the areas, directories and files stand for them. */
 const POINTS_PX = 4
-/** A symbol's point is this share of its cell's side. */
-const POINT = 0.12
-// Neutral cells, darker the deeper (FR1406): colour is kept for basis, change and coverage.
-const CELL = ['rgba(150,164,196,0.16)', 'rgba(150,164,196,0.10)', 'rgba(150,164,196,0.08)']
-const SYMBOL = '#aab4c8', MATCH = '#ffd36e'
-const STROKE = { observed: '#7fd4ff', inferred: '#c79bff' } as const
 const BYTES = (hex: string): [number, number, number] => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)) as [number, number, number]
-/** Ghost areas hold files but no symbols, so they have no cell in the layout; they sit in a row below it (FR1405). */
-const GHOSTS = 10, GHOST_Y = FRAME * 1.04, GHOST_SIDE = FRAME * 0.06
 
-export function Terrain({ data: d, terrain: t, query, focusArea, hoverArea, overlay, onOpen, onHover, onHoverArea, onBundle, onClear, show, onWebGlFailure, marks }: Props) {
+export function Terrain({ data: d, terrain: t, query, focusArea, hoverArea, overlay, onOpen, onHover, onHoverArea, onBundle, onClear, show, onWebGlFailure, marks, layer }: Props) {
   const box = useRef<HTMLDivElement>(null)
   const sigma = useRef<Sigma | null>(null)
   const handlers = useRef({ onOpen, onHover, onHoverArea, onBundle, onWebGlFailure })
   handlers.current = { onOpen, onHover, onHoverArea, onBundle, onWebGlFailure }
   const mouse = useRef({ x: 0, y: 0 })
+  const notes = useRef(new Map<number, string>())
+  notes.current = new Map((marks ?? []).flatMap((m) => (m.index === null ? [] : [[m.index, m.title] as const])))
   const [ready, setReady] = useState(false)
   const [view, setView] = useState<View | null>(null)
   const [tip, setTip] = useState<{ x: number; y: number; title: string; lines: string[] } | null>(null)
@@ -149,7 +146,7 @@ export function Terrain({ data: d, terrain: t, query, focusArea, hoverArea, over
       if (i === hovered.current) return
       hovered.current = i
       handlers.current.onHover?.(i >= 0 ? i : null)
-      if (i >= 0) { handlers.current.onHoverArea(d.area[i]!); setTip({ x: vx, y: vy, title: shortName(d.names[i]!), lines: [d.names[i]!, d.areas[d.area[i]!]!.name] }) } else setTip(null)
+      if (i >= 0) { handlers.current.onHoverArea(d.area[i]!); setTip({ x: vx, y: vy, title: shortName(d.names[i]!), lines: [d.names[i]!, d.areas[d.area[i]!]!.name, ...(notes.current.has(i) ? [notes.current.get(i)!] : [])] }) } else setTip(null)
     }
     s.on('enterEdge' as never, (({ edge }: { edge: string }) => { const p = t.pairs[graph.getEdgeAttribute(edge, 'pair') as number]!; setTip({ ...mouse.current, title: graph.getEdgeAttribute(edge, 'basis') === 'inferred' ? 'Inferred bundle, dashed' : 'Observed bundle, solid', lines: [pairText(d, p), 'Click to list its relationships'] }) }) as never)
     s.on('leaveEdge' as never, (() => setTip(null)) as never)
@@ -199,7 +196,7 @@ export function Terrain({ data: d, terrain: t, query, focusArea, hoverArea, over
   const filterLabel = focusArea !== null ? `Area ${d.areas[focusArea]!.name}` : `“${query.trim()}”`
   const ghosts = ghostAreas(d.areas, GHOSTS)
   return (
-    <div className="terrain" data-ready={ready || undefined} onMouseMove={(e) => { const r = e.currentTarget.getBoundingClientRect(); mouse.current = { x: e.clientX - r.left, y: e.clientY - r.top }; hoverPoint.current(mouse.current.x, mouse.current.y) }}>
+    <div className="terrain" data-ready={ready || undefined} data-snapshot={d.snapshotId} onMouseMove={(e) => { const r = e.currentTarget.getBoundingClientRect(); mouse.current = { x: e.clientX - r.left, y: e.clientY - r.top }; hoverPoint.current(mouse.current.x, mouse.current.y) }}>
       <div ref={box} className="terrain-canvas" aria-hidden="true" />
       {view && d.areas.map((a, k) => {
         const c = t.areaCell[k]!, cov = coverageOf(a)
@@ -212,11 +209,16 @@ export function Terrain({ data: d, terrain: t, query, focusArea, hoverArea, over
         )
       })}
       {view && [...ghosts.shown.map((a) => ({ name: a.name, text: coverageOf(a).text })), ...(ghosts.rest.areas ? [{ name: `+${plural(ghosts.rest.areas, 'smaller area')}`, text: `${plural(ghosts.rest.areas, 'more area')} with no symbols ${ghosts.rest.areas === 1 ? 'holds' : 'hold'} ${plural(ghosts.rest.files, 'file')} the graph cannot see; the table lists them` }] : [])].map((g, i) => {
-        const q = cellRectAt(view, i)
+        const q = ghostRect(view, i)
         return <div key={g.name} className="terrain-fog empty" data-area={g.name} title={g.text} aria-hidden="true" style={{ left: q.left, top: q.top, width: q.width, height: q.height }}>{q.width >= 40 && <span className="fog-label">{visible(g.name)}</span>}</div>
       })}
       {placed.map((l) => <div key={l.key} className={`terrain-label ${l.kind}${l.height > 16 ? ' stacked' : ''}`} data-kind={l.kind} title={l.title} style={{ left: l.kind === 'symbol' ? l.left + l.width / 2 : l.left, top: l.top }} aria-hidden="true">{l.kind === 'area' ? l.text.split(' ').map((x, i) => <span key={i}>{i ? ' ' : ''}{visible(x)}</span>) : visible(l.text)}</div>)}
-      {view && marks?.(view)}
+      {/* Moved lines and changes through members are not ringed (FR1762); a moved symbol slides in from where it was, as far as it is on screen now. */}
+      {view && marks?.map((m) => UNDRAWN.has(m.change) ? null : (
+        <i key={`${m.change}:${m.name}`} className={`time-mark ${m.change}`} data-change={m.change} data-name={m.name} aria-hidden="true"
+          style={{ left: m.x * view.kx + view.bx, top: m.y * view.ky + view.by, ...(m.from ? { '--dx': `${(m.from[0] - m.x) * view.kx}px`, '--dy': `${(m.from[1] - m.y) * view.ky}px` } : {}) } as CSSProperties} />
+      ))}
+      {view && layer?.(view)}
       {shown && (
         <div className="filter-chip" role="status">
           <span>{visible(filterLabel)}: <b>{shown.matched.toLocaleString('en')}</b> of {plural(d.n, 'symbol')}</span>
@@ -233,13 +235,6 @@ export function Terrain({ data: d, terrain: t, query, focusArea, hoverArea, over
       <span hidden data-testid="terrain-strokes">{strokes.map((s: Stroke) => `${s.basis}:${s.pair.from}>${s.pair.to}`).join(' ')}</span>
     </div>
   )
-}
-
-/** The i-th ghost area's box on screen, in the row below the layout. */
-function cellRectAt(v: View, i: number) {
-  const x = FRAME * 0.01 + i * GHOST_SIDE * 1.25
-  const x0 = x * v.kx + v.bx, x1 = (x + GHOST_SIDE) * v.kx + v.bx, y0 = GHOST_Y * v.ky + v.by, y1 = (GHOST_Y + GHOST_SIDE) * v.ky + v.by
-  return { left: Math.min(x0, x1), top: Math.min(y0, y1), width: Math.abs(x1 - x0), height: Math.abs(y1 - y0) }
 }
 
 /** Moves the camera so a cell fills most of the view; nothing else moves (FR1404). */
