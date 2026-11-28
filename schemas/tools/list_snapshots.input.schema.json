@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "list_snapshots.input.schema.json",
   "title": "list_snapshots input",
-  "description": "The published snapshots of a repository, newest first, each with its analysis mode, publication time, git commit and ref, and which one is current: the snapshots a query can pin with snapshot_id. Answers from the catalog.",
+  "description": "The published snapshots of a repository, newest first, each with its analysis mode, publication time, git commit and ref, which one is current, and whether it is of the commit the root has checked out (matches_head): the snapshots a query can pin with snapshot_id. Answers from the catalog.",
   "type": "object",
   "additionalProperties": false,
   "properties": {

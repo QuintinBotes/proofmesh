@@ -206,7 +206,15 @@ function catalogTool(catalog: Catalog, tool: ToolName, input: Record<string, unk
   } else if (tool === 'list_snapshots') {
     // The snapshots a query can pin: what the Observatory's snapshot picker shows, for any client (FR055).
     const repo = catalog.resolveRepository(input.repository_id as string | undefined), current = catalog.currentSnapshot(repo.id)?.id
-    data = { repository_id: repo.id, snapshots: catalog.publishedSnapshots(repo.id).map((s) => ({ id: s.id, published_at: s.published_at, analysis_mode: s.analysis_mode, current: s.id === current, git: gitOfSnapshot(catalog, s), ...countsOfSnapshot(catalog, s) })) }
+    // The commit the root has checked out now, so a caller can pick the snapshot of the code in front of it (FR1740).
+    const head = fs.existsSync(repo.root) ? gitInfo(repo.root).commit : undefined
+    data = {
+      repository_id: repo.id,
+      snapshots: catalog.publishedSnapshots(repo.id).map((s) => {
+        const git = gitOfSnapshot(catalog, s)
+        return { id: s.id, published_at: s.published_at, analysis_mode: s.analysis_mode, current: s.id === current, matches_head: head && git?.commit ? git.commit === head : null, git, ...countsOfSnapshot(catalog, s) }
+      }),
+    }
     limitations = ['Pass a snapshot id as snapshot_id to answer from that snapshot; retired snapshots are not listed.']
   } else if (tool === 'list_workspaces') {
     data = { workspaces: catalog.workspaces().map((w) => ({ name: w.name, members: w.members.map((id) => ({ repository_id: id, name: catalog.repository(id).name })) })) }
