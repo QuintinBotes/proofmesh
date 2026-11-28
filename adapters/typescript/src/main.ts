@@ -9,7 +9,7 @@ import { graphqlDocument } from '../../syntax/src/contracts.js'
 import { readSfc, templateUses, virtualText, type Framework, type Sfc } from '../../syntax/src/sfc.js'
 
 const ts = createRequire(import.meta.url)('typescript') as typeof TS
-const VERSION = '0.2.8'
+const VERSION = '0.2.9'
 type Range = { start_byte: number; end_byte: number; start_line: number; end_line: number }
 type Ref = { symbol: string } | { file: string } | { external: { module: string; name: string } }
 
@@ -386,9 +386,24 @@ function indexDeclarations(sf: TS.SourceFile): void {
     }
   }
   const visit = (statements: TS.NodeArray<TS.Statement>, prefix: string) => {
+    // Signatures and implementation share a function identity within this statement list.
+    const functions = new Map<string, { main: TS.FunctionDeclaration; signatures: TS.FunctionDeclaration[] }>()
     for (const s of statements) {
-      if (ts.isFunctionDeclaration(s) && s.name && (s.body || !statements.some((o) => o !== s && ts.isFunctionDeclaration(o) && o.name?.text === s.name!.text && o.body))) {
-        add(s, 'function', s.name.text, `${base}:${prefix}${s.name.text}`, signatureOf(s.name.text, s))
+      if (!ts.isFunctionDeclaration(s) || !s.name) continue
+      let group = functions.get(s.name.text)
+      if (!group) {
+        group = { main: s, signatures: [] }
+        functions.set(s.name.text, group)
+      }
+      if (!s.body) group.signatures.push(s)
+      else if (!group.main.body) group.main = s
+    }
+    for (const s of statements) {
+      if (ts.isFunctionDeclaration(s) && s.name) {
+        const { main, signatures } = functions.get(s.name.text)!
+        if (!s.body && s !== main) continue
+        const local = add(s, 'function', s.name.text, `${base}:${prefix}${s.name.text}`, signatureOf(s.name.text, s))
+        if (s === main) for (const signature of signatures) declLocal.set(keyOf(signature), local)
       } else if (ts.isClassDeclaration(s) && s.name) {
         add(s, 'class', s.name.text, `${base}:${prefix}${s.name.text}`, null)
         for (const d of ts.getDecorators(s) ?? []) {

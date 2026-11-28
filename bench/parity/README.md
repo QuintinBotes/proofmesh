@@ -304,7 +304,7 @@ Run `node bench/parity/agents/run.mjs` to measure Gortex, GitNexus and Codebase-
 
 ### Whole-snapshot Q13
 
-On TypeORM `3d55188c0dd1256f520143379ecf97f45e71acba`, the composed query examined the full population of 26,280 resolved call/reference assertions targeting internal symbols. With `max_rows=10`, all ten returned identities, counts and positions matched an independent SQL grouping of the sealed snapshot. The earlier Q13 result above used the generic 1,000-input cap.
+At ProofMesh `bbfcd08` on TypeORM `3d55188c0dd1256f520143379ecf97f45e71acba`, the composed query examined the full population of 26,280 resolved call/reference assertions targeting internal symbols. With `max_rows=10`, all ten returned identities, counts and positions matched an independent SQL grouping of the sealed snapshot. The earlier Q13 result above used the generic 1,000-input cap.
 
 | Snapshot rank | Symbol | Snapshot distinct users | Compiler distinct users |
 | ---: | --- | ---: | ---: |
@@ -332,3 +332,24 @@ node packages/proofmesh/bin/proofmesh.mjs --data-dir "$measure/data" index "$fix
 node bench/graph-bench/truth.mjs "$fixture" "$measure/truth.json"
 node bench/parity/hubs.mjs "$fixture" "$measure/data" "$measure/truth.json"
 ```
+
+#### Auditing reference ownership (#325)
+
+A fresh index with TypeScript adapter 0.2.9 and the revised compiler benchmark yields 26,254 resolved internal call/reference assertions. The ten ranked identities and counts again match the full SQL grouping. The compiler and snapshot share nine of ten ranked symbols. Q1–Q7 and Q9–Q12 keep their expected answer sets, and Q8 keeps its three-hop shortest path. Use the reproduction commands above with a fresh data directory and regenerate the compiler truth.
+
+The audit joined assertion evidence to compiler occurrences by file and line. At `src/find-options/operator/Raw.ts:25`, ProofMesh now assigns the ObjectLiteral parameter annotation to Raw's implementation symbol. Previously it credited the file. The compiler benchmark gives an overload set one identity and retains both occurrences when one signature mentions a target twice. It assigns the annotation in `EmbeddedMetadata.columns:51` to its class, the type of `Code.scope:329` to its ambient class, and the parameters of an interface's named callback to that member. An initializer belongs to its property. An expression at file scope belongs to the module.
+
+| Target | Snapshot users | Compiler users | Compiler users with constructors grouped into their class |
+| --- | ---: | ---: | ---: |
+| Table | 579 | 579 | 579 |
+| TypeORMError | 386 | 450 | 386 |
+| ObjectLiteral | 320 | 323 | 320 |
+| Query | 235 | 235 | 235 |
+| Document | 200 | 204 | 200 |
+| TableColumn | 183 | 184 | 183 |
+| EntityMetadata | 146 | 161 | 147 |
+| ColumnMetadata | 144 | 148 | 144 |
+
+The last column is a diagnostic. For each compiler target, map each `Foo.constructor` source to the class declaration in the same file, exclude the target itself, and count the distinct remaining identities. The compiler score uses the original constructor identities. For example, it credits the `extends TypeORMError` clause to AlreadyHasActiveConnectionError and the `super()` call to its constructor. The adapter credits both to the class. At EntityMetadata the remaining one-user difference after grouping constructors is the getter and setter for `Alias.metadata` at lines 37 and 41 in `src/query-builder/Alias.ts`. ProofMesh stores one accessor symbol for that pair.
+
+The snapshot top ten ends with BaseQueryRunner.executeQueries (155). In the compiler ranking EntityMetadata enters eighth (161) and executeQueries falls outside the ten. InstanceChecker has 244 users in both, and QueryBuilder.expressionMap and BaseQueryRunner.connection each have 158 in both. On the same M5 Max, the five full-envelope calls took 174, 121, 121, 121 and 120 ms. Peak server RSS was 130.2 MiB.
