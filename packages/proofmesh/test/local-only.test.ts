@@ -134,7 +134,7 @@ describe('FR054 no shared or multi-user deployment is advertised, and the server
     const help = spawnSync(process.execPath, [CLI, '--help'], { encoding: 'utf8' }).stdout
     expect(help).not.toMatch(CLAIM)
     expect(help).toMatch(/^ {2}view \[--port P\] \[--no-open\] +Observatory on loopback$/m)
-    expect(help).toMatch(/^ {2}mcp \[--http \[--port P\]\] +MCP server on stdio, or Streamable HTTP on loopback/m)
+    expect(help).toMatch(/^ {2}mcp \[--editor \| --http \[--port P\]\] +MCP server on stdio, or Streamable HTTP on loopback/m)
   })
 
   it('FR054 every server in the source listens on 127.0.0.1', () => {
