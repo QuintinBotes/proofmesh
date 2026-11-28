@@ -465,6 +465,7 @@ Acceptance: CI runs my pull request without secrets or release credentials; lice
 - FR390: MUST give `get_property_reads` with an `endpoint` a `static_analysis` status beside its lists: `ran` when the walk from the endpoint finished, `cut_by_depth` or `cut_by_rows` when it stopped at `max_depth` or at its node cap, `not_available_in_mode` when the snapshot has no such endpoint and an adapter fell back to the syntax tier (which records no endpoints and no property reads), with a limitation naming the adapter, its files and the reason, and `no_endpoint` when the snapshot has no such endpoint otherwise; null without an endpoint.
 - FR391: MUST, when the walk is cut by `max_depth`, still return the static reads found within the depth, count in `static_bound.not_visited` the symbols one hop past the cut that were not visited, and say both in a limitation.
 - FR392: MUST, when no imported run observed property reads for the endpoint or entity asked, say so in the tool's first limitation, naming them, so empty observed lists do not read as no reads.
+- FR1700: MUST, when no imported run observed property reads for the endpoint or entity asked, leave out of `get_property_reads` the observation-window note and the read_kind note, since the FR392 sentence already says the observed lists are empty and why, and keep both whenever an import observed a read (#235).
 
 ### Tool profiles (#26)
 
@@ -520,6 +521,7 @@ An agent indexes again after every edit. A body edit in one TypeScript file used
 - FR1124: MUST answer `unchanged` with the earlier snapshot's id when the tree returns to content already sealed.
 - FR1125: MUST refuse, as an adapter protocol error, two units with the same id; the core keys units by id, so they would share one key and replay one file's facts for another.
 - FR1126: MUST hash a declaration's body (FR130) without building a regular expression per name, with the same result as the expression `(?<![.\p{L}\p{N}_$])<name>(?![\p{L}\p{N}_$])` under the `u` flag.
+- FR1680: MUST check FR1126's "without building a regular expression per name" by CPU time (`process.cpuUsage`, so other processes on a busy machine cannot fail it): the scan over 20,000 sampled texts and names, run before the oracle so a per-name expression it built is compiled there and not found in V8's expression cache, costs under a tenth of the CPU time of FR1126's property, whose oracle compiles one Unicode expression per distinct name (#233). The property is bounded work (20,000 runs, at most 6,174 distinct names, about 2 to 5 s of CPU, nearly all of it the oracle; the scan about 30 ms), so its test gets the 300 s limit of the other tests in its file instead of vitest's 60 s default: at a load average of 86 to 109 on 18 cores the property's wall-clock time was 6 to 10 times its CPU time and went past 60 s. The expression per name, the implementation before #204, costs more CPU than the oracle and fails the check; before #233 nothing in the test caught it.
 
 ### A cold build in less memory (#32)
 
