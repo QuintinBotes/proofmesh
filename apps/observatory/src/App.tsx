@@ -1,16 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { callTool, establishSession, fetchBundle, fetchGalaxy, fetchWorkspaces, galaxySymbol, listSnapshots, replaying, setReplay, setRepository, ToolError, type Bundle, type SnapshotInfo, type Workspace } from './api'
+import { callTool, establishSession, fetchBundle, fetchGalaxy, fetchWorkspaces, galaxySymbol, listSnapshots, loadGalaxy, replaying, setReplay, setRepository, ToolError, type Bundle, type SnapshotInfo, type Workspace } from './api'
 import { DiffView } from './DiffView'
 import { ChangeControls, ChangeMarks, ChangePanel, loadReview, testsOf, type Review } from './ChangeReview'
 import { gate, parseRange, rangeText, rowTitle, rowWords, sideText, summaryText, type Range, type Row } from './changeModel'
 import { overlay as diffOverlay, type CompareData } from './diff'
-import { Terrain } from './Terrain'
 import { TimeStrip } from './TimeStrip'
 import { linked, marks as timeMarks, neighbour, stepCounts } from './time'
 import { coverageOf, drawnStrokes, pairText, terrainOf, terrainSummary, type Pair } from './terrainModel'
 import { ClaimsView } from './ClaimsView'
-import { areaFog, areaLabel, legendAreas, matchIndices, parseGalaxy, rankMatches, shortName, type GalaxyData } from './galaxyData'
-import { GraphView } from './GraphView'
+import { areaFog, areaLabel, legendAreas, matchIndices, rankMatches, shortName, type GalaxyData } from './galaxyData'
 import { Palette, type Command } from './Palette'
 import { toNeighbourhood, type RelationshipsEnvelope } from './explore'
 import { appendSide, CARD_ROWS, cardHood, declarationEvidence, rowEvidence, type Card, type Evidence } from './card'
@@ -18,9 +16,12 @@ import { ProofLens, type Chain } from './ProofLens'
 import { defaultSelection, evidenceFor, LINK_WORDS, pairs, RELATION_COLOURS, RELATION_WORDS, relations, toEcosystem, type Ecosystem, type Relation } from './ecosystem'
 import { FRAMEWORK_TYPES, glyph, toScene, type TraceEnvelope } from './scene'
 import { visible } from './visible'
+import { GraphView, Terrain } from './views'
+import { VirtualTable } from './virtual'
 import { share } from './share'
 import { plural } from './plural'
 import { caveatLines, terrainSvg, CONTAINMENT, NO_MEANING, offlineHtml, pngWithText, sceneSvg, sceneTable, type Caveats, type Source } from './exporting'
+
 
 type Sym = { id: string; kind: string; name: string; qualified_name: string; path: string; start_line: number; signature: string | null }
 type Hub = { id: string; kind: string; name: string; qualified_name: string; inbound: number }
@@ -390,11 +391,14 @@ export function App() {
     const id = status.snapshot.id as string
     wanted.current.galaxy = id
     setLoading(true)
-    // The galaxy shown asks as it always has, pinned by Replay or not; a response for a snapshot no longer wanted is kept, not shown.
-    galaxyOf(id, () => fetchGalaxy()).then((g) => { if (wanted.current.galaxy === id) setGalaxy(g); setError(null) }).catch(report).finally(() => { setLoading(false); setAnswered((n) => n + 1) })
+    // The Terrain's code comes while its data does.
+    if (mode === 'terrain') void Terrain.preload()
+    // The galaxy shown is asked for by its snapshot's address (FR1453), pinned by Replay or not; a response for a snapshot no longer wanted is kept, not shown.
+    galaxyOf(id).then((g) => { if (wanted.current.galaxy === id) setGalaxy(g); setError(null) }).catch(report).finally(() => { setLoading(false); setAnswered((n) => n + 1) })
   }, [mode, palette, status, report])
   useEffect(() => { const id = status?.snapshot?.id; if (id) shots.current.set(id, { ...shots.current.get(id), status }) }, [status])
   const galaxyMatches = useMemo(() => (galaxy && mode === 'terrain' ? matchIndices(galaxy, query) : []), [galaxy, mode, query])
+  const rankedMatches = useMemo(() => (galaxy && (tableView || noWebGl) ? rankMatches(galaxy, galaxyMatches, query) : []), [galaxy, galaxyMatches, query, tableView, noWebGl])
   const terrain = useMemo(() => (galaxy ? terrainOf(galaxy) : null), [galaxy])
   const strokes = useMemo(() => (terrain ? drawnStrokes(terrain.pairs, hoverArea) : []), [terrain, hoverArea])
   // A pair drawn by either stroke, once, in the order drawn: the bundles the keyboard and assistive tech can open (FR067).
@@ -438,7 +442,7 @@ export function App() {
   const galaxyOf = (id: string, ask = () => fetchGalaxy(id)): Promise<GalaxyData> => {
     const held = shots.current.get(id) ?? {}
     shots.current.set(id, held)
-    return (held.galaxy ??= ask().then(parseGalaxy).catch((e) => { delete held.galaxy; throw e }))
+    return (held.galaxy ??= ask().then(loadGalaxy).catch((e) => { delete held.galaxy; throw e }))
   }
   const shownId = replay ?? current?.id ?? ''
   /** Time (FR1761, FR1762): pins a snapshot and draws the step from the one just older, compared once. */
@@ -487,7 +491,7 @@ export function App() {
       }
       // The head's map as drawn, with the symbols the rows mark picked out; the table says what each mark is.
       const marked = [...new Set(review.marks.flatMap((m) => ('point' in m && !m.base ? [m.point] : [])))]
-      return { caveats, source: null, svg: terrainSvg(review.head, review.terrain, [], marked, caveats, null), table: { head: ['row', 'status', 'test or chain'], rows: review.rows.map((r) => [rowTitle(r), r.dependent ? r.dependent.status : r.changed.change, rowWords(r)]) } }
+      return { caveats, source: null, svg: () => terrainSvg(review.head, review.terrain, [], marked, caveats, null), table: { head: ['row', 'status', 'test or chain'], rows: review.rows.map((r) => [rowTitle(r), r.dependent ? r.dependent.status : r.changed.change, rowWords(r)]) } }
     }
     if (!status || mode === 'claims' || (mode === 'terrain' ? !galaxy : !scene)) return null
     const file = evidence?.facts.find(([k]) => k === 'file')?.[1]
@@ -514,16 +518,17 @@ export function App() {
         const f = areaFog(a)
         return { name: a.name, count: a.count, ...(searching ? { matches: counts.get(i) ?? 0 } : {}), ...(f.haze || f.excluded || coverageOf(a).hatched ? { fog: coverageOf(a).text } : {}) }
       })
-      return { caveats, source, svg: terrainSvg(galaxy!, terrain!, strokes, searching ? galaxyMatches : null, caveats, source), table: { head: ['area', 'symbols', 'matches', 'coverage'], rows: areas.map((a) => [a.name, String(a.count), a.matches === undefined ? '' : String(a.matches), a.fog ?? 'complete']) } }
+      // The drawing is built when it is exported: at 250,000 symbols building it on every load was a long task of its own (#208).
+      return { caveats, source, svg: () => terrainSvg(galaxy!, terrain!, strokes, searching ? galaxyMatches : null, caveats, source), table: { head: ['area', 'symbols', 'matches', 'coverage'], rows: areas.map((a) => [a.name, String(a.count), a.matches === undefined ? '' : String(a.matches), a.fog ?? 'complete']) } }
     }
-    return { caveats, source, svg: sceneSvg(scene!, caveats, source), table: sceneTable(scene!) }
+    return { caveats, source, svg: () => sceneSvg(scene!, caveats, source), table: sceneTable(scene!) }
   }, [status, mode, galaxy, scene, tracing, evidence, includeSource, query, focus, galaxyMatches, drawnPairs, terrain, strokes, diffSource, review])
   const fileStem = exportable ? `proofmesh-${exportable.caveats.view.toLowerCase().replace(/\W+/g, '-')}-${exportable.caveats.snapshotId}` : ''
-  const exportPage = () => { if (exportable) download(`${fileStem}.html`, new Blob([offlineHtml(exportable.svg, exportable.caveats, exportable.table, exportable.source)], { type: 'text/html' })) }
+  const exportPage = () => { if (exportable) download(`${fileStem}.html`, new Blob([offlineHtml(exportable.svg(), exportable.caveats, exportable.table, exportable.source)], { type: 'text/html' })) }
   const exportImage = async () => {
     if (!exportable) return
     try {
-      const png = pngWithText(await svgToPng(exportable.svg), 'proofmesh:caveats', caveatLines(exportable.caveats, exportable.source).join('\n'))
+      const png = pngWithText(await svgToPng(exportable.svg()), 'proofmesh:caveats', caveatLines(exportable.caveats, exportable.source).join('\n'))
       download(`${fileStem}.png`, new Blob([png as BlobPart], { type: 'image/png' }))
     } catch (e) { report(e) }
   }
@@ -737,32 +742,28 @@ export function App() {
         {mode === 'terrain' && galaxyOverlay && <p className="dim diff-legend" role="note"><span><i className="sw added" />added since {diff!.data.base.snapshot_id.slice(0, 13)}</span><span><i className="sw changed" />changed</span><span>removed symbols are in the Diff table</span><span><kbd>d</kbd> hides this overlay</span></p>}
         {mode === 'terrain' && galaxy && terrain && (tableView || noWebGl) && (
           <section className="table-view" aria-label="Terrain table">
-            <table>
-              <caption>{query.trim().length >= 2 ? `Symbols matching “${query.trim()}”${galaxyMatches.length > 200 ? ', first 200' : ''}` : 'Areas'}</caption>
-              {query.trim().length >= 2 ? (
+            {query.trim().length >= 2 ? (
+              <VirtualTable count={rankedMatches.length} columns={4} caption={`Symbols matching “${query.trim()}”: ${plural(rankedMatches.length, 'symbol')}`}
+                head={<thead><tr><th>Name</th><th>Kind</th><th>Qualified name</th><th /></tr></thead>}
+                row={(k) => { const i = rankedMatches[k]!; return <tr key={i}><td>{visible(shortName(galaxy.names[i]!))}</td><td>{galaxy.kinds[galaxy.kind[i]!]}</td><td>{visible(galaxy.names[i]!)}</td><td><button type="button" onClick={() => openPoint(i)}>Explore</button></td></tr> }} />
+            ) : (
+              <table>
+                <caption>Areas</caption>
+                <thead><tr><th>Area</th><th>Symbols</th><th>Files analysed</th><th>Not analysed</th><th>Excluded</th><th>Unresolved calls</th><th>Why not analysed</th><th>Coverage</th><th /></tr></thead>
                 <tbody>
-                  {rankMatches(galaxy, galaxyMatches, query).slice(0, 200).map((i) => (
-                    <tr key={i}><td>{visible(shortName(galaxy.names[i]!))}</td><td>{galaxy.kinds[galaxy.kind[i]!]}</td><td>{visible(galaxy.names[i]!)}</td><td><button type="button" onClick={() => openPoint(i)}>Explore</button></td></tr>
+                  {galaxy.areas.map((a, i) => (
+                    <tr key={a.name}>
+                      <td>{visible(a.name)}</td><td>{a.count.toLocaleString('en')}</td><td>{a.files.indexed.toLocaleString('en')}</td>
+                      <td>{areaFog(a).unanalysed.toLocaleString('en')}</td><td>{a.files.excluded.toLocaleString('en')}</td>
+                      <td>{a.calls.sites ? `${share(a.calls.unresolved, a.calls.sites)} of ${a.calls.sites.toLocaleString('en')}` : 'no call sites'}</td>
+                      <td>{visible(a.gaps.map(([reason, n]) => `${reason} ${n.toLocaleString('en')}`).join(', '))}</td>
+                      <td>{[coverageOf(a).hatched ? 'hatched: calls unresolved' : '', coverageOf(a).ghost || !a.count ? 'ghost: files not analysed' : ''].filter(Boolean).join('; ') || 'complete'}</td>
+                      <td>{a.count > 0 && <button type="button" onClick={() => { setGalaxyArea(i); setTableView(false) }}>Show</button>}</td>
+                    </tr>
                   ))}
                 </tbody>
-              ) : (
-                <>
-                  <thead><tr><th>Area</th><th>Symbols</th><th>Files analysed</th><th>Not analysed</th><th>Excluded</th><th>Unresolved calls</th><th>Why not analysed</th><th>Coverage</th><th /></tr></thead>
-                  <tbody>
-                    {galaxy.areas.map((a, i) => (
-                      <tr key={a.name}>
-                        <td>{visible(a.name)}</td><td>{a.count.toLocaleString('en')}</td><td>{a.files.indexed.toLocaleString('en')}</td>
-                        <td>{areaFog(a).unanalysed.toLocaleString('en')}</td><td>{a.files.excluded.toLocaleString('en')}</td>
-                        <td>{a.calls.sites ? `${share(a.calls.unresolved, a.calls.sites)} of ${a.calls.sites.toLocaleString('en')}` : 'no call sites'}</td>
-                        <td>{visible(a.gaps.map(([reason, n]) => `${reason} ${n.toLocaleString('en')}`).join(', '))}</td>
-                        <td>{[coverageOf(a).hatched ? 'hatched: calls unresolved' : '', coverageOf(a).ghost || !a.count ? 'ghost: files not analysed' : ''].filter(Boolean).join('; ') || 'complete'}</td>
-                        <td>{a.count > 0 && <button type="button" onClick={() => { setGalaxyArea(i); setTableView(false) }}>Show</button>}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </>
-              )}
-            </table>
+              </table>
+            )}
             {query.trim().length < 2 && (
               <table>
                 <caption>Bundles between areas</caption>

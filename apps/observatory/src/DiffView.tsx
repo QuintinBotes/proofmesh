@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { kinds, rows, tiles, type Change, type CompareData } from './diff'
 import { visible } from './visible'
 import { plural } from './plural'
+import { VirtualTable } from './virtual'
 
 const CHANGES: Change[] = ['added', 'removed', 'changed']
 
@@ -22,18 +23,14 @@ export function DiffView({ data, truncated, onOpen }: { data: CompareData; trunc
         {CHANGES.map((c) => <label key={c}><input type="checkbox" checked={changes.has(c)} onChange={() => toggle(c)} /> {c}</label>)}
       </div>
       {truncated && <p className="dim" role="note">The comparison was cut at its row limit; counts above are complete, the lists below are not.</p>}
-      <table>
-        <caption>{plural(list.length, 'symbol change')}, by path then name</caption>
-        <thead><tr><th>Change</th><th>Kind</th><th>Name</th><th>Path</th><th>What</th><th /></tr></thead>
-        <tbody>
-          {list.map((r) => (
-            <tr key={`${r.change}|${r.qualified_name}|${r.path}`} data-change={r.change}>
-              <td>{r.change}</td><td>{r.kind}</td><td>{visible(r.qualified_name)}</td><td>{visible(r.path)}</td><td>{r.what}</td>
-              <td>{r.change !== 'removed' && <button type="button" onClick={() => onOpen(r.id)}>Explore</button>}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <VirtualTable count={list.length} columns={6} caption={`${plural(list.length, 'symbol change')}, by path then name`}
+        head={<thead><tr><th>Change</th><th>Kind</th><th>Name</th><th>Path</th><th>What</th><th /></tr></thead>}
+        row={(i) => { const r = list[i]!; return (
+          <tr key={`${r.change}|${r.qualified_name}|${r.path}`} data-change={r.change}>
+            <td>{r.change}</td><td>{r.kind}</td><td>{visible(r.qualified_name)}</td><td>{visible(r.path)}</td><td>{r.what}</td>
+            <td>{r.change !== 'removed' && <button type="button" onClick={() => onOpen(r.id)}>Explore</button>}</td>
+          </tr>
+        ) }} />
       {data.files.disposition_changes.length > 0 && (
         <table>
           <caption>Files whose disposition changed</caption>

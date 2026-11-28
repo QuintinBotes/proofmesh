@@ -5,7 +5,7 @@ import { asProofmeshError, ProofmeshError } from '../core/errors.js'
 import { randomToken } from '../core/hash.js'
 import { observatoryDir } from '../core/paths.js'
 import { runTool } from '../query/tools.js'
-import { galaxyBundle, galaxyFor, galaxyPoints } from '../query/galaxy.js'
+import { GALAXY_FORMAT, galaxyBundle, galaxyFor, galaxyPoints } from '../query/galaxy.js'
 import { Catalog } from '../meshstore/catalog.js'
 import { openSnapshot } from '../meshstore/snapshot.js'
 
@@ -13,6 +13,16 @@ export const CSP = "default-src 'self'; script-src 'self'; style-src 'self'; img
 const STATUS: Record<string, number> = { INVALID_ARGUMENT: 400, UNAUTHORIZED: 401, SCOPE_DENIED: 403, NOT_FOUND: 404, SNAPSHOT_UNAVAILABLE: 409 }
 const TYPES: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.json': 'application/json', '.woff2': 'font/woff2', '.png': 'image/png' }
 const TOKEN_TTL_MS = 10 * 60 * 1000
+/** What a content hash or a sealed snapshot names never changes, so a browser may keep it for a year without asking again (FR1450, FR1453). */
+const IMMUTABLE = 'max-age=31536000, immutable'
+/** Precompressed copies the build writes beside each asset, best first (FR1450). */
+const ENCODINGS: Array<[string, string]> = [['br', '.br'], ['gzip', '.gz']]
+/** Whether Accept-Encoding names the coding with a q above 0. */
+const accepts = (header: string | undefined, coding: string) => (header ?? '').split(',').some((part) => {
+  const [name, ...params] = part.split(';').map((x) => x.trim())
+  const q = params.map((x) => /^q=([\d.]+)$/.exec(x)?.[1]).find((x) => x !== undefined)
+  return name === coding && (q === undefined || Number(q) > 0)
+})
 
 export type ViewServer = { url: string; port: number; launchUrl: string; issueToken: () => string; close: () => Promise<void> }
 
@@ -25,12 +35,13 @@ export async function startViewServer(dataDir: string, port = 7317, assets = obs
   const origins = () => new Set([`http://127.0.0.1:${actualPort}`, `http://localhost:${actualPort}`])
 
   const server = http.createServer(async (req, res) => {
-    const headers = { 'Content-Security-Policy': CSP, 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer', 'Cache-Control': 'no-cache' }
+    const headers = { 'Content-Security-Policy': CSP, 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer', 'Cache-Control': 'no-store' }
     const send = (status: number, body: string | Buffer, type = 'application/json', extra: Record<string, string> = {}) => {
       res.writeHead(status, { ...headers, 'Content-Type': type, ...extra })
       res.end(body)
     }
     const fail = (e: ProofmeshError) => send(STATUS[e.code] ?? 500, JSON.stringify(e.toJSON()))
+    const signedIn = () => { const cookie = /(?:^|;\s*)pm_session=([0-9a-f]+)/.exec(String(req.headers.cookie ?? '')); return !!cookie && sessions.has(cookie[1]!) }
     if (!hosts().has(req.headers.host ?? '')) return fail(new ProofmeshError('SCOPE_DENIED', 'unexpected Host header'))
     const url = new URL(req.url ?? '/', `http://127.0.0.1:${actualPort}`)
     try {
@@ -48,10 +59,7 @@ export async function startViewServer(dataDir: string, port = 7317, assets = obs
         }
         const m = /^\/api\/v1\/tools\/([a-z_]+)$/.exec(url.pathname)
         const api = m || url.pathname === '/api/v1/galaxy' || url.pathname === '/api/v1/galaxy/symbol' || url.pathname === '/api/v1/galaxy/bundle' || url.pathname === '/api/v1/galaxy/points' || url.pathname === '/api/v1/snapshots'
-        if (api) {
-          const cookie = /(?:^|;\s*)pm_session=([0-9a-f]+)/.exec(String(req.headers.cookie ?? ''))
-          if (!cookie || !sessions.has(cookie[1]!)) return fail(new ProofmeshError('UNAUTHORIZED', 'no valid session'))
-        }
+        if (api && !signedIn()) return fail(new ProofmeshError('UNAUTHORIZED', 'no valid session'))
         if (m) {
           // A lean answer is its text alone, as over MCP (FR095).
           const env = runTool(dataDir, m[1]!, body)
@@ -88,15 +96,31 @@ export async function startViewServer(dataDir: string, port = 7317, assets = obs
       }
       if (req.method !== 'GET') return fail(new ProofmeshError('INVALID_ARGUMENT', 'method not allowed'))
       if (url.pathname === '/api/workspaces') {
-        const cookie = /(?:^|;\s*)pm_session=([0-9a-f]+)/.exec(String(req.headers.cookie ?? ''))
-        if (!cookie || !sessions.has(cookie[1]!)) return fail(new ProofmeshError('UNAUTHORIZED', 'no valid session'))
+        if (!signedIn()) return fail(new ProofmeshError('UNAUTHORIZED', 'no valid session'))
         return send(200, JSON.stringify(runTool(dataDir, 'list_workspaces', {}).data))
+      }
+      // A sealed snapshot's Galaxy, at an address that changes only with the snapshot and the payload format, so the browser's
+      // HTTP cache serves it again; private, as it is behind the session. A snapshot gc removed, or another format, is 404 (FR1453).
+      const artefact = /^\/api\/v1\/galaxy\/v(\d+)\/([\w-]+)$/.exec(url.pathname)
+      if (artefact) {
+        if (!signedIn()) return fail(new ProofmeshError('UNAUTHORIZED', 'no valid session'))
+        const catalog = Catalog.open(dataDir)
+        const snapshot = Number(artefact[1]) === GALAXY_FORMAT ? catalog.snapshot(artefact[2]!) : undefined
+        catalog.close()
+        if (snapshot?.state !== 'published') return fail(new ProofmeshError('NOT_FOUND', `no Galaxy v${artefact[1]} for snapshot ${artefact[2]}`))
+        return send(200, galaxyFor(dataDir, { snapshotId: snapshot!.id, repositoryId: snapshot!.repository_id }).gz, 'application/octet-stream', { 'Content-Encoding': 'gzip', 'Cache-Control': `private, ${IMMUTABLE}` })
       }
       if (!assets) return send(404, 'Observatory assets are not built; run pnpm build', 'text/plain; charset=utf-8')
       const rel = url.pathname === '/' ? 'index.html' : decodeURIComponent(url.pathname).replace(/^\/+/, '')
       const file = path.resolve(assets, rel)
       if (!file.startsWith(path.resolve(assets) + path.sep) || !fs.existsSync(file) || !fs.statSync(file).isFile()) return send(404, 'not found', 'text/plain; charset=utf-8')
-      return send(200, fs.readFileSync(file), TYPES[path.extname(file)] ?? 'application/octet-stream')
+      // Vite names every file under assets/ by its content hash; the page itself is asked for again each time (FR1450).
+      const extra: Record<string, string> = { 'Cache-Control': rel.startsWith('assets/') ? `public, ${IMMUTABLE}` : 'no-cache' }
+      if (ENCODINGS.some(([, ext]) => fs.existsSync(file + ext))) extra.Vary = 'Accept-Encoding'
+      const type = TYPES[path.extname(file)] ?? 'application/octet-stream'
+      const coded = ENCODINGS.find(([coding, ext]) => accepts(req.headers['accept-encoding'], coding) && fs.existsSync(file + ext))
+      if (coded) return send(200, fs.readFileSync(file + coded[1]), type, { ...extra, 'Content-Encoding': coded[0] })
+      return send(200, fs.readFileSync(file), type, extra)
     } catch (e) {
       return fail(asProofmeshError(e))
     }
