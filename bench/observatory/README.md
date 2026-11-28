@@ -65,10 +65,27 @@ missing pinned build stops the run with the install command above.
   in two fresh profiles, and snapshot A followed by B, where B is A plus the commit [`snapshot-b.mjs`](snapshot-b.mjs) writes
   (#48): a new file `src/util/Retry.ts` with `withRetry`, `backoffDelay` and `isRetryable`, `QueryBuilder.clearParameters`
   added, `titleCase` removed and the body of `DataSource.initialize` changed. The layouts are the positions in the Galaxy
-  payload each page receives. With both loaded, Time's step from A to B is timed in the page, from `]` to B's Terrain drawn
+  payload each page receives. For two loads of the same immutable snapshot, each point retains its index, including
+  synthetic points mapped to the same source symbol. Across revisions, the snapshot's point-to-symbol map and each
+  declaration's stable key identify the shared points. Playwright reads the settled layout outside the measured page.
+  With both loaded, Time's step from A to B is timed in the page, from `]` to B's Terrain drawn
   with its marks (#48).
 - **Software renderer:** when the WebGL renderer is SwiftShader, llvmpipe or another software rasteriser, the result says
   so and budgets are read from the software column. Such a run measures the CPU, not a GPU; do not compare it with a GPU run.
+
+### TypeORM layout comparison on 28 November 2026
+
+At `66a9885` the benchmark counted 6,989 of 7,033 points in the same snapshot and 6,988 across the four-file edit. It discarded all 44 points with duplicate display names. With point indices and stable declaration keys, all 7,033 points matched across fresh profiles, with zero displacement. Across revisions 7,032 matched, the maximum displacement was 1.77% of map width, and none moved more than 2%. The measured page made two versioned Galaxy requests across the load and evidence scenarios. The earlier measurement counted a third request made by the benchmark itself.
+
+Three measured cold runs per fixture used an Apple M5 Max, 18 cores, 64 GB, macOS arm64 and Chromium 158.0.8127.18 (Playwright build 1254). The benchmark excludes the first run from the medians. The fixed matcher is in `0fc4567`.
+
+| Fixture | Shared points across fresh profiles | Maximum displacement | Median first draw | Median browser RSS | Configured budgets |
+| --- | ---: | ---: | ---: | ---: | --- |
+| TypeORM | 7,033 | 0 | 228 ms | 387 MiB | All passed |
+| Synthetic, seed 1 | 50,000 | 0 | 249 ms | 449 MiB | All passed |
+| Synthetic, seed 1 | 250,000 | 0 | 373 ms | 662 MiB | All passed |
+
+TypeORM and the 250,000-point fixture met the 10% cold-run agreement criterion for every timed interaction with a median over 100 ms. At 50,000 points the repeat Terrain switch took 117, 102 and 101 ms, a 15.7% spread. This leaves SC-002 of #41 open. These are measurements of this build on this machine.
 
 ## Budgets
 
