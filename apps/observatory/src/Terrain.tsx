@@ -59,6 +59,7 @@ export function Terrain({ data: d, terrain: t, query, focusArea, hoverArea, over
   const sigma = useRef<Sigma | null>(null)
   const handlers = useRef({ onOpen, onHover, onHoverArea, onBundle, onWebGlFailure })
   handlers.current = { onOpen, onHover, onHoverArea, onBundle, onWebGlFailure }
+  const pointOverlay = useRef(overlay)
   const mouse = useRef({ x: 0, y: 0 })
   const notes = useRef(new Map<number, string>())
   notes.current = new Map((marks ?? []).flatMap((m) => (m.index === null ? [] : [[m.index, m.title] as const])))
@@ -108,7 +109,10 @@ export function Terrain({ data: d, terrain: t, query, focusArea, hoverArea, over
     // Symbols show per area as the zoom reaches them, so a large snapshot's overview draws areas and bundles only (FR1404); while
     // searching, the matches show too, at any zoom, at least a few pixels wide. They are one custom layer on sigma's canvas (points.ts).
     const side = Math.max(1, (FRAME * 0.85) / Math.sqrt(Math.max(1, d.n)))
-    const colour = (i: number): [number, number, number] => (overlay?.[i] ? OVERLAY_RGB[overlay[i]!]!.map((v) => Math.round(v * 255)) as [number, number, number] : BYTES(SYMBOL))
+    const colour = (i: number): [number, number, number] => {
+      const mark = pointOverlay.current?.[i]
+      return mark ? OVERLAY_RGB[mark]!.map((v) => Math.round(v * 255)) as [number, number, number] : BYTES(SYMBOL)
+    }
     const pos = new Float32Array(d.n * 2)
     for (let i = 0; i < d.n; i++) { pos[i * 2] = d.positions[i * 2]!; pos[i * 2 + 1] = FRAME - d.positions[i * 2 + 1]! }
     // The points layer and its grid are built in a task of their own, after the renderer's (#208).
@@ -191,7 +195,7 @@ export function Terrain({ data: d, terrain: t, query, focusArea, hoverArea, over
       batch = window.setTimeout(() => addCells(0), 0)
     }, 0)
     return () => { clearTimeout(batch); cancelAnimationFrame(frame); s.kill(); sigma.current = null; graphRef.current = null; hoverPoint.current = () => {}; setReady(false) }
-  }, [d, t, overlay])
+  }, [d, t])
   const graphRef = useRef<{ graph: Graph; search: (picked: number[] | null) => void } | null>(null)
   const hoverPoint = useRef<(x: number, y: number) => void>(() => {})
   const hovered = useRef(-1)
@@ -209,13 +213,14 @@ export function Terrain({ data: d, terrain: t, query, focusArea, hoverArea, over
   useEffect(() => {
     const g = graphRef.current
     if (!g || !ready) return
+    pointOverlay.current = overlay
     const picked = query.trim().length >= 2 ? matchIndices(d, query) : null
     // The count is said at once; redrawing the matches waits until that frame has painted, and a further keystroke cancels it (NFR005).
     setShown(picked && { matched: picked.length })
     let later = 0
     const soon = requestAnimationFrame(() => { later = window.setTimeout(() => g.search(picked), 0) })
     return () => { cancelAnimationFrame(soon); clearTimeout(later) }
-  }, [query, d, ready])
+  }, [query, overlay, d, ready])
 
   useEffect(() => { const s = sigma.current; if (s && ready && focusArea !== null && t.areaCell[focusArea]! >= 0) zoomToCell(s, d, t.areaCell[focusArea]!) }, [focusArea, ready, d, t])
   useEffect(() => { const s = sigma.current; if (s && ready && show) zoomToCell(s, d, show.cell) }, [show?.key, ready])

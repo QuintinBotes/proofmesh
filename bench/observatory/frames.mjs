@@ -279,9 +279,9 @@ async function coldRun(i, { keepFor } = {}) {
   await page.getByLabel('Search').fill('')
   // A person pauses between actions; without it the switch would also time the Terrain's return after the search clears.
   await page.waitForTimeout(1000)
-  // The Terrain switch (#46 replaced the Map): from Diff, a table, back to the Terrain, drawn again from the payload it holds, so it
-  // asks the server nothing; twice, the second warm.
-  const tab = (name) => timedClick(page, (n) => [...document.querySelectorAll('[role=tab]')].find((e) => e.textContent === n), (n) => document.querySelector(n === 'Terrain' ? '.terrain[data-ready] [aria-label="Terrain controls"]' : '[aria-label="Compare"]'), name)
+  // Count the first and repeat return from snapshot Diff only when the selected view's controls are visible.
+  const tab = (name) => timedClick(page, (n) => [...document.querySelectorAll('[role=tab]')].find((e) => e.textContent === n),
+    (n) => document.querySelector(n === 'Terrain' ? '.terrain[data-ready] [aria-label="Terrain controls"]' : '[aria-label="Compare"]')?.checkVisibility({ visibilityProperty: true }), name)
   await tab('Diff')
   const switchCold = await tab('Terrain')
   await tab('Diff')

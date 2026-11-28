@@ -2613,6 +2613,9 @@
     "FR3000": [
       "packages/proofmesh/test/producer.test.ts"
     ],
+    "FR3008": [
+      "e2e/diff.spec.ts"
+    ],
     "FR3007": [
       "packages/proofmesh/test/ts-reference-owners.test.ts"
     ],

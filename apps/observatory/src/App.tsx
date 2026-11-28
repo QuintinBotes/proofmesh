@@ -17,7 +17,7 @@ import { defaultSelection, evidenceFor, LINK_WORDS, pairs, RELATION_COLOURS, REL
 import { FRAMEWORK_TYPES, glyph, toScene, type TraceEnvelope } from './scene'
 import { DependencyMatrix } from './DependencyMatrix'
 import { visible } from './visible'
-import { GraphView, Terrain } from './views'
+import { GraphView, SnapshotTerrain, Terrain } from './views'
 import { VirtualTable } from './virtual'
 import { share } from './share'
 import { plural } from './plural'
@@ -742,7 +742,7 @@ export function App() {
             {!diff && snapshots.length < 2 && <p className="dim" role="note">Only one snapshot is published; index again after a change to compare.</p>}
           </>
         )}
-        {mode === 'terrain' && galaxy && terrain && !noWebGl && !tableView && <Terrain data={galaxy} terrain={terrain} query={query} focusArea={galaxyArea} hoverArea={hoverArea} overlay={galaxyOverlay} marks={shownMarks} show={showCell}
+        {(mode === 'terrain' || (mode === 'diff' && diffSource === 'snapshots')) && galaxy && terrain && !noWebGl && !tableView && <SnapshotTerrain key={galaxy.snapshotId} active={mode === 'terrain'} data={galaxy} terrain={terrain} query={query} focusArea={galaxyArea} hoverArea={hoverArea} overlay={galaxyOverlay} marks={shownMarks} show={showCell}
           onOpen={openPoint} onHover={hoverPoint} onHoverArea={setHoverArea} onBundle={(p) => void openBundle(p)} onClear={() => { setQuery(''); setGalaxyArea(null) }} onWebGlFailure={() => setNoWebGl(true)} />}
         {mode === 'terrain' && galaxyOverlay && <p className="dim diff-legend" role="note"><span><i className="sw added" />added since {diff!.data.base.snapshot_id.slice(0, 13)}</span><span><i className="sw changed" />changed</span><span>removed symbols are in the Diff table</span><span><kbd>d</kbd> hides this overlay</span></p>}
         {mode === 'terrain' && galaxy && terrain && (tableView || noWebGl) && (
