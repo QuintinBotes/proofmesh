@@ -4,7 +4,7 @@ import type Database from 'better-sqlite3'
 import { afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { Catalog, initDataDir } from '../src/meshstore/catalog.js'
 import { indexRepository } from '../src/indexer/coordinator.js'
-import { evidenceSlice, expectedFor, fixtureRepo, indexedDataDir, indexedRepo, ROOT, rows, tmpDir, tool, withSnapshot } from './helpers.js'
+import { evidenceSlice, copyTrackedFixture, expectedFor, fixtureRepo, indexedDataDir, indexedRepo, ROOT, rows, tmpDir, tool, withSnapshot } from './helpers.js'
 
 const byKey = <T>(key: (x: T) => string) => (a: T, b: T) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0)
 const qn = (db: Database.Database, id: string) => (db.prepare('select qualified_name from symbol where id = ?').get(id) as { qualified_name: string }).qualified_name
@@ -13,7 +13,7 @@ for (const fixture of ['cs-orders', 'cs-linked', 'cs-transitive', 'cs-inherited'
   const EXPECTED = expectedFor(fixture)
   let dataDir: string
   beforeAll(async () => {
-    ;({ dataDir } = await indexedDataDir(fixtureRepo(fixture)))
+    ;({ dataDir } = await indexedDataDir(copyTrackedFixture(fixture)))
   })
   const slice = (db: Database.Database, id: string) => evidenceSlice(dataDir, db, id)
 

@@ -63,7 +63,8 @@ describe('FR1160 to FR1169 the Observatory benchmark measures what a reader wait
       expect(res.first_run[k], `first_run.${k}`).toEqual(expect.any(Number))
     }
     for (const k of LOAD) expect(res.warm[k], `warm.${k}`).toMatchObject({ median: expect.any(Number) })
-    expect(res.cold.symbol_to_evidence_requests.median).toBeGreaterThanOrEqual(1)
+    expect(res.first_run.symbol_to_evidence_requests).toBe(1)
+    expect(res.cold.symbol_to_evidence_requests.values).toEqual([1])
     for (const type of ['script', 'stylesheet', 'api']) expect(res.bytes_total[type]).toMatchObject({ raw: expect.any(Number), gzip: expect.any(Number), transferred: expect.any(Number) })
     expect(res.bytes_total.script.raw).toBeGreaterThan(res.bytes_total.script.gzip)
     expect(res.bytes.some((b: { url: string }) => b.url === '/api/v1/galaxy/v6/:snapshot')).toBe(true)

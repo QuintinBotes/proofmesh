@@ -82,7 +82,7 @@ describe('FR730 proofmesh mcp --help prints usage and starts no server', () => {
       const code = await new Promise<number | null>((resolve) => child.on('close', resolve))
       clearTimeout(timer)
       expect(code).toBe(0)
-      for (const word of ['--tools', 'core', 'data', 'claims', 'extra', 'all', '--http', '--port']) expect(stdout).toContain(word)
+      for (const word of ['--tools', 'core', 'data', 'claims', 'extra', 'all', 'evidence', '--http', '--port']) expect(stdout).toContain(word)
       expect(stdout).not.toContain('jsonrpc')
       expect(stderr).not.toMatch(/mcp server ready/)
     })

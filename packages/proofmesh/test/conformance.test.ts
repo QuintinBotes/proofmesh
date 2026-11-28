@@ -3,7 +3,7 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { runKit } from '../src/conformance/kit.js'
 import { BUILT_IN } from '../src/indexer/languages.js'
-import { cli, expectedFor, fixtureRepo, ROOT, tmpDir } from './helpers.js'
+import { cli, copyTrackedFixture, expectedFor, fixtureRepo, ROOT, tmpDir } from './helpers.js'
 
 const fake = (name: string) => path.join(import.meta.dirname, 'fake-adapters', `${name}.mjs`)
 const linelang = (name = 'linelang') => ({ id: 'linelang', entry: fake(name), extensions: { '.fake': 'linelang' }, configNames: [] })
@@ -20,7 +20,7 @@ describe('FR071 FR072 SC014 the public conformance kit', () => {
   }, 240000)
 
   it('SC014 the C# adapter passes on its fixture and reviewed expected facts', async () => {
-    const r = await runKit(builtIn('csharp'), fixtureRepo('cs-orders'), expectedFor('cs-orders'))
+    const r = await runKit(builtIn('csharp'), copyTrackedFixture('cs-orders'), expectedFor('cs-orders'))
     expect(failed(r)).toEqual([])
     expect(r.checks.map((c) => c.id)).toEqual([...ALL, 'golden.dispositions', 'golden.symbols', 'golden.calls', 'golden.structure'])
   }, 240000)

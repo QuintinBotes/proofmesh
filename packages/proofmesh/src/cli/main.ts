@@ -41,7 +41,7 @@ import { countLabel, duration, phaseLabel, progressReporter } from './progress.j
 
 export const VERSION = '0.1.0'
 const SNAPSHOT_USAGE = 'usage: proofmesh snapshot pin <id> | snapshot unpin <id> | snapshot export <repository> [--snapshot <id>] --out <file> | snapshot import <repository> <file>'
-const MCP_USAGE = 'mcp [--http [--port P]]           MCP server on stdio, or Streamable HTTP on loopback with a bearer token; [--tools P[,P]] lists tool profiles other than core (data, claims, extra, all)'
+const MCP_USAGE = 'mcp [--http [--port P]]           MCP server on stdio, or Streamable HTTP on loopback with a bearer token; [--tools P[,P]] lists tool profiles other than core (data, claims, extra, all, evidence)'
 const USAGE = `proofmesh ${VERSION}: a code graph that shows its work
 
 Usage: proofmesh [--data-dir DIR] <command>
