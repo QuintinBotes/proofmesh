@@ -20,7 +20,7 @@ export function producerCommand(dataDir: string, kind: 'generates' | 'cquery', a
         if (format !== 'bazel-cquery-dot/v1') return invalid('Unsupported cquery format. Expected bazel-cquery-dot/v1.')
         const identity = { producer, revision, name }
         validateIdentity(db, identity)
-        const graph = readCquery(db, readArtifact(file))
+        const graph = readCquery(db, readArtifact(file), r.root, revision)
         saveArtifact(catalog, r.id, snap.id, kind, identity, graph)
         answer = { ...identity, targets: graph.targets.length, edges: graph.edges.length, unknown_labels: graph.unknown_labels, unsupported_edges: graph.unsupported_edges, diagnostics: graph.diagnostics }
       } else if (kind === 'cquery' && verb === 'deps' && (rest.length === 1 || rest.length === 2)) {

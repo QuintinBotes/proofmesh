@@ -10,7 +10,7 @@ const DEFAULT_KINDS = ['method', 'function']
 const FROM = 'from symbol s join file f on f.id = s.file_id'
 // TypeScript indexes a callable interface member as a method even though the interface supplies no implementation.
 const IMPLEMENTATION = `not (s.kind in ('function','method') and
-  (f.path glob '*.d.ts' or f.path glob '*.d.cts' or f.path glob '*.d.mts' or
+  (f.path glob '*.pyi' or f.path glob '*.d.ts' or f.path glob '*.d.cts' or f.path glob '*.d.mts' or
    (s.kind = 'method' and f.language in ('typescript','javascript') and exists (
      select 1 from symbol owner where owner.file_id=s.file_id and owner.kind='interface'
      and owner.start_line <= s.start_line and owner.start_byte <= s.start_byte and owner.end_byte >= s.end_byte))))`
@@ -51,8 +51,8 @@ export function duplicateGroups(db: Database.Database, input: Record<string, unk
 /** A base member touched anywhere in the diff cannot count as an unchanged twin, even on another page. */
 export function unchangedTwins(base: Database.Database, touched: Set<string>, page: Changed[]) {
   if (!hasBodyHash(base)) return []
-  const twins = base.prepare(`select ${MEMBER} ${FROM} where s.body_hash = (select body_hash from symbol where stable_key = ?
-    and body_tokens >= 30 and kind in ('method', 'function')) and s.kind in ('method', 'function') and ${IMPLEMENTATION} and ${excludeGeneratedSql()}
+  const twins = base.prepare(`select ${MEMBER} ${FROM} where s.body_hash = (select s.body_hash ${FROM} where s.stable_key = ?
+    and s.body_tokens >= 30 and s.kind in ('method', 'function') and ${IMPLEMENTATION} and ${excludeGeneratedSql()}) and s.kind in ('method', 'function') and ${IMPLEMENTATION} and ${excludeGeneratedSql()}
     order by f.path, s.start_line, s.id`)
   return page.flatMap((s) => {
     if (s.change === 'added') return []

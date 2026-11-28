@@ -1124,6 +1124,10 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
       return {
         data: { ...sides, pending: [], changed: page, totals, ...(duplicates ? { duplicates } : {}), ...(co ? { cochange: co.rows.slice(0, ctx.limits.max_rows) } : {}) },
         stop_reasons: all.length > end ? ['max_rows'] : [], more: all.length > end, shrink: 'changed',
+        prune: duplicates ? (data) => {
+          const visible = new Set((data.changed as Changed[]).map((row) => row.key))
+          data.duplicates = duplicates.filter((group) => visible.has(group.changed_key))
+        } : undefined,
         limitations: [
           ...(ctx.lean ? [summaryLine(totals)] : []),
           ...[baseRow!, headRow!].filter((row, i, rows) => row.id !== ctx.snapshot.id && rows.findIndex((x) => x.id === row.id) === i).flatMap((row) => partialLimitations(row.id === baseRow!.id ? baseDb : headDb, row.id)),

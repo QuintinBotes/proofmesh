@@ -42,6 +42,13 @@ describe('FR2980 FR3000 explicit producer evidence', () => {
     const report = JSON.parse(call('add', unknown, 'bazel-cquery-dot/v1', 'Bazel 6.5.0', f.revision, 'partial').stdout)
     expect(report).toMatchObject({ unknown_labels: 1, unsupported_edges: expect.any(Number), diagnostics: [expect.stringContaining('//:absent')] })
     expect(report.unsupported_edges).toBeGreaterThan(0)
+    fs.appendFileSync(path.join(f.root, 'BUILD'), '\n# uncommitted edit\n')
+    const dirtyIndex = cli(['--data-dir', dataDir, 'index', repoId])
+    expect(dirtyIndex.status, dirtyIndex.stderr).toBe(0)
+    const artifact = path.join(f.files, 'exports/linux.dot')
+    expect(call('add', artifact, 'bazel-cquery-dot/v1', 'Bazel 6.5.0', f.revision, 'linux').status).toBe(0)
+    const dirty = JSON.parse(call('deps', 'linux', '//:service').stdout)
+    expect(dirty.edges).toEqual([expect.objectContaining({ witness: null, missing_location: 'build_file_differs_from_revision' }), expect.objectContaining({ witness: null, missing_location: 'build_file_differs_from_revision' })])
   }, 90000)
 
   it('navigates exact source and target spans both ways and reports stale or missing producer evidence', async () => {
