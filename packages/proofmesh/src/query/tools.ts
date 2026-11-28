@@ -4,7 +4,7 @@ import { queryId } from '../core/hash.js'
 import { applyLimits, type AppliedLimits } from '../core/limits.js'
 import { BUNDLE_FORMAT_VERSION, check, ENVELOPE_VERSION, SNAPSHOT_EXPORT_VERSION } from '../core/schemas.js'
 import type { Envelope, Limits, ListQueriesData } from '../core/generated.js'
-import { CATALOG_VERSION, Catalog, LEASE_OWNER, lastIndexFailure, noSnapshot, type ImportedSnapshot, type PropertyRead, type SnapshotRow } from '../meshstore/catalog.js'
+import { CATALOG_VERSION, Catalog, LEASE_OWNER, lastIndexFailure, noSnapshot, type ImportedSnapshot, type PropertyRead, type SnapshotRow, type TrailEntry } from '../meshstore/catalog.js'
 import { FORMAT_VERSION, openSnapshot } from '../meshstore/snapshot.js'
 import { PROTOCOL_VERSION } from '../indexer/adapter-host.js'
 import { LINK_FORMAT_VERSION } from '../links/index.js'
@@ -44,6 +44,7 @@ import { innermost } from './symbol-at.js'
 import { attachFindings, findingCounts } from './findings.js'
 import { findCycles, findEntryPoints, findHubs, findUnused, type CycleEdge, type EntryPoint, type Hub, type UnusedRow } from './structure.js'
 import { contextMap } from './context-map.js'
+import { stepKind, subjectsOf } from './subjects.js'
 import { compare, hasBodyHash, side, unreadableFiles } from './compare.js'
 import { importersOf, MAX_FILE_BYTES, MAX_SOURCE_BYTES, reachSet, searchStructure, type StructureMatch } from './structure-search.js'
 import { loadSchema } from '../core/schemas.js'
@@ -155,8 +156,8 @@ const PAGED = new Set<ToolName>(['get_symbols_at', 'find_symbols', 'get_relation
 /** Tools that answer over a workspace's link file rather than one repository snapshot (A28). None yet in this file; get_ecosystem joins at integration. */
 const WORKSPACE_SCOPED = new Set<ToolName>([])
 
-/** Options a long-lived caller passes: the snapshots it already sent a full envelope for, which later answers send compact. */
-export type ToolSession = { fullSent: Set<string> }
+/** Options a long-lived caller passes: the snapshots it already sent a full envelope for, which later answers send compact, and the MCP session's id. */
+export type ToolSession = { fullSent: Set<string>; id?: string }
 
 export function runTool(dataDir: string, tool: string, input: Record<string, unknown>, session?: ToolSession, signal?: AbortSignal): Answer {
   // shortcut: cancellation is honoured only before a query starts; a query runs synchronously to its answer or its deadline
@@ -289,8 +290,9 @@ function runRepositoryTool(dataDir: string, tool: string, input: Record<string, 
       const freshness = strict ? strictFreshness(ctx, repo.root) : SNAPSHOT_FRESHNESS
       // Every row that names a file the policy flags generated says so, in the data and in a lean row (FR292).
       const generated = generatedPaths(db)
+      const named = withNamedIds(db, tool, input)
       const out = withGeneratedPaths(generated, () => {
-        const result = IMPL[tool as ToolName](ctx, withNamedIds(db, tool, input))
+        const result = IMPL[tool as ToolName](ctx, named)
         // A comparison tags each side from its own snapshot, inside the tool.
         if (tool !== 'compare_snapshots') markGenerated(result.data, generated)
         const env = envelope(ctx, tool as ToolName, input.limits as Limits | undefined, result, limitations, freshness)
@@ -298,8 +300,11 @@ function runRepositoryTool(dataDir: string, tool: string, input: Record<string, 
         for (const s of env.unresolved.sample) if (generated.has(s.file)) s.generated = true
         return env
       })
-      // Only what list_queries reports: never the input or the result (NFR008).
-      catalog.recordQuery({ query_id: out.query_id, tool, repository_id: repo.id, snapshot_id: snapshot.id, duration_ms: Date.now() - ctx.started, truncated: out.completion.truncated, input_hash: query })
+      // Only what list_queries reports: never the input or the result (NFR008). An MCP session's query keeps its subjects too, where a
+      // person turned recording on: symbol ids and paths, never text (#50).
+      const subjects = session?.id && catalog.trailRecording(repo.id) ? subjectsOf(db, tool, named, out.data) : null
+      catalog.recordQuery({ query_id: out.query_id, tool, repository_id: repo.id, snapshot_id: snapshot.id, duration_ms: Date.now() - ctx.started, truncated: out.completion.truncated, input_hash: query },
+        subjects ? { session_id: session!.id!, symbols: subjects.symbols, paths: subjects.paths, ...(subjects.base && subjects.base !== snapshot.id ? { snapshot_id: subjects.base } : {}) } : undefined)
       return out
     } finally {
       db.close()
@@ -548,6 +553,31 @@ function withNamedIds(db: Database.Database, tool: string, input: Record<string,
       return `${s.kind}:${s.qualified_name}`
     }
     out.claim = { ...claim, proposition: { ...claim.proposition, source: ref(claim.proposition.source), target: ref(claim.proposition.target) } }
+  }
+  return out
+}
+
+/** Each recorded symbol id as this snapshot's id, by its stable key where it belongs to another snapshot (#50); absent when this one has none. */
+function idsHere(ctx: Ctx, entries: Array<{ symbol_id?: string; snapshot_id: string }>): Map<string, string> {
+  const out = new Map<string, string>(), byKey = ctx.db.prepare('select id from symbol where stable_key = ?')
+  const bySnapshot = new Map<string, typeof entries>()
+  for (const e of entries) if (e.symbol_id) bySnapshot.set(e.snapshot_id, [...(bySnapshot.get(e.snapshot_id) ?? []), e])
+  for (const [snap, list] of bySnapshot) {
+    if (snap === ctx.snapshot.id) { for (const e of list) out.set(`${snap} ${e.symbol_id}`, e.symbol_id!); continue }
+    const row = ctx.catalog.snapshot(snap)
+    // A retired or deleted snapshot cannot be read: its symbols stay unmatched.
+    if (!row || row.state !== 'published') continue
+    const db = openSnapshot(ctx.catalog, row)
+    try {
+      const keyOf = db.prepare('select stable_key from symbol where id = ?')
+      for (const e of list) {
+        const key = (keyOf.get(e.symbol_id) as { stable_key: string | null } | undefined)?.stable_key
+        const id = key ? (byKey.get(key) as { id: string } | undefined)?.id : undefined
+        if (id) out.set(`${snap} ${e.symbol_id}`, id)
+      }
+    } finally {
+      db.close()
+    }
   }
   return out
 }
@@ -1294,14 +1324,29 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
   },
 
   get_session_trail(ctx, input) {
-    const { entries, cut } = ctx.catalog.trail(String(input.session_id), ctx.repo.id)
+    const sessionId = String(input.session_id)
+    const { entries: logged, cut } = ctx.catalog.trail(sessionId, ctx.repo.id)
     const recording = ctx.catalog.trailRecording(ctx.repo.id)
+    // The queries proofmesh mcp recorded for the session (#50), one entry a subject, after what the plugin recorded.
+    let seq = logged.at(-1)?.seq ?? 0
+    const queried = ctx.catalog.querySteps(sessionId, ctx.repo.id).flatMap((q) => [...q.symbols.map((id) => ({ symbol_id: id })), ...q.paths.map((p) => ({ path: p }))]
+      .map((subject) => ({ seq: ++seq, at: q.requested_at, kind: stepKind(q.tool), tool: q.tool, ...subject, outcome: 'ok' as const, query_id: q.query_id, snapshot_id: q.snapshot_id })))
+    const entries: Array<TrailEntry & { query_id?: string; snapshot_id?: string }> = [...logged, ...queried]
+    const here = idsHere(ctx, queried)
+    const idOf = (e: (typeof entries)[number]) => (e.symbol_id && e.snapshot_id ? here.get(`${e.snapshot_id} ${e.symbol_id}`) : e.symbol_id)
     // A failed or denied call was attempted, not done. A search covers the files under the path it searched; a search of the whole
     // repository (.) covers no file in particular, since the trail keeps no matches.
     const done = entries.filter((e) => e.outcome === 'ok')
-    const covers = (kind: string, d: { id: string; path: string }) => done.some((e) => e.kind === kind && (e.symbol_id === d.id || (e.path !== undefined && (d.path === e.path || d.path.startsWith(`${e.path}/`)))))
+    const covers = (kind: string, d: { id: string; path: string }) => done.some((e) => e.kind === kind && ((e.symbol_id !== undefined && idOf(e) === d.id) || (e.path !== undefined && (d.path === e.path || d.path.startsWith(`${e.path}/`)))))
     const paths = [...new Set(done.flatMap((e) => (e.kind === 'changed' && e.path !== undefined ? [e.path] : [])))]
-    const symbols = paths.flatMap((p) => ctx.db.prepare("select s.id, s.kind, s.name, s.qualified_name, f.path, s.start_line as line from symbol s join file f on f.id = s.file_id where f.path = ? and s.kind <> 'module' order by s.start_byte, s.id").all(p) as Array<{ id: string; kind: string; name: string; qualified_name: string; path: string; line: number }>)
+    type Declared = { id: string; kind: string; name: string; qualified_name: string; path: string; line: number }
+    const declared = 'select s.id, s.kind, s.name, s.qualified_name, f.path, s.start_line as line from symbol s join file f on f.id = s.file_id where'
+    const fromPaths = paths.flatMap((p) => ctx.db.prepare(`${declared} f.path = ? and s.kind <> 'module' order by s.start_byte, s.id`).all(p) as Declared[])
+    // A diff's changed and removed symbols, matched in this snapshot; those it does not hold are named in a limitation.
+    const changedIds = done.filter((e) => e.kind === 'changed' && e.symbol_id !== undefined)
+    const absent = changedIds.filter((e) => !idOf(e))
+    const fromIds = [...new Set(changedIds.flatMap((e) => idOf(e) ?? []))].map((id) => ctx.db.prepare(`${declared} s.id = ?`).get(id) as Declared)
+    const symbols = [...new Map([...fromPaths, ...fromIds].map((d) => [d.id, d])).values()]
     const missing = paths.filter((p) => !ctx.db.prepare('select 1 from file where path = ?').get(p))
     type Row = { id: string; kind: string; name: string; qualified_name: string; path: string; line: number; depth: number }
     let stopped = false
@@ -1314,21 +1359,28 @@ const IMPL: Record<ToolName, (ctx: Ctx, input: Record<string, unknown>) => Parti
         return { id: d.id, kind: d.kind, name: d.name, qualified_name: d.qualified_name, path: site?.path ?? d.path, line: site?.start_line ?? (ctx.db.prepare('select start_line from symbol where id = ?').get(d.id) as { start_line: number }).start_line, depth: d.depth }
       }
       const unopened = dependents.filter((d) => !covers('opened', d))
-      return { ...s, never_seen: unopened.filter((d) => !covers('searched', d)).map(row), searched_only: unopened.filter((d) => covers('searched', d)).map(row) }
+      return { ...s, never_seen: unopened.filter((d) => !covers('searched', d)).map(row), searched_only: unopened.filter((d) => covers('searched', d)).map(row), opened: dependents.filter((d) => covers('opened', d)).map(row) }
     })
-    const lastChange = done.filter((e) => e.kind === 'changed').at(-1)?.at
-    const entryRow = (e: (typeof entries)[number]) => [e.seq, e.kind, e.tool, quote(e.path ?? e.symbol_id ?? '-'), ...(e.outcome === 'failed' ? ['failed'] : []), ...(e.agent_id ? [`agent=${e.agent_id}`] : [])].join(' ')
+    // Only a change the plugin recorded has a time of its own; a diff's is the time it was asked.
+    const lastChange = done.filter((e) => e.kind === 'changed' && e.query_id === undefined).at(-1)?.at
+    const snapshots = [...new Set(queried.map((e) => e.snapshot_id))]
+    const absentCount = new Set(absent.map((e) => e.symbol_id)).size
+    const entryRow = (e: (typeof entries)[number]) => [e.seq, e.kind, e.tool, quote(e.path ?? e.symbol_id ?? '-'), ...(e.outcome === 'failed' ? ['failed'] : []), ...(e.agent_id ? [`agent=${e.agent_id}`] : []), ...(e.snapshot_id && e.snapshot_id !== ctx.snapshot.id ? [`snapshot=${e.snapshot_id}`] : [])].join(' ')
     const rows = (list: Row[], tag: string) => list.map((d) => leanRow(leanName(d), d.path, d.line, [tag, `depth=${d.depth}`]))
     return {
-      data: { session_id: String(input.session_id), recording, cut, entries, changed },
+      data: { session_id: sessionId, recording, cut, entries, changed },
       shrink: ['entries', 'changed'],
       limitations: [
-        ...(recording ? [] : [`Session trail recording is off for ${ctx.repo.name}; a person turns it on with proofmesh trail on ${ctx.repo.id}, and the Claude Code plugin then records its sessions.`]),
+        ...(recording ? [] : [`Session trail recording is off for ${ctx.repo.name}; a person turns it on with proofmesh trail on ${ctx.repo.id}, and the Claude Code plugin then records its sessions, and proofmesh mcp the subjects of each query.`]),
+        ...(entries.length ? [] : [`No step of session ${sessionId} is recorded: it ran while recording was off, in another repository, or its records were deleted (gc, proofmesh trail purge).`]),
         ...(cut ? ['The trail was cut at 10,000 entries; later steps of the session were not recorded.'] : []),
         ...(lastChange && ctx.snapshot.published_at && ctx.snapshot.published_at < lastChange ? [`Snapshot ${ctx.snapshot.id} was published before the session's last change (${lastChange}); index again for the dependents of the code as it was changed.`] : []),
         ...(missing.length ? [`${missing.length} changed file${missing.length === 1 ? ' is' : 's are'} not in this snapshot: ${missing.slice(0, 20).join(', ')}.`] : []),
+        ...(absentCount ? [`${absentCount} changed symbol${absentCount === 1 ? ' is' : 's are'} not in ${ctx.snapshot.id}; pass snapshot_id ${absent[0]!.snapshot_id} for ${absentCount === 1 ? 'its' : 'their'} dependents.`] : []),
+        ...(snapshots.length > 1 ? [`The session queried ${snapshots.length} snapshots (${snapshots.join(', ')}); each entry names the one it queried, and a symbol of another snapshot is matched in ${ctx.snapshot.id} by its stable key.`] : []),
         ...(stopped ? ['The impact search stopped at a limit for a changed symbol; more dependents may exist.'] : []),
         'A dependent counts as opened when a successful opened entry names its file or its symbol; a search covers the files under the path it searched, and a search of the whole repository covers none, since the trail keeps no matches. Of the steps taken through Bash, only a plain cat, head, tail, sed -n, grep, rg or find command that names its paths is recorded.',
+        ...(queried.length ? ['Of the queries proofmesh mcp recorded, a search counts the symbols on the page it returned as searched; a diff (compare_snapshots) its removed and changed symbols, on its base snapshot, as changed; a claim its source and target; any other query the symbols its input names, as opened.'] : []),
       ],
       lean: (data) => [
         ...(data.entries as typeof entries).map(entryRow),
