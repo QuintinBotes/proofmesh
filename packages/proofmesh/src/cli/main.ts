@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import { pathToFileURL } from 'node:url'
@@ -6,11 +6,12 @@ import path from 'node:path'
 import { asProofmeshError, ProofmeshError, storedMessage } from '../core/errors.js'
 import { resolveDataDir } from '../core/paths.js'
 import { Catalog, initDataDir, lastIndexFailure, LEASE_OWNER, noSnapshot, type IndexJob } from '../meshstore/catalog.js'
+import { activeViewPort, announceViewPort } from './view-port.js'
 import { runVerificationCommand } from './verification.js'
 import { indexCoverage } from '../scip/coverage.js'
 import { runScip } from '../scip/run.js'
 import { readSarif } from '../sarif/read.js'
-import { sameRepository } from '../indexer/discovery.js'
+import { gitOptions, sameRepository } from '../indexer/discovery.js'
 import { runWorkspaceLink } from './workspace-link.js'
 import { sha256File } from '../core/hash.js'
 import { normalizedDump, openSnapshot } from '../meshstore/snapshot.js'
@@ -98,7 +99,7 @@ Usage: proofmesh [--data-dir DIR] <command>
   completeness <repository> --branches [--depth N] [--json]   the local branches with commits the checked-out one lacks, ranked by blast radius (changed symbols with a dependent neither changed nor tested), then by changed symbols shared with the other branches; local refs only
   tests <repository> <path | path#name> [--json]   the tests that reach a file or symbol, how each is known and its chain; exits 0 when one executes it, 1 when none does, 2 on a usage error or unknown subject
   tests <repository> --changed <base>[..<head>] [--depth N] [--json]   each test file that reaches a changed symbol or one of its dependents, once, sorted; exits 0 when answered, 3 when it may miss tests (each reason on stderr as # incomplete:), 2 on a usage or index failure
-  status [repository] [--json] [--fresh]   inventory and coverage of the current snapshot, and index jobs queued or running; --fresh compares the working tree with it and starts nothing
+  status [repository] [--json] [--fresh [--session-head]]   inventory and coverage of the current snapshot, and index jobs queued or running; --fresh compares the working tree with it and starts nothing
   ${MCP_USAGE}
   view [--port P] [--no-open]       Observatory on loopback
   debug dump --normalized <snapshot-id>`
@@ -624,13 +625,19 @@ export async function main(argv: string[]): Promise<number> {
           // Compares the working tree with the current snapshot and starts nothing: what the plugin's hooks ask before indexing.
           const catalog = Catalog.open(dataDir)
           try {
+            const sessionHead = has(opts, '--session-head')
             const repo = catalog.resolveRepository(opts[0])
             const snapshot = catalog.currentSnapshot(repo.id)
-            if (!snapshot) throw noSnapshot(catalog, repo.id)
+            const head = sessionHead ? spawnSync('git', ['-C', repo.root, 'rev-parse', '--verify', 'HEAD^{commit}'], gitOptions()).stdout?.trim() || null : undefined
+            if (!snapshot) {
+              const error = noSnapshot(catalog, repo.id)
+              if (sessionHead) error.details.head_commit = head
+              throw error
+            }
             const db = openSnapshot(catalog, snapshot)
             const t = (() => { try { return treeFreshness(db, dataDir, repo.root, repo.id) } finally { db.close() } })()
             const failed = lastIndexFailure(catalog, repo.id)
-            const out = { repository_id: repo.id, name: repo.name, snapshot_id: snapshot.id, current: t.current, changed_count: t.changed.length, changed: t.changed.slice(0, 20), trail_recording: catalog.trailRecording(repo.id), failed_job: failed && { id: failed.job.id, state: failed.job.state, finished_at: failed.job.finished_at, error: failed.job.error } }
+            const out = { repository_id: repo.id, name: repo.name, snapshot_id: snapshot.id, view_port: activeViewPort(dataDir), ...(head === undefined ? {} : { head_commit: head || null }), current: t.current, changed_count: t.changed.length, changed: t.changed.slice(0, 20), trail_recording: catalog.trailRecording(repo.id), failed_job: failed && { id: failed.job.id, state: failed.job.state, finished_at: failed.job.finished_at, error: failed.job.error } }
             if (json) console.log(JSON.stringify(out, null, 2))
             else console.log(`${t.current ? `${repo.name}: snapshot ${snapshot.id} matches the working tree` : `${repo.name}: the working tree differs from snapshot ${snapshot.id}: ${t.changed.length} files changed${t.changed.length ? `, such as ${t.changed.slice(0, 3).map((c) => `${c.path} (${c.change})`).join(', ')}` : ''}`}${failed ? `; ${failed.note}` : ''}`)
             return 0
@@ -696,6 +703,12 @@ export async function main(argv: string[]): Promise<number> {
         const noOpen = has(opts, '--no-open')
         Catalog.open(dataDir).close()
         const server = await startViewServer(dataDir, port)
+        const forgetPort = announceViewPort(dataDir, server.port)
+        process.once('exit', forgetPort)
+        for (const signal of ['SIGINT', 'SIGTERM'] as const) process.once(signal, () => {
+          forgetPort()
+          void server.close().then(() => process.exit(0))
+        })
         console.log(`Observatory: ${server.launchUrl}`)
         setTimeout(() => { try { galaxyFor(dataDir) } catch { /* built on first request instead */ } }, 0)
         if (!noOpen) spawn(process.platform === 'darwin' ? 'open' : 'xdg-open', [server.launchUrl], { stdio: 'ignore', detached: true }).unref()

@@ -40,7 +40,7 @@ const editCurrency = ($: Dollar) => $.tool.call({ tool: 'Edit', file_path: `${RO
  * Stubs Claude Code and ProofMesh for a session in /work/app: `w.snapshot` is the current snapshot and `w.current` whether it matches the tree;
  * the MCP tools answer as recorded on fixtures/ts-invoicing, the symbol at a currency.ts line being formatAmount and any other file not indexed.
  */
-function world(on: On, o: { recording?: boolean; symbolsAt?: (locations: string[]) => unknown[]; fail?: string; failures?: number; headHash?: string; writeLines?: number; listFailures?: number; impact?: Envelope } = {}) {
+function world(on: On, o: { recording?: boolean; symbolsAt?: (locations: string[]) => unknown[]; fail?: string; failures?: number; headHash?: string; writeLines?: number; listFailures?: number; viewPort?: number; impact?: Envelope } = {}) {
   const clock = mock.clock(on, { now: NOW })
   const w = { snapshot: BASE as string, current: true, clock, mcp: [] as Array<{ tool: string; args: Record<string, unknown> }>, log: [] as string[], copied: [] as Array<{ text: string; surface?: string }>, opened: [] as string[], closed: [] as string[], panes: [] as string[], trail: [] as Array<Record<string, unknown>>, tools: 0, turns: 0 }
   on('session.start', () => ({ cwd: ROOT }))
@@ -61,7 +61,7 @@ function world(on: On, o: { recording?: boolean; symbolsAt?: (locations: string[
     const [, cmd, , flag] = e.argv
     if (cmd === 'repo') return (o.listFailures ?? 0) > 0 && o.listFailures!-- ? { value: { exitCode: 1, stdout: '', stderr: 'proofmesh: catalog busy' } } : { value: { exitCode: 0, stdout: LIST, stderr: '' } }
     if (cmd === 'trail') { w.trail.push(...String(e.init?.stdin ?? '').trim().split('\n').map((l) => JSON.parse(l) as Record<string, unknown>)); return { value: { exitCode: 0, stdout: 'recorded\n', stderr: '' } } }
-    if (flag === '--fresh') return { value: { exitCode: 0, stdout: JSON.stringify({ repository_id: REPO, name: 'app', snapshot_id: w.snapshot, current: w.current, changed_count: w.current ? 0 : 1, changed: [], trail_recording: o.recording ?? false }), stderr: '' } }
+    if (flag === '--fresh') return { value: { exitCode: 0, stdout: JSON.stringify({ head_commit: w.snapshot === BASE ? 'a'.repeat(40) : 'b'.repeat(40), view_port: o.viewPort ?? null, repository_id: REPO, name: 'app', snapshot_id: w.snapshot, current: w.current, changed_count: w.current ? 0 : 1, changed: [], trail_recording: o.recording ?? false }), stderr: '' } }
     return { value: { exitCode: 0, stdout: '', stderr: '' } }
   })
   on('mcp.connect', () => ({ value: { isConnected: true, server: 'plugin:proofmesh:proofmesh' } }))
@@ -234,8 +234,6 @@ test('FR703: with recording off, no dependent is marked', async ($, on) => {
   expect(lines.join('\n')).not.toContain('not opened')
 })
 
-// The Desktop app makes a Link only of an https: or http://localhost href and draws a file: one as plain text, so the file:line is drawn
-// as text on every surface and copied on a press: the spec's link in the Desktop app is left for a person to decide (see the PR).
 test('FR704 scenario 4: pressing a dependent row or its open button copies its file:line, in the terminal and the Desktop app', async ($, on) => {
   const w = world(on)
   await start($, w)
@@ -254,6 +252,25 @@ test('FR704 scenario 4: pressing a dependent row or its open button copies its f
     { text: 'packages/billing/src/invoice.ts:9', surface: 'desktop' },
     { text: 'packages/api/src/handler.ts:5', surface: 'desktop' },
   ])
+})
+
+test('FR704 FR1812: Desktop links retain the starting commit, repository and dependent key on the running view port', async ($, on) => {
+  const w = world(on, { viewPort: 17317 })
+  await start($, w, 'desktop')
+  await editCurrency($)
+  await publish(w, HEAD)
+  const { ui } = await pane($, w, 'desktop')
+  function links(node: Node): string[] {
+    if (!node || typeof node !== 'object') return []
+    if (node.type === 'Link') return [String(node.props?.href)]
+    return ((node.children ?? node.props?.children ?? []) as Node[]).flatMap(links)
+  }
+  const expected = RECORDED.impact.data.dependents.map(d =>
+    `http://localhost:17317/?repository=${REPO}&change=${'a'.repeat(40)}&depth=${d.depth}&open=${encodeURIComponent(d.key)}`)
+  expect(links(await ui.drawn() as Node)).toEqual(expected)
+  await ui.press({ key: 'open:1' })
+  expect(w.copied.at(-1)?.text).toBe('packages/api/src/handler.ts:5')
+  await ui.unmount()
 })
 
 test('FR705 scenario 5: /pm-impact opens the pane, or closes it if open, with no model turn and no tool for Claude', async ($, on) => {

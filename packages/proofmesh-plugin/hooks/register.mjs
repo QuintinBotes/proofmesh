@@ -32,12 +32,13 @@ const SHOWN = 20
 const touched = new Map()
 // Edit targets outside the repository; edits seen before the repository is known, replayed once it is; what the trail saw opened.
 const outside = new Set(), early = [], opened = new Set()
-let answer = null, analysing = null
+let answer = null, analysing = null, sessionHead = null, viewPort = null
 
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`
 const age = (ms) => (ms < 60_000 ? `${Math.max(0, Math.round(ms / 1000))}s` : ms < 3_600_000 ? `${Math.floor(ms / 60_000)}m` : ms < 86_400_000 ? `${Math.floor(ms / 3_600_000)}h` : `${Math.floor(ms / 86_400_000)}d`)
 // The engine prefixes a refused call's message with where it failed; the last part says why.
 const why = (err) => String(err?.message ?? err).split(': ').pop()
+const validCommit = (value) => typeof value === 'string' && /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(value)
 const lastLine = (s) => s.trim().split('\n').pop() || 'no output'
 
 /** Runs `proofmesh <args>`, with `stdin` written to it when given, one at a time for the whole module. */
@@ -82,21 +83,24 @@ async function show($, next, detail = '') {
 }
 
 /** Reads the snapshot's state: whether it matches the working tree, and any index job running. */
-async function refresh($) {
+async function refresh($, sessionStart = false) {
   if (!repo || busy) return
   busy = true
   const seen = edits
   try {
-    const f = await proofmesh($, ['status', repo.id, '--fresh', '--json'])
+    const f = await proofmesh($, ['status', repo.id, '--fresh', '--json', ...(sessionStart ? ['--session-head'] : [])])
     if (f.exitCode !== 0) {
       if (!f.stderr.includes('SNAPSHOT_UNAVAILABLE')) return await show($, 'unknown', `unknown (${lastLine(f.stderr)})`)
       // The refusal's details name the last index job when it failed; a CLI older than FR872 prints none.
       let d
       try { d = JSON.parse(f.stdout).error.details } catch {}
+      if (sessionStart && validCommit(d?.head_commit)) sessionHead = d.head_commit
       const reason = lastFailed(d && { state: d.job_state, error: d.job_error })
       return await show($, 'missing', reason ? `missing; ${reason}` : 'missing')
     }
     const fresh = JSON.parse(f.stdout)
+    if (sessionStart && validCommit(fresh.head_commit)) sessionHead = fresh.head_commit
+    viewPort = Number.isInteger(fresh.view_port) && fresh.view_port > 0 && fresh.view_port <= 65535 ? fresh.view_port : null
     recording = fresh.trail_recording === true
     failed = lastFailed(fresh.failed_job)
     const status = await callTool($, 'workspace_status', { repository_id: repo.id, envelope: 'compact' })
@@ -127,7 +131,7 @@ async function init($) {
   }
   if (!repo) return await show($, 'not registered here')
   for (const [e, result] of early.splice(0)) await noteEdit($, e, result)
-  await refresh($)
+  await refresh($, true)
 }
 
 async function tick($) {
@@ -350,7 +354,7 @@ async function analyse($) {
         name: s.name, line: s.start_line,
         // At the site that reaches the change, which a relationship recorded in another file (a registration) names apart; inferred
         // when a hop of the dependent's chain is, and every other row was reached along resolved relationships.
-        dependents: i.data.dependents.map((d) => ({ id: d.id, name: d.name, path: d.path, loc: d.site ? `${d.site.path}:${d.site.start_line}` : `${d.path}:${d.line}`, relationship: d.relationship, evidence: d.basis === 'inferred' ? 'inferred' : 'resolved', depth: `depth=${d.depth}` })),
+        dependents: i.data.dependents.map((d) => ({ id: d.id, key: d.key, distance: d.depth, name: d.name, path: d.path, loc: d.site ? `${d.site.path}:${d.site.start_line}` : `${d.path}:${d.line}`, relationship: d.relationship, evidence: d.basis === 'inferred' ? 'inferred' : 'resolved', depth: `depth=${d.depth}` })),
         notes: [
           // A depth or node-budget stop leaves the rest unfound, so total counts only what was found; its own note says more may be affected.
           ...(i.completion.total > i.data.dependents.length ? [`# dependents: ${i.data.dependents.length} of ${i.completion.total} shown (${i.completion.stop_reasons.join(', ')})`] : []),
@@ -392,7 +396,7 @@ function impactRows() {
     out.push({ depth: 0, text: path })
     for (const s of symbols) {
       out.push({ depth: 1, text: `changed ${s.name} line ${s.line}` })
-      for (const d of s.dependents) out.push({ depth: 2, dep: { head: `${d.relationship} ${d.name}`, loc: d.loc, tail: [d.evidence, d.depth, ...(unopened(d) ? ['not opened'] : [])].filter(Boolean).join(' ') } })
+      for (const d of s.dependents) out.push({ depth: 2, dep: { key: d.key, distance: d.distance, head: `${d.relationship} ${d.name}`, loc: d.loc, tail: [d.evidence, d.depth, ...(unopened(d) ? ['not opened'] : [])].filter(Boolean).join(' ') } })
       out.push(...s.notes.map((n) => ({ depth: 2, text: n, dim: true })))
       out.push(...(s.tests.length ? s.tests : ['no test reaches it']).map((t) => ({ depth: 2, text: t })))
       if (s.cut) out.push({ depth: 2, text: s.cut, dim: true })
@@ -406,22 +410,22 @@ function impactRows() {
 
 const rowText = (r) => '  '.repeat(r.depth) + (r.dep ? [r.dep.head, r.dep.loc, r.dep.tail].join(' ') : r.text)
 
-/**
- * Draws the rows: a dependent is a Button that copies its file:line, beside an open button that does too. The file:line is not a Link:
- * the desktop app links only an https: or http://localhost href, and draws a file: one as plain text.
- */
+/** Copy buttons remain available alongside a Desktop link to the authenticated Observatory. */
 function drawPane($, e) {
-  const { Box, Text, Button } = $.ui.resolve(e)
+  const { Box, Text, Button, Link } = $.ui.resolve(e)
   let n = 0
   const children = impactRows().map((r) => {
     if (!r.dep) return Box({ flexDirection: 'column', paddingLeft: r.depth * 2, children: [Text({ dimColor: r.dim === true, children: [r.text] })] })
     const i = n++, { head, loc, tail } = r.dep
+    const href = e.surface === 'desktop' && sessionHead && viewPort && r.dep.key
+      ? `http://localhost:${viewPort}/?repository=${encodeURIComponent(repo.id)}&change=${sessionHead}&depth=${r.dep.distance}&open=${encodeURIComponent(r.dep.key)}`
+      : null
     const copy = (press) => $.ui.copy({ text: loc, surface: press.surface })
     return Box({
       flexDirection: 'row', columnGap: 1, paddingLeft: r.depth * 2,
       children: [
         Button({ key: `dep:${i}`, label: head, plain: true, onPress: copy }),
-        Text({ children: [loc] }),
+        href ? Link({ href, children: [loc] }) : Text({ children: [loc] }),
         Text({ dimColor: true, children: [tail] }),
         Button({ key: `open:${i}`, label: 'open', onPress: copy }),
       ],

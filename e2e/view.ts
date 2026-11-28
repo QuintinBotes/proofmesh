@@ -25,7 +25,7 @@ export async function serveView(dataDir: string): Promise<{ launchUrl: string; o
   const launchUrl = await new Promise<string>((resolve, reject) => {
     const t = setTimeout(() => reject(new Error('proofmesh view did not print a URL')), 20000)
     readline.createInterface({ input: child.stdout! }).on('line', (line) => {
-      const m = /^Observatory: (http:\/\/127\.0\.0\.1:\d+\/#t=[0-9a-f]{64})$/.exec(line)
+      const m = /^Observatory: (http:\/\/(?:localhost|127\.0\.0\.1):\d+\/#t=[0-9a-f]{64})$/.exec(line)
       if (m) { clearTimeout(t); resolve(m[1]!) }
     })
   })

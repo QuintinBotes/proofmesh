@@ -187,3 +187,23 @@ test.describe('Change review of a deleted symbol', () => {
     await expect(panel(page).getByRole('region', { name: 'Chain' })).toContainText('From the base snapshot: spread is gone in head')
   })
 })
+
+test('FR704 a Desktop change link opens the dependent using the existing browser session and selected repository', async ({ page }) => {
+  const r = reachRepo()
+  const view = await startView(r.repo)
+  const cli = (...args: string[]) => execFileSync(process.execPath, [path.join(ROOT, 'packages/proofmesh/bin/proofmesh.mjs'), '--data-dir', view.dataDir, ...args], { encoding: 'utf8' })
+  try {
+    const status = JSON.parse(cli('status', r.repo, '--fresh', '--json', '--session-head'))
+    expect(status.head_commit).toBe(r.head)
+    const origin = `http://localhost:${status.view_port}`
+    expect(new URL(view.launchUrl).origin).toBe(origin)
+    await page.goto(view.launchUrl)
+    await expect.poll(() => page.context().cookies().then(cs => cs.some(c => c.name === 'pm_session'))).toBe(true)
+    cli('repo', 'add', fs.mkdtempSync(path.join(os.tmpdir(), 'pm-e2e-other-')))
+    const link = new URL(origin)
+    link.search = new URLSearchParams({ repository: status.repository_id, change: r.base, depth: '1', open: 'src/roles/auditor.ts#src/roles/auditor:auditorScore#function' }).toString()
+    await page.goto(link.href)
+    await expect(panel(page).locator('.ev-title')).toHaveText('auditorScore', { timeout: 60000 })
+    await expect(row(page, 'calls auditorScore')).toHaveAttribute('aria-pressed', 'true')
+  } finally { view.stop() }
+})

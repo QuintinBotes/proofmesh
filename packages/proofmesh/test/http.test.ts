@@ -68,7 +68,7 @@ describe('AC25 loopback security', () => {
   })
 
   it('the launch URL carries its token in the fragment only', () => {
-    expect(s.launchUrl).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/#t=[0-9a-f]{64}$/)
+    expect(s.launchUrl).toMatch(/^http:\/\/localhost:\d+\/#t=[0-9a-f]{64}$/)
   })
 })
 

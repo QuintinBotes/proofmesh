@@ -139,7 +139,7 @@ export async function startViewServer(dataDir: string, port = 7317, assets = obs
     return t
   }
   const url = `http://127.0.0.1:${actualPort}`
-  return { url, port: actualPort, launchUrl: `${url}/#t=${issueToken()}`, issueToken, close: () => new Promise((r) => server.close(() => r())) }
+  return { url, port: actualPort, launchUrl: `http://localhost:${actualPort}/#t=${issueToken()}`, issueToken, close: () => new Promise((r) => server.close(() => r())) }
 }
 
 /** The repository's published snapshots for Replay's picker, with the git state each was built from. */

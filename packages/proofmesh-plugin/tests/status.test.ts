@@ -55,7 +55,7 @@ test('FR481 scenario 1: at session start in a registered repository with a curre
   const w = world(on)
   await start($, w)
   expect(w.line()).toBe('current snap_1 (5m)')
-  expect(w.runs).toEqual([['proofmesh', 'repo', 'list'], ['proofmesh', 'status', 'repo_app', '--fresh', '--json']])
+  expect(w.runs).toEqual([['proofmesh', 'repo', 'list'], ['proofmesh', 'status', 'repo_app', '--fresh', '--json', '--session-head']])
   // A compact envelope, so the module's call does not use up the full envelope the agent's first answer from this snapshot gets over the same connection.
   expect(w.mcp).toEqual([{ server: 'plugin:proofmesh:proofmesh', tool: 'workspace_status', args: { repository_id: 'repo_app', envelope: 'compact' } }])
   // While current, the age keeps up, and the tree is checked once a minute only.

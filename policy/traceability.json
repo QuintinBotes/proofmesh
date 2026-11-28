@@ -1704,6 +1704,7 @@
       "packages/proofmesh-plugin/tests/impact.test.ts"
     ],
     "FR704": [
+      "e2e/change-review.spec.ts",
       "packages/proofmesh-plugin/tests/impact.test.ts"
     ],
     "FR705": [
