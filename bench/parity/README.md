@@ -297,3 +297,7 @@ Bold cells differ by more than one point; the scorer was not changed to close th
   `find_implementations` on `Driver` adds subclasses of implementers and `DriverUtils.buildColumnAlias`.
 - ProofMesh's Q7 precision (50%) and Serena's are lower because both follow calls through the interface method
   that `DefaultNamingStrategy.columnName` implements; the truth counts direct calls only.
+
+## Gortex, GitNexus and Codebase-Memory
+
+Run `node bench/parity/agents/run.mjs` for the direct-caller questions Q1–Q3. The command builds the pinned fixture if necessary and prints the path to the report. The first three questions cover a cross-module function, an instance method and interface dispatch. The other ten questions await comparator coverage. [Method and tool versions](agents/README.md) · [Measured results](agents/measured.md)

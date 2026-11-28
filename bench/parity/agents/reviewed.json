@@ -1,0 +1,10 @@
+{
+  "upstream_commit": "3d55188c0dd1256f520143379ecf97f45e71acba",
+  "src_tree": "068305c0f24bd6c23c554ecb7c503558bf9fda05",
+  "tsconfig_blob": "58c7ea0619f67cfd43a01d252c6df75e097b709a",
+  "questions": {
+    "Q1": {"site": "src/decorator/entity/Entity.ts:34", "source": "getMetadataArgsStorage().tables.push({", "caller": "src/decorator/entity/Entity.ts::Entity"},
+    "Q2": {"site": "src/query-builder/QueryBuilder.ts:657", "source": "metadata: this.connection.getMetadata(entityTarget),", "caller": "src/query-builder/QueryBuilder.ts::createFromAlias"},
+    "Q3": {"site": "src/query-builder/QueryBuilder.ts:561", "source": "return this.connection.driver.escape(name)", "caller": "src/query-builder/QueryBuilder.ts::escape", "excluded_site": "src/query-builder/QueryBuilder.ts:930", "excluded_source": "const name = this.escape(column.databaseName)"}
+  }
+}
