@@ -67,9 +67,9 @@ describe('A11 the Galaxy payload: every symbol of the snapshot in one compact bi
 })
 
 describe('FR1220 FR1221 the payload carries every symbol\'s position, computed with the snapshot', () => {
-  it('B13 positions are 16 bits per axis in the map\'s frame, one place for each symbol, in format 5', () => {
+  it('B13 positions are 16 bits per axis in the map\'s frame, one place for each symbol, in format 6 (FR2621)', () => {
     const raw = zlib.gunzipSync(galaxyFor(d).gz)
-    expect(JSON.parse(raw.subarray(4, 4 + raw.readUInt32LE(0)).toString('utf8')).format).toBe(5)
+    expect(JSON.parse(raw.subarray(4, 4 + raw.readUInt32LE(0)).toString('utf8')).format).toBe(6)
     const g = load()
     expect(g.positions).toHaveLength(g.n * 2)
     expect(new Set(Array.from({ length: g.n }, (_, i) => `${g.positions[i * 2]},${g.positions[i * 2 + 1]}`)).size).toBe(g.n)

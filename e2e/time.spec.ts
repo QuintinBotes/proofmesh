@@ -55,7 +55,7 @@ const shown = (id: string) => page.locator(`.terrain[data-ready][data-snapshot="
 const marked = (change: string) => page.locator(`.terrain .time-mark[data-change="${change}"]`).evaluateAll((ms) => ms.map((m) => m.getAttribute('data-name')).sort())
 const declared = (s: { what: string[] }) => s.what.some((w) => w === 'body' || w === 'signature')
 
-test('#48 S1 FR1761 FR1762 FR1763 from A to B: at most 1% of shared symbols move more than 2% of the width, the added symbols and file appear, titleCase is a cross where it was, and the counts are compare_snapshots\'', async () => {
+test('#48 S1 FR1761 FR1762 FR1763 FR2620 from A to B: no shared symbol moves more than 2% of the width, the added symbols and file appear, titleCase is a cross where it was, and the counts are compare_snapshots\'', async () => {
   // The strip lists every snapshot newest first, each with its symbols and unresolved share from list_snapshots (FR1760).
   const listed = (await api('snapshots', {})).snapshots as Array<{ id: string; symbols: number; relationships: number; unresolved: number }>
   const strip = page.getByRole('list', { name: 'Snapshots, newest first' }).getByRole('button')
@@ -73,11 +73,11 @@ test('#48 S1 FR1761 FR1762 FR1763 from A to B: at most 1% of shared symbols move
   await shown(B).waitFor()
   await expect(page.getByTestId('time-counts')).toBeVisible()
 
-  // SC-001: at most 1% of the symbols present in both move more than 2% of the map's width. The new file re-packs src/util's strips,
-  // so a few of its symbols move further (max 16%), which scenario 1 does not allow: the layout's to fix (#44), reported with #48.
+  // Scenario 1: no symbol present in both moves more than 2% of the map's width (FR2620, #275), so SC-001's at most 1% holds too.
   const moved = displacement(await layout(A), await layout(B))
   console.log(`A to B: ${JSON.stringify(moved)}`)
   expect(moved.shared).toBeGreaterThan(6000)
+  expect(moved.max).toBeLessThanOrEqual(0.02)
   expect(moved.moved_2pct).toBeLessThanOrEqual(0.01)
 
   // The new file is its module symbol, added beside its three functions; QueryBuilder gains a method; titleCase is gone.

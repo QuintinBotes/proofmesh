@@ -34,4 +34,6 @@ Changed between `proofmesh view` and its browser (#46): the Galaxy payload is fo
 
 Changed between `proofmesh view` and its browser (#47): the Observatory reads a snapshot's Galaxy payload from `GET /api/v1/galaxy/v5/<snapshot id>` (format 5, #46), behind the session, cached by the browser as `private, max-age=31536000, immutable`, and a snapshot that is not published there answers 404. `POST /api/v1/galaxy` is unchanged. Every other API answer now carries `Cache-Control: no-store` instead of `no-cache`; hashed assets are cached for good and the page is revalidated. No data directory changes.
 
+Changed between `proofmesh view` and its browser (#275): the Galaxy payload is format 6. Its sections and header are format 5's; the layout's strip counts changed, so every snapshot's positions and cells differ from format 5's. A data directory rebuilds each payload once as `cache/galaxy-v6-<snapshot>`, and the `galaxy-v5` files can be deleted. The snapshot file format and every MCP answer do not change.
+
 Deprecations are listed in CHANGELOG.md under the release that announces them.

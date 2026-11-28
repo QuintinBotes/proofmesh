@@ -16,7 +16,7 @@ describe('A11 FR055 once drilled into one repository of a workspace, every Obser
     expect(await galaxySymbolId(3)).toBe('sym_1')
     await listSnapshots()
     expect(asked).toEqual([
-      ['/api/v1/galaxy/v5/snap_1', undefined],
+      ['/api/v1/galaxy/v6/snap_1', undefined],
       ['/api/v1/galaxy/symbol', { repository_id: 'repo_abc', index: 3 }],
       ['/api/v1/snapshots', { repository_id: 'repo_abc' }],
     ])
@@ -32,9 +32,9 @@ describe('A11 FR055 once drilled into one repository of a workspace, every Obser
     setRepository('repo_abc')
     expect((await fetchGalaxy('snap_old')).byteLength).toBe(4)
     expect(asked).toEqual([
-      ['/api/v1/galaxy/v5/snap_old', undefined],
+      ['/api/v1/galaxy/v6/snap_old', undefined],
       ['/api/v1/tools/workspace_status', { repository_id: 'repo_abc', limits: { max_rows: 1 } }],
-      ['/api/v1/galaxy/v5/snap_new', undefined],
+      ['/api/v1/galaxy/v6/snap_new', undefined],
     ])
   })
 })

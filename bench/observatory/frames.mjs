@@ -82,7 +82,7 @@ async function startView() {
 }
 
 // A synthetic galaxy replaces the indexed fixture's in the server's cache; its points map to the fixture's real symbol ids.
-// The cache's file names (galaxy-v5-<snapshot>) follow packages/proofmesh/src/query/galaxy.ts, whose format retires older payloads.
+// The cache's file names (galaxy-v6-<snapshot>) follow packages/proofmesh/src/query/galaxy.ts, whose format retires older payloads.
 let evidenceNames = null
 if (fixtureName === 'synthetic') {
   const v = await startView()
@@ -91,14 +91,14 @@ if (fixtureName === 'synthetic') {
   const g = cookie && await fetch(`${v.origin}/api/v1/galaxy`, { method: 'POST', headers: { Origin: v.origin, Cookie: cookie, 'Content-Type': 'application/json' }, body: '{}' })
   v.stop()
   if (!g?.ok) fail(`could not build the fixture's galaxy (${g?.status ?? session.status})`)
-  const cache = path.join(dataDir, 'cache'), idsFile = fs.readdirSync(cache).find((f) => /^galaxy-v5-.*\.ids\.json$/.test(f))
-  const snapshotId = /^galaxy-v5-(.*)\.ids\.json$/.exec(idsFile)[1]
+  const cache = path.join(dataDir, 'cache'), idsFile = fs.readdirSync(cache).find((f) => /^galaxy-v6-.*\.ids\.json$/.test(f))
+  const snapshotId = /^galaxy-v6-(.*)\.ids\.json$/.exec(idsFile)[1]
   // Evidence opens the synthetic point that maps to the fixture's best method, so its Explore view has edges.
   const real = evidencePoints(cachedGalaxy())
   const t0 = performance.now()
   const syn = generateGalaxy({ nodes: NODES, seed: SEED, snapshotId, ids: JSON.parse(fs.readFileSync(path.join(cache, idsFile), 'utf8')) })
   fs.writeFileSync(path.join(cache, idsFile), JSON.stringify(syn.ids))
-  fs.writeFileSync(path.join(cache, `galaxy-v5-${snapshotId}.bin.gz`), syn.gz)
+  fs.writeFileSync(path.join(cache, `galaxy-v6-${snapshotId}.bin.gz`), syn.gz)
   Object.assign(fixture, { nodes: NODES, seed: SEED, links: syn.links, galaxy_sha256: crypto.createHash('sha256').update(syn.gz).digest('hex'), generated_ms: Math.round(performance.now() - t0) })
   const names = cachedGalaxy().names
   const mapped = real.filter((i) => i < NODES && alone(names, i))
@@ -188,7 +188,7 @@ const timedClick = (page, find, ready, arg) => page.evaluate(async ({ find, read
 }, { find: find.toString(), ready: ready.toString(), arg })
 /** The galaxy of a snapshot (or the only one) in the server's cache: the name, degree and kind of each point. */
 function cachedGalaxy(snapshotId) {
-  const file = snapshotId ? `galaxy-v5-${snapshotId}.bin.gz` : fs.readdirSync(path.join(dataDir, 'cache')).find((f) => /^galaxy-v5-.*\.bin\.gz$/.test(f))
+  const file = snapshotId ? `galaxy-v6-${snapshotId}.bin.gz` : fs.readdirSync(path.join(dataDir, 'cache')).find((f) => /^galaxy-v6-.*\.bin\.gz$/.test(f))
   const buf = zlib.gunzipSync(fs.readFileSync(path.join(dataDir, 'cache', file)))
   const hl = buf.readUInt32LE(0), h = JSON.parse(buf.subarray(4, 4 + hl).toString('utf8')), base = 4 + hl + ((4 - ((4 + hl) % 4)) % 4)
   return {

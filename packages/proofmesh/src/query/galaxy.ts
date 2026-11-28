@@ -32,8 +32,8 @@ export type GalaxyHeader = {
   offsets: { links: number; degree: number; area: number; kind: number; positions: number; names: number; cell_rects: number; cell_parent: number; cell_count: number; cell_names: number }; names_bytes: number; cell_names_bytes: number
 }
 
-/** Format 4 added each symbol's position (FR1221); format 5 areas of two directories, the cells and the bundles (FR1401, FR1402). Bump it when a section or the layout changes, so cached payloads are rebuilt. */
-export const GALAXY_FORMAT = 5
+/** Format 4 added each symbol's position (FR1221); format 5 areas of two directories, the cells and the bundles (FR1401, FR1402); format 6 the strips that hold a file's place when its directory gains a file (FR2621). Bump it when a section or the layout changes, so cached payloads are rebuilt. */
+export const GALAXY_FORMAT = 6
 const memo = new Map<string, { gz: Buffer; ids: string[] }>()
 
 export function areaOf(path: string, depth = 3): string {
