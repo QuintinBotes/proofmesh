@@ -9,6 +9,7 @@ import { liveLocks, lockHolder, ownerOf } from './index-lock.js'
 import { schemasDir } from '../core/paths.js'
 import { readSql } from '../core/schemas.js'
 import type { Finding, Unattached } from '../sarif/read.js'
+import type { Unmatched } from '../coverage/read.js'
 
 export type RepositoryRow = { id: string; root: string; name: string; created_at: string }
 export type SnapshotRow = {
@@ -28,6 +29,8 @@ export type ScipRun = { indexer: string; version: string; digest: string; grant_
 export type ScipIndexRecord = { name: string; path: string; sha256: string; tool: string; files: Record<string, { hash: string; language: string }>; added_by: string; added_at: string; run: ScipRun | null }
 /** A SARIF file a person imported (#30): its findings and the results left unattached, and the hash of each file a finding is in, as the tree stood then. */
 export type SarifImportRecord = { name: string; path: string; sha256: string; tools: string[]; findings: Finding[]; unattached: Unattached[]; files: Record<string, string>; added_by: string; added_at: string }
+/** A coverage report a person imported (#241): per matched snapshot path, the file's hash in the snapshot then, its executable lines and the lines each test hit ('' when the report names no test). */
+export type CoverageImportRecord = { source: string; format: string; path: string; sha256: string; window: { from: string; to: string }; files: Record<string, { hash: string; lines: number[]; tests: Record<string, number[]> }>; unmatched: Unmatched[]; imported_by: string; imported_at: string }
 export type LinkFileRecord = { id: string; workspace: string; digest: string; members: Array<{ repository_id: string; snapshot_id: string }>; sealed_at: string }
 export type Observation = { source: string; window_from: string; window_to: string; subject_kind: 'endpoint' | 'table' | 'channel'; subject_name: string; metric: string; value: number; imported_by: string; imported_at: string }
 export type PropertyRead = { source: string; window_from: string; window_to: string; endpoint: string; entity: string; property: string; reads: number; read_kind: 'orm' | 'application'; declaring_type: string | null; calls: number | null; callers: string | null; imported_by: string; imported_at: string }
@@ -39,6 +42,9 @@ export type InstalledAdapter = { id: string; entry: string; sha256: string; exte
 /** One step of a session's trail (#114): a repository-relative path or a symbol id, never text from a file. */
 export type TrailInput = { session_id: string; repository_id: string; agent_id?: string; at: string; kind: 'searched' | 'opened' | 'changed' | 'claimed'; tool: string; path?: string; symbol_id?: string; outcome: 'ok' | 'failed' }
 export type TrailEntry = Omit<TrailInput, 'session_id' | 'repository_id'> & { seq: number }
+/** The subjects of one MCP query (#50): symbol ids of `snapshot_id` (the query record's when absent) and repository-relative paths. */
+export type QuerySubjects = { session_id: string; snapshot_id?: string; symbols: string[]; paths: string[] }
+export type QueryStep = { query_id: string; tool: string; snapshot_id: string; requested_at: string; symbols: string[]; paths: string[] }
 /** The most entries one session's trail keeps. */
 export const TRAIL_CAP = 10_000
 /** The note source of notes saved by agents rather than synced from a person's directory. */
@@ -337,16 +343,27 @@ export class Catalog {
     return w
   }
 
-  /** A record of one tool query (NFR008: the input's hash only, never its text or the result). */
-  recordQuery(r: { query_id: string; tool: string; repository_id: string; snapshot_id: string; duration_ms: number; truncated: boolean; input_hash: string }): void {
-    this.db.prepare('insert into query_record (query_id, tool, repository_id, snapshot_id, requested_at, duration_ms, truncated, input_hash) values (?, ?, ?, ?, ?, ?, ?, ?)')
-      .run(r.query_id, r.tool, r.repository_id, r.snapshot_id, now(), Math.round(r.duration_ms), r.truncated ? 1 : 0, r.input_hash)
+  /** A record of one tool query (NFR008: the input's hash only, never its text or the result), with its subjects when given (#50). */
+  recordQuery(r: { query_id: string; tool: string; repository_id: string; snapshot_id: string; duration_ms: number; truncated: boolean; input_hash: string }, subjects?: QuerySubjects): void {
+    this.db.transaction(() => {
+      this.db.prepare('insert into query_record (query_id, tool, repository_id, snapshot_id, requested_at, duration_ms, truncated, input_hash) values (?, ?, ?, ?, ?, ?, ?, ?)')
+        .run(r.query_id, r.tool, r.repository_id, r.snapshot_id, now(), Math.round(r.duration_ms), r.truncated ? 1 : 0, r.input_hash)
+      if (subjects) this.db.prepare('insert into query_subject (session_id, query_id, snapshot_id, symbols, paths) values (?, ?, ?, ?, ?)')
+        .run(subjects.session_id, r.query_id, subjects.snapshot_id ?? null, JSON.stringify(subjects.symbols), JSON.stringify(subjects.paths))
+    })()
   }
 
-  queryRecords(filter: { repository_id?: string; tool?: string; limit: number }): Array<{ query_id: string; tool: string; repository_id: string; snapshot_id: string; requested_at: string; duration_ms: number; truncated: boolean; input_hash: string }> {
-    const rows = this.db.prepare('select * from query_record where (? is null or repository_id = ?) and (? is null or tool = ?) order by requested_at desc, rowid desc limit ?')
-      .all(filter.repository_id ?? null, filter.repository_id ?? null, filter.tool ?? null, filter.tool ?? null, filter.limit) as Array<Record<string, string | number>>
-    return rows.map((r) => ({ query_id: String(r.query_id), tool: String(r.tool), repository_id: String(r.repository_id), snapshot_id: String(r.snapshot_id), requested_at: String(r.requested_at), duration_ms: Number(r.duration_ms), truncated: r.truncated === 1, input_hash: String(r.input_hash) }))
+  /** A session's recorded queries in order (#50): each with its tool, the snapshot its symbol ids belong to, and its subjects. */
+  querySteps(sessionId: string, repositoryId: string): QueryStep[] {
+    const rows = this.db.prepare('select q.query_id, q.tool, coalesce(s.snapshot_id, q.snapshot_id) snapshot_id, q.requested_at, s.symbols, s.paths from query_subject s join query_record q on q.query_id = s.query_id where s.session_id = ? and q.repository_id = ? order by q.requested_at, q.rowid')
+      .all(sessionId, repositoryId) as Array<Record<string, string>>
+    return rows.map((r) => ({ query_id: r.query_id!, tool: r.tool!, snapshot_id: r.snapshot_id!, requested_at: r.requested_at!, symbols: JSON.parse(r.symbols!), paths: JSON.parse(r.paths!) }))
+  }
+
+  queryRecords(filter: { repository_id?: string; tool?: string; limit: number }): Array<{ query_id: string; tool: string; repository_id: string; snapshot_id: string; requested_at: string; duration_ms: number; truncated: boolean; input_hash: string; session_id?: string }> {
+    const rows = this.db.prepare('select q.*, s.session_id from query_record q left join query_subject s on s.query_id = q.query_id where (? is null or q.repository_id = ?) and (? is null or q.tool = ?) order by q.requested_at desc, q.rowid desc limit ?')
+      .all(filter.repository_id ?? null, filter.repository_id ?? null, filter.tool ?? null, filter.tool ?? null, filter.limit) as Array<Record<string, string | number | null>>
+    return rows.map((r) => ({ query_id: String(r.query_id), tool: String(r.tool), repository_id: String(r.repository_id), snapshot_id: String(r.snapshot_id), requested_at: String(r.requested_at), duration_ms: Number(r.duration_ms), truncated: r.truncated === 1, input_hash: String(r.input_hash), ...(r.session_id !== null ? { session_id: String(r.session_id) } : {}) }))
   }
 
   /** Whether a person turned the session trail on for this repository (#114); off unless they did. */
@@ -389,23 +406,25 @@ export class Catalog {
     return { entries, cut: !!this.db.prepare('select 1 from trail_cut where session_id = ?').get(sessionId) }
   }
 
-  /** Deletes one session's trail, or every trail. */
-  purgeTrail(sessionId?: string): number {
+  /** Deletes one session's trail and the subjects of its queries, or every trail and every query's subjects. */
+  purgeTrail(sessionId?: string): { trail: number; subjects: number } {
+    const s = sessionId ?? null
     return this.db.transaction(() => {
-      this.db.prepare('delete from trail_cut where ? is null or session_id = ?').run(sessionId ?? null, sessionId ?? null)
-      return this.db.prepare('delete from trail_entry where ? is null or session_id = ?').run(sessionId ?? null, sessionId ?? null).changes
+      this.db.prepare('delete from trail_cut where ? is null or session_id = ?').run(s, s)
+      return { trail: this.db.prepare('delete from trail_entry where ? is null or session_id = ?').run(s, s).changes, subjects: this.db.prepare('delete from query_subject where ? is null or session_id = ?').run(s, s).changes }
     })()
   }
 
   /** Retention of what sessions asked and read: query records and trail entries recorded before `before` (an ISO time); counted only on a dry run. */
-  expireRecords(before: string, dryRun = false): { queries: number; trail: number } {
-    if (dryRun) {
-      const count = (sql: string) => (this.db.prepare(sql).get(before) as { n: number }).n
-      return { queries: count('select count(*) n from query_record where requested_at < ?'), trail: count('select count(*) n from trail_entry where recorded_at < ?') }
-    }
+  expireRecords(before: string, dryRun = false): { queries: number; trail: number; subjects: number } {
+    const count = (sql: string) => (this.db.prepare(sql).get(before) as { n: number }).n
+    const subjects = count('select count(*) n from query_subject s join query_record q on q.query_id = s.query_id where q.requested_at < ?')
+    if (dryRun) return { queries: count('select count(*) n from query_record where requested_at < ?'), trail: count('select count(*) n from trail_entry where recorded_at < ?'), subjects }
     return this.db.transaction(() => {
       this.db.prepare('delete from trail_cut where recorded_at < ?').run(before)
-      return { queries: this.db.prepare('delete from query_record where requested_at < ?').run(before).changes, trail: this.db.prepare('delete from trail_entry where recorded_at < ?').run(before).changes }
+      // A query's subjects go with its record (#50).
+      this.db.prepare('delete from query_subject where query_id in (select query_id from query_record where requested_at < ?)').run(before)
+      return { queries: this.db.prepare('delete from query_record where requested_at < ?').run(before).changes, trail: this.db.prepare('delete from trail_entry where recorded_at < ?').run(before).changes, subjects }
     })()
   }
 
@@ -536,6 +555,20 @@ export class Catalog {
   sarifImports(repositoryId: string): SarifImportRecord[] {
     return (this.db.prepare('select * from sarif_import where repository_id = ? order by name').all(repositoryId) as Array<Record<string, string>>).map((r) => ({
       name: r.name!, path: r.path!, sha256: r.sha256!, tools: JSON.parse(r.tools!), findings: JSON.parse(r.findings!), unattached: JSON.parse(r.unattached!), files: JSON.parse(r.files!), added_by: r.added_by!, added_at: r.added_at!,
+    }))
+  }
+
+  /** Importing a coverage report for a repository; only the CLI calls this, for a person. A report of the same source again replaces it. */
+  addCoverage(repositoryId: string, c: Omit<CoverageImportRecord, 'imported_by' | 'imported_at'>, importedBy: string): CoverageImportRecord {
+    this.db.prepare(`insert or replace into coverage_import (repository_id, source, format, path, sha256, window_from, window_to, files, unmatched, imported_by, imported_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(repositoryId, c.source, c.format, c.path, c.sha256, c.window.from, c.window.to, JSON.stringify(c.files), JSON.stringify(c.unmatched), importedBy, now())
+    return this.coverageImports(repositoryId).find((x) => x.source === c.source)!
+  }
+
+  /** Every coverage import of a repository, by source. */
+  coverageImports(repositoryId: string): CoverageImportRecord[] {
+    return (this.db.prepare('select * from coverage_import where repository_id = ? order by source').all(repositoryId) as Array<Record<string, string>>).map((r) => ({
+      source: r.source!, format: r.format!, path: r.path!, sha256: r.sha256!, window: { from: r.window_from!, to: r.window_to! }, files: JSON.parse(r.files!), unmatched: JSON.parse(r.unmatched!), imported_by: r.imported_by!, imported_at: r.imported_at!,
     }))
   }
 

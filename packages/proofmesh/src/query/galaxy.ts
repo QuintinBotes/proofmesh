@@ -88,6 +88,22 @@ export function galaxyBundle(dataDir: string, opts: Scope, from: string, to: str
   } finally { catalog.close() }
 }
 
+const pointOf = new WeakMap<string[], Map<string, number>>()
+/** The Galaxy point of each stable key in a snapshot, or -1 for a key with no point there (a file module, or none of its symbols), so Change review marks a tool's rows on the map (FR1813). */
+export function galaxyPoints(dataDir: string, opts: Scope, keys: string[]): number[] {
+  const { ids } = galaxyFor(dataDir, opts)
+  let index = pointOf.get(ids)
+  if (!index) pointOf.set(ids, (index = new Map(ids.map((id, i) => [id, i]))))
+  const catalog = Catalog.open(dataDir)
+  try {
+    const db = openSnapshot(catalog, snapshotOf(catalog, opts))
+    try {
+      const idOf = db.prepare('select id from symbol where stable_key = ?').pluck()
+      return keys.map((k) => index.get(idOf.get(k) as string) ?? -1)
+    } finally { db.close() }
+  } finally { catalog.close() }
+}
+
 /** The Galaxy of a repository's current snapshot, or of a published one Replay pins (FR010); the repository is named when several are registered (A11). */
 export function galaxyFor(dataDir: string, opts: Scope = {}): { gz: Buffer; ids: string[] } {
   const catalog = Catalog.open(dataDir)

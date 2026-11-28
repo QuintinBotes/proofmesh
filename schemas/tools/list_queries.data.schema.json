@@ -154,6 +154,10 @@
           },
           "input_hash": {
             "type": "string"
+          },
+          "session_id": {
+            "type": "string",
+            "description": "The proofmesh mcp session whose query this was, where its subjects were recorded (proofmesh trail on); get_session_trail lists them."
           }
         }
       }

@@ -201,7 +201,8 @@
                 "via",
                 "basis",
                 "status",
-                "test"
+                "test",
+                "chain"
               ],
               "properties": {
                 "id": {
@@ -246,8 +247,10 @@
                   "enum": [
                     "changed",
                     "tested",
+                    "covered",
                     "neither"
-                  ]
+                  ],
+                  "description": "covered: no test reaches the dependent statically and an imported coverage report that is not stale shows one of its lines executed (#241); neither: not changed, tested or covered."
                 },
                 "test": {
                   "type": [
@@ -309,6 +312,51 @@
                     }
                   }
                 },
+                "coverage": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "source",
+                    "lines_covered",
+                    "lines_total",
+                    "at"
+                  ],
+                  "description": "Present when the status is covered: the report and the dependent's lines it shows executed.",
+                  "properties": {
+                    "source": {
+                      "type": "string"
+                    },
+                    "lines_covered": {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    "lines_total": {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    "at": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "additionalProperties": false,
+                      "required": [
+                        "path",
+                        "line"
+                      ],
+                      "description": "The first executed line of the subject; null when none is or the coverage is stale.",
+                      "properties": {
+                        "path": {
+                          "type": "string"
+                        },
+                        "line": {
+                          "type": "integer",
+                          "minimum": 1
+                        }
+                      }
+                    }
+                  }
+                },
                 "key": {
                   "type": "string",
                   "description": "The stable_key of the dependent; absent for an importing file (FR280): the key every tool takes as `key`, unique in the snapshot and the same in every tier. Absent when the id is no symbol, such as a file."
@@ -316,6 +364,44 @@
                 "generated": {
                   "type": "boolean",
                   "description": "Present and true when the file is generated (FR292); absent otherwise."
+                },
+                "chain": {
+                  "type": "array",
+                  "description": "How the dependent reaches the change (FR1811): from the dependent at its call, import or reference site, through each caller or member it reaches the change through, to the changed symbol at its declaration, in the snapshot the row is from.",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "name",
+                      "path",
+                      "line"
+                    ],
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "path": {
+                        "type": "string"
+                      },
+                      "line": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "description": "The site of the relationship to the next hop; for the last hop, the changed symbol's declaration."
+                      },
+                      "generated": {
+                        "type": "boolean",
+                        "description": "Present and true when the file is generated (FR292); absent otherwise."
+                      },
+                      "key": {
+                        "type": "string",
+                        "description": "The stable_key of the symbol at this hop (FR280)."
+                      },
+                      "assertion_id": {
+                        "type": "string",
+                        "description": "The relationship from this hop to the next, as get_relationships and read_evidence name it; absent on the last hop, the changed symbol at its declaration."
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -342,7 +428,7 @@
         "neither",
         "by_basis"
       ],
-      "description": "Over every changed symbol, on this page or not; changed, tested and neither count the dependents.",
+      "description": "Over every changed symbol, on this page or not; changed, tested, covered and neither count the dependents.",
       "properties": {
         "changed_symbols": {
           "type": "integer",
@@ -359,6 +445,11 @@
         "tested": {
           "type": "integer",
           "minimum": 0
+        },
+        "covered": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Present only when a coverage report is imported: dependents covered by it and by no static test."
         },
         "neither": {
           "type": "integer",
@@ -384,6 +475,73 @@
           }
         }
       }
+    },
+    "cochange": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "shared",
+          "subject_commits",
+          "partner_commits",
+          "degree",
+          "linked",
+          "relationship_types",
+          "test",
+          "of",
+          "status"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "shared": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Commits of the window that change both files."
+          },
+          "subject_commits": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "partner_commits": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "degree": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "shared / min(subject_commits, partner_commits), to two decimals."
+          },
+          "linked": {
+            "type": "boolean",
+            "description": "Whether a resolved or candidate relationship of the snapshot joins the two files, either direction, at depth 1."
+          },
+          "relationship_types": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The types of those relationships; empty when not linked."
+          },
+          "test": {
+            "type": "boolean",
+            "description": "Whether the partner is test code, by file convention and project naming."
+          },
+          "of": {
+            "type": "string",
+            "description": "The changed file it usually changes with."
+          },
+          "status": {
+            "const": "not_changed",
+            "description": "The diff does not change it."
+          }
+        }
+      },
+      "description": "With include_cochanges: the partners of the changed files that the diff does not change, by degree, then shared, then path. Co-change is not a relationship, so these are not dependents and no total counts them."
     }
   }
 }

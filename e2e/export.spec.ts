@@ -59,7 +59,8 @@ test('FR1580 the Terrain image is the map at its snapshot positions, and two fre
     // A launch link works once, so each fresh context opens its own view of the same data.
     const v = await serveView(view.dataDir), context = await browser.newContext(), page = await context.newPage()
     try {
-      const response = page.waitForResponse((r) => r.url().endsWith('/api/v1/galaxy'))
+      // The payload is read from its snapshot's address (FR1453).
+      const response = page.waitForResponse((r) => /\/api\/v1\/galaxy\/v\d+\/[\w-]+$/.test(new URL(r.url()).pathname))
       await page.goto(v.launchUrl)
       const body = await (await response).body(), raw = body[0] === 0x1f && body[1] === 0x8b ? zlib.gunzipSync(body) : body
       const n = raw.readUInt32LE(0), h = JSON.parse(raw.subarray(4, 4 + n).toString('utf8')), base = 4 + n + ((4 - ((4 + n) % 4)) % 4)

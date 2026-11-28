@@ -91,6 +91,19 @@ describe('FR108 FR109 FR110 FR111 FR112 FR113 FR114 impact_completeness: what a 
     expect(summary(out.stdout)).toBe('summary: 2 changed symbols; 5 dependents: 1 changed, 1 tested, 3 neither')
   }, 180000)
 
+  it('FR1811 every dependent carries its chain: each hop at its call site with its assertion id, ending at the changed symbol\'s declaration', () => {
+    const { d, repo, base, head } = once
+    const data = tool(d, 'impact_completeness', { repository_id: repoId(d, repo), base, head, depth: 2 }).data as Answer
+    const chain = (name: string) => data.changed[1]!.dependents.find((x) => x.name === name)!.chain.map((h) => [h.name, `${h.path}:${h.line}`, typeof h.assertion_id])
+    expect(chain('auditorScore')).toEqual([['auditorScore', 'src/roles/auditor.ts:3', 'string'], ['mean', 'src/stats.ts:1', 'undefined']])
+    expect(chain('report')).toEqual([['report', 'src/report.ts:3', 'string'], ['analystScore', 'src/roles/analyst.ts:3', 'string'], ['mean', 'src/stats.ts:1', 'undefined']])
+    expect(chain('index.ts')).toEqual([['index.ts', 'src/index.ts:1', 'string'], ['mean', 'src/stats.ts:1', 'undefined']])
+    // Each hop's assertion is the relationship read_evidence and get_relationships name: the call from report to analystScore.
+    const hop = data.changed[1]!.dependents.find((x) => x.name === 'report')!.chain[0]!
+    const rels = tool(d, 'get_relationships', { repository_id: repoId(d, repo), subject_id: data.changed[1]!.dependents.find((x) => x.name === 'report')!.id, direction: 'out', types: ['calls'] }).data as { relationships: Array<{ assertion_id: string }> }
+    expect(rels.relationships.map((r) => r.assertion_id)).toContain(hop.assertion_id)
+  }, 180000)
+
   it('scenario 3: with base only, the working tree is the head', () => {
     const { out } = completeness(HEAD, [], true)
     expect(rows(out.stdout)).toEqual(SCENARIO_1)
@@ -248,7 +261,7 @@ describe('FR110 FR111 FR112 impact_completeness edge cases: non-ASCII paths, mov
 type Test = { name: string; path: string; line: number; evidence: string; depth: number; changed: boolean }
 type Answer = {
   pending: Array<{ commit: string | null; job_id: string }>
-  changed: Array<{ name: string; path: string; line: number; change: string; status: string; test: Test | null; dependents: Array<{ relation: string; name: string; path: string; line: number; via: string | null; status: string; test: Test | null }> }>
+  changed: Array<{ name: string; path: string; line: number; change: string; status: string; test: Test | null; dependents: Array<{ id: string; relation: string; name: string; path: string; line: number; via: string | null; status: string; test: Test | null; chain: Array<{ name: string; path: string; line: number; assertion_id?: string }> }> }>
   totals: Record<string, number>
 }
 const repoId = (d: string, root: string) => (tool(d, 'list_repositories').data as { repositories: Array<{ id: string; root: string }> }).repositories.find((x) => fs.realpathSync(x.root) === fs.realpathSync(root))!.id

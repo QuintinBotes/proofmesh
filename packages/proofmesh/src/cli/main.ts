@@ -67,6 +67,7 @@ Usage: proofmesh [--data-dir DIR] <command>
   workspace list | workspace remove <name> [<repository>...]
   workspace link <name>   seal the cross-repository link file of the workspace's current snapshots (A7, A28)
   observe import <repository> <file.json> | observe list <repository> | observe validate <file.json>   import runtime observations (schemas/observations/0.3) to show beside static reach
+  observe import <repository> <report> --format lcov|cobertura|jacoco|go-cover [--source NAME] [--test NAME] [--strip-prefix P]   import a coverage report a test run wrote, to show beside static test reach; Proofmesh runs no test (observe validate takes --format too)
   discover --anchor <repository> [--org ORG] [--limit N] [--json]   rank related GitHub repositories by this one's evidence, through read-only gh queries
   clone <owner/repo> --into <dir> [--add [--workspace NAME]]   gh repo clone one repository, and optionally register it
   verification enable|disable      allow agents to prepare verification recipes here (off by default; D07)
@@ -76,17 +77,19 @@ Usage: proofmesh [--data-dir DIR] <command>
   bundle export <repository> --out <dir.pmb> [--query <json>]... [--include-source]   portable evidence bundle; source only with consent
   bundle check <dir.pmb>            verify a bundle offline, with no data directory
   backup <dir> | restore <dir> --into <data-dir>   consistent copy of the data directory, verified on restore
-  gc [--keep N] [--records-days D] [--dry-run]   retire old snapshots and unreferenced evidence, never current, pinned or linked ones; delete query records and session trail entries recorded more than D days ago (default 30)
-  trail on <repo> | trail off <repo>   record the session trail of Claude Code sessions in this repository (off by default): the paths and symbol ids they search, open, change and claim, never source text
-  trail record | trail purge [--session <id>]   append trail entries (JSON lines on stdin; the plugin does this) | delete one session's trail, or all
+  gc [--keep N] [--records-days D] [--dry-run]   retire old snapshots and unreferenced evidence, never current, pinned or linked ones; delete query records, with their subjects, and session trail entries recorded more than D days ago (default 30)
+  trail on <repo> | trail off <repo>   record the session trail of Claude Code sessions in this repository, and the subjects of each MCP query by its session (off by default): the paths and symbol ids they search, open, change and claim, never source text
+  trail record | trail purge [--session <id>]   append trail entries (JSON lines on stdin; the plugin does this) | delete one session's trail and query subjects, or all
   snapshot pin <id> | snapshot unpin <id>
   snapshot export <repository> [--snapshot <id>] --out <file>   write a snapshot built here, with a manifest of its commit, adapters and file hashes, and no source
   snapshot import <repository> <file>   start from a snapshot built elsewhere for the same commit: verified against its hashes, the adapters here and the working tree, refused when anything does not match, and never over a snapshot the repository has
   mcp-config [--client claude-code|codex] [--scope project|user] [--write .mcp.json]   print the client registration
   index <repository-id or path> [--rev <commit-ish>] [--no-wait] [--allow-partial]   capture, analyse, seal, and publish a snapshot; --rev indexes a commit without touching the working tree; one index per repository at a time: a second waits, or with --no-wait exits INDEX_IN_PROGRESS; progress on stderr
   watch <repository> [--interval S] [--quiet-ms MS] [--poll]   keep the snapshot current; --poll ignores file notifications
-  completeness <repository> <base>[..<head>] [--depth N] [--json]   every symbol the change made and what calls, implements, references or imports it, each changed, tested or neither; indexes a side with no snapshot and waits; exits 0 when no dependent is neither, 1 when one is, 2 on a usage error or unknown commit
+  completeness <repository> <base>[..<head>] [--depth N] [--static-only] [--format lean|json|markdown|sarif|github] [--max-bytes N]   every symbol the change made and what calls, implements, references or imports it, each changed, tested, covered (by an imported coverage report) or neither; markdown is a pull request report cut to --max-bytes (default 60000), sarif one result per dependent neither changed nor tested, github workflow annotations and the report appended to $GITHUB_STEP_SUMMARY; --json is --format json; indexes a side with no snapshot and waits; exits 0 when no dependent is neither, 1 when one is (or with --static-only is only covered), 2 on a usage error or unknown commit
+  completeness <repository> --branches [--depth N] [--json]   the local branches with commits the checked-out one lacks, ranked by blast radius (changed symbols with a dependent neither changed nor tested), then by changed symbols shared with the other branches; local refs only
   tests <repository> <path | path#name> [--json]   the tests that reach a file or symbol, how each is known and its chain; exits 0 when one executes it, 1 when none does, 2 on a usage error or unknown subject
+  tests <repository> --changed <base>[..<head>] [--depth N] [--json]   each test file that reaches a changed symbol or one of its dependents, once, sorted; exits 0 when answered, 3 when it may miss tests (each reason on stderr as # incomplete:), 2 on a usage or index failure
   status [repository] [--json] [--fresh]   inventory and coverage of the current snapshot, and index jobs queued or running; --fresh compares the working tree with it and starts nothing
   ${MCP_USAGE}
   view [--port P] [--no-open]       Observatory on loopback
@@ -244,7 +247,7 @@ export async function main(argv: string[]): Promise<number> {
       }
       case 'observe': {
         const catalog = Catalog.open(dataDir)
-        try { return observe(catalog, [...rest]) } finally { catalog.close() }
+        try { return observe(catalog, [...rest], take) } finally { catalog.close() }
       }
       case 'scip': {
         const opts = [...rest]
@@ -336,7 +339,7 @@ export async function main(argv: string[]): Promise<number> {
         }
       }
       case 'discover': return runDiscover(dataDir, rest, take, has)
-      case 'tests': return runTests(dataDir, rest, has)
+      case 'tests': return runTests(dataDir, rest, take, has)
       case 'completeness': return runCompleteness(dataDir, rest, take, has)
       case 'clone': return runClone(dataDir, rest, take, has, os.userInfo().username)
       case 'verification':
@@ -535,10 +538,13 @@ export async function main(argv: string[]): Promise<number> {
           throw e
         }
         const phases = report.stop()
+        const repoId = jobs.repository(opts[0]).id, trusted = !!jobs.activeTrust(repoId)
         jobs.close()
         for (const f of r.fallbacks ?? []) console.log(`adapter ${f.adapter} could not analyse ${f.files} file${f.files === 1 ? '' : 's'}, so the syntax tier read them: ${f.reason}`)
         if (r.partial) console.log(`partial snapshot: adapter ${r.partial.adapters.join(', ')} failed, ${r.partial.missing} of ${r.partial.files} files are missing; they are failed with adapter_died, and indexing again asks the adapter again`)
         if (r.resumed) console.log(`resumed from checkpoint: ${r.resumed.done} of ${r.resumed.total} batches were already done`)
+        // repo move and repo untrust drop the grant without an index, so the index that runs without it says so (FR1720).
+        if (r.analysisMode === 'no_execution' && r.adapterBudgets.csharp && !trusted) console.log(`analysed without build evaluation: C# projects were read without running MSBuild, so C# resolution may be partial; a person grants it with: proofmesh repo trust ${repoId} --build-evaluation`)
         if (r.reuse?.reused) console.log(`reused the facts of ${r.reuse.reused} of ${r.reuse.reused + r.reuse.analysed} files whose inputs did not change`)
         console.log(`snapshot ${r.snapshotId} ${r.status}${r.commit ? ` from commit ${r.commit} (${rev}); the working tree was not read` : ''}${r.analysisMode === 'trusted_build' ? ' (analysed with build execution)' : ''}`)
         // Observatory's Galaxy reads this; building it now keeps opening the view instant. It is a cache, so failure only costs time later.

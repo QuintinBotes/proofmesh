@@ -66,9 +66,9 @@ describe('FR1160 to FR1169 the Observatory benchmark measures what a reader wait
     expect(res.cold.symbol_to_evidence_requests.median).toBeGreaterThanOrEqual(1)
     for (const type of ['script', 'stylesheet', 'api']) expect(res.bytes_total[type]).toMatchObject({ raw: expect.any(Number), gzip: expect.any(Number), transferred: expect.any(Number) })
     expect(res.bytes_total.script.raw).toBeGreaterThan(res.bytes_total.script.gzip)
-    expect(res.bytes.some((b: { url: string }) => b.url === '/api/v1/galaxy')).toBe(true)
+    expect(res.bytes.some((b: { url: string }) => b.url === '/api/v1/galaxy/v6/:snapshot')).toBe(true)
     expect(JSON.stringify(res)).not.toMatch(/#t=|pm_session/)
-    expect(res.calls.map((c: { call: string }) => c.call)).toEqual(expect.arrayContaining(['/api/v1/galaxy', '/api/v1/galaxy/symbol']))
+    expect(res.calls.map((c: { call: string }) => c.call)).toEqual(expect.arrayContaining(['/api/v1/galaxy/v6/:snapshot', '/api/v1/galaxy/symbol']))
     // FR1163: same snapshot in two fresh profiles, and A followed by B, snapshot-b.mjs's commit touching four files (one of them new).
     for (const s of [res.stability.same_snapshot, res.stability.a_to_b]) expect(s).toMatchObject({ shared: expect.any(Number), median: expect.any(Number), p90: expect.any(Number), max: expect.any(Number), moved_2pct: expect.any(Number), moved_5pct: expect.any(Number) })
     expect(res.stability.a_to_b.files).toHaveLength(4)
