@@ -78,6 +78,11 @@
             ],
             "description": "inferred when the strongest chain to the dependent has an inferred hop; the strongest chain is the shortest all-observed chain where one exists, and depth is that chain's."
           },
+          "findings": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "How many imported SARIF findings (get_findings) are on this symbol; absent when none are (#30)."
+          },
           "project": {
             "type": [
               "string",
