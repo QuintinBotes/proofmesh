@@ -35,6 +35,6 @@ On November 28, 2026 the existing ProofMesh typed-tool adapter was rerun at `75f
 | Q7 transitive callers | Typed impact returned 11 correct out of 22. The explicit calls-only graph query and Codebase-Memory both returned exactly 11. |
 | Q8 call path | ProofMesh, Gortex and GitNexus each returned a valid three-hop path. |
 | Q10 unused functions | ProofMesh's typed tool returned 79 of 80 with no extra. Its graph query returned all 80. GitNexus found all 80 with four extra. |
-| Q13 hubs | ProofMesh's typed top ten includes nine compiler-ranked hubs. Gortex matches six, GitNexus five and Codebase-Memory four. ProofMesh's composed query matched one and disclosed that it aggregated only its first 1,000 input rows. |
+| Q13 hubs | ProofMesh's typed top ten includes nine compiler-ranked hubs. Gortex matches six, GitNexus five and Codebase-Memory four. The historical composed query matched one after a 1,000-input cutoff. The whole-snapshot rerun matched nine compiler hubs and all ten independently counted snapshot hubs. [Counts and reproduction](../README.md#whole-snapshot-q13) |
 
 These comparisons use semantic scores. Each tool's performance measurements have their own run date and profile. The parent parity suite contains the ProofMesh typed and composed query recipes and the earlier results at `fc33d43`. [Existing parity suite](../README.md)

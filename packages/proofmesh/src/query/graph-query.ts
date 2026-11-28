@@ -7,7 +7,7 @@
  */
 import type Database from 'better-sqlite3'
 import { ProofmeshError } from '../core/errors.js'
-import { basisOf } from './basis.js'
+import { basisOf, inferredSql } from './basis.js'
 import { leanName, leanRow, quote } from './lean.js'
 import { isTestCode, isTestPath, parseRoles, rolesSql } from './tests.js'
 import { hasSites } from '../meshstore/order.js'
@@ -429,6 +429,13 @@ class Graph {
       extAll: p('select id, module, name from external_symbol order by module, name, id'), extName: p('select id, module, name from external_symbol where name = ? order by module, id'),
       outAll: p(`${a} where source_id = ? and ${RESOLVED} ${order}`), outType: p(`${a} where source_id = ? and type = ? and ${RESOLVED} ${order}`),
       inAll: p(`${a} where target_id = ? and ${RESOLVED} ${order}`), inType: p(`${a} where target_id = ? and type = ? and ${RESOLVED} ${order}`),
+      rankingSymbols: p("select id from symbol where kind <> 'module'"),
+      rankingFiles: p('select id from file'), rankingExternals: p('select id from external_symbol'),
+      rankingAliases: p("select id from symbol where file_id = ? and kind = 'module'"),
+      rankingUsers: p(`select case when s.kind = 'module' then s.file_id else coalesce(s.id, f.id, x.id) end as source,
+        ${inferredSql()} as inferred from assertion a
+        left join symbol s on s.id = a.source_id left join file f on f.id = a.source_id left join external_symbol x on x.id = a.source_id
+        where a.target_id = ? and a.type in (?, ?) and ${RESOLVED}`),
       site: p('select e.id, f.path, e.start_line from assertion_evidence ae join evidence e on e.id = ae.evidence_id join file f on f.id = e.file_id where ae.assertion_id = ? order by f.path, e.start_byte'),
     }
   }
@@ -441,8 +448,8 @@ class Graph {
     const props = new Map<string, Val>([['id', r.id], ['kind', r.kind], ['name', r.name], ['qualified_name', r.qualified_name], ['path', r.path], ['line', r.start_line], ['end_line', r.end_line], ['signature', r.signature], ['key', r.stable_key], ['test', isTestCode(r.path, null, roles)], ['name_shown', leanName({ kind: r.kind, name: r.name, qualified_name: r.qualified_name, path: r.path })]])
     return new GNode(r.id, [r.kind], props, [r.id], r.evidence_id)
   }
-  private fileNode(r: FileRow): GNode {
-    const modules = (this.s.modules!.all(r.id) as Array<{ id: string }>).map((m) => m.id)
+  private fileNode(r: FileRow, includeModules = true): GNode {
+    const modules = includeModules ? (this.s.modules!.all(r.id) as Array<{ id: string }>).map((m) => m.id) : []
     const props = new Map<string, Val>([['id', r.id], ['kind', 'file'], ['name', r.path.slice(r.path.lastIndexOf('/') + 1)], ['path', r.path], ['line', 1], ['language', r.language], ['disposition', r.disposition], ['test', isTestPath(r.path)], ['name_shown', r.path]])
     return new GNode(r.id, modules.length ? ['file', 'module'] : ['file'], props, [r.id, ...modules], null)
   }
@@ -453,15 +460,34 @@ class Graph {
 
   /** The node an id names. A file and its module symbol are one node, the file, as in the other tools (FR090). */
   node(id: string): GNode | null {
-    return this.cache(id, () => {
-      if (id.startsWith('file_')) { const f = this.s.file!.get(id) as FileRow | undefined; return f ? this.fileNode(f) : null }
-      if (id.startsWith('ext_')) {
-        const x = this.s.external!.get(id) as { id: string; module: string; name: string } | undefined
-        return x ? new GNode(x.id, ['external'], new Map<string, Val>([['id', x.id], ['kind', 'external'], ['name', x.name], ['module', x.module], ['name_shown', x.name]]), [x.id], null) : null
-      }
-      const s = this.s.symbol!.get(id) as SymRow | undefined
-      return !s ? null : s.kind === 'module' ? this.node(s.file_id) : this.symbolNode(s)
-    })
+    return this.cache(id, () => this.readNode(id, true))
+  }
+
+  /** Ranking compares canonical nodes by place without caching every candidate or loading file aliases. */
+  readNode(id: string, includeModules: boolean): GNode | null {
+    if (id.startsWith('file_')) { const f = this.s.file!.get(id) as FileRow | undefined; return f ? this.fileNode(f, includeModules) : null }
+    if (id.startsWith('ext_')) {
+      const x = this.s.external!.get(id) as { id: string; module: string; name: string } | undefined
+      return x ? new GNode(x.id, ['external'], new Map<string, Val>([['id', x.id], ['kind', 'external'], ['name', x.name], ['module', x.module], ['name_shown', x.name]]), [x.id], null) : null
+    }
+    const s = this.s.symbol!.get(id) as SymRow | undefined
+    return !s ? null : s.kind === 'module' ? this.node(s.file_id) : this.symbolNode(s)
+  }
+
+  *rankingTargets(internal: boolean): Generator<{ id: string }> {
+    yield* this.s.rankingSymbols!.iterate() as Iterable<{ id: string }>
+    if (!internal) {
+      yield* this.s.rankingFiles!.iterate() as Iterable<{ id: string }>
+      yield* this.s.rankingExternals!.iterate() as Iterable<{ id: string }>
+    }
+  }
+
+  *incomingUsers(id: string, types: string[], check: () => void): Generator<IncomingUser> {
+    const read = (raw: string) => this.s.rankingUsers!.iterate(raw, types[0], types[1] ?? types[0]) as Iterable<IncomingUser>
+    yield* read(id)
+    if (id.startsWith('file_')) {
+      for (const alias of this.s.rankingAliases!.iterate(id) as Iterable<{ id: string }>) { check(); yield* read(alias.id) }
+    }
   }
 
   /** Candidates for an unbound node: read by the most selective property given, then matched in full by the caller. */
@@ -787,8 +813,7 @@ function* matchClause(run: Run, c: Extract<Clause, { k: 'match' }>, input: Itera
  */
 function* projectClause(run: Run, c: Projection, input: Iterable<Binding>): Generator<Binding> {
   const aggregating = c.items.some((it) => it.e.k === 'call' && (it.e.fn === 'count' || it.e.fn === 'collect'))
-  const count = (e: Expr | undefined) => { if (!e) return undefined; const v = evaluate(run, e, new Map()); if (typeof v !== 'number' || v < 0 || !Number.isInteger(v)) throw bad('SKIP and LIMIT take a whole number of at least 0'); return v }
-  const skip = count(c.skip) ?? 0, limit = count(c.limit)
+  const skip = countBound(run, c.skip) ?? 0, limit = countBound(run, c.limit)
   const project = (b: Binding, group?: Binding[]): Binding => {
     const out: Binding = new Map()
     for (const it of c.items) {
@@ -853,6 +878,100 @@ function* projectClause(run: Run, c: Projection, input: Iterable<Binding>): Gene
   }
 }
 
+function countBound(run: Run, expr?: Expr): number | undefined {
+  if (!expr) return undefined
+  const value = evaluate(run, expr, new Map())
+  if (typeof value !== 'number' || value < 0 || !Number.isInteger(value)) throw bad('SKIP and LIMIT take a whole number of at least 0')
+  return value
+}
+
+type UserRanking = { target: string; users: string; internal: boolean; types: string[]; limit: Expr }
+
+/** Recognize the grouped top-k query only when every clause has the semantics implemented below. */
+function userRanking(q: GraphQuery): UserRanking | undefined {
+  const [match, group, ret] = q.clauses
+  if (q.clauses.length !== 3 || match?.k !== 'match' || group?.k !== 'with' || ret?.k !== 'return') return
+  if (match.optional || match.patterns.length !== 1 || !match.where) return
+  const pattern = match.patterns[0]!, [source, target] = pattern.nodes, [hop] = pattern.rels
+  if (pattern.path || pattern.rels.length !== 1 || !source || !target || !hop || source.v === target.v) return
+  if (source.labels.length || source.props.length || target.labels.length || target.props.length) return
+  if (hop.dir !== 'out' || hop.varlen || hop.props.length || !hop.v.startsWith(' ') || !hop.types.length ||
+      !hop.types.every(t => t === 'calls' || t === 'references')) return
+
+  const variable = (e: Expr | undefined, name: string) => e?.k === 'var' && e.name === name
+  let filter = match.where, internal = false
+  if (filter.k === 'bin' && filter.op === 'and') {
+    const key = filter.r
+    if (key.k !== 'isnull' || !key.not || key.e.k !== 'prop' || key.e.key !== 'key' || !variable(key.e.of, target.v)) return
+    internal = true
+    filter = filter.l
+  }
+  if (filter.k !== 'bin' || filter.op !== '<>' || !variable(filter.l, source.v) || !variable(filter.r, target.v)) return
+  if (group.distinct || group.where || group.skip || group.limit || group.order.length || group.items.length !== 2) return
+  const [node, count] = group.items
+  if (!node || !variable(node.e, target.v) || !count || node.name === count.name) return
+  const call = count.e
+  if (call.k !== 'call' || call.fn !== 'count' || !call.distinct || call.args.length !== 1 || !variable(call.args[0], source.v)) return
+  if (!ret.limit || ret.skip || ret.distinct || ret.items.length !== 2 || ret.order.length !== 2) return
+  if (!ret.items.every((item, i) => variable(item.e, item.name) && item.name === group.items[i]!.name)) return
+  const [byCount, byNode] = ret.order
+  if (!byCount?.desc || !variable(byCount.e, count.name) || !byNode || byNode.desc || !variable(byNode.e, node.name)) return
+  return { target: node.name, users: count.name, internal, types: [...new Set(hop.types)], limit: ret.limit }
+}
+
+type IncomingUser = { source: string | null; inferred: number | null }
+
+/** Count distinct sources in bounded pages. A hub larger than a page is rescanned above the last counted key. */
+function distinctUsers(incoming: () => Iterable<IncomingUser>, target: string, tick: () => void) {
+  const page = 512
+  let lower: string | undefined, users = 0, inferred = false
+  for (;;) {
+    // After pruning, every encountered key through upper is retained. Larger keys belong to a later pass.
+    let keys = new Set<string>(), upper: string | undefined
+    for (const edge of incoming()) {
+      tick()
+      const id = edge.source
+      if (!id || id === target || (lower !== undefined && id <= lower)) continue
+      if (edge.inferred) inferred = true
+      if (upper !== undefined && id >= upper) continue
+      keys.add(id)
+      if (keys.size === page * 2) {
+        const first = [...keys].sort().slice(0, page)
+        upper = first[page - 1]!
+        keys = new Set(first)
+      }
+    }
+    users += keys.size
+    if (upper === undefined) return { users, inferred }
+    lower = upper
+  }
+}
+
+/** Stream indexed incoming assertions for each canonical target. Only candidate winners and one source page survive a scan. */
+function* rankUsers(run: Run, plan: UserRanking, deadline: number): Generator<Binding> {
+  const keep = Math.min(countBound(run, plan.limit)!, run.maxRows + 1)
+  if (!keep) return
+  const check = () => { if (Date.now() >= deadline) throw new Stop('timeout') }
+  check()
+  type Ranked = { node: GNode; users: number; inferred: boolean }
+  const winners: Ranked[] = []
+  for (const { id } of run.g.rankingTargets(plan.internal)) {
+    check()
+    const { users, inferred } = distinctUsers(() => run.g.incomingUsers(id, plan.types, check), id, check)
+    const last = winners[keep - 1]
+    if (!users || (last && last.users > users)) continue
+    const node = run.g.readNode(id, false)!
+    const index = winners.findIndex(other => users > other.users || (users === other.users && compare(run.g, node, other.node) < 0))
+    if (index >= 0) winners.splice(index, 0, { node, users, inferred })
+    else if (!last) winners.push({ node, users, inferred })
+    if (winners.length > keep) winners.pop()
+  }
+  check()
+  for (const { node, users, inferred } of winners) {
+    yield new Map<string, Val>([[plan.target, node], [plan.users, users], [INFERRED, inferred]])
+  }
+}
+
 // ---------- answers ----------
 export type Cell = null | boolean | number | string | Cell[] | { [k: string]: Cell }
 export type QueryRow = { values: Cell[]; inferred?: boolean }
@@ -863,7 +982,9 @@ export function runGraphQuery(db: Database.Database, q: GraphQuery, limits: { ma
   const run: Run = { g: new Graph(db, limits.deadline), params: q.params, maxRows: limits.maxRows, stop: null, aggregateCut: false }
   const ret = q.clauses.at(-1) as Projection
   let stream: Iterable<Binding> = [new Map()]
-  for (const c of q.clauses) stream = c.k === 'match' ? matchClause(run, c, stream) : projectClause(run, c, stream)
+  const ranking = userRanking(q)
+  if (ranking) stream = rankUsers(run, ranking, limits.deadline)
+  else for (const c of q.clauses) stream = c.k === 'match' ? matchClause(run, c, stream) : projectClause(run, c, stream)
   const out: Binding[] = []
   try {
     for (const b of stream) {
