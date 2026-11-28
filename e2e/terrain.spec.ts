@@ -84,6 +84,31 @@ test('FR1560 every ghost cell and its label lie inside the Terrain and clear of 
   second.stop()
 })
 
+test('FR1405 FR1560 one symbol and two labelled ghost areas fit after first paint and Fit everything', async ({ browser }) => {
+  const view = await startView(path.join(ROOT, 'fixtures', 'ghost-labels', 'repo'))
+  const context = await browser.newContext({ viewport: { width: 1920, height: 1080 } })
+  try {
+    const page = await context.newPage()
+    await page.goto(view.launchUrl)
+    await expect(page.getByTestId('conclusion')).toContainText('1 symbol in 1 area;')
+    const cells = page.locator('.terrain[data-ready] .terrain-fog.empty')
+    await expect(cells).toHaveCount(2)
+    await expect(cells.locator('.fog-label')).toHaveText(['.aider.tags.cache.v4', '.serena-project-memories'])
+    const fits = () => cells.evaluateAll((cells) => {
+      const canvas = cells[0]!.closest('.terrain')!.getBoundingClientRect()
+      const boxes = cells.map((cell) => [cell.getBoundingClientRect(), cell.querySelector('.fog-label')!.getBoundingClientRect()])
+      const inside = (r: DOMRect) => r.width > 0 && r.height > 0 && r.left >= canvas.left && r.right <= canvas.right && r.top >= canvas.top && r.bottom <= canvas.bottom
+      return boxes.every(([cell, label], i) => inside(cell!) && inside(label!) && boxes.every(([other, otherLabel], j) =>
+        i === j || [other!, otherLabel!].every((b) => label!.right <= b.left || label!.left >= b.right || label!.bottom <= b.top || label!.top >= b.bottom)))
+    })
+    await expect.poll(fits).toBe(true)
+    await page.getByRole('button', { name: 'Zoom in' }).click()
+    await expect.poll(fits).toBe(false)
+    await page.getByRole('button', { name: 'Fit everything' }).click()
+    await expect.poll(fits).toBe(true)
+  } finally { await context.close(); view.stop() }
+})
+
 test('FR1223 the map paints at its final positions: no simulation, no layout control and no layout cache in the browser', async ({ browser }) => {
   // A fresh context on a second view of the same data, so the first paint is a cold one.
   const second = await serveView(view.dataDir)

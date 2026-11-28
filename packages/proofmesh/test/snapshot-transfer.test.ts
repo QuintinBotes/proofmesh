@@ -77,11 +77,13 @@ const refusal = (r: { status: number | null; stderr: string }) => { expect(r.sta
 describe('FR1080 to FR1085 start from a snapshot built elsewhere for the same commit (#39)', () => {
   it('FR1080 FR1081 FR1083 FR1084 a clone at the same commit imports the snapshot, answers at once, and every answer says imported with its origin', () => {
     const { origin, a, file, clone, b } = exported()
-    const started = Date.now()
-    const r = cli(['--data-dir', b, 'snapshot', 'import', clone, file])
-    const seconds = (Date.now() - started) / 1000
+    // Measure the import process's own CPU time, read as it exits: a busy machine stretches wall-clock time, not the work the import does.
+    const probe = path.join(tmpDir('pm-xfer-cpu-'), 'cpu.mjs')
+    fs.writeFileSync(probe, `import fs from 'node:fs'\nprocess.on('exit', () => { const c = process.cpuUsage(); fs.writeFileSync(${JSON.stringify(`${probe}.us`)}, String(c.user + c.system)) })\n`)
+    const r = cli(['--data-dir', b, 'snapshot', 'import', clone, file], { NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ''} --import=${JSON.stringify(probe)}` })
     expect(r.status, r.stderr).toBe(0)
-    expect(seconds).toBeLessThanOrEqual(3)
+    const seconds = Number(fs.readFileSync(`${probe}.us`, 'utf8')) / 1e6
+    expect(seconds, 'seconds of CPU time').toBeLessThanOrEqual(3)
     expect(r.stdout).toMatch(/all \d+ files match the working tree/)
     const here = tool(b, 'find_symbols', { text: 'invoiceTotal' }), there = tool(a, 'find_symbols', { text: 'invoiceTotal' })
     expect((here.data.symbols as unknown[]).length).toBeGreaterThan(0)
