@@ -729,6 +729,18 @@ From #30 (owner decision, option A): no native data-flow analysis. Proofmesh imp
 - FR1904: MUST mark a finding `stale: sarif_stale:<name>` while its file's content in the asked snapshot differs from the hash recorded at import, and say so in the limitations, until a new SARIF file is imported.
 - FR1905: MUST run no analyser and bundle none: importing a SARIF file reads it and nothing else.
 
+### Change coupling: files that change together
+
+From #239. Files that change together though no relationship links them, from the repository's local git history; co-change is never a relationship (FR023). The tests are in `packages/proofmesh/test/cochanges.test.ts`, on `fixtures/history`.
+
+- FR2020: MUST provide `get_cochanges(paths | subject_ids, window, min_shared, min_degree, max_files_per_commit, only_unlinked, limits)`, in the `extra` profile with capability `read`, answering per subject file its partners that share at least `min_shared` commits (default 3) with a degree of at least `min_degree` (default 0.3), ordered by `degree`, then `shared`, then path, each with `shared`, `subject_commits`, `partner_commits` and `test`; a commit touching more than `max_files_per_commit` files (default 50) forms no pairs and is counted in the limitations, which also state the thresholds and the commits read; with no usable history it answers no rows and says `no_history` or `history_shallow`.
+- FR2021: MUST compute `degree` as `shared / min(subject_commits, partner_commits)` over the window and state the formula in the tool description.
+- FR2022: MUST give every row `linked`, whether any resolved or candidate relationship joins the two files in the snapshot, either direction, at depth 1, with its types, and never a `basis`: no traversal tool follows co-change.
+- FR2023: MUST give `impact_completeness` an `include_cochanges` flag (default false) that adds a `cochange` list of the partners of the changed files that the diff does not change, each `not_changed`, leaving every other field as it is without the flag.
+- FR2024: MUST read history with `git log` on the registered root, from the snapshot's commit backwards over `window` (a number of commits, or of days before that commit's date, default 365 days), at most 10,000 commits, following renames, with discovery's environment allowlist and a timeout, fetching nothing, through one reader with a per-snapshot cache shared with the other history tools; so one snapshot always gives one answer.
+- FR2025: MUST answer lean rows `<path> shared=<n> degree=<d> [linked]`.
+- FR2026: MUST trace each of FR2020 to FR2025 in `policy/traceability.json` and state it here (CONTRIBUTING.md).
+
 ### Impact completeness
 
 - FR108: MUST provide `impact_completeness` with `base`, a commit-ish, optional `head` (omitted, the working tree), `depth` (default 1, at most 5), `include_tests` and the usual limits, and the CLI `proofmesh completeness <repository> <base>[..<head>] [--depth N] [--json]`.

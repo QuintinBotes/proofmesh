@@ -49,7 +49,7 @@ const gitTimeoutMs = () => Math.max(50, Number(process.env.PROOFMESH_TEST_GIT_TI
 const GIT_MAX_BYTES = 512 * 1024 * 1024
 /** What git reads: its own variables and the places its config and excludes live, never the rest of the environment. */
 const gitEnv = (): NodeJS.ProcessEnv => Object.fromEntries(Object.entries(process.env).filter(([k]) => /^(PATH|HOME|USER|TMPDIR|LANG|LC_.*|GIT_.*|XDG_.*)$/.test(k)))
-const gitOptions = () => ({ encoding: 'utf8' as const, env: gitEnv(), timeout: gitTimeoutMs(), killSignal: 'SIGKILL' as const, maxBuffer: GIT_MAX_BYTES })
+export const gitOptions = () => ({ encoding: 'utf8' as const, env: gitEnv(), timeout: gitTimeoutMs(), killSignal: 'SIGKILL' as const, maxBuffer: GIT_MAX_BYTES })
 const ignoredArgs = (root: string) => ['-C', root, 'ls-files', '--others', '--ignored', '--exclude-standard', '--directory', '-z']
 
 /** git's answer as a predicate. Outside a git work tree, or without git, nothing is ignored; a git that hangs or floods is an error, not "nothing ignored". */
